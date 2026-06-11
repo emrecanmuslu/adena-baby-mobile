@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,8 +15,13 @@ import 'router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('tr_TR'); // tarih biçimleri (DateFormat tr_TR)
-  await NotificationService.instance.init(); // yerel bildirim + timezone hazırla
+  try {
+    await initializeDateFormatting('tr_TR'); // tarih biçimleri (DateFormat tr_TR)
+  } catch (_) {}
+  // Bildirim/timezone init'i açılışı ENGELLEMESİN — iOS'ta hata/izin sorunu
+  // tüm uygulamayı beyaz ekranda bırakmasın. Arka planda kurulur; planlama
+  // çağrıları zaten gerekirse init()'i bekler.
+  unawaited(NotificationService.instance.init());
   runApp(const ProviderScope(child: AdenaApp()));
 }
 

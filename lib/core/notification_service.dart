@@ -37,10 +37,26 @@ class NotificationService {
   static const feedMainId = 800001; // ana uyarı
   static const feedPreId = 800002; // ön-hatırlatma
   static const snoozeAction = 'snooze_feed';
+  static const snoozeCategoryId = 'feed_snooze'; // iOS: "Ertele" aksiyonlu kategori
   bool _exactAsked = false;
+
+  /// iOS bildirim ayarları (kategori = ertele aksiyonu). İzinler açılışta DEĞİL,
+  /// gerektiğinde (_ensurePermission) istenir → açılış engellenmez.
+  static DarwinInitializationSettings _darwinInit() => DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+        notificationCategories: [
+          DarwinNotificationCategory(
+            snoozeCategoryId,
+            actions: [DarwinNotificationAction.plain(snoozeAction, tr('Ertele 10 dk'))],
+          ),
+        ],
+      );
 
   Future<void> init() async {
     if (_ready) return;
+    _ready = true; // tekrar denemeyi önle; hata olsa da UI engellenmez
     tzdata.initializeTimeZones();
     try {
       final dynamic res = await FlutterTimezone.getLocalTimezone();
@@ -50,15 +66,17 @@ class NotificationService {
     } catch (_) {
       // tz.local UTC'de kalır — saat kayması olabilir ama çökmez.
     }
-
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const settings = InitializationSettings(android: android);
-    await _plugin.initialize(
-      settings: settings,
-      onDidReceiveNotificationResponse: _onResponse, // ön planda aksiyon (ertele)
-      onDidReceiveBackgroundNotificationResponse: notificationBackgroundHandler,
-    );
-    _ready = true;
+    try {
+      final android = const AndroidInitializationSettings('@mipmap/ic_launcher');
+      final settings = InitializationSettings(android: android, iOS: _darwinInit());
+      await _plugin.initialize(
+        settings: settings,
+        onDidReceiveNotificationResponse: _onResponse, // ön planda aksiyon (ertele)
+        onDidReceiveBackgroundNotificationResponse: notificationBackgroundHandler,
+      );
+    } catch (_) {
+      // Bildirim altyapısı kurulamazsa uygulama yine de çalışır.
+    }
   }
 
   /// Android 12+ kesin alarm iznini ister (yalnız bir kez). Beslenme uyarısının
@@ -71,13 +89,16 @@ class NotificationService {
     await android?.requestExactAlarmsPermission();
   }
 
-  /// Android 13+ bildirim iznini ister (yalnız bir kez sorar).
+  /// Bildirim iznini ister (yalnız bir kez sorar). Android 13+ ve iOS.
   Future<void> _ensurePermission() async {
     if (_permissionAsked) return;
     _permissionAsked = true;
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await android?.requestNotificationsPermission();
+    final ios = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    await ios?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
   NotificationDetails get _details => NotificationDetails(
@@ -87,6 +108,11 @@ class NotificationService {
           channelDescription: tr('Vitamin/ilaç ve bakım hatırlatıcıları'),
           importance: Importance.high,
           priority: Priority.high,
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
         ),
       );
 
@@ -123,7 +149,15 @@ class NotificationService {
       id: id,
       title: title,
       body: body,
-      notificationDetails: NotificationDetails(android: android),
+      notificationDetails: NotificationDetails(
+        android: android,
+        // iOS'ta "ongoing"/kronometre yok → sessiz banner (güncellemede ses yok).
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: false,
+          presentSound: false,
+        ),
+      ),
     );
   }
 
@@ -191,12 +225,18 @@ class NotificationService {
             ]
           : null,
     );
+    final ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: sound,
+      categoryIdentifier: withSnooze ? snoozeCategoryId : null,
+    );
     await _plugin.zonedSchedule(
       id: id,
       title: title,
       body: body,
       scheduledDate: tz.TZDateTime.from(when, tz.local),
-      notificationDetails: NotificationDetails(android: android),
+      notificationDetails: NotificationDetails(android: android, iOS: ios),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload: sound ? 'feed:1' : 'feed:0', // ertele (arka plan) ses tercihini taşır
     );
@@ -288,7 +328,13 @@ void notificationBackgroundHandler(NotificationResponse response) {
 Future<void> _snoozeFeedInBackground(bool sound) async {
   final plugin = FlutterLocalNotificationsPlugin();
   const init = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'));
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    ),
+  );
   await plugin.initialize(settings: init);
   tzdata.initializeTimeZones();
   // Göreli +10 dk → tz.local UTC olsa bile mutlak an doğru.
@@ -308,12 +354,18 @@ Future<void> _snoozeFeedInBackground(bool sound) async {
           showsUserInterface: false),
     ],
   );
+  final ios = DarwinNotificationDetails(
+    presentAlert: true,
+    presentBadge: true,
+    presentSound: sound,
+    categoryIdentifier: NotificationService.snoozeCategoryId,
+  );
   await plugin.zonedSchedule(
     id: NotificationService.feedMainId,
     title: tr('Beslenme zamanı (ertelendi)'),
     body: tr('10 dk ertelendi 🍼'),
     scheduledDate: when,
-    notificationDetails: NotificationDetails(android: android),
+    notificationDetails: NotificationDetails(android: android, iOS: ios),
     androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
     payload: sound ? 'feed:1' : 'feed:0',
   );
