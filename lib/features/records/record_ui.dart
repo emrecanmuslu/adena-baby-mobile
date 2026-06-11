@@ -9,23 +9,56 @@ import '../../models/record.dart';
 
 /// Kayıt tiplerinin görsel kimliği (çizgi-ikon/renk/bg/etiket) ve özet metni.
 class RecordUi {
-  // (ikon adı, renk, bg tonu, etiket) — design CAT ile birebir.
-  static final _meta = {
-    RecordType.diaper: ('diaper', AppColors.diaper, AppColors.diaperBg, tr('Bez')),
-    RecordType.feed: ('feed', AppColors.feed, AppColors.feedBg, tr('Beslenme')),
-    RecordType.pumping: ('pump', AppColors.pump, AppColors.pumpBg, tr('Süt sağma')),
-    RecordType.sleep: ('sleep', AppColors.sleep, AppColors.sleepBg, tr('Uyku')),
-    RecordType.growth: ('growth', AppColors.growth, AppColors.growthBg, tr('Büyüme')),
-    RecordType.temperature: ('fever', AppColors.fever, AppColors.feverBg, tr('Ateş')),
-    RecordType.medication: ('med', AppColors.med, AppColors.medBg, tr('İlaç')),
-    RecordType.bath: ('bath', AppColors.bath, AppColors.bathBg, tr('Banyo')),
-    RecordType.appointment: ('doctor', AppColors.doctor, AppColors.doctorBg, tr('Randevu')),
-  };
+  // NOT: renk/etiket her çağrıda TAZE hesaplanır (switch) — `static final` harita
+  // tema-duyarlı bg getter'larını ve tr() etiketlerini ilk açılışta DONDURUR
+  // (light/dark ve dil değişimini kaçırır). Bu yüzden cache yok.
+  static String iconName(RecordType t) => switch (t) {
+        RecordType.diaper => 'diaper',
+        RecordType.feed => 'feed',
+        RecordType.pumping => 'pump',
+        RecordType.sleep => 'sleep',
+        RecordType.growth => 'growth',
+        RecordType.temperature => 'fever',
+        RecordType.medication => 'med',
+        RecordType.bath => 'bath',
+        RecordType.appointment => 'doctor',
+      };
 
-  static String iconName(RecordType t) => _meta[t]!.$1;
-  static Color color(RecordType t) => _meta[t]!.$2;
-  static Color bg(RecordType t) => _meta[t]!.$3;
-  static String label(RecordType t) => _meta[t]!.$4;
+  static Color color(RecordType t) => switch (t) {
+        RecordType.diaper => AppColors.diaper,
+        RecordType.feed => AppColors.feed,
+        RecordType.pumping => AppColors.pump,
+        RecordType.sleep => AppColors.sleep,
+        RecordType.growth => AppColors.growth,
+        RecordType.temperature => AppColors.fever,
+        RecordType.medication => AppColors.med,
+        RecordType.bath => AppColors.bath,
+        RecordType.appointment => AppColors.doctor,
+      };
+
+  static Color bg(RecordType t) => switch (t) {
+        RecordType.diaper => AppColors.diaperBg,
+        RecordType.feed => AppColors.feedBg,
+        RecordType.pumping => AppColors.pumpBg,
+        RecordType.sleep => AppColors.sleepBg,
+        RecordType.growth => AppColors.growthBg,
+        RecordType.temperature => AppColors.feverBg,
+        RecordType.medication => AppColors.medBg,
+        RecordType.bath => AppColors.bathBg,
+        RecordType.appointment => AppColors.doctorBg,
+      };
+
+  static String label(RecordType t) => switch (t) {
+        RecordType.diaper => tr('Bez'),
+        RecordType.feed => tr('Beslenme'),
+        RecordType.pumping => tr('Süt sağma'),
+        RecordType.sleep => tr('Uyku'),
+        RecordType.growth => tr('Büyüme'),
+        RecordType.temperature => tr('Ateş'),
+        RecordType.medication => tr('İlaç'),
+        RecordType.bath => tr('Banyo'),
+        RecordType.appointment => tr('Randevu'),
+      };
 
   /// Kategori çizgi-ikonu.
   static Widget icon(RecordType t, {double size = 22, Color? color}) =>
