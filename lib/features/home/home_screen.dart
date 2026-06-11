@@ -18,6 +18,7 @@ import '../../core/units.dart';
 import '../../data/health_repository.dart';
 import '../../models/baby.dart';
 import '../../models/feed_reminder.dart';
+import '../../models/milestone.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
@@ -635,7 +636,149 @@ class _HomeTab extends ConsumerWidget {
         _LastActivitySection(babyId: babyId, units: units),
         _DaySummarySection(babyId: babyId),
         _UpcomingSection(babyId: babyId),
+        _MilestoneSection(babyId: babyId),
       ],
+    );
+  }
+}
+
+/// Ana sayfa "Gelişim" bölümü — bebeğin yaşına uygun, henüz başarılmamış birkaç
+/// kilometre taşını hatırlatır (unutulmasın). Dokun → tüm gelişim ekranı.
+/// Hepsi tamamsa ya da veri yoksa gizlenir.
+class _MilestoneSection extends ConsumerWidget {
+  final String babyId;
+  const _MilestoneSection({required this.babyId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final all = ref.watch(milestonesProvider(babyId)).asData?.value;
+    if (all == null || all.isEmpty) return const SizedBox.shrink();
+    final pending = all.where((m) => !m.achieved).toList();
+    if (pending.isEmpty) return const SizedBox.shrink();
+
+    final baby = ref.watch(activeBabyProvider);
+    final age = _ageMonths(baby);
+    // Yaşı gelmiş/yaklaşan (≤ yaş+2 ay) ve henüz yapılmamışlar — takip edilmeli.
+    // Hepsi ileride ise sıradakini göster.
+    var relevant =
+        age == null ? pending : pending.where((m) => m.expectedMonth <= age + 2).toList();
+    if (relevant.isEmpty) relevant = pending;
+    final shown = relevant.take(3).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(3, 18, 3, 10),
+          child: Row(
+            children: [
+              Text(tr('GELİŞİM'),
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.muted,
+                      letterSpacing: 0.7)),
+              const SizedBox(width: 6),
+              AdInfoDot(
+                title: tr('Gelişim / Kilometre taşları'),
+                body: tr('Bebeğinin yaşına uygun, henüz işaretlemediğin gelişim '
+                    'basamakları. Başardıkça işaretle — rehberdir, her bebek '
+                    'kendi temposunda gelişir.'),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => context.push('/milestones'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(tr('Tümü'),
+                        style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.coralDark)),
+                    const AdenaIcon('chevR', size: 15, color: AppColors.coralDark),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: AppColors.softShadow,
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => context.push('/milestones'),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < shown.length; i++)
+                      _MilestoneRow(milestone: shown[i], last: i == shown.length - 1),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static int? _ageMonths(Baby? b) {
+    final bd = b?.birthDate;
+    if (bd == null) return null;
+    final now = DateTime.now();
+    var m = (now.year - bd.year) * 12 + (now.month - bd.month);
+    if (now.day < bd.day) m -= 1;
+    return m < 0 ? 0 : m;
+  }
+}
+
+class _MilestoneRow extends StatelessWidget {
+  final Milestone milestone;
+  final bool last;
+  const _MilestoneRow({required this.milestone, required this.last});
+
+  @override
+  Widget build(BuildContext context) {
+    final cat = milestoneCategory(milestone.category);
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: last ? 8 : 9),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration:
+                BoxDecoration(color: cat.bg, borderRadius: BorderRadius.circular(10)),
+            alignment: Alignment.center,
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: cat.color, shape: BoxShape.circle),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(milestone.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+          ),
+          const SizedBox(width: 8),
+          Text(milestoneAgeLabel(milestone.expectedMonth),
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.muted)),
+        ],
+      ),
     );
   }
 }

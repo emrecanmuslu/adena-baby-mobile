@@ -15,6 +15,8 @@ import 'features/health/reminders_screen.dart';
 import 'features/health/vaccines_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/mom_tracking_screen.dart';
+import 'features/development/milestones_screen.dart';
+import 'features/memories/memories_screen.dart';
 import 'features/onboarding/baby_setup_screen.dart';
 import 'features/settings/ai_export_screen.dart';
 import 'features/settings/appearance_screen.dart';
@@ -59,6 +61,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/premium', builder: (_, _) => const PremiumScreen()),
       GoRoute(path: '/ai-export', builder: (_, _) => const AIExportScreen()),
       GoRoute(path: '/mom', builder: (_, _) => const MomTrackingScreen()),
+      GoRoute(path: '/memories', builder: (_, _) => const MemoriesScreen()),
+      GoRoute(path: '/milestones', builder: (_, _) => const MilestonesScreen()),
       GoRoute(path: '/born-flow', builder: (_, _) => const BornFlowScreen()),
     ],
     redirect: (context, state) {

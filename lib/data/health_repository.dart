@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
 import '../core/providers.dart';
+import '../models/milestone.dart';
 import '../models/reminder.dart';
 import '../models/vaccine.dart';
 
@@ -27,6 +28,27 @@ class HealthRepository {
           : '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
     });
     return Vaccine.fromJson(resp.data as Map<String, dynamic>);
+  }
+
+  // ── Gelişim / kilometre taşları ──
+
+  Future<List<Milestone>> milestones(String babyId) async {
+    final resp = await _api.dio.get('/babies/$babyId/milestones');
+    final data = resp.data as List<dynamic>;
+    return data.map((e) => Milestone.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Kilometre taşını başarıldı/bekliyor işaretler (tarih opsiyonel; bugün varsayılan).
+  Future<Milestone> setMilestoneAchieved(int id,
+      {required bool achieved, DateTime? date}) async {
+    final d = achieved ? (date ?? DateTime.now()) : null;
+    final resp = await _api.dio.patch('/milestones/$id', data: {
+      'achieved': achieved,
+      if (d != null)
+        'achieved_date':
+            '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+    });
+    return Milestone.fromJson(resp.data as Map<String, dynamic>);
   }
 
   // ── Hatırlatıcılar ──
@@ -66,4 +88,9 @@ final vaccinesProvider = FutureProvider.family<List<Vaccine>, String>(
 /// Aktif bebeğin hatırlatıcıları.
 final remindersProvider = FutureProvider.family<List<Reminder>, String>(
   (ref, babyId) => ref.watch(healthRepositoryProvider).reminders(babyId),
+);
+
+/// Aktif bebeğin gelişim/kilometre taşları (beklenen aya göre sıralı).
+final milestonesProvider = FutureProvider.family<List<Milestone>, String>(
+  (ref, babyId) => ref.watch(healthRepositoryProvider).milestones(babyId),
 );

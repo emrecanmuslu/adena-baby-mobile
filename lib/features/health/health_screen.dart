@@ -58,6 +58,15 @@ class HealthScreen extends ConsumerWidget {
           _FeverMedSummary(records: records),
 
           const SizedBox(height: 8),
+          // Gelişim / kilometre taşları köprüsü.
+          AdMenuItem(
+            icon: 'growth',
+            color: AppColors.growth,
+            bg: AppColors.growthBg,
+            title: tr('Gelişim / Kilometre Taşları'),
+            meta: tr('Yaşa göre beklenen gelişim basamakları'),
+            onTap: () => context.push('/milestones'),
+          ),
           // Hatırlatıcılar köprüsü (design'da ayrı ekran; hub'dan erişim).
           AdMenuItem(
             icon: 'bell',

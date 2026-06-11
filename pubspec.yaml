@@ -55,6 +55,7 @@ dependencies:
   flutter_timezone: ^5.1.0
   google_sign_in: ^7.2.0
   sign_in_with_apple: ^8.1.0
+  image_picker: ^1.1.2  # anılar/fotoğraf günlüğü — kamera + galeri
 
 dev_dependencies:
   flutter_test:

@@ -98,6 +98,14 @@ class SettingsScreen extends ConsumerWidget {
               onTap: baby == null ? null : () => context.push('/health'),
             ),
           AdMenuItem(
+            icon: 'camera',
+            color: AppColors.coralDd,
+            bg: AppColors.feedBg,
+            title: tr('Anılar / Fotoğraf Günlüğü'),
+            meta: tr('İlk\'ler · fotoğraflar · özel anlar'),
+            onTap: baby == null ? null : () => context.push('/memories'),
+          ),
+          AdMenuItem(
             icon: 'edit',
             color: AppColors.growth,
             bg: AppColors.growthBg,
