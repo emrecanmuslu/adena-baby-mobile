@@ -45,7 +45,7 @@ dependencies:
   sqlite3_flutter_libs: ^0.6.0+eol
   path_provider: ^2.1.5
   path: ^1.9.1
-  connectivity_plus: ^7.1.1
+  connectivity_plus: ^6.1.0  # 7.x iOS'ta NWPath.isUltraConstrained (Xcode 26) ister; 6.x List API ile uyumlu
   uuid: ^4.5.3
   intl: ^0.20.2
   flutter_svg: ^2.0.17
