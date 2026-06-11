@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Açılış (native) ekran arka planı — uygulama kremi #FFF8F4 -->
+    <color name="launch_bg">#FFF8F4</color>
+</resources>

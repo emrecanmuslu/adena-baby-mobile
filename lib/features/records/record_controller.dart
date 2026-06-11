@@ -1,0 +1,277 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../data/record_repository.dart';
+import '../../models/record.dart';
+import '../babies/baby_controller.dart';
+
+const _uuid = Uuid();
+
+/// Çevrimiçi/çevrimdışı durumu (üst bar sync rozeti için).
+final onlineProvider = StreamProvider<bool>(
+  (ref) => Connectivity()
+      .onConnectivityChanged
+      .map((r) => !r.contains(ConnectivityResult.none)),
+);
+
+/// Bir bebeğin TÜM kayıtları (grafik agregasyonları için). Büyük olabilir.
+final recordsProvider = StreamProvider.family<List<Record>, String>(
+  (ref, babyId) => ref.watch(recordRepositoryProvider).watch(babyId),
+);
+
+/// Ana sayfa "son kayıtlar" — yalnız son N (tümünü çekmez).
+final recentRecordsProvider = StreamProvider.family<List<Record>, String>(
+  (ref, babyId) => ref.watch(recordRepositoryProvider).watchRecent(babyId),
+);
+
+/// Bugünün kayıtları (gece yarısından beri) — "Bugün" özeti için.
+final todayRecordsProvider = StreamProvider.family<List<Record>, String>(
+  (ref, babyId) {
+    final now = DateTime.now();
+    return ref
+        .watch(recordRepositoryProvider)
+        .watchSince(babyId, DateTime(now.year, now.month, now.day));
+  },
+);
+
+/// Timeline tek-gün görünümü — seçili günün kayıtları (gün değişince autoDispose).
+typedef DayKey = ({String babyId, DateTime day});
+final dayRecordsProvider = StreamProvider.autoDispose.family<List<Record>, DayKey>(
+  (ref, key) => ref.watch(recordRepositoryProvider).watchDay(key.babyId, key.day),
+);
+
+/// Akış için sayfalı kayıt (infinite scroll). Anahtar: bebek + limit + tip.
+/// autoDispose: limit artınca eski limit'in drift stream'i kapanır (birikmez).
+typedef PageKey = ({String babyId, int limit, RecordType? type});
+final pagedRecordsProvider = StreamProvider.autoDispose.family<List<Record>, PageKey>(
+  (ref, key) => ref
+      .watch(recordRepositoryProvider)
+      .watchPaged(key.babyId, limit: key.limit, type: key.type),
+);
+
+/// Akış filtresinde gösterilecek tipler (kaydı olanlar).
+final presentTypesProvider = FutureProvider.family<Set<RecordType>, String>(
+  (ref, babyId) => ref.watch(recordRepositoryProvider).presentTypes(babyId),
+);
+
+/// Aktif (bitmemiş) uyku — son uyku kaydından (ucuz stream).
+final _ongoingSleepStream = StreamProvider.family<Record?, String>(
+  (ref, babyId) => ref.watch(recordRepositoryProvider).watchOngoingSleep(babyId),
+);
+final ongoingSleepProvider = Provider.family<Record?, String>(
+  (ref, babyId) => ref.watch(_ongoingSleepStream(babyId)).asData?.value,
+);
+
+/// Aktif (bitmemiş) emzirme sayacı.
+final _ongoingBreastStream = StreamProvider.family<Record?, String>(
+  (ref, babyId) => ref.watch(recordRepositoryProvider).watchOngoingBreast(babyId),
+);
+final ongoingBreastProvider = Provider.family<Record?, String>(
+  (ref, babyId) => ref.watch(_ongoingBreastStream(babyId)).asData?.value,
+);
+
+/// Online olunca + oturum/bebek hazır olunca delta-sync tetikler.
+class SyncService {
+  final Ref _ref;
+  StreamSubscription? _sub;
+
+  SyncService(this._ref) {
+    _sub = Connectivity().onConnectivityChanged.listen((results) {
+      if (!results.contains(ConnectivityResult.none)) syncAll();
+    });
+  }
+
+  Future<void> syncAll() async {
+    final babies = _ref.read(babyControllerProvider).asData?.value ?? [];
+    final repo = _ref.read(recordRepositoryProvider);
+    for (final b in babies) {
+      try {
+        await repo.sync(b.id);
+      } catch (_) {
+        // Çevrimdışı/sunucu hatası — yerel veri korunur, sonra tekrar denenir.
+      }
+    }
+  }
+
+  void dispose() => _sub?.cancel();
+}
+
+final syncServiceProvider = Provider<SyncService>((ref) {
+  final s = SyncService(ref);
+  ref.onDispose(s.dispose);
+  // Bebek listesi gelince (giriş/açılış) ilk eşitleme.
+  ref.listen(babyControllerProvider, (_, next) {
+    if (next.asData?.value.isNotEmpty ?? false) s.syncAll();
+  });
+  return s;
+});
+
+/// Kayıt ekleme/silme aksiyonları — yerele yaz, sonra arka planda sync.
+class RecordActions {
+  final Ref _ref;
+  RecordActions(this._ref);
+
+  RecordRepository get _repo => _ref.read(recordRepositoryProvider);
+
+  Future<void> _saveAndSync(Record r) async {
+    await _repo.upsertLocal(r);
+    _ref.invalidate(presentTypesProvider(r.baby)); // yeni tip → filtre tazelensin
+    unawaited(_ref.read(syncServiceProvider).syncAll());
+  }
+
+  /// Genel oluştur/güncelle — form tabanlı kayıtlar bunu kullanır
+  /// (id korunursa düzenleme, yeni id ise ekleme).
+  Future<void> upsert(Record r) => _saveAndSync(r);
+
+  Future<void> addDiaper(String babyId, String sub) => _saveAndSync(Record(
+        id: _uuid.v4(),
+        baby: babyId,
+        type: RecordType.diaper,
+        ts: DateTime.now(),
+        data: {'sub': sub},
+      ));
+
+  Future<void> addFeed(String babyId, Map<String, dynamic> data) =>
+      _saveAndSync(Record(
+        id: _uuid.v4(),
+        baby: babyId,
+        type: RecordType.feed,
+        ts: DateTime.now(),
+        data: data,
+      ));
+
+  Future<void> startSleep(String babyId) {
+    final now = DateTime.now();
+    return _saveAndSync(Record(
+      id: _uuid.v4(),
+      baby: babyId,
+      type: RecordType.sleep,
+      ts: now,
+      data: {'start_ts': now.toUtc().toIso8601String(), 'end_ts': null},
+    ));
+  }
+
+  Future<void> stopSleep(Record sleep) {
+    final now = DateTime.now();
+    final start =
+        DateTime.tryParse(sleep.data['start_ts'] as String? ?? '')?.toLocal() ??
+            sleep.ts;
+    return _saveAndSync(sleep.copyWith(data: {
+      ...sleep.data,
+      'end_ts': now.toUtc().toIso8601String(),
+      'duration': now.difference(start).inMinutes,
+    }));
+  }
+
+  /// Uykuyu elle girilen başlangıç/bitişle tamamla (kaydetmeden önce süre düzenleme).
+  Future<void> stopSleepWithTimes(Record sleep, DateTime start, DateTime end) {
+    return _saveAndSync(sleep.copyWith(ts: start, data: {
+      ...sleep.data,
+      'start_ts': start.toUtc().toIso8601String(),
+      'end_ts': end.toUtc().toIso8601String(),
+      'duration': end.difference(start).inMinutes,
+    }));
+  }
+
+  // ── Emzirme kronometresi (uyku gibi kalıcı "süren kayıt") ──────────────
+
+  /// Geçen segmenti aktif memenin toplamına ekler ve segment başlangıcını
+  /// şimdiye çeker. Sol/sağ geçişinde ve durdurmada kullanılır.
+  Map<String, dynamic> _accrueBreast(Map<String, dynamic> data) {
+    final now = DateTime.now();
+    final d = Map<String, dynamic>.from(data);
+    // seg_start_ts null ise (duraklatılmış) eklenecek süre yok.
+    final segStart = DateTime.tryParse(data['seg_start_ts'] as String? ?? '')?.toLocal();
+    if (segStart != null) {
+      final addMs = now.difference(segStart).inMilliseconds.clamp(0, 24 * 3600 * 1000);
+      final side = data['side'] == 'right' ? 'right' : 'left';
+      final key = side == 'right' ? 'right_ms' : 'left_ms';
+      d[key] = ((data[key] as num?) ?? 0) + addMs;
+    }
+    d['seg_start_ts'] = now.toUtc().toIso8601String();
+    return d;
+  }
+
+  /// Emzirmeyi başlat — seçilen memeyle süren kayıt oluşturur.
+  Future<void> startBreast(String babyId, String side) {
+    final now = DateTime.now();
+    final s = side == 'right' ? 'right' : 'left';
+    return _saveAndSync(Record(
+      id: _uuid.v4(),
+      baby: babyId,
+      type: RecordType.feed,
+      ts: now,
+      data: {
+        'sub': 'breast',
+        'start_ts': now.toUtc().toIso8601String(),
+        'end_ts': null,
+        'side': s,
+        'seg_start_ts': now.toUtc().toIso8601String(),
+        'left_ms': 0,
+        'right_ms': 0,
+      },
+    ));
+  }
+
+  /// Aktif memeyi değiştir (geçen süre eski memeye yazılır).
+  Future<void> switchBreastSide(Record r, String side) {
+    final s = side == 'right' ? 'right' : 'left';
+    if (r.data['side'] == s) return Future.value();
+    final d = _accrueBreast(r.data);
+    d['side'] = s;
+    return _saveAndSync(r.copyWith(data: d));
+  }
+
+  /// Sayacı duraklat (süre eski memeye yazılır, seg sıfırlanır). Kayıt açık kalır.
+  Future<void> pauseBreast(Record r) {
+    if (r.data['paused'] == true) return Future.value();
+    final d = _accrueBreast(r.data);
+    d['seg_start_ts'] = null; // duraklatıldı → sayma dursun
+    d['paused'] = true;
+    return _saveAndSync(r.copyWith(data: d));
+  }
+
+  /// Duraklatılmış sayaca devam et.
+  Future<void> resumeBreast(Record r) {
+    if (r.data['paused'] != true) return Future.value();
+    final d = Map<String, dynamic>.from(r.data);
+    d['paused'] = false;
+    d['seg_start_ts'] = DateTime.now().toUtc().toIso8601String();
+    return _saveAndSync(r.copyWith(data: d));
+  }
+
+  /// Emzirmeyi durdur — süreleri dakikaya çevirip kaydı tamamlar.
+  Future<void> stopBreast(Record r) {
+    final now = DateTime.now();
+    final d = _accrueBreast(r.data);
+    d['end_ts'] = now.toUtc().toIso8601String();
+    d.remove('paused');
+    d['left_min'] = (((d['left_ms'] as num?) ?? 0) / 60000).round();
+    d['right_min'] = (((d['right_ms'] as num?) ?? 0) / 60000).round();
+    return _saveAndSync(r.copyWith(data: d));
+  }
+
+  /// Emzirmeyi elle girilen dakikalarla tamamla (kaydetmeden önce süre düzenleme).
+  Future<void> stopBreastWithMinutes(Record r, num leftMin, num rightMin) {
+    final now = DateTime.now();
+    final d = Map<String, dynamic>.from(r.data);
+    d['end_ts'] = now.toUtc().toIso8601String();
+    d['seg_start_ts'] = null;
+    d.remove('paused');
+    d['left_min'] = leftMin;
+    d['right_min'] = rightMin;
+    d['left_ms'] = (leftMin * 60000).round();
+    d['right_ms'] = (rightMin * 60000).round();
+    return _saveAndSync(r.copyWith(data: d));
+  }
+
+  Future<void> delete(String id) async {
+    await _repo.softDeleteLocal(id);
+    unawaited(_ref.read(syncServiceProvider).syncAll());
+  }
+}
+
+final recordActionsProvider = Provider<RecordActions>((ref) => RecordActions(ref));
