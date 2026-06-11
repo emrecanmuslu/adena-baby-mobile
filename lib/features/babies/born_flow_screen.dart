@@ -20,7 +20,6 @@ class BornFlowScreen extends ConsumerStatefulWidget {
 
 class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
   DateTime _birth = DateTime.now();
-  int _weeks = 40; // doğum haftası (≥37 zamanında)
   bool _saving = false;
 
   static String _iso(DateTime d) =>
@@ -38,65 +37,6 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
     if (d != null) setState(() => _birth = d);
   }
 
-  Future<void> _pickWeeks() async {
-    final picked = await showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: false,
-      shape: adSheetShape,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: adGrabHandle()),
-              Padding(
-                padding: const EdgeInsets.only(left: 2, bottom: 4),
-                child: Text(tr('Doğum haftası'),
-                    style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(left: 2, bottom: 12),
-                child: Text(tr('37 haftadan önce doğduysa düzeltilmiş yaş kullanılır.'),
-                    style: TextStyle(
-                        color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 12.5)),
-              ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (var w = 24; w <= 42; w++)
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context, w),
-                      child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: w == _weeks
-                              ? AppColors.feedBg
-                              : Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: w == _weeks ? AppColors.coral : AppColors.line,
-                              width: 1.5),
-                        ),
-                        child: Text('$w',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: w == _weeks ? AppColors.coralDd : null)),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (picked != null) setState(() => _weeks = picked);
-  }
-
   Future<void> _start() async {
     final baby = ref.read(activeBabyProvider);
     if (baby == null) return;
@@ -105,7 +45,6 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
       await ref.read(babyControllerProvider.notifier).updateBaby(baby.id, {
         'status': 'born',
         'birth_date': _iso(_birth),
-        'gestational_age_at_birth_weeks': _weeks,
       });
       if (!mounted) return;
       showAdToast(context, tr('Tebrikler! 🎉'));
@@ -120,7 +59,6 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final term = _weeks >= 37;
     return Scaffold(
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
       body: SafeArea(
@@ -194,19 +132,6 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
                           subtitle: DateFormat('d MMMM y', 'tr_TR').format(_birth),
                           trailing: AdenaIcon('edit', size: 18, color: AppColors.muted),
                           onTap: _pickDate,
-                          divider: true,
-                        ),
-                        _row(
-                          icon: 'check',
-                          color: AppColors.coralDd,
-                          bg: AppColors.feedBg,
-                          title: term ? tr('Zamanında doğum') : tr('Prematüre doğum'),
-                          subtitle: term
-                              ? trp('{w} hafta · düzeltme gerekmez', {'w': _weeks})
-                              : trp('{w} hafta · düzeltilmiş yaş kullanılır', {'w': _weeks}),
-                          trailing:
-                              AdenaIcon('chevD', size: 18, color: AppColors.muted),
-                          onTap: _pickWeeks,
                           divider: false,
                         ),
                       ],

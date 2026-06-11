@@ -33,8 +33,10 @@ Future<void> showRecordForm(
     isScrollControlled: true,
     showDragHandle: false,
     shape: adSheetShape,
-    builder: (_) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+    builder: (ctx) => Padding(
+      // Klavye açılınca sheet yukarı kaysın → builder'ın KENDİ context'i (modal'ın
+      // güncel viewInsets'i). Dış context güncellenmez → klavye sheet'i örter.
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
       child: _RecordFormSheet(babyId: babyId, type: type, existing: existing),
     ),
   );

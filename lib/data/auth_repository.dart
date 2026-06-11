@@ -6,15 +6,8 @@ import '../core/providers.dart';
 import '../core/token_storage.dart';
 import '../models/user.dart';
 
-/// Kullanıcıya gösterilebilir auth hatası.
-class AuthException implements Exception {
-  final String message;
-  AuthException(this.message);
-  @override
-  String toString() => message;
-}
-
 /// Auth uç noktaları: register/login/me/logout. Token'ları TokenStorage'a yazar.
+/// Hatalar DioException olarak yukarı geçer; UI'da apiErrorText ile gösterilir.
 class AuthRepository {
   final ApiClient _api;
   final TokenStorage _tokens;
@@ -28,29 +21,21 @@ class AuthRepository {
     required String password,
     required String name,
   }) async {
-    try {
-      final resp = await _dio.post(
-        '/auth/register',
-        data: {'email': email, 'password': password, 'name': name},
-        options: Options(extra: {'noAuth': true}),
-      );
-      return _consumeAuth(resp.data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw AuthException(_friendly(e));
-    }
+    final resp = await _dio.post(
+      '/auth/register',
+      data: {'email': email, 'password': password, 'name': name},
+      options: Options(extra: {'noAuth': true}),
+    );
+    return _consumeAuth(resp.data as Map<String, dynamic>);
   }
 
   Future<User> login({required String email, required String password}) async {
-    try {
-      final resp = await _dio.post(
-        '/auth/login',
-        data: {'email': email, 'password': password},
-        options: Options(extra: {'noAuth': true}),
-      );
-      return _consumeAuth(resp.data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw AuthException(_friendly(e));
-    }
+    final resp = await _dio.post(
+      '/auth/login',
+      data: {'email': email, 'password': password},
+      options: Options(extra: {'noAuth': true}),
+    );
+    return _consumeAuth(resp.data as Map<String, dynamic>);
   }
 
   /// Mevcut oturum sahibini getirir (GET /auth/me).
@@ -104,24 +89,6 @@ class AuthRepository {
       refresh: data['refresh'] as String?,
     );
     return User.fromJson(data['user'] as Map<String, dynamic>);
-  }
-
-  /// DRF hata gövdesinden okunabilir Türkçe mesaj çıkarır.
-  String _friendly(DioException e) {
-    final data = e.response?.data;
-    if (data is Map) {
-      if (data['detail'] is String) return data['detail'] as String;
-      // Alan bazlı doğrulama hataları: {email: ["..."], password: ["..."]}
-      for (final v in data.values) {
-        if (v is List && v.isNotEmpty) return v.first.toString();
-        if (v is String) return v;
-      }
-    }
-    if (e.type == DioExceptionType.connectionError ||
-        e.type == DioExceptionType.connectionTimeout) {
-      return 'Sunucuya ulaşılamıyor. Bağlantını kontrol et.';
-    }
-    return 'Bir şeyler ters gitti. Tekrar dene.';
   }
 }
 

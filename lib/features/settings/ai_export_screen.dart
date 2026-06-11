@@ -50,7 +50,7 @@ class _AIExportScreenState extends ConsumerState<AIExportScreen> {
                   children: [
                     Row(
                       children: [
-                        const AdIconChip('ai',
+                        AdIconChip('ai',
                             color: AppColors.med, bg: AppColors.medBg, size: 40),
                         const SizedBox(width: 10),
                         Expanded(

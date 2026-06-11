@@ -524,7 +524,7 @@ class _FeedReminderCard extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             child: Row(
               children: [
-                const AdIconChip('feed', color: AppColors.feed, bg: AppColors.feedBg),
+                AdIconChip('feed', color: AppColors.feed, bg: AppColors.feedBg),
                 const SizedBox(width: 13),
                 Expanded(
                   child: Column(
@@ -777,7 +777,7 @@ class _QuietHoursCard extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             child: Row(
               children: [
-                const AdIconChip('moon', color: AppColors.sleep, bg: AppColors.sleepBg),
+                AdIconChip('moon', color: AppColors.sleep, bg: AppColors.sleepBg),
                 const SizedBox(width: 13),
                 Expanded(
                   child: Column(

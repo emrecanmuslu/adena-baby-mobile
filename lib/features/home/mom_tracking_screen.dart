@@ -23,8 +23,8 @@ Future<void> showMomEntrySheet(
     isScrollControlled: true,
     showDragHandle: false,
     shape: adSheetShape,
-    builder: (_) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
       child: _MomEntrySheet(babyId: babyId, kind: kind),
     ),
   );
@@ -452,7 +452,7 @@ class _ApptRow extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(13, 12, 8, 12),
                   child: Row(
                     children: [
-                      const AdIconChip('doctor',
+                      AdIconChip('doctor',
                           color: AppColors.doctor, bg: AppColors.doctorBg, size: 40),
                       const SizedBox(width: 12),
                       Expanded(

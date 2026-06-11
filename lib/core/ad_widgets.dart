@@ -106,7 +106,7 @@ Future<void> showAdInfo(BuildContext context, String title, String body) {
                 Container(
                   width: 30,
                   height: 30,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                       color: AppColors.feedBg, shape: BoxShape.circle),
                   alignment: Alignment.center,
                   child: const Text('!',

@@ -189,7 +189,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                   items: [
                     (key: 'female', label: tr('Kız'), small: null),
                     (key: 'male', label: tr('Erkek'), small: null),
-                    (key: 'unknown', label: tr('Henüz belli değil'), small: null),
+                    (key: 'unknown', label: tr('Belirsiz'), small: null),
                   ],
                 ),
               ),

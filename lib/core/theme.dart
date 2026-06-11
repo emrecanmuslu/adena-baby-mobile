@@ -36,15 +36,16 @@ class AppColors {
   static const doctor = Color(0xFF9A86D6);
 
   // Kategori arka plan tonları (chip zeminleri)
-  static const feedBg = Color(0xFFFFE7E1);
-  static const diaperBg = Color(0xFFFBF0D5);
-  static const sleepBg = Color(0xFFECE9FB);
-  static const pumpBg = Color(0xFFDBF3F3);
-  static const growthBg = Color(0xFFDBF2E8);
-  static const feverBg = Color(0xFFFBE3DE);
-  static const medBg = Color(0xFFF6E3D9); // terrakota açık zemin
-  static const bathBg = Color(0xFFE0F0FB);
-  static const doctorBg = Color(0xFFEFEAF9);
+  // Kategori chip zeminleri — tema-duyarlı (tasarım Gece Modu *-bg değerleri).
+  static Color get feedBg => _d ? const Color(0xFF3A2A2C) : const Color(0xFFFFE7E1);
+  static Color get diaperBg => _d ? const Color(0xFF352D1F) : const Color(0xFFFBF0D5);
+  static Color get sleepBg => _d ? const Color(0xFF2C2740) : const Color(0xFFECE9FB);
+  static Color get pumpBg => _d ? const Color(0xFF1F3334) : const Color(0xFFDBF3F3);
+  static Color get growthBg => _d ? const Color(0xFF1E3329) : const Color(0xFFDBF2E8);
+  static Color get feverBg => _d ? const Color(0xFF3A2622) : const Color(0xFFFBE3DE);
+  static Color get medBg => _d ? const Color(0xFF352920) : const Color(0xFFF6E3D9); // terrakota
+  static Color get bathBg => _d ? const Color(0xFF1E2E3A) : const Color(0xFFE0F0FB);
+  static Color get doctorBg => _d ? const Color(0xFF2A2540) : const Color(0xFFEFEAF9);
 
   /// Yumuşak kart gölgesi (--sh).
   // Premium (altın) — paywall/AI export rozetleri.

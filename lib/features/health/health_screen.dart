@@ -252,7 +252,7 @@ class _ApptRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const AdIconChip('calendar', color: AppColors.doctor, bg: AppColors.doctorBg),
+          AdIconChip('calendar', color: AppColors.doctor, bg: AppColors.doctorBg),
           const SizedBox(width: 13),
           Expanded(
             child: Column(

@@ -192,7 +192,7 @@ class _FeatureRow extends StatelessWidget {
           Container(
             width: 24,
             height: 24,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
                 shape: BoxShape.circle, color: AppColors.growthBg),
             alignment: Alignment.center,
             child: const AdenaIcon('check', size: 14, color: Color(0xFF349970), sw: 2.5),
