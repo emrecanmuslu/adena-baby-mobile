@@ -10,12 +10,16 @@ on:
         required: true
         default: 'https://injured-remark-fat-whats.trycloudflare.com/api/v1'
 
+# Tüm JS aksiyonlarını Node 24'te çalıştır (checkout/upload-artifact Node 20 uyarısını susturur).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-ios:
     runs-on: macos-14
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Flutter kur
         uses: subosito/flutter-action@v2
