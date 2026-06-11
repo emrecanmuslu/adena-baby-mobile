@@ -667,34 +667,70 @@ const adSheetShape = RoundedRectangleBorder(
   borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
 );
 
-/// Adena toast (design .ad-toast): koyu zemin + check + mesaj + opsiyonel
-/// "Geri al" + altta coral timerline. SnackBar yerine kullanılır.
+/// Toast türü — ikon, aksan rengi ve titreşim şiddetini belirler.
+enum AdToastType { success, error, info }
+
+/// Aynı anda yalnız bir toast dursun — yenisi gelince eskisi kapanır (üst üste
+/// binme/yığılma olmaz).
+OverlayEntry? _activeToast;
+
+/// Adena toast (design .ad-toast): koyu zemin + türüne göre ikon/aksan + mesaj
+/// + opsiyonel "Geri al" + altta geri-sayım çizgisi. SnackBar yerine kullanılır.
+/// Dokunarak ya da yana kaydırarak kapatılır. [type] ile başarı/hata/bilgi.
 void showAdToast(BuildContext context, String message,
-    {VoidCallback? onUndo, Duration duration = const Duration(milliseconds: 2800)}) {
+    {VoidCallback? onUndo,
+    AdToastType type = AdToastType.success,
+    Duration? duration}) {
   final overlay = Overlay.maybeOf(context, rootOverlay: true);
   if (overlay == null) return;
+  // Önceki toast'ı hemen kaldır (tek toast ilkesi).
+  _activeToast?.remove();
+  _activeToast = null;
+  // Hata mesajı okumak için biraz daha uzun dursun.
+  final dur = duration ??
+      (type == AdToastType.error
+          ? const Duration(milliseconds: 4200)
+          : const Duration(milliseconds: 2800));
+  // Türüne göre nazik dokunsal geri bildirim.
+  switch (type) {
+    case AdToastType.error:
+      HapticFeedback.mediumImpact();
+    case AdToastType.success:
+      HapticFeedback.selectionClick();
+    case AdToastType.info:
+      break;
+  }
   late OverlayEntry entry;
   entry = OverlayEntry(
     builder: (ctx) => _AdToast(
       message: message,
       onUndo: onUndo,
-      duration: duration,
+      type: type,
+      duration: dur,
       onClose: () {
         if (entry.mounted) entry.remove();
+        if (identical(_activeToast, entry)) _activeToast = null;
       },
     ),
   );
+  _activeToast = entry;
   overlay.insert(entry);
 }
+
+/// Hata toast'ı kısayolu — `type: AdToastType.error` yazmak yerine.
+void showAdError(BuildContext context, String message) =>
+    showAdToast(context, message, type: AdToastType.error);
 
 class _AdToast extends StatefulWidget {
   final String message;
   final VoidCallback? onUndo;
+  final AdToastType type;
   final Duration duration;
   final VoidCallback onClose;
   const _AdToast(
       {required this.message,
       required this.onUndo,
+      required this.type,
       required this.duration,
       required this.onClose});
 
@@ -710,7 +746,7 @@ class _AdToastState extends State<_AdToast> with TickerProviderStateMixin {
         })
         ..forward();
   late final AnimationController _in = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 220))
+      vsync: this, duration: const Duration(milliseconds: 240))
     ..forward();
   bool _closing = false;
 
@@ -727,92 +763,129 @@ class _AdToastState extends State<_AdToast> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // Türe göre aksan rengi (koyu zemin üzerinde okunur tonlar).
+  Color get _accent => switch (widget.type) {
+        AdToastType.success => const Color(0xFF49D17F),
+        AdToastType.error => const Color(0xFFFF6B5C),
+        AdToastType.info => const Color(0xFFFFB37A),
+      };
+
+  // Türe göre ikon (marka ikonu yoksa Material'a düşer).
+  Widget _icon(Color accent) => switch (widget.type) {
+        AdToastType.success =>
+          AdenaIcon('check', size: 15, color: accent, sw: 2.6),
+        AdToastType.error =>
+          Icon(Icons.close_rounded, size: 17, color: accent),
+        AdToastType.info => AdenaIcon('bell', size: 15, color: accent, sw: 2.4),
+      };
+
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final bg = dark ? Colors.black : AppColors.ink;
+    final bg = dark ? const Color(0xFF1A1216) : AppColors.ink;
+    final accent = _accent;
     final curved = CurvedAnimation(parent: _in, curve: Curves.easeOutCubic);
+    final media = MediaQuery.of(context);
     return Positioned(
       left: 16,
       right: 16,
-      bottom: 88 + MediaQuery.of(context).padding.bottom,
+      bottom: 88 + media.padding.bottom,
       child: FadeTransition(
         opacity: curved,
         child: SlideTransition(
           position: Tween(begin: const Offset(0, 0.4), end: Offset.zero).animate(curved),
-          child: Material(
-            color: Colors.transparent,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 13, 13, 13),
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [
-                    BoxShadow(
-                        color: Color(0x332C1812), blurRadius: 28, offset: Offset(0, 12)),
-                  ],
-                ),
-                child: Stack(
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 22,
-                          height: 22,
-                          decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.16),
-                              shape: BoxShape.circle),
-                          alignment: Alignment.center,
-                          child: const AdenaIcon('check',
-                              size: 14, color: Colors.white, sw: 2.4),
+          child: Center(
+            // Tablet/geniş ekranda toast aşırı uzamasın — ortalanmış, kapaklı genişlik.
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Material(
+                color: Colors.transparent,
+                // Yana kaydırınca kapansın (her iki yön).
+                child: Dismissible(
+                  key: const ValueKey('ad-toast'),
+                  direction: DismissDirection.horizontal,
+                  onDismissed: (_) => widget.onClose(),
+                  child: GestureDetector(
+                    onTap: _close, // dokun → kapat
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(14, 13, 13, 13),
+                        decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: const [
+                            BoxShadow(
+                                color: Color(0x40241015),
+                                blurRadius: 30,
+                                offset: Offset(0, 14)),
+                          ],
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(widget.message,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 13.5)),
-                        ),
-                        if (widget.onUndo != null) ...[
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: () {
-                              widget.onUndo!();
-                              _close();
-                            },
-                            child: Container(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                              decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.18),
-                                  borderRadius: BorderRadius.circular(11)),
-                              child: Text(tr('Geri al'),
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 12.5)),
+                        child: Stack(
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 26,
+                                  height: 26,
+                                  decoration: BoxDecoration(
+                                      color: accent.withValues(alpha: 0.20),
+                                      shape: BoxShape.circle),
+                                  alignment: Alignment.center,
+                                  child: _icon(accent),
+                                ),
+                                const SizedBox(width: 11),
+                                Expanded(
+                                  child: Text(widget.message,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13.5,
+                                          height: 1.3)),
+                                ),
+                                if (widget.onUndo != null) ...[
+                                  const SizedBox(width: 8),
+                                  GestureDetector(
+                                    onTap: () {
+                                      widget.onUndo!();
+                                      _close();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 13, vertical: 7),
+                                      decoration: BoxDecoration(
+                                          color:
+                                              Colors.white.withValues(alpha: 0.18),
+                                          borderRadius: BorderRadius.circular(11)),
+                                      child: Text(tr('Geri al'),
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 12.5)),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    Positioned(
-                      left: -16,
-                      right: -13,
-                      bottom: -13,
-                      child: AnimatedBuilder(
-                        animation: _timer,
-                        builder: (_, _) => FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: 1 - _timer.value,
-                          child: Container(height: 3, color: AppColors.coral),
+                            // Geri-sayım çizgisi — türün aksan renginde.
+                            Positioned(
+                              left: -14,
+                              right: -13,
+                              bottom: -13,
+                              child: AnimatedBuilder(
+                                animation: _timer,
+                                builder: (_, _) => FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: 1 - _timer.value,
+                                  child: Container(height: 3, color: accent),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

@@ -87,7 +87,7 @@ Future<void> showAcceptInviteDialog(BuildContext context, WidgetRef ref) {
               if (context.mounted) showAdToast(context, '${baby.name} eklendi');
             } catch (_) {
               if (context.mounted) {
-                showAdToast(context, tr('Kod geçersiz veya süresi dolmuş'));
+                showAdError(context, tr('Kod geçersiz veya süresi dolmuş'));
               }
             }
           },

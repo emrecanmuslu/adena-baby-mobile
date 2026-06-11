@@ -30,11 +30,14 @@ Future<void> showMomEntrySheet(
   );
 }
 
-final _kindMeta = {
-  MomKind.weight: ('growth', AppColors.growth, AppColors.growthBg, tr('Anne kilosu')),
-  MomKind.appointment: ('doctor', AppColors.doctor, AppColors.doctorBg, tr('Randevu')),
-  MomKind.note: ('edit', AppColors.med, AppColors.medBg, tr('Not')),
-};
+// Getter (top-level `final` DEĞİL) — `final` tr()'yi ve tema-duyarlı *-bg
+// renklerini ilk erişimde dondurur (dil/tema değişince eskide kalır). Getter
+// her okumada taze değerlenir.
+Map<MomKind, (String, Color, Color, String)> get _kindMeta => {
+      MomKind.weight: ('growth', AppColors.growth, AppColors.growthBg, tr('Anne kilosu')),
+      MomKind.appointment: ('doctor', AppColors.doctor, AppColors.doctorBg, tr('Randevu')),
+      MomKind.note: ('edit', AppColors.med, AppColors.medBg, tr('Not')),
+    };
 
 class _MomEntrySheet extends ConsumerStatefulWidget {
   final String babyId;
@@ -87,14 +90,14 @@ class _MomEntrySheetState extends ConsumerState<_MomEntrySheet> {
     switch (widget.kind) {
       case MomKind.weight:
         final v = num.tryParse(_weight.text.trim().replaceAll(',', '.'));
-        if (v == null) return showAdToast(context, tr('Kilo gir'));
+        if (v == null) return showAdError(context, tr('Kilo gir'));
         weightKg = units.weightToCanonical(v.toDouble());
       case MomKind.appointment:
-        if (_title.text.trim().isEmpty) return showAdToast(context, tr('Başlık gir'));
+        if (_title.text.trim().isEmpty) return showAdError(context, tr('Başlık gir'));
         title = _title.text.trim();
         if (_note.text.trim().isNotEmpty) note = _note.text.trim();
       case MomKind.note:
-        if (_note.text.trim().isEmpty) return showAdToast(context, tr('Not gir'));
+        if (_note.text.trim().isEmpty) return showAdError(context, tr('Not gir'));
         note = _note.text.trim();
     }
     setState(() => _saving = true);
@@ -108,7 +111,7 @@ class _MomEntrySheetState extends ConsumerState<_MomEntrySheet> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        showAdToast(context, apiErrorText(e));
+        showAdError(context, apiErrorText(e));
       }
     }
   }

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
 import '../../data/auth_repository.dart';
+import '../../data/social_auth_service.dart';
 import '../../models/user.dart';
 
 /// Oturum durumu. State == null → çıkış yapılmış, User → oturum açık.
@@ -38,6 +39,19 @@ class AuthController extends AsyncNotifier<User?> {
     state = await AsyncValue.guard(
       () => _repo.register(email: email, password: password, name: name),
     );
+  }
+
+  /// Sosyal giriş (provider: 'google' | 'apple'). Kullanıcı sağlayıcı
+  /// ekranını iptal ederse hata göstermeden çıkış durumunda kalır.
+  Future<void> socialLogin(String provider) async {
+    final social = ref.read(socialAuthServiceProvider);
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final idToken =
+          provider == 'google' ? await social.google() : await social.apple();
+      if (idToken == null) return null; // iptal → çıkış durumunda kal
+      return _repo.social(provider: provider, idToken: idToken);
+    });
   }
 
   Future<void> updateName(String name) async {

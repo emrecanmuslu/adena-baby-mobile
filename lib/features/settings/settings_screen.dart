@@ -22,6 +22,9 @@ class SettingsScreen extends ConsumerWidget {
 
     final isPremium =
         ref.watch(subscriptionProvider).asData?.value.isPremium ?? false;
+    // Bekleme (gebelik) modu: bebek doğmadan anlamsız olan menüler gizlenir
+    // (Sağlık Hub = aşı/ateş/ilaç/hatırlatıcı, AI dışa aktarım = kayıt özeti).
+    final expecting = baby?.isExpecting ?? false;
     final themeMode = ref.watch(themeControllerProvider).asData?.value ?? ThemeMode.system;
     final role = switch (baby?.myRole) {
       'owner' => tr('Sahip'),
@@ -85,14 +88,15 @@ class SettingsScreen extends ConsumerWidget {
             meta: baby?.name,
             onTap: baby == null ? null : () => context.push('/members'),
           ),
-          AdMenuItem(
-            icon: 'heart',
-            color: AppColors.fever,
-            bg: AppColors.feverBg,
-            title: tr('Sağlık Hub'),
-            meta: tr('Aşı · randevu · ateş & ilaç · hatırlatıcı'),
-            onTap: baby == null ? null : () => context.push('/health'),
-          ),
+          if (!expecting)
+            AdMenuItem(
+              icon: 'heart',
+              color: AppColors.fever,
+              bg: AppColors.feverBg,
+              title: tr('Sağlık Hub'),
+              meta: tr('Aşı · randevu · ateş & ilaç · hatırlatıcı'),
+              onTap: baby == null ? null : () => context.push('/health'),
+            ),
           AdMenuItem(
             icon: 'edit',
             color: AppColors.growth,
@@ -111,14 +115,15 @@ class SettingsScreen extends ConsumerWidget {
             meta: isPremium ? tr('Aktif · teşekkürler 💛') : tr('AI özet, sınırsız bakıcı ve daha fazlası'),
             onTap: () => context.push('/premium'),
           ),
-          AdMenuItem(
-            icon: 'ai',
-            color: AppColors.med,
-            bg: AppColors.medBg,
-            title: tr('AI Veri Dışa Aktarımı'),
-            meta: isPremium ? tr('Doktora hazır özet') : tr('Premium gerekli'),
-            onTap: () => context.push('/ai-export'),
-          ),
+          if (!expecting)
+            AdMenuItem(
+              icon: 'ai',
+              color: AppColors.med,
+              bg: AppColors.medBg,
+              title: tr('AI Veri Dışa Aktarımı'),
+              meta: isPremium ? tr('Doktora hazır özet') : tr('Premium gerekli'),
+              onTap: () => context.push('/ai-export'),
+            ),
 
           adSec(tr('Uygulama')),
           AdMenuItem(
@@ -184,7 +189,7 @@ class SettingsScreen extends ConsumerWidget {
       await ref.read(authControllerProvider.notifier).updateName(newName);
       if (context.mounted) showAdToast(context, tr('Profil güncellendi'));
     } catch (e) {
-      if (context.mounted) showAdToast(context, apiErrorText(e));
+      if (context.mounted) showAdError(context, apiErrorText(e));
     }
   }
 }

@@ -38,6 +38,17 @@ class AuthRepository {
     return _consumeAuth(resp.data as Map<String, dynamic>);
   }
 
+  /// Sosyal giriş: sağlayıcının id_token'ını backend'e doğrulatır (kullanıcı
+  /// yoksa oluşturulur), JWT döner. provider: 'google' | 'apple'.
+  Future<User> social({required String provider, required String idToken}) async {
+    final resp = await _dio.post(
+      '/auth/social',
+      data: {'provider': provider, 'id_token': idToken},
+      options: Options(extra: {'noAuth': true}),
+    );
+    return _consumeAuth(resp.data as Map<String, dynamic>);
+  }
+
   /// Mevcut oturum sahibini getirir (GET /auth/me).
   Future<User> me() async {
     final resp = await _dio.get('/auth/me');

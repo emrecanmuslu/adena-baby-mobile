@@ -7,4 +7,36 @@ class AppConfig {
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:8000/api/v1',
   );
+
+  // ── Sosyal giriş (Google / Apple) ──────────────────────────────────
+  // Değerler `--dart-define` ile build'e verilir; gizli değil ama kaynakta
+  // tutmuyoruz çünkü ortama göre değişir. Boşsa ilgili sağlayıcı butonu
+  // "yapılandırılmamış" hatası verir.
+
+  /// Google **Web** OAuth client ID. id_token'ın `aud`'u bu olur; backend
+  /// `GOOGLE_CLIENT_IDS` bu değeri içermeli. Android + iOS ikisinde de gerekir.
+  static const String googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '',
+  );
+
+  /// Google **iOS** OAuth client ID (iOS'ta native akış için). Android'de boş
+  /// bırakılabilir (orada `serverClientId` + google-services yeterli).
+  static const String googleIosClientId = String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+    defaultValue: '',
+  );
+
+  /// Apple **Services ID** — yalnızca Android/web web-akışı için. iOS/macOS'ta
+  /// gerekmez (native Sign in with Apple). Boşsa Apple butonu Android'de gizli.
+  static const String appleServiceId = String.fromEnvironment(
+    'APPLE_SERVICE_ID',
+    defaultValue: '',
+  );
+
+  /// Apple web-akışı dönüş adresi (Android için, Services ID ile eşleşir).
+  static const String appleRedirectUri = String.fromEnvironment(
+    'APPLE_REDIRECT_URI',
+    defaultValue: '',
+  );
 }

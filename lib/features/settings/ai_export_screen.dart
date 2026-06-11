@@ -119,7 +119,7 @@ class _AIExportScreenState extends ConsumerState<AIExportScreen> {
       final text = await ref.read(subscriptionRepositoryProvider).aiExport(babyId, _days);
       if (mounted) setState(() => _summary = text);
     } catch (e) {
-      if (mounted) showAdToast(context, apiErrorText(e));
+      if (mounted) showAdError(context, apiErrorText(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

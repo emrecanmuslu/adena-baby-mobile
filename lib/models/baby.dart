@@ -14,7 +14,6 @@ class Baby {
   final String? photo;
   final BabyStatus status;
   final DateTime? birthDate;
-  final int? gestationalAgeAtBirthWeeks;
   final DateTime? dueDate;
   final DateTime? lastMenstrualDate;
   final String? myRole; // owner|parent|caregiver
@@ -26,7 +25,6 @@ class Baby {
     this.photo,
     this.status = BabyStatus.born,
     this.birthDate,
-    this.gestationalAgeAtBirthWeeks,
     this.dueDate,
     this.lastMenstrualDate,
     this.myRole,
@@ -43,7 +41,6 @@ class Baby {
             ? BabyStatus.expecting
             : BabyStatus.born,
         birthDate: _date(json['birth_date']),
-        gestationalAgeAtBirthWeeks: json['gestational_age_at_birth_weeks'] as int?,
         dueDate: _date(json['due_date']),
         lastMenstrualDate: _date(json['last_menstrual_date']),
         myRole: json['my_role'] as String?,
@@ -56,8 +53,6 @@ class Baby {
         if (gender != BabyGender.unknown) 'gender': gender.name,
         'status': status.name,
         if (birthDate != null) 'birth_date': _isoDate(birthDate!),
-        if (gestationalAgeAtBirthWeeks != null)
-          'gestational_age_at_birth_weeks': gestationalAgeAtBirthWeeks,
         if (dueDate != null) 'due_date': _isoDate(dueDate!),
         if (lastMenstrualDate != null) 'last_menstrual_date': _isoDate(lastMenstrualDate!),
       };

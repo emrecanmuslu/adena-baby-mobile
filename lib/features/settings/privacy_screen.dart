@@ -119,7 +119,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
       await ref.read(authControllerProvider.notifier).deleteAccount();
       // Router, oturum null olunca otomatik /login'e yönlendirir.
     } catch (e) {
-      if (mounted) showAdToast(context, apiErrorText(e));
+      if (mounted) showAdError(context, apiErrorText(e));
     }
   }
 }

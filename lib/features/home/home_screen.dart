@@ -68,7 +68,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       title: const BrandWordmark(fontSize: 23),
       actions: [
         const _SyncBadge(), // yalnız çevrimdışıyken görünür
-        const _HeaderBell(),
+        // Bekleme modunda hatırlatıcılar (beslenme/aşı/dürtükleme) uygulanmaz → zil gizli.
+        if (!baby.isExpecting) const _HeaderBell(),
         const SizedBox(width: 10),
         Padding(
           padding: const EdgeInsets.only(right: 14),
@@ -127,7 +128,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 _navItem('timeline', 1),
                 _navFab(() => showAddRecordMenu(context, ref, baby.id)),
                 _navItem('charts', 2),
-                _navMore(context),
+                _navHealth(context),
               ],
             ),
           ),
@@ -245,16 +246,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  /// "Daha" — ayarlar/menü (sekme değil, sayfa açar).
-  Widget _navMore(BuildContext context) {
+  /// Sağlık Hub — aşı/randevu/ateş & ilaç/hatırlatıcı (sekme değil, sayfa açar).
+  /// Ayarlar zaten üst bardaki avatardan açılır; bu slot tekrar olmasın diye
+  /// en çok erişilen sağlık sayfasına bağlandı.
+  Widget _navHealth(BuildContext context) {
     return InkWell(
-      onTap: () => context.push('/settings'),
+      onTap: () => context.push('/health'),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         width: 44,
         height: 44,
         alignment: Alignment.center,
-        child: AdenaIcon('more', color: AppColors.muted2, size: 23),
+        child: AdenaIcon('heart', color: AppColors.muted2, size: 23),
       ),
     );
   }

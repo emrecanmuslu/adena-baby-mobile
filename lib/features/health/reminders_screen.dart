@@ -41,7 +41,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _hidden.remove(r.id)); // geri getir
-        showAdToast(context, apiErrorText(e));
+        showAdError(context, apiErrorText(e));
       }
     }
     ref.invalidate(remindersProvider(babyId));
@@ -234,7 +234,7 @@ class _ReminderTile extends ConsumerWidget {
       ref.invalidate(remindersProvider(babyId));
     } catch (e) {
       ref.invalidate(remindersProvider(babyId));
-      if (context.mounted) showAdToast(context, apiErrorText(e));
+      if (context.mounted) showAdError(context, apiErrorText(e));
     }
   }
 }
@@ -474,11 +474,11 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
 
   Future<void> _save() async {
     if (_title.text.trim().isEmpty) {
-      showAdToast(context, tr('Başlık gir'));
+      showAdError(context, tr('Başlık gir'));
       return;
     }
     if (_repeat == 'once' && !_onceAt.isAfter(DateTime.now())) {
-      showAdToast(context, tr('Geçmiş bir zaman seçtin'));
+      showAdError(context, tr('Geçmiş bir zaman seçtin'));
       return;
     }
     setState(() => _saving = true);
@@ -494,7 +494,7 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        showAdToast(context, apiErrorText(e));
+        showAdError(context, apiErrorText(e));
       }
     }
   }
@@ -628,48 +628,52 @@ class _FeedReminderSheetState extends State<_FeedReminderSheet> {
                 ],
               ),
             ),
-            _InfoNote(
-                tr('Son beslemeden belirlediğin süre sonra seni uyarır.')),
-            AdField(
-              label: tr('Aralık'),
-              info: tr('Son beslemeden kaç saat/dakika sonra hatırlatılsın? Örneğin '
-                  '2 saat seçersen, her beslemeden 2 saat sonra uyarı gelir. '
-                  '− ve + ile ayarla.'),
-              child: _intervalControl(),
-            ),
-            AdField(
-              label: tr('Baz alınan beslenme'),
-              info: tr('Hatırlatıcı hangi beslemeleri saysın? "Hepsi" tüm beslemeleri '
-                  'dikkate alır (çoğu kullanıcı için en iyisi). "Anne sütü" yalnız '
-                  'emzirmeyi, "Mama" yalnız biberonu baz alır.'),
-              child: AdTabs(
-                options: {'all': tr('Hepsi'), 'breast': tr('Anne sütü'), 'formula': tr('Mama')},
-                selected: _base,
-                onSelect: (v) => setState(() => _base = v),
+            _InfoNote(_enabled
+                ? tr('Son beslemeden belirlediğin süre sonra seni uyarır.')
+                : tr('Açmak için üstteki anahtarı kullan — ayrıntılar burada görünür.')),
+            // Ayrıntılı seçenekler yalnız hatırlatıcı AÇIKKEN görünür.
+            if (_enabled) ...[
+              AdField(
+                label: tr('Aralık'),
+                info: tr('Son beslemeden kaç saat/dakika sonra hatırlatılsın? Örneğin '
+                    '2 saat seçersen, her beslemeden 2 saat sonra uyarı gelir. '
+                    '− ve + ile ayarla.'),
+                child: _intervalControl(),
               ),
-            ),
-            AdField(
-              label: tr('Ön-hatırlatma'),
-              info: tr('Asıl uyarıdan önce kısa bir "yaklaşıyor" bildirimi ister misin? '
-                  'Örneğin 30 dk seçersen, beslenme zamanından 30 dk önce ekstra bir '
-                  'hatırlatma daha gelir. İstemiyorsan "Kapalı" bırak.'),
-              child: AdTabs(
-                options: {'0': tr('Kapalı'), '5': tr('5 dk'), '15': tr('15 dk'), '30': tr('30 dk')},
-                selected: _pre.toString(),
-                onSelect: (v) => setState(() => _pre = int.parse(v)),
+              AdField(
+                label: tr('Baz alınan beslenme'),
+                info: tr('Hatırlatıcı hangi beslemeleri saysın? "Hepsi" tüm beslemeleri '
+                    'dikkate alır (çoğu kullanıcı için en iyisi). "Anne sütü" yalnız '
+                    'emzirmeyi, "Mama" yalnız biberonu baz alır.'),
+                child: AdTabs(
+                  options: {'all': tr('Hepsi'), 'breast': tr('Anne sütü'), 'formula': tr('Mama')},
+                  selected: _base,
+                  onSelect: (v) => setState(() => _base = v),
+                ),
               ),
-            ),
-            AdField(
-              label: tr('Sesli alarm'),
-              info: tr('"Sesli" → bildirim sesli ve titreşimli gelir (önemli alarm gibi). '
-                  '"Sessiz" → ses çıkmadan yalnız bildirim çubuğunda görünür. Geceleri '
-                  'otomatik susturmak için Hatırlatıcılar\'daki "Sessiz saat"i kullan.'),
-              child: AdTabs(
-                options: {'off': tr('Sessiz'), 'on': tr('Sesli')},
-                selected: _sound ? 'on' : 'off',
-                onSelect: (v) => setState(() => _sound = v == 'on'),
+              AdField(
+                label: tr('Ön-hatırlatma'),
+                info: tr('Asıl uyarıdan önce kısa bir "yaklaşıyor" bildirimi ister misin? '
+                    'Örneğin 30 dk seçersen, beslenme zamanından 30 dk önce ekstra bir '
+                    'hatırlatma daha gelir. İstemiyorsan "Kapalı" bırak.'),
+                child: AdTabs(
+                  options: {'0': tr('Kapalı'), '5': tr('5 dk'), '15': tr('15 dk'), '30': tr('30 dk')},
+                  selected: _pre.toString(),
+                  onSelect: (v) => setState(() => _pre = int.parse(v)),
+                ),
               ),
-            ),
+              AdField(
+                label: tr('Sesli alarm'),
+                info: tr('"Sesli" → bildirim sesli ve titreşimli gelir (önemli alarm gibi). '
+                    '"Sessiz" → ses çıkmadan yalnız bildirim çubuğunda görünür. Geceleri '
+                    'otomatik susturmak için Hatırlatıcılar\'daki "Sessiz saat"i kullan.'),
+                child: AdTabs(
+                  options: {'off': tr('Sessiz'), 'on': tr('Sesli')},
+                  selected: _sound ? 'on' : 'off',
+                  onSelect: (v) => setState(() => _sound = v == 'on'),
+                ),
+              ),
+            ],
             const SizedBox(height: 6),
             AdSaveButton(
               label: _saving ? tr('Kaydediliyor…') : tr('Kaydet'),
@@ -747,7 +751,7 @@ class _FeedReminderSheetState extends State<_FeedReminderSheet> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        showAdToast(context, apiErrorText(e));
+        showAdError(context, apiErrorText(e));
       }
     }
   }
@@ -948,7 +952,7 @@ class _QuietHoursSheetState extends State<_QuietHoursSheet> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        showAdToast(context, apiErrorText(e));
+        showAdError(context, apiErrorText(e));
       }
     }
   }

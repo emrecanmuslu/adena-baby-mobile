@@ -8,6 +8,7 @@ import '../../core/brand.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import 'auth_controller.dart';
+import 'oauth_buttons.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -48,7 +49,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     ref.listen(authControllerProvider, (prev, next) {
       if (next.hasError && !next.isLoading) {
-        showAdToast(context, apiErrorText(next.error));
+        showAdError(context, apiErrorText(next.error));
       }
     });
 
@@ -143,6 +144,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           )
                         : AdSaveButton(
                             label: tr('Kayıt Ol'), color: AppColors.coral, onTap: _submit),
+                    const OAuthSection(),
                     const SizedBox(height: 18),
                     Center(
                       child: GestureDetector(

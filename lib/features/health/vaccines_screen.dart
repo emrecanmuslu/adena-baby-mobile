@@ -214,7 +214,7 @@ class _VacRow extends ConsumerWidget {
       await ref.read(healthRepositoryProvider).setStatus(vaccine.id, done: done);
       ref.invalidate(vaccinesProvider(babyId));
     } catch (e) {
-      if (context.mounted) showAdToast(context, apiErrorText(e));
+      if (context.mounted) showAdError(context, apiErrorText(e));
     }
   }
 }

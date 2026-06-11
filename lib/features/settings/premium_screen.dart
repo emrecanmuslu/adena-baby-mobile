@@ -19,12 +19,15 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
   String _plan = 'yearly'; // monthly|yearly
   bool _saving = false;
 
-  static final _feats = [
-    (tr('AI veri dışa aktarımı'), tr('Doktora hazır özetler')),
-    (tr('Sınırsız bakıcı'), tr('Tüm aile + bakıcılar')),
-    (tr('Gelişmiş grafikler'), tr('Uyku/beslenme trendleri, korelasyon')),
-    (tr('AI uyku önerileri'), tr('Yakında · Faz 1.5')),
-  ];
+  // NOT: `static final` DEĞİL — getter. `static final` tr()'yi ilk erişimde
+  // dondurur (dil değişince eski çeviride kalır). Getter her build'de taze
+  // değerlenir. bkz record_ui.dart aynı not.
+  List<(String, String)> get _feats => [
+        (tr('AI veri dışa aktarımı'), tr('Doktora hazır özetler')),
+        (tr('Sınırsız bakıcı'), tr('Tüm aile + bakıcılar')),
+        (tr('Gelişmiş grafikler'), tr('Uyku/beslenme trendleri, korelasyon')),
+        (tr('AI uyku önerileri'), tr('Yakında · Faz 1.5')),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +168,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        showAdToast(context, tr('İşlem tamamlanamadı'));
+        showAdError(context, tr('İşlem tamamlanamadı'));
       }
     }
   }

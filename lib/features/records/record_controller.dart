@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -73,30 +74,69 @@ final ongoingBreastProvider = Provider.family<Record?, String>(
   (ref, babyId) => ref.watch(_ongoingBreastStream(babyId)).asData?.value,
 );
 
-/// Online olunca + oturum/bebek hazır olunca delta-sync tetikler.
-class SyncService {
+/// Soket YOK — bunun yerine yoklama (polling) ile yakın-gerçek-zamanlı sync.
+/// Delta-sync şu durumlarda tetiklenir: çevrimiçi olunca, oturum/bebek hazır
+/// olunca, uygulama öne gelince ve **dakikada bir**. Her turda bekleyen yerel
+/// değişiklikler gönderilir + sunucudaki (diğer aile üyelerinin) değişiklikleri
+/// çekilir. Arka planda pili korumak için yoklama durdurulur.
+class SyncService with WidgetsBindingObserver {
   final Ref _ref;
   StreamSubscription? _sub;
+  Timer? _poll;
+  bool _running = false; // çakışan eşitleme turlarını önle
+
+  static const _pollInterval = Duration(minutes: 1);
 
   SyncService(this._ref) {
     _sub = Connectivity().onConnectivityChanged.listen((results) {
       if (!results.contains(ConnectivityResult.none)) syncAll();
     });
+    WidgetsBinding.instance.addObserver(this);
+    _startPolling();
   }
 
-  Future<void> syncAll() async {
-    final babies = _ref.read(babyControllerProvider).asData?.value ?? [];
-    final repo = _ref.read(recordRepositoryProvider);
-    for (final b in babies) {
-      try {
-        await repo.sync(b.id);
-      } catch (_) {
-        // Çevrimdışı/sunucu hatası — yerel veri korunur, sonra tekrar denenir.
-      }
+  void _startPolling() {
+    _poll?.cancel();
+    _poll = Timer.periodic(_pollInterval, (_) => syncAll());
+  }
+
+  /// Öne gelince hemen eşitle + yoklamayı sürdür; arka plana inince yoklamayı
+  /// durdur (pil/veri tasarrufu — gelince zaten taze çekilecek).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+      syncAll();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _poll?.cancel();
+      _poll = null;
     }
   }
 
-  void dispose() => _sub?.cancel();
+  Future<void> syncAll() async {
+    if (_running) return; // önceki tur bitmeden yenisini başlatma
+    _running = true;
+    try {
+      final babies = _ref.read(babyControllerProvider).asData?.value ?? [];
+      final repo = _ref.read(recordRepositoryProvider);
+      for (final b in babies) {
+        try {
+          await repo.sync(b.id);
+        } catch (_) {
+          // Çevrimdışı/sunucu hatası — yerel veri korunur, sonra tekrar denenir.
+        }
+      }
+    } finally {
+      _running = false;
+    }
+  }
+
+  void dispose() {
+    _sub?.cancel();
+    _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+  }
 }
 
 final syncServiceProvider = Provider<SyncService>((ref) {

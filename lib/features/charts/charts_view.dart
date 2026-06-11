@@ -25,11 +25,13 @@ typedef _Measure = ({
   Color color,
 });
 
-final List<_Measure> _measures = [
-  (key: 'wt', field: 'weight', seg: tr('Kilo'), name: tr('Kilo'), isWeight: true, color: AppColors.growth),
-  (key: 'len', field: 'height', seg: tr('Boy'), name: tr('Boy'), isWeight: false, color: AppColors.pump),
-  (key: 'hc', field: 'head_circ', seg: tr('Baş'), name: tr('Baş çevresi'), isWeight: false, color: AppColors.doctor),
-];
+// Getter (top-level `final` DEĞİL) — `final` tr()'yi ilk erişimde dondurur,
+// dil değişince eski çeviride kalır. Getter her okumada taze değerlenir.
+List<_Measure> get _measures => [
+      (key: 'wt', field: 'weight', seg: tr('Kilo'), name: tr('Kilo'), isWeight: true, color: AppColors.growth),
+      (key: 'len', field: 'height', seg: tr('Boy'), name: tr('Boy'), isWeight: false, color: AppColors.pump),
+      (key: 'hc', field: 'head_circ', seg: tr('Baş'), name: tr('Baş çevresi'), isWeight: false, color: AppColors.doctor),
+    ];
 
 /// Grafikler sekmesi — design ScrCharts: WHO persentil eğrisi (kilo/boy/baş) +
 /// beslenme/uyku trendi.

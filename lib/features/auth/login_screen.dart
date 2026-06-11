@@ -8,6 +8,7 @@ import '../../core/brand.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import 'auth_controller.dart';
+import 'oauth_buttons.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -47,7 +48,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // Hata mesajını snackbar ile göster.
     ref.listen(authControllerProvider, (prev, next) {
       if (next.hasError && !next.isLoading) {
-        showAdToast(context, apiErrorText(next.error));
+        showAdError(context, apiErrorText(next.error));
       }
     });
 
@@ -128,16 +129,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           )
                         : AdSaveButton(
                             label: tr('Giriş Yap'), color: AppColors.coral, onTap: _submit),
-                    const _OrDivider(),
-                    _OAuthButton(
-                      label: tr('Google ile devam et'),
-                      onTap: () => _soon(context),
-                    ),
-                    const SizedBox(height: 10),
-                    _OAuthButton(
-                      label: tr('Apple ile devam et'),
-                      onTap: () => _soon(context),
-                    ),
+                    const OAuthSection(),
                     const SizedBox(height: 18),
                     Center(
                       child: GestureDetector(
@@ -195,56 +187,4 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       );
 
-  void _soon(BuildContext context) =>
-      showAdToast(context, tr('Sosyal giriş yakında eklenecek'));
-}
-
-/// "veya" ayıracı (design login).
-class _OrDivider extends StatelessWidget {
-  const _OrDivider();
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      child: Row(
-        children: [
-          Expanded(child: Divider(color: AppColors.line, thickness: 1)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(tr('veya'),
-                style: TextStyle(
-                    color: AppColors.muted,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11.5)),
-          ),
-          Expanded(child: Divider(color: AppColors.line, thickness: 1)),
-        ],
-      ),
-    );
-  }
-}
-
-/// OAuth (Google/Apple) butonu (design .ad-oauth).
-class _OAuthButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  const _OAuthButton({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.ink,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          side: BorderSide(color: AppColors.line, width: 1.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-        child: Text(label,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-      ),
-    );
-  }
 }

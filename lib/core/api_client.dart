@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import 'config.dart';
+import 'i18n.dart';
 import 'token_storage.dart';
 
 /// Dio tabanlı API istemcisi. JWT ekler ve 401'de otomatik token yeniler.
@@ -17,6 +18,9 @@ class ApiClient {
         )) {
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        // Aktif dili gönder → sunucu (DRF/Django) hata mesajlarını bu dilde
+        // döndürür. Her istekte taze okunur (dil değişimi anında yansır).
+        options.headers['Accept-Language'] = I18n.instance.locale;
         // 'noAuth' işaretli isteklere token ekleme (login/register/refresh).
         if (options.extra['noAuth'] != true) {
           final token = await _tokens.accessToken;

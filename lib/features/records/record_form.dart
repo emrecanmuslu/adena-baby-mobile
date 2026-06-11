@@ -577,8 +577,10 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
 
   // ── Emzirme bölümü: başlat / süren sayaç / elle giriş ────────────────────
 
-  static final _breastLabelStyle = TextStyle(
-      fontSize: 10.5, fontWeight: FontWeight.w900, color: AppColors.muted, letterSpacing: 0.4);
+  // Getter (`static final` DEĞİL) — AppColors.muted tema-duyarlı; `static final`
+  // ilk erişimdeki temaya dondurur (Gece Modu'nda yanlış renk). Her build'de taze.
+  static TextStyle get _breastLabelStyle => const TextStyle(
+      fontSize: 10.5, fontWeight: FontWeight.w900, letterSpacing: 0.4).copyWith(color: AppColors.muted);
 
   Widget _breastSection(Color accent) {
     final ongoing = ref.watch(ongoingBreastProvider(widget.babyId));

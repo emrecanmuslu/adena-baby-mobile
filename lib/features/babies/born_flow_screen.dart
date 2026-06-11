@@ -47,12 +47,12 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
         'birth_date': _iso(_birth),
       });
       if (!mounted) return;
-      showAdToast(context, tr('Tebrikler! 🎉'));
+      // Bu ekran zaten "Tebrikler!" tebrik ekranı — ayrıca toast göstermek gereksiz.
       context.go('/home');
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        showAdToast(context, tr('Geçiş başarısız'));
+        showAdError(context, tr('Geçiş başarısız'));
       }
     }
   }
