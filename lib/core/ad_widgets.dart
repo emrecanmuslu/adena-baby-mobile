@@ -653,6 +653,42 @@ class AdMenuItem extends StatelessWidget {
   }
 }
 
+/// Altın "Premium" rozeti (design .ad-pill.prem) — premium-kilitli menü/başlık
+/// yanına. [withChevron] true ise rozet + chevron'u birlikte trailing olarak verir
+/// (AdMenuItem.trailing chevron'u değiştirdiği için).
+class AdProBadge extends StatelessWidget {
+  final bool withChevron;
+  final String label;
+  const AdProBadge({super.key, this.withChevron = false, this.label = 'Premium'});
+
+  @override
+  Widget build(BuildContext context) {
+    final pill = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFE3A8), Color(0xFFFFD06B)],
+        ),
+      ),
+      child: Text(tr(label),
+          style: const TextStyle(
+              fontSize: 9.5, fontWeight: FontWeight.w900, color: Color(0xFF8A6410))),
+    );
+    if (!withChevron) return pill;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        pill,
+        const SizedBox(width: 8),
+        AdenaIcon('chevR', size: 18, color: AppColors.muted2),
+      ],
+    );
+  }
+}
+
 /// Sürükleme tutamağı (design .ad-grab) — bottom sheet'lerin üstünde.
 Widget adGrabHandle() => Container(
       width: 40,

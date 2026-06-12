@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/providers.dart';
 import '../models/milestone.dart';
 import '../models/reminder.dart';
+import '../models/tooth.dart';
 import '../models/vaccine.dart';
 
 /// Sağlık uçları: aşı takvimi (lazy üretim sunucuda) + işaretleme,
@@ -51,6 +52,27 @@ class HealthRepository {
     return Milestone.fromJson(resp.data as Map<String, dynamic>);
   }
 
+  // ── Diş çıkarma (süt dişleri) ──
+
+  Future<List<Tooth>> teeth(String babyId) async {
+    final resp = await _api.dio.get('/babies/$babyId/teeth');
+    final data = resp.data as List<dynamic>;
+    return data.map((e) => Tooth.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Dişi çıktı/çıkmadı işaretler (tarih opsiyonel; bugün varsayılan).
+  Future<Tooth> setToothErupted(int id,
+      {required bool erupted, DateTime? date}) async {
+    final d = erupted ? (date ?? DateTime.now()) : null;
+    final resp = await _api.dio.patch('/teeth/$id', data: {
+      'erupted': erupted,
+      if (d != null)
+        'erupted_date':
+            '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+    });
+    return Tooth.fromJson(resp.data as Map<String, dynamic>);
+  }
+
   // ── Hatırlatıcılar ──
 
   Future<List<Reminder>> reminders(String babyId) async {
@@ -93,4 +115,9 @@ final remindersProvider = FutureProvider.family<List<Reminder>, String>(
 /// Aktif bebeğin gelişim/kilometre taşları (beklenen aya göre sıralı).
 final milestonesProvider = FutureProvider.family<List<Milestone>, String>(
   (ref, babyId) => ref.watch(healthRepositoryProvider).milestones(babyId),
+);
+
+/// Aktif bebeğin süt dişleri (çene/pozisyona göre sıralı gelir).
+final teethProvider = FutureProvider.family<List<Tooth>, String>(
+  (ref, babyId) => ref.watch(healthRepositoryProvider).teeth(babyId),
 );

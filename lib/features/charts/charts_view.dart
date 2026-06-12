@@ -4,16 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
+import '../../core/ad_widgets.dart';
+import '../../core/api_error.dart';
 import '../../core/i18n.dart';
+import '../../core/premium_gate.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../../core/who_growth.dart';
+import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
 import '../../models/record.dart';
 import '../babies/baby_controller.dart';
 import '../babies/family_settings.dart';
 import '../records/record_controller.dart';
+import 'growth_report.dart';
 
 /// Tek ölçü tanımı (kilo/boy/baş çevresi) — alan adı + birim türü + renk.
 typedef _Measure = ({
@@ -74,8 +79,79 @@ class _ChartsViewState extends ConsumerState<ChartsView> {
         ),
         _sec(tr('Beslenme & Uyku trendi')),
         _TrendBars(records: records),
+        const SizedBox(height: 20),
+        _ReportButton(
+            babyId: widget.babyId, baby: baby, records: records, units: units),
       ],
     );
+  }
+}
+
+/// Premium: grafikleri + persentilleri + trendleri doktora hazır PDF olarak
+/// paylaşır (backend render). Free → upsell.
+class _ReportButton extends ConsumerStatefulWidget {
+  final String babyId;
+  final Baby? baby;
+  final List<Record> records;
+  final Units units;
+  const _ReportButton({
+    required this.babyId,
+    required this.baby,
+    required this.records,
+    required this.units,
+  });
+
+  @override
+  ConsumerState<_ReportButton> createState() => _ReportButtonState();
+}
+
+class _ReportButtonState extends ConsumerState<_ReportButton> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final showBadge = ref.watch(isDefinitelyFreeProvider);
+    return Column(
+      children: [
+        AdSaveButton(
+          label: _busy ? tr('Rapor hazırlanıyor…') : tr('📄  PDF sağlık raporu'),
+          color: AppColors.coralDd,
+          ghost: true,
+          onTap: _busy ? () {} : _onTap,
+        ),
+        if (showBadge)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: AdProBadge(),
+          ),
+      ],
+    );
+  }
+
+  void _onTap() {
+    requirePremium(
+      context,
+      ref,
+      feature: tr('PDF sağlık raporu'),
+      desc: tr('Büyüme grafikleri, WHO persentilleri ve beslenme/uyku özetini '
+          'doktora hazır tek bir PDF olarak paylaş.'),
+      onAllowed: _generate,
+    );
+  }
+
+  Future<void> _generate() async {
+    final baby = widget.baby;
+    if (baby == null) return;
+    setState(() => _busy = true);
+    try {
+      final payload =
+          buildGrowthReportPayload(baby, widget.records, widget.units);
+      await shareGrowthReport(ref, widget.babyId, payload);
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 }
 

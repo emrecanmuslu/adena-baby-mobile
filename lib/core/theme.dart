@@ -34,6 +34,7 @@ class AppColors {
   static const med = Color(0xFFCC7A5C); // terrakota/kil — sıcak palete uyumlu (aşı/randevu/ilaç)
   static const bath = Color(0xFF5FB6E8);
   static const doctor = Color(0xFF9A86D6);
+  static const symptom = Color(0xFFD98AA6); // gül/erik — belirti/hastalık takibi (fever'dan ayrı)
 
   // Kategori arka plan tonları (chip zeminleri)
   // Kategori chip zeminleri — tema-duyarlı (tasarım Gece Modu *-bg değerleri).
@@ -46,6 +47,7 @@ class AppColors {
   static Color get medBg => _d ? const Color(0xFF352920) : const Color(0xFFF6E3D9); // terrakota
   static Color get bathBg => _d ? const Color(0xFF1E2E3A) : const Color(0xFFE0F0FB);
   static Color get doctorBg => _d ? const Color(0xFF2A2540) : const Color(0xFFEFEAF9);
+  static Color get symptomBg => _d ? const Color(0xFF3A2630) : const Color(0xFFFBE3EC); // gül/erik zemin
 
   /// Yumuşak kart gölgesi (--sh).
   // Premium (altın) — paywall/AI export rozetleri.

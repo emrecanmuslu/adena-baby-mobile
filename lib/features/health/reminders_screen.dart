@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
@@ -7,9 +8,11 @@ import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
+import '../../core/premium_gate.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
+import '../../data/subscription_repository.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/reminder.dart';
@@ -47,6 +50,35 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     ref.invalidate(remindersProvider(babyId));
   }
 
+  // Aynı anda bir budama turu (tekrar tetiklenmeyi önle).
+  bool _pruning = false;
+
+  /// Süresi geçmiş TEK-SEFERLİK ('once') hatırlatıcıları otomatik temizle —
+  /// tetiklendikten sonra durmasının anlamı yok. Bildirim zaten yerelde planlı
+  /// olduğundan geçmiş zamanı iptal etmek no-op'tur (kullanıcıyı etkilemez).
+  Future<void> _pruneExpiredOnce(String babyId, List<Reminder> list) async {
+    if (_pruning) return;
+    final now = DateTime.now();
+    final expired = list.where((r) {
+      if (r.type != 'custom' || r.schedule['repeat'] != 'once') return false;
+      if (_hidden.contains(r.id)) return false;
+      final at = DateTime.tryParse(r.schedule['at'] as String? ?? '')?.toLocal();
+      return at != null && at.isBefore(now);
+    }).toList();
+    if (expired.isEmpty) return;
+    _pruning = true;
+    try {
+      for (final r in expired) {
+        await ref.read(healthRepositoryProvider).deleteReminder(r.id);
+        await NotificationService.instance.cancelReminder(r.id);
+      }
+    } catch (_) {
+      // Geçici hata — sonraki yüklemede tekrar denenir.
+    }
+    _pruning = false;
+    if (mounted) ref.invalidate(remindersProvider(babyId));
+  }
+
   @override
   Widget build(BuildContext context) {
     final baby = ref.watch(activeBabyProvider);
@@ -55,11 +87,21 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
     }
     final async = ref.watch(remindersProvider(baby.id));
+    final isPremium = ref.watch(isPremiumProvider);
+    // Free limit: en fazla 2 özel (custom) hatırlatıcı. Aşı/dürtükleme sistem
+    // hatırlatıcıları sayılmaz; beslenme/sessiz saat ayrı kartlar.
+    final customCount = (async.asData?.value ?? [])
+        .where((r) => r.type == 'custom' && !_hidden.contains(r.id))
+        .length;
 
-    // Liste değiştikçe (yükleme/ekle/aç-kapa/sil) cihaz bildirimlerini eşitle.
+    // Liste değiştikçe (yükleme/ekle/aç-kapa/sil) cihaz bildirimlerini eşitle +
+    // süresi geçmiş tek-seferlik hatırlatıcıları temizle.
     ref.listen(remindersProvider(baby.id), (_, next) {
       final list = next.asData?.value;
-      if (list != null) NotificationService.instance.sync(list);
+      if (list != null) {
+        NotificationService.instance.sync(list);
+        _pruneExpiredOnce(baby.id, list);
+      }
     });
 
     return Scaffold(
@@ -114,7 +156,21 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
             label: tr('Hatırlatıcı ekle'),
             color: AppColors.coralDd,
             ghost: true,
-            onTap: () => _showAddReminderSheet(context, ref, baby.id),
+            onTap: () {
+              if (!isPremium && customCount >= 2) {
+                // Free 2 limit dolu → premium upsell.
+                showPremiumUpsell(
+                  context,
+                  feature: tr('Sınırsız hatırlatıcı'),
+                  desc: tr('Ücretsizde 2 özel hatırlatıcı kurabilirsin. Premium ile '
+                      'sınırsız hatırlatıcı + reklamsız.'),
+                ).then((go) {
+                  if (go == true && context.mounted) context.push('/premium');
+                });
+              } else {
+                _showAddReminderSheet(context, ref, baby.id);
+              }
+            },
           ),
         ],
       ),

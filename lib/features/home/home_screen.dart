@@ -15,7 +15,10 @@ import '../../core/ring.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
+import '../../data/community_repository.dart';
+import '../../data/content_repository.dart';
 import '../../data/health_repository.dart';
+import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/milestone.dart';
@@ -25,8 +28,11 @@ import '../babies/baby_controller.dart';
 import '../babies/baby_switcher.dart';
 import '../babies/family_settings.dart';
 import '../charts/charts_view.dart';
+import '../content/content_ui.dart';
 import '../health/reminders_screen.dart';
 import 'expecting_home.dart';
+import 'home_layout.dart';
+import 'home_layout_editor.dart';
 import '../records/add_record_sheet.dart';
 import '../records/record_controller.dart';
 import '../records/record_form.dart';
@@ -58,6 +64,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _syncBreastTimer(ref.watch(ongoingBreastProvider(baby.id)));
     _syncFeedReminder(baby); // beslenme hatırlatıcısı (config + son beslenmeler)
 
+    final isPremium = ref.watch(isPremiumProvider);
     final appBar = AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -66,7 +73,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(26)),
       ),
       titleSpacing: 16,
-      title: const BrandWordmark(fontSize: 23),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const BrandWordmark(fontSize: 23),
+          // Premium → logonun sağında küçük altın rozet (cache sayesinde flaş yok).
+          if (isPremium) ...[
+            const SizedBox(width: 8),
+            const Padding(
+              padding: EdgeInsets.only(top: 3),
+              child: AdProBadge(),
+            ),
+          ],
+        ],
+      ),
       actions: [
         const _SyncBadge(), // yalnız çevrimdışıyken görünür
         // Bekleme modunda hatırlatıcılar (beslenme/aşı/dürtükleme) uygulanmaz → zil gizli.
@@ -129,7 +149,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 _navItem('timeline', 1),
                 _navFab(() => showAddRecordMenu(context, ref, baby.id)),
                 _navItem('charts', 2),
-                _navHealth(context),
+                _navDiscover(context),
               ],
             ),
           ),
@@ -247,18 +267,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  /// Sağlık Hub — aşı/randevu/ateş & ilaç/hatırlatıcı (sekme değil, sayfa açar).
-  /// Ayarlar zaten üst bardaki avatardan açılır; bu slot tekrar olmasın diye
-  /// en çok erişilen sağlık sayfasına bağlandı.
-  Widget _navHealth(BuildContext context) {
+  /// Keşfet — takip dışı yüzeyleri toplayan hub (Bebeğin Sağlığı · Topluluk ·
+  /// Uzman Rehberi · Anılar). Sekme değil, sayfa açar.
+  Widget _navDiscover(BuildContext context) {
     return InkWell(
-      onTap: () => context.push('/health'),
+      onTap: () => context.push('/discover'),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         width: 44,
         height: 44,
         alignment: Alignment.center,
-        child: AdenaIcon('heart', color: AppColors.muted2, size: 23),
+        child: AdenaIcon('compass', color: AppColors.muted2, size: 23),
       ),
     );
   }
@@ -588,6 +607,62 @@ Widget _sec(String title, {double top = 18}) => Padding(
       ),
     );
 
+/// Sağında "düzenle" (kalem) ikonu olan bölüm başlığı — özelleştirilebilir
+/// bölümler (Hızlı Giriş, Son Aktivite) için.
+class _EditableSec extends StatelessWidget {
+  final String title;
+  final double top;
+  final VoidCallback onEdit;
+  const _EditableSec(
+      {required this.title, required this.onEdit, this.top = 18});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(3, top, 0, 10),
+      child: Row(
+        children: [
+          Text(title.toUpperCase(),
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.muted,
+                  letterSpacing: 0.7)),
+          const Spacer(),
+          GestureDetector(
+            onTap: onEdit,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 2, 6, 2),
+              child: AdenaIcon('edit', size: 15, color: AppColors.muted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hızlı Giriş için tek kart — uyku özel (başlat/bitir), diğerleri form açar.
+Widget _quickCardFor(BuildContext context, WidgetRef ref, String babyId,
+    RecordType t, Record? ongoing) {
+  if (t == RecordType.sleep) {
+    return _QuickCard(
+      type: t,
+      label: ongoing != null ? tr('Uykuyu bitir') : null,
+      onTap: () async {
+        if (ongoing != null) {
+          await confirmStopSleep(context, ref, ongoing);
+        } else {
+          await ref.read(recordActionsProvider).startSleep(babyId);
+        }
+      },
+    );
+  }
+  return _QuickCard(
+      type: t, onTap: () => showRecordForm(context, ref, babyId, t));
+}
+
 /// Ana Sayfa sekmesi — design ScrHome: Hızlı Giriş · Sonraki beslenme · Son
 /// Aktivite · Bugün · Yaklaşan.
 class _HomeTab extends ConsumerWidget {
@@ -599,6 +674,8 @@ class _HomeTab extends ConsumerWidget {
     final ongoing = ref.watch(ongoingSleepProvider(babyId));
     final ongoingBreast = ref.watch(ongoingBreastProvider(babyId));
     final units = ref.watch(activeUnitsProvider);
+    final layout =
+        ref.watch(homeLayoutControllerProvider).asData?.value ?? HomeLayout.fallback;
 
     return ListView(
       // Alt: yüzer menü (≈76) + cihaz güvenli alanı + boşluk; içerik menü altında kalmasın.
@@ -606,30 +683,18 @@ class _HomeTab extends ConsumerWidget {
       children: [
         if (ongoing != null) _SleepBanner(sleep: ongoing),
         if (ongoingBreast != null) _BreastBanner(feed: ongoingBreast),
-        _sec(tr('Hızlı Giriş'), top: 4),
+        _EditableSec(
+          title: tr('Hızlı Giriş'),
+          top: 4,
+          onEdit: () => showHomeLayoutEditor(context, ref,
+              isQuick: true, current: layout.quick),
+        ),
         Row(
           children: [
-            _QuickCard(
-              type: RecordType.feed,
-              onTap: () => showRecordForm(context, ref, babyId, RecordType.feed),
-            ),
-            const SizedBox(width: 10),
-            _QuickCard(
-              type: RecordType.diaper,
-              onTap: () => showRecordForm(context, ref, babyId, RecordType.diaper),
-            ),
-            const SizedBox(width: 10),
-            _QuickCard(
-              type: RecordType.sleep,
-              label: ongoing != null ? tr('Uykuyu bitir') : null,
-              onTap: () async {
-                if (ongoing != null) {
-                  await confirmStopSleep(context, ref, ongoing);
-                } else {
-                  await ref.read(recordActionsProvider).startSleep(babyId);
-                }
-              },
-            ),
+            for (var i = 0; i < layout.quick.length; i++) ...[
+              if (i > 0) const SizedBox(width: 10),
+              _quickCardFor(context, ref, babyId, layout.quick[i], ongoing),
+            ],
           ],
         ),
         _PredictSection(babyId: babyId),
@@ -637,7 +702,219 @@ class _HomeTab extends ConsumerWidget {
         _DaySummarySection(babyId: babyId),
         _UpcomingSection(babyId: babyId),
         _MilestoneSection(babyId: babyId),
+        _ForYouSection(babyId: babyId),
       ],
+    );
+  }
+}
+
+/// Ana sayfa "Senin için" bölümü — yaşa uygun 1 uzman yazısı + 1 popüler
+/// topluluk sorusu. İçeriği ve topluluğu keşfettirir. İkisi de yoksa gizlenir.
+class _ForYouSection extends ConsumerWidget {
+  final String babyId;
+  const _ForYouSection({required this.babyId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final baby = ref.watch(activeBabyProvider);
+    final age = babyAgeMonths(baby);
+
+    final articles = ref
+        .watch(articlesProvider((category: null, ageMonths: age)))
+        .asData
+        ?.value;
+    final article =
+        (articles != null && articles.isNotEmpty) ? articles.first : null;
+
+    final questions = ref
+        .watch(communityFeedProvider((category: null, sort: 'top')))
+        .asData
+        ?.value;
+    final question =
+        (questions != null && questions.isNotEmpty) ? questions.first : null;
+
+    if (article == null && question == null) return const SizedBox.shrink();
+    final cats = ref.watch(contentCategoriesProvider).asData?.value ?? const [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(3, 18, 3, 10),
+          child: Row(
+            children: [
+              Text(tr('SENİN İÇİN'),
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.muted,
+                      letterSpacing: 0.7)),
+              const SizedBox(width: 6),
+              AdInfoDot(
+                title: tr('Senin için'),
+                body: tr('Bebeğinin yaşına uygun bir uzman yazısı ve topluluktan '
+                    'popüler bir soru. Tümünü Keşfet\'te bulabilirsin.'),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => context.push('/discover'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(tr('Tümü'),
+                        style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.coralDark)),
+                    const AdenaIcon('chevR', size: 15, color: AppColors.coralDark),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: AppColors.softShadow,
+          ),
+          child: Column(
+            children: [
+              if (article != null)
+                _ForYouRow(
+                  icon: cats
+                          .where((c) => c.slug == article.categorySlug)
+                          .firstOrNull
+                          ?.icon ??
+                      'star',
+                  iconColor: AppColors.coralDd,
+                  iconBg: AppColors.feedBg,
+                  title: article.title,
+                  subtitle:
+                      '${tr('Uzman Rehberi')} · ${trp('{n} dk', {'n': article.readMinutes})}',
+                  last: question == null,
+                  onTap: () =>
+                      context.push('/content/article/${article.slug}'),
+                ),
+              if (question != null)
+                _ForYouRow(
+                  icon: 'family',
+                  iconColor: AppColors.sleep,
+                  iconBg: AppColors.sleepBg,
+                  title: question.title,
+                  subtitle:
+                      '${tr('Topluluk')} · ${trp('{n} cevap', {'n': question.answerCount})}',
+                  trailing: _ScorePill(score: question.score),
+                  last: true,
+                  onTap: () =>
+                      context.push('/community/question/${question.id}'),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Soru için küçük skor rozeti (yukarı ok + sayı).
+class _ScorePill extends StatelessWidget {
+  final int score;
+  const _ScorePill({required this.score});
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AdenaIcon('arrowUp', size: 13, color: AppColors.muted2, sw: 2.4),
+        const SizedBox(width: 3),
+        Text('$score',
+            style: TextStyle(
+                fontSize: 11.5, fontWeight: FontWeight.w900, color: AppColors.muted2)),
+      ],
+    );
+  }
+}
+
+/// "Senin için" satırı — ikon + başlık + alt metin + (opsiyonel rozet) + ›.
+class _ForYouRow extends StatelessWidget {
+  final String icon;
+  final Color iconColor;
+  final Color iconBg;
+  final String title;
+  final String subtitle;
+  final Widget? trailing;
+  final bool last;
+  final VoidCallback onTap;
+  const _ForYouRow({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+    required this.title,
+    required this.subtitle,
+    required this.last,
+    required this.onTap,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(14, last ? 12 : 13, 12, last ? 13 : 0),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                        color: iconBg, borderRadius: BorderRadius.circular(11)),
+                    alignment: Alignment.center,
+                    child: AdenaIcon(icon, size: 18, color: iconColor),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 13.5)),
+                        const SizedBox(height: 1),
+                        Text(subtitle,
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.muted)),
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 8),
+                    trailing!,
+                  ],
+                  const SizedBox(width: 6),
+                  AdenaIcon('chevR', size: 16, color: AppColors.muted),
+                ],
+              ),
+              if (!last)
+                Padding(
+                  padding: const EdgeInsets.only(left: 48, top: 12),
+                  child: Divider(height: 1, color: AppColors.line),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -914,19 +1191,23 @@ class _LastActivitySection extends ConsumerWidget {
   final Units units;
   const _LastActivitySection({required this.babyId, required this.units});
 
-  static const _types = [RecordType.feed, RecordType.diaper, RecordType.sleep];
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(recentRecordsProvider(babyId));
+    final types = ref.watch(homeLayoutControllerProvider).asData?.value.lastActivity ??
+        HomeLayout.fallback.lastActivity;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sec(tr('Son Aktivite')),
+        _EditableSec(
+          title: tr('Son Aktivite'),
+          onEdit: () => showHomeLayoutEditor(context, ref,
+              isQuick: false, current: types),
+        ),
         async.when(
           loading: () => Row(
             children: [
-              for (var i = 0; i < 3; i++) ...[
+              for (var i = 0; i < types.length; i++) ...[
                 if (i > 0) const SizedBox(width: 10),
                 const Expanded(child: Skeleton(height: 92, radius: 18)),
               ],
@@ -944,12 +1225,12 @@ class _LastActivitySection extends ConsumerWidget {
 
             return Row(
               children: [
-                for (var i = 0; i < _types.length; i++) ...[
+                for (var i = 0; i < types.length; i++) ...[
                   if (i > 0) const SizedBox(width: 10),
                   Expanded(
                     child: _LastCard(
-                      type: _types[i],
-                      record: latestOf(_types[i]),
+                      type: types[i],
+                      record: latestOf(types[i]),
                       units: units,
                     ),
                   ),

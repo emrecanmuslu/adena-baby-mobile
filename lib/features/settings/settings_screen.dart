@@ -22,6 +22,8 @@ class SettingsScreen extends ConsumerWidget {
 
     final isPremium =
         ref.watch(subscriptionProvider).asData?.value.isPremium ?? false;
+    // Rozetleri yalnız "kesin free" iken göster — açılışta yüklenirken flaş olmasın.
+    final showProBadge = ref.watch(isDefinitelyFreeProvider);
     // Bekleme (gebelik) modu: bebek doğmadan anlamsız olan menüler gizlenir
     // (Sağlık Hub = aşı/ateş/ilaç/hatırlatıcı, AI dışa aktarım = kayıt özeti).
     final expecting = baby?.isExpecting ?? false;
@@ -86,25 +88,22 @@ class SettingsScreen extends ConsumerWidget {
             bg: AppColors.doctorBg,
             title: tr('Aile / Paylaşım'),
             meta: baby?.name,
+            // Aile paylaşımı premium — değilse altın "Premium" rozeti.
+            trailing: showProBadge ? const AdProBadge(withChevron: true) : null,
             onTap: baby == null ? null : () => context.push('/members'),
           ),
-          if (!expecting)
+          // Keşfet (Bebeğin Sağlığı · Topluluk · Uzman Rehberi · Anılar) takip
+          // modunda alt menüdeki ✨ slotundan açılır; bekleme modunda alt menü
+          // olmadığından erişim buradan verilir (tekrar olmasın diye yalnız o zaman).
+          if (expecting)
             AdMenuItem(
-              icon: 'heart',
-              color: AppColors.fever,
-              bg: AppColors.feverBg,
-              title: tr('Sağlık Hub'),
-              meta: tr('Aşı · randevu · ateş & ilaç · hatırlatıcı'),
-              onTap: baby == null ? null : () => context.push('/health'),
+              icon: 'compass',
+              color: AppColors.pump,
+              bg: AppColors.pumpBg,
+              title: tr('Keşfet'),
+              meta: tr('Topluluk · Uzman Rehberi · Anılar'),
+              onTap: baby == null ? null : () => context.push('/discover'),
             ),
-          AdMenuItem(
-            icon: 'camera',
-            color: AppColors.coralDd,
-            bg: AppColors.feedBg,
-            title: tr('Anılar / Fotoğraf Günlüğü'),
-            meta: tr('İlk\'ler · fotoğraflar · özel anlar'),
-            onTap: baby == null ? null : () => context.push('/memories'),
-          ),
           AdMenuItem(
             icon: 'edit',
             color: AppColors.growth,
@@ -120,7 +119,9 @@ class SettingsScreen extends ConsumerWidget {
             color: AppColors.premiumInk,
             bg: AppColors.premiumBg,
             title: tr('Adena Premium'),
-            meta: isPremium ? tr('Aktif · teşekkürler 💛') : tr('AI özet, sınırsız bakıcı ve daha fazlası'),
+            meta: isPremium
+                ? tr('Aktif · teşekkürler 💛')
+                : tr('Reklamsız · aile paylaşımı · bulut yedek'),
             onTap: () => context.push('/premium'),
           ),
           if (!expecting)
@@ -129,7 +130,9 @@ class SettingsScreen extends ConsumerWidget {
               color: AppColors.med,
               bg: AppColors.medBg,
               title: tr('AI Veri Dışa Aktarımı'),
-              meta: isPremium ? tr('Doktora hazır özet') : tr('Premium gerekli'),
+              meta: isPremium ? tr('Doktora hazır özet') : tr('Doktora hazır PDF özet'),
+              // design ScrMenu: premium-kilitli satırda altın "Premium" rozeti.
+              trailing: showProBadge ? const AdProBadge(withChevron: true) : null,
               onTap: () => context.push('/ai-export'),
             ),
 

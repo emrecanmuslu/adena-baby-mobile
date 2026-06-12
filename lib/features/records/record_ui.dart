@@ -6,6 +6,7 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../../models/record.dart';
+import '../../models/symptom.dart';
 
 /// Kayıt tiplerinin görsel kimliği (çizgi-ikon/renk/bg/etiket) ve özet metni.
 class RecordUi {
@@ -22,6 +23,7 @@ class RecordUi {
         RecordType.medication => 'med',
         RecordType.bath => 'bath',
         RecordType.appointment => 'doctor',
+        RecordType.symptom => 'pulse',
       };
 
   static Color color(RecordType t) => switch (t) {
@@ -34,6 +36,7 @@ class RecordUi {
         RecordType.medication => AppColors.med,
         RecordType.bath => AppColors.bath,
         RecordType.appointment => AppColors.doctor,
+        RecordType.symptom => AppColors.symptom,
       };
 
   static Color bg(RecordType t) => switch (t) {
@@ -46,6 +49,7 @@ class RecordUi {
         RecordType.medication => AppColors.medBg,
         RecordType.bath => AppColors.bathBg,
         RecordType.appointment => AppColors.doctorBg,
+        RecordType.symptom => AppColors.symptomBg,
       };
 
   static String label(RecordType t) => switch (t) {
@@ -58,6 +62,7 @@ class RecordUi {
         RecordType.medication => tr('İlaç'),
         RecordType.bath => tr('Banyo'),
         RecordType.appointment => tr('Randevu'),
+        RecordType.symptom => tr('Belirti'),
       };
 
   /// Kategori çizgi-ikonu.
@@ -140,6 +145,14 @@ class RecordUi {
         return tr('Banyo');
       case RecordType.appointment:
         return d['title'] as String? ?? tr('Randevu');
+      case RecordType.symptom:
+        final name = trSymptom(d['key'] as String? ?? '');
+        final sev = SymptomSeverity.fromString(d['severity'] as String?);
+        final base = name.isEmpty ? tr('Belirti') : name;
+        // Hafif şiddeti gizleme; orta/şiddetli vurgula.
+        return sev == SymptomSeverity.mild
+            ? base
+            : trp('{name} · {sev}', {'name': base, 'sev': sev.label.toLowerCase()});
     }
   }
 

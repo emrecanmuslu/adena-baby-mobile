@@ -6,8 +6,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
+import '../../core/premium_gate.dart';
 import '../../core/theme.dart';
 import '../../data/baby_repository.dart';
+import '../../data/subscription_repository.dart';
 import '../../models/membership.dart';
 import 'baby_controller.dart';
 
@@ -27,6 +29,7 @@ class MembersScreen extends ConsumerWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
     }
     final isOwner = baby.myRole == 'owner';
+    final showProBadge = ref.watch(isDefinitelyFreeProvider);
     final async = ref.watch(membersProvider(baby.id));
 
     return Scaffold(
@@ -66,7 +69,15 @@ class MembersScreen extends ConsumerWidget {
               AdSaveButton(
                 label: tr('＋  Eş / bakıcı davet et'),
                 color: AppColors.coral,
-                onTap: () => _invite(context, ref, baby.id),
+                // Aile/ekip paylaşımı premium özellik — değilse upsell aç.
+                onTap: () => requirePremium(
+                  context,
+                  ref,
+                  feature: tr('Aile paylaşımı'),
+                  desc: tr('Eşini ve bakıcıları davet et; herkes aynı bebeği '
+                      'birlikte takip etsin. Premium ile sınırsız üye + reklamsız.'),
+                  onAllowed: () => _invite(context, ref, baby.id),
+                ),
               )
             else
               Padding(
@@ -84,7 +95,16 @@ class MembersScreen extends ConsumerWidget {
               bg: AppColors.medBg,
               title: tr('Bakıcı akışı'),
               meta: tr('Ekibin canlı aktivite akışı'),
-              onTap: () => context.push('/caregiver'),
+              // Ekip bakımı premium — değilse rozet + upsell.
+              trailing: showProBadge ? const AdProBadge(withChevron: true) : null,
+              onTap: () => requirePremium(
+                context,
+                ref,
+                feature: tr('Ekip bakımı'),
+                desc: tr('Bakıcıların canlı aktivite akışını gör; herkes ne '
+                    'yaptığını anında bilsin. Premium ile aç.'),
+                onAllowed: () => context.push('/caregiver'),
+              ),
             ),
           ],
         ),

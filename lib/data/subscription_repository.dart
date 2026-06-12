@@ -1,24 +1,50 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../core/api_client.dart';
 import '../core/providers.dart';
+import '../core/revenuecat_service.dart';
 import '../models/subscription.dart';
+import 'subscription_cache.dart';
 
 /// Abonelik + AI dışa aktarım uçları (API §9).
 class SubscriptionRepository {
   final ApiClient _api;
+  final SubscriptionCache _cache = SubscriptionCache();
   SubscriptionRepository(this._api);
 
-  Future<Subscription> get() async {
-    final resp = await _api.dio.get('/me/subscription');
-    return Subscription.fromJson(resp.data as Map<String, dynamic>);
+  /// Her başarılı yanıtta premium durumunu kalıcı cache'e yaz (açılış flaş'ını önler).
+  Subscription _store(Subscription s) {
+    unawaited(_cache.write(s.isPremium));
+    return s;
   }
 
-  /// IAP makbuz doğrulama (backend şimdilik stub → premium'a yükseltir).
-  Future<Subscription> verify({required String platform}) async {
-    final resp =
-        await _api.dio.post('/me/subscription/verify', data: {'platform': platform});
-    return Subscription.fromJson(resp.data as Map<String, dynamic>);
+  Future<Subscription> get() async {
+    final resp = await _api.dio.get('/auth/me/subscription');
+    return _store(Subscription.fromJson(resp.data as Map<String, dynamic>));
+  }
+
+  /// Satın alma sonrası backend'i RevenueCat'ten taze durumla senkronla.
+  /// Webhook gecikmesini atlar; sunucu REST anahtarı yoksa mevcut durumu döner.
+  Future<Subscription> refresh() async {
+    final resp = await _api.dio.post('/auth/me/subscription/refresh');
+    return _store(Subscription.fromJson(resp.data as Map<String, dynamic>));
+  }
+
+  /// Tek-kullanımlık premium kodunu kullan (aylık/yıllık/lifetime → backend belirler).
+  Future<Subscription> redeem(String code) async {
+    final resp = await _api.dio.post('/auth/me/subscription/redeem', data: {'code': code});
+    return _store(Subscription.fromJson(resp.data as Map<String, dynamic>));
+  }
+
+  /// GELİŞTİRME (yalnız backend DEBUG): RevenueCat anahtarı gelene kadar
+  /// "satın alınmış gibi" premium aç/kapa. Prod'da backend 403 döner.
+  Future<Subscription> devActivate({String plan = 'lifetime', bool active = true}) async {
+    final resp = await _api.dio
+        .post('/auth/me/subscription/dev-activate', data: {'plan': plan, 'active': active});
+    return _store(Subscription.fromJson(resp.data as Map<String, dynamic>));
   }
 
   /// Doktora/AI-hazır 1/3/7 günlük özet (premium; değilse backend 403 döner).
@@ -32,7 +58,41 @@ final subscriptionRepositoryProvider = Provider<SubscriptionRepository>(
   (ref) => SubscriptionRepository(ref.watch(apiClientProvider)),
 );
 
+/// Açılışta okunan SON BİLİNEN premium durumu (kalıcı cache). main()'de
+/// `overrideWithValue` ile gerçek değere set edilir; canlı API gelene kadar
+/// kullanılır → premium kullanıcıya rozet/kilit flaş'ı OLMAZ.
+final cachedPremiumProvider = Provider<bool>((_) => false);
+
 /// Mevcut abonelik durumu. Satın alma sonrası invalidate edilir.
 final subscriptionProvider = FutureProvider<Subscription>(
   (ref) => ref.watch(subscriptionRepositoryProvider).get(),
 );
+
+/// UI gating + gösterim için premium bayrağı. Canlı durum yüklendiyse onu,
+/// yoksa cache'lenmiş son durumu kullanır (flaş'sız). Her yerde bunu kullan.
+final isPremiumProvider = Provider<bool>(
+  (ref) =>
+      ref.watch(subscriptionProvider).asData?.value.isPremium ??
+      ref.watch(cachedPremiumProvider),
+);
+
+/// Premium DEĞİL mi (rozet/upsell/kilit gösterimi için). Cache sayesinde
+/// açılıştan itibaren doğru → flaş yok.
+final isDefinitelyFreeProvider =
+    Provider<bool>((ref) => !ref.watch(isPremiumProvider));
+
+/// RevenueCat entitlement değişimini dinler → backend'i senkronlar → durumu
+/// tazeler. AdenaApp kökte watch eder (syncService gibi) ki dinleyici canlı
+/// kalsın. RC yapılandırılmamışsa no-op.
+final premiumSyncProvider = Provider<void>((ref) {
+  Future<void> onUpdate(CustomerInfo _) async {
+    try {
+      await ref.read(subscriptionRepositoryProvider).refresh();
+    } catch (_) {}
+    ref.invalidate(subscriptionProvider);
+  }
+
+  final svc = RevenueCatService.instance;
+  svc.addUpdateListener(onUpdate);
+  ref.onDispose(() => svc.removeUpdateListener(onUpdate));
+});

@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/ad_service.dart';
+import 'core/i18n.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
@@ -10,12 +12,19 @@ import 'features/babies/baby_edit_screen.dart';
 import 'features/babies/born_flow_screen.dart';
 import 'features/babies/caregiver_screen.dart';
 import 'features/babies/members_screen.dart';
+import 'features/community/community_feed_screen.dart';
+import 'features/community/question_detail_screen.dart';
+import 'features/content/article_detail_screen.dart';
+import 'features/content/article_list_screen.dart';
+import 'features/content/content_hub_screen.dart';
+import 'features/discover/discover_screen.dart';
 import 'features/health/health_screen.dart';
 import 'features/health/reminders_screen.dart';
 import 'features/health/vaccines_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/mom_tracking_screen.dart';
 import 'features/development/milestones_screen.dart';
+import 'features/development/teeth_screen.dart';
 import 'features/memories/memories_screen.dart';
 import 'features/onboarding/baby_setup_screen.dart';
 import 'features/settings/ai_export_screen.dart';
@@ -39,6 +48,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     initialLocation: '/',
+    navigatorKey: rootNavigatorKey, // reklam/placeholder overlay'i için kök navigator
     refreshListenable: refresh,
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
@@ -62,7 +72,28 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/ai-export', builder: (_, _) => const AIExportScreen()),
       GoRoute(path: '/mom', builder: (_, _) => const MomTrackingScreen()),
       GoRoute(path: '/memories', builder: (_, _) => const MemoriesScreen()),
+      GoRoute(path: '/content', builder: (_, _) => const ContentHubScreen()),
+      GoRoute(
+        path: '/content/articles',
+        builder: (_, state) => ArticleListScreen(
+          args: state.extra as ArticleListArgs? ??
+              ArticleListArgs(title: tr('Rehberler')),
+        ),
+      ),
+      GoRoute(
+        path: '/content/article/:slug',
+        builder: (_, state) =>
+            ArticleDetailScreen(slug: state.pathParameters['slug']!),
+      ),
+      GoRoute(path: '/discover', builder: (_, _) => const DiscoverScreen()),
+      GoRoute(path: '/community', builder: (_, _) => const CommunityFeedScreen()),
+      GoRoute(
+        path: '/community/question/:id',
+        builder: (_, state) =>
+            QuestionDetailScreen(questionId: state.pathParameters['id']!),
+      ),
       GoRoute(path: '/milestones', builder: (_, _) => const MilestonesScreen()),
+      GoRoute(path: '/teeth', builder: (_, _) => const TeethScreen()),
       GoRoute(path: '/born-flow', builder: (_, _) => const BornFlowScreen()),
     ],
     redirect: (context, state) {

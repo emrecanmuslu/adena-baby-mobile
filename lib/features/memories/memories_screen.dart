@@ -15,7 +15,9 @@ import '../../data/memory_repository.dart';
 import '../../models/memory.dart';
 import '../babies/baby_controller.dart';
 
-/// Anılar / Fotoğraf günlüğü ekranı — aylara gruplu foto ızgarası + "ilk" rozetleri.
+/// Anılar / Fotoğraf günlüğü — fotoğraf-odaklı akış (scrapbook); aylara gruplu,
+/// büyük foto kartları + "ilk" kilometre taşı rozetleri. Fotoğraflar her zaman
+/// buluta yedeklenir (herkese).
 class MemoriesScreen extends ConsumerWidget {
   const MemoriesScreen({super.key});
 
@@ -55,12 +57,15 @@ class MemoriesScreen extends ConsumerWidget {
             style: const TextStyle(fontWeight: FontWeight.w900)),
       ),
       body: async.when(
-        loading: () => GridView.count(
-          crossAxisCount: 2,
-          padding: const EdgeInsets.all(16),
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          children: [for (var i = 0; i < 6; i++) const Skeleton(height: 160, radius: 18)],
+        loading: () => ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          children: [
+            for (var i = 0; i < 3; i++)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 14),
+                child: Skeleton(height: 280, radius: 20),
+              ),
+          ],
         ),
         error: (e, _) => Center(
           child: Padding(
@@ -80,33 +85,16 @@ class MemoriesScreen extends ConsumerWidget {
           }
           return ListView(
             padding: EdgeInsets.fromLTRB(
-                16, 4, 16, 96 + MediaQuery.of(context).padding.bottom),
+                16, 8, 16, 100 + MediaQuery.of(context).padding.bottom),
             children: [
+              const _CloudChip(),
               for (final entry in groups.entries) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(3, 14, 3, 10),
-                  child: Text(entry.key.toUpperCase(),
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.muted,
-                          letterSpacing: 0.7)),
-                ),
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 0.82,
-                  children: [
-                    for (final m in entry.value)
-                      _MemoryCard(
-                        memory: m,
-                        onTap: () => _showMemoryDetail(context, ref, baby.id, m),
-                      ),
-                  ],
-                ),
+                _MonthHeader(entry.key),
+                for (final m in entry.value)
+                  _MemoryCard(
+                    memory: m,
+                    onTap: () => _showMemoryDetail(context, ref, baby.id, m),
+                  ),
               ],
             ],
           );
@@ -116,7 +104,8 @@ class MemoriesScreen extends ConsumerWidget {
   }
 }
 
-/// Tek anı kartı — foto (veya placeholder) + "ilk" rozeti + başlık + tarih.
+/// Büyük foto-odaklı anı kartı (scrapbook akışı): foto + üstte "ilk" rozeti +
+/// altında başlık/tarih/not önizleme.
 class _MemoryCard extends StatelessWidget {
   final Memory memory;
   final VoidCallback onTap;
@@ -125,72 +114,166 @@ class _MemoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final info = firstTagInfo(memory.firstTag);
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-                    child: memory.photo != null
-                        ? Image.network(memory.photo!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const _PhotoPlaceholder())
-                        : const _PhotoPlaceholder(),
-                  ),
-                  if (info != null)
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text('${info.emoji} ${info.label()}',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800)),
-                      ),
+    final hasPhoto = memory.photo != null;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: AppColors.softShadow,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (hasPhoto)
+                Stack(
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 4 / 3,
+                      child: Image.network(memory.photo!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const _PhotoPlaceholder()),
                     ),
-                ],
+                    if (info != null)
+                      Positioned(
+                        top: 10,
+                        left: 10,
+                        child: _MilestonePill(
+                            emoji: info.emoji, label: info.label(), onPhoto: true),
+                      ),
+                  ],
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Fotosuz anılarda rozet başlığın üstünde durur.
+                    if (!hasPhoto && info != null) ...[
+                      _MilestonePill(emoji: info.emoji, label: info.label()),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      memory.title.isNotEmpty
+                          ? memory.title
+                          : (info?.label() ?? tr('Anı')),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        AdenaIcon('calendar', size: 13, color: AppColors.muted),
+                        const SizedBox(width: 5),
+                        Text(DateFormat('d MMMM y', 'tr_TR').format(memory.date),
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.muted)),
+                      ],
+                    ),
+                    if (memory.note.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(memory.note,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13, height: 1.4, fontWeight: FontWeight.w600)),
+                    ],
+                  ],
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    memory.title.isNotEmpty
-                        ? memory.title
-                        : (info?.label() ?? tr('Anı')),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(DateFormat('d MMM y', 'tr_TR').format(memory.date),
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.muted)),
-                ],
-              ),
-            ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "İlk" kilometre taşı rozeti — foto üstünde koyu yarı saydam, metin alanında
+/// şeftali tonlu.
+class _MilestonePill extends StatelessWidget {
+  final String emoji;
+  final String label;
+  final bool onPhoto;
+  const _MilestonePill(
+      {required this.emoji, required this.label, this.onPhoto = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: onPhoto ? Colors.black.withValues(alpha: 0.5) : AppColors.feedBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text('$emoji $label',
+          style: TextStyle(
+              color: onPhoto ? Colors.white : AppColors.coralDd,
+              fontSize: 11,
+              fontWeight: FontWeight.w900)),
+    );
+  }
+}
+
+/// Bulut yedek ibaresi — herkeste her zaman açık (premium/free ayrımı yok).
+class _CloudChip extends StatelessWidget {
+  const _CloudChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.growthBg,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('☁️', style: TextStyle(fontSize: 12)),
+            const SizedBox(width: 6),
+            Text(tr('Anıların buluta yedekleniyor'),
+                style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF349970))),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Ay başlığı — başlık + ince ayraç çizgisi.
+class _MonthHeader extends StatelessWidget {
+  final String label;
+  const _MonthHeader(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 18, 2, 12),
+      child: Row(
+        children: [
+          Text(label.toUpperCase(),
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.coralDd,
+                  letterSpacing: 0.6)),
+          const SizedBox(width: 10),
+          Expanded(child: Container(height: 1.5, color: AppColors.line)),
+        ],
       ),
     );
   }

@@ -6,6 +6,7 @@ import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/auth_repository.dart';
 import '../auth/auth_controller.dart';
 import 'data_export.dart';
 
@@ -20,6 +21,43 @@ class PrivacyScreen extends ConsumerStatefulWidget {
 
 class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
   bool _exporting = false;
+  bool _anon = false; // topluluk anonimliği (community_display == 'anon')
+  bool _savingAnon = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCommunityPref();
+  }
+
+  Future<void> _loadCommunityPref() async {
+    try {
+      final s = await ref.read(authRepositoryProvider).settings();
+      if (mounted) {
+        setState(() => _anon = (s['community_display'] as String?) == 'anon');
+      }
+    } catch (_) {
+      // sessiz geç — varsayılan gerçek isim
+    }
+  }
+
+  Future<void> _setAnon(bool value) async {
+    setState(() {
+      _anon = value;
+      _savingAnon = true;
+    });
+    try {
+      await ref.read(authRepositoryProvider).updateSettings(
+          {'community_display': value ? 'anon' : 'name'});
+    } catch (e) {
+      if (mounted) {
+        setState(() => _anon = !value); // geri al
+        showAdError(context, apiErrorText(e));
+      }
+    } finally {
+      if (mounted) setState(() => _savingAnon = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +106,35 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                       fontWeight: FontWeight.w900,
                       color: Color(0xFF349970))),
             ),
+          ),
+          adSec(tr('Topluluk'),
+              info: tr('Ebeveyn topluluğunda soru/cevap paylaşırken nasıl '
+                  'görüneceğini belirler. Anonim açıkken adın yerine "Anonim" '
+                  'görünür; bebek bilgilerin paylaşılmaz.')),
+          AdMenuItem(
+            icon: 'user',
+            color: AppColors.sleep,
+            bg: AppColors.sleepBg,
+            title: tr('Toplulukta anonim görün'),
+            meta: _anon
+                ? tr('Gönderilerin "Anonim" olarak görünür')
+                : tr('Gönderilerin gerçek adınla görünür'),
+            trailing: _savingAnon
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.sleep))
+                : Switch.adaptive(
+                    value: _anon,
+                    activeThumbColor: AppColors.coral,
+                    onChanged: _setAnon,
+                  ),
+            onTap: () => _setAnon(!_anon),
+          ),
+          _Note(
+            tr('Not: Anonimlik her gönderi için o anki ayarına göre belirlenir; '
+                'sonradan değiştirsen eski gönderiler aynı kalır.'),
           ),
           adSec(tr('Şeffaflık')),
           _Note(

@@ -5,9 +5,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/ad_service.dart';
 import '../../data/record_repository.dart';
+import '../../data/subscription_repository.dart';
+import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
 import '../babies/baby_controller.dart';
+import '../babies/family_settings.dart';
 
 const _uuid = Uuid();
 
@@ -156,32 +160,67 @@ class RecordActions {
 
   RecordRepository get _repo => _ref.read(recordRepositoryProvider);
 
-  Future<void> _saveAndSync(Record r) async {
+  /// [ad] = tamamlanmış kullanıcı kaydı (reklam tetikleyebilir). Süren-sayaç
+  /// mutasyonları (başlat/duraklat/meme değiştir) false bırakır.
+  Future<void> _saveAndSync(Record r, {bool ad = false}) async {
     await _repo.upsertLocal(r);
     _ref.invalidate(presentTypesProvider(r.baby)); // yeni tip → filtre tazelensin
     unawaited(_ref.read(syncServiceProvider).syncAll());
+    if (ad) {
+      unawaited(AdService.instance.onRecordSaved(
+        isPremium: _ref.read(isPremiumProvider),
+        suppress: _suppressAd(r),
+      ));
+    }
+  }
+
+  /// Reklamı uygunsuz anlarda sustur: sessiz saat penceresi ya da SÜREN bir
+  /// uyku/emzirme sayacı varken. Az önce durdurulan kayıt (aynı id) sayaç
+  /// sayılmaz — drift stream'i henüz "ongoing=null" yaymamış olabilir.
+  bool _suppressAd(Record r) {
+    final sleep = _ref.read(ongoingSleepProvider(r.baby));
+    final breast = _ref.read(ongoingBreastProvider(r.baby));
+    final timerBusy =
+        (sleep != null && sleep.id != r.id) || (breast != null && breast.id != r.id);
+    return timerBusy || _inQuietHours(_ref.read(quietHoursProvider(r.baby)));
+  }
+
+  bool _inQuietHours(QuietHours q) {
+    if (!q.enabled) return false;
+    final now = DateTime.now();
+    final mins = now.hour * 60 + now.minute;
+    final s = q.startMin, e = q.endMin;
+    if (s == e) return false;
+    // Gece yarısını saran aralığı da destekle (ör. 22:00–07:00).
+    return s < e ? (mins >= s && mins < e) : (mins >= s || mins < e);
   }
 
   /// Genel oluştur/güncelle — form tabanlı kayıtlar bunu kullanır
   /// (id korunursa düzenleme, yeni id ise ekleme).
-  Future<void> upsert(Record r) => _saveAndSync(r);
+  Future<void> upsert(Record r) => _saveAndSync(r, ad: true);
 
-  Future<void> addDiaper(String babyId, String sub) => _saveAndSync(Record(
-        id: _uuid.v4(),
-        baby: babyId,
-        type: RecordType.diaper,
-        ts: DateTime.now(),
-        data: {'sub': sub},
-      ));
+  Future<void> addDiaper(String babyId, String sub) => _saveAndSync(
+        Record(
+          id: _uuid.v4(),
+          baby: babyId,
+          type: RecordType.diaper,
+          ts: DateTime.now(),
+          data: {'sub': sub},
+        ),
+        ad: true,
+      );
 
   Future<void> addFeed(String babyId, Map<String, dynamic> data) =>
-      _saveAndSync(Record(
-        id: _uuid.v4(),
-        baby: babyId,
-        type: RecordType.feed,
-        ts: DateTime.now(),
-        data: data,
-      ));
+      _saveAndSync(
+        Record(
+          id: _uuid.v4(),
+          baby: babyId,
+          type: RecordType.feed,
+          ts: DateTime.now(),
+          data: data,
+        ),
+        ad: true,
+      );
 
   Future<void> startSleep(String babyId) {
     final now = DateTime.now();
@@ -199,21 +238,25 @@ class RecordActions {
     final start =
         DateTime.tryParse(sleep.data['start_ts'] as String? ?? '')?.toLocal() ??
             sleep.ts;
-    return _saveAndSync(sleep.copyWith(data: {
-      ...sleep.data,
-      'end_ts': now.toUtc().toIso8601String(),
-      'duration': now.difference(start).inMinutes,
-    }));
+    return _saveAndSync(
+        sleep.copyWith(data: {
+          ...sleep.data,
+          'end_ts': now.toUtc().toIso8601String(),
+          'duration': now.difference(start).inMinutes,
+        }),
+        ad: true);
   }
 
   /// Uykuyu elle girilen başlangıç/bitişle tamamla (kaydetmeden önce süre düzenleme).
   Future<void> stopSleepWithTimes(Record sleep, DateTime start, DateTime end) {
-    return _saveAndSync(sleep.copyWith(ts: start, data: {
-      ...sleep.data,
-      'start_ts': start.toUtc().toIso8601String(),
-      'end_ts': end.toUtc().toIso8601String(),
-      'duration': end.difference(start).inMinutes,
-    }));
+    return _saveAndSync(
+        sleep.copyWith(ts: start, data: {
+          ...sleep.data,
+          'start_ts': start.toUtc().toIso8601String(),
+          'end_ts': end.toUtc().toIso8601String(),
+          'duration': end.difference(start).inMinutes,
+        }),
+        ad: true);
   }
 
   // ── Emzirme kronometresi (uyku gibi kalıcı "süren kayıt") ──────────────
@@ -291,7 +334,7 @@ class RecordActions {
     d.remove('paused');
     d['left_min'] = (((d['left_ms'] as num?) ?? 0) / 60000).round();
     d['right_min'] = (((d['right_ms'] as num?) ?? 0) / 60000).round();
-    return _saveAndSync(r.copyWith(data: d));
+    return _saveAndSync(r.copyWith(data: d), ad: true);
   }
 
   /// Emzirmeyi elle girilen dakikalarla tamamla (kaydetmeden önce süre düzenleme).
@@ -305,7 +348,7 @@ class RecordActions {
     d['right_min'] = rightMin;
     d['left_ms'] = (leftMin * 60000).round();
     d['right_ms'] = (rightMin * 60000).round();
-    return _saveAndSync(r.copyWith(data: d));
+    return _saveAndSync(r.copyWith(data: d), ad: true);
   }
 
   Future<void> delete(String id) async {

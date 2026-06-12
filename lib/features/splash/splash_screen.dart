@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ad_widgets.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/subscription_repository.dart';
 
 /// Açılış ekranı — design ScrSplash ile birebir:
 /// şeftali radyal ışıma + gradient amblem + kelime-logo + altta 3 nokta.
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends ConsumerWidget {
   const SplashScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isPremium = ref.watch(isPremiumProvider);
     return Scaffold(
       backgroundColor: AppColors.cream, // --bg = #FFF8F4
       body: SafeArea(
@@ -23,6 +27,11 @@ class SplashScreen extends StatelessWidget {
                 const BrandEmblem(),
                 const SizedBox(height: 22),
                 const BrandWordmark(fontSize: 38),
+                // Premium → logonun altında küçük altın rozet (cache → flaş yok).
+                if (isPremium) ...[
+                  const SizedBox(height: 12),
+                  const AdProBadge(),
+                ],
                 const SizedBox(height: 14),
                 Text(
                   tr('Bir bebekle başladı, her bebek için.'),

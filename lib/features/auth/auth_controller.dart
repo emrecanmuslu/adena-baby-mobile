@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
+import '../../core/revenuecat_service.dart';
 import '../../data/auth_repository.dart';
 import '../../data/social_auth_service.dart';
+import '../../data/subscription_cache.dart';
 import '../../models/user.dart';
 
 /// Oturum durumu. State == null → çıkış yapılmış, User → oturum açık.
@@ -15,7 +17,9 @@ class AuthController extends AsyncNotifier<User?> {
     final hasSession = await ref.read(tokenStorageProvider).hasSession;
     if (!hasSession) return null;
     try {
-      return await _repo.me();
+      final user = await _repo.me();
+      _syncRevenueCat(user);
+      return user;
     } catch (_) {
       // Token geçersiz/temizlenmiş — çıkış durumuna düş.
       await ref.read(tokenStorageProvider).clear();
@@ -23,11 +27,17 @@ class AuthController extends AsyncNotifier<User?> {
     }
   }
 
+  /// RevenueCat kullanıcı kimliğini bizim user.id'ye sabitler (webhook eşleşmesi).
+  void _syncRevenueCat(User? user) {
+    if (user != null) RevenueCatService.instance.identify(user.id);
+  }
+
   Future<void> login({required String email, required String password}) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(
       () => _repo.login(email: email, password: password),
     );
+    _syncRevenueCat(state.value);
   }
 
   Future<void> register({
@@ -39,6 +49,7 @@ class AuthController extends AsyncNotifier<User?> {
     state = await AsyncValue.guard(
       () => _repo.register(email: email, password: password, name: name),
     );
+    _syncRevenueCat(state.value);
   }
 
   /// Sosyal giriş (provider: 'google' | 'apple'). Kullanıcı sağlayıcı
@@ -52,6 +63,7 @@ class AuthController extends AsyncNotifier<User?> {
       if (idToken == null) return null; // iptal → çıkış durumunda kal
       return _repo.social(provider: provider, idToken: idToken);
     });
+    _syncRevenueCat(state.value);
   }
 
   Future<void> updateName(String name) async {
@@ -66,6 +78,8 @@ class AuthController extends AsyncNotifier<User?> {
 
   Future<void> logout() async {
     await _repo.logout();
+    await RevenueCatService.instance.logoutUser();
+    await SubscriptionCache().clear(); // sonraki kullanıcıya premium sızmasın
     state = const AsyncData(null);
   }
 }

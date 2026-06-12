@@ -11,6 +11,7 @@ import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
 import '../../models/record.dart';
+import '../../models/symptom.dart';
 import '../../models/vaccine.dart';
 import '../babies/baby_controller.dart';
 import '../records/record_controller.dart';
@@ -53,8 +54,11 @@ class HealthScreen extends ConsumerWidget {
           adSec(tr('Doktor randevuları')),
           _AppointmentSummary(records: records),
 
-          // ── Son ateş & ilaç ──
-          adSec(tr('Son ateş & ilaç')),
+          // ── Son sağlık kayıtları (ateş · ilaç · belirti) ──
+          adSec(tr('Son sağlık kayıtları'),
+              info: tr('En son ateş, ilaç ve belirti kayıtların. Yeni kayıt '
+                  'eklemek için + düğmesini kullan. Tümünü Günlük Akış\'ta '
+                  'görebilirsin.')),
           _FeverMedSummary(records: records),
 
           const SizedBox(height: 8),
@@ -66,6 +70,15 @@ class HealthScreen extends ConsumerWidget {
             title: tr('Gelişim / Kilometre Taşları'),
             meta: tr('Yaşa göre beklenen gelişim basamakları'),
             onTap: () => context.push('/milestones'),
+          ),
+          // Diş çıkarma takibi köprüsü.
+          AdMenuItem(
+            icon: 'tooth',
+            color: AppColors.pump,
+            bg: AppColors.pumpBg,
+            title: tr('Diş Gelişimi'),
+            meta: tr('Süt dişleri haritası — çıkanları işaretle'),
+            onTap: () => context.push('/teeth'),
           ),
           // Hatırlatıcılar köprüsü (design'da ayrı ekran; hub'dan erişim).
           AdMenuItem(
@@ -286,7 +299,7 @@ class _ApptRow extends StatelessWidget {
   }
 }
 
-/// Son ateş + son ilaç kaydı (design .ad-entry).
+/// Son ateş + son ilaç + son belirti kaydı (design .ad-entry).
 class _FeverMedSummary extends StatelessWidget {
   final List<Record> records;
   const _FeverMedSummary({required this.records});
@@ -298,15 +311,20 @@ class _FeverMedSummary extends StatelessWidget {
         sorted.where((r) => r.type == RecordType.temperature).firstOrNull;
     final lastMed =
         sorted.where((r) => r.type == RecordType.medication).firstOrNull;
+    final lastSymptom =
+        sorted.where((r) => r.type == RecordType.symptom).firstOrNull;
 
-    if (lastFever == null && lastMed == null) {
-      return _CardNote(tr('Henüz ateş veya ilaç kaydı yok.'));
+    if (lastFever == null && lastMed == null && lastSymptom == null) {
+      return _CardNote(tr('Henüz ateş, ilaç veya belirti kaydı yok.'));
     }
+    // En yeniler üstte: üç kaydı zamanına göre sırala.
+    final entries = [
+      ?lastFever,
+      ?lastMed,
+      ?lastSymptom,
+    ]..sort((a, b) => b.ts.compareTo(a.ts));
     return Column(
-      children: [
-        if (lastFever != null) _EntryRow(record: lastFever),
-        if (lastMed != null) _EntryRow(record: lastMed),
-      ],
+      children: [for (final r in entries) _EntryRow(record: r)],
     );
   }
 }
@@ -395,8 +413,18 @@ class _ErrorNote extends StatelessWidget {
 DateTime _apptTime(Record r) =>
     DateTime.tryParse(r.data['datetime'] as String? ?? '')?.toLocal() ?? r.ts;
 
-/// Ateş/ilaç kaydı için (başlık, alt-metin).
+/// Ateş/ilaç/belirti kaydı için (başlık, alt-metin).
 (String, String) _entryText(Record r) {
+  if (r.type == RecordType.symptom) {
+    final name = trSymptom(r.data['key'] as String? ?? '');
+    final sev = SymptomSeverity.fromString(r.data['severity'] as String?);
+    final note = r.data['note'] as String?;
+    final title = name.isEmpty ? tr('Belirti') : name;
+    final meta = (note != null && note.isNotEmpty)
+        ? '${sev.label} · $note'
+        : sev.label.toLowerCase();
+    return (title, meta);
+  }
   if (r.type == RecordType.temperature) {
     final value = (r.data['value'] as num?)?.toDouble();
     final unit = r.data['unit'] as String? ?? 'C';

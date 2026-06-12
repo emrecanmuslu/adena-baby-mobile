@@ -39,4 +39,36 @@ class AppConfig {
     'APPLE_REDIRECT_URI',
     defaultValue: '',
   );
+
+  // ── RevenueCat (premium satın alma / entitlement) ──────────────────
+  // Platform-bazlı **public** API anahtarları (gizli değil — istemci anahtarı).
+  // Boşsa RevenueCat sessizce devre dışı kalır: premium durumu yalnız backend'den
+  // okunur, satın alma akışı kapanır. RC dashboard → Project → API keys.
+
+  /// Android (Google Play) public anahtarı (goog_...).
+  static const String revenueCatAndroidKey = String.fromEnvironment(
+    'REVENUECAT_ANDROID_KEY',
+    defaultValue: '',
+  );
+
+  /// iOS (App Store) public anahtarı (appl_...).
+  static const String revenueCatIosKey = String.fromEnvironment(
+    'REVENUECAT_IOS_KEY',
+    defaultValue: '',
+  );
+
+  // ── AdMob (reklam) ──────────────────────────────────────────────────
+  // Interstitial reklam birim id'leri. Boşsa gerçek reklam yerine geliştirme
+  // placeholder'ı gösterilir (frekans limiti yine işler). AdMob app id'si ayrıca
+  // AndroidManifest/Info.plist'e eklenmeli (SDK bağlanınca).
+
+  static const String admobAndroidInterstitialId = String.fromEnvironment(
+    'ADMOB_ANDROID_INTERSTITIAL_ID',
+    defaultValue: '',
+  );
+
+  static const String admobIosInterstitialId = String.fromEnvironment(
+    'ADMOB_IOS_INTERSTITIAL_ID',
+    defaultValue: '',
+  );
 }

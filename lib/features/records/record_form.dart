@@ -12,6 +12,7 @@ import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../../data/health_repository.dart';
 import '../../models/record.dart';
+import '../../models/symptom.dart';
 import '../babies/family_settings.dart';
 import 'entry_widgets.dart';
 import 'record_controller.dart';
@@ -58,6 +59,8 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
   late String _sub; // diaper/feed alt tipi
   String _unit = 'C'; // temperature
   String _timing = 'after'; // pumping
+  String _symptomKey = ''; // symptom: seçili belirti
+  String _severity = 'moderate'; // symptom: hafif/orta/şiddetli
   bool _diaperDetail = false; // bez: dışkı detayı (renk/kıvam) açık mı
   String _stool = ''; // bez: renk / kıvam
   late Units _units; // birim tercihleri (form açılışında okunur)
@@ -118,6 +121,11 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
     _timing = d['timing'] as String? ?? 'after';
     _stool = d['stool'] as String? ?? '';
     if (_stool.isNotEmpty) _diaperDetail = true;
+    // Belirti: yeni kayıtta seçim boş gelir (her hastalıkta farklı); düzenlemede mevcut.
+    if (widget.type == RecordType.symptom && _editing) {
+      _symptomKey = d['key'] as String? ?? '';
+      _severity = d['severity'] as String? ?? 'moderate';
+    }
     if (widget.type == RecordType.sleep) {
       final s = DateTime.tryParse(d['start_ts'] as String? ?? '')?.toLocal();
       if (s != null) _ts = s;
@@ -256,6 +264,10 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
         data = {'title': ctl('title').text.trim(), 'datetime': _ts.toUtc().toIso8601String()};
         _addNote(data);
         await _syncApptReminder(data); // data['reminder_id'] / reminder_lead_min ayarlar
+      case RecordType.symptom:
+        if (_symptomKey.isEmpty) return _warn(tr('Bir belirti seç'));
+        data = {'key': _symptomKey, 'severity': _severity};
+        _addNote(data);
     }
 
     final record = Record(
@@ -487,7 +499,41 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           AdField(label: tr('Not'), child: _noteInput()),
           _apptReminderField(),
         ];
+      case RecordType.symptom:
+        return _symptomFields();
     }
+  }
+
+  // ── Belirti (semptom) bölümü: katalog seçimi + şiddet + not ──────────────
+  List<Widget> _symptomFields() {
+    return [
+      AdField(
+        label: tr('Belirti'),
+        info: tr('Bebeğinde gözlemlediğin belirtiyi seç. Ateş ve ilaç ayrı kayıt '
+            'türleridir. Her belirtiyi tek tek kaydet; aynı gün birden fazla '
+            'belirti için ayrı kayıt ekleyebilirsin. Kayıtlar Günlük Akış\'ta ve '
+            'Sağlık Hub\'ında görünür.'),
+        child: _SymptomGrid(
+          selected: _symptomKey,
+          onSelect: (k) => setState(() => _symptomKey = k),
+        ),
+      ),
+      AdField(
+        label: tr('Şiddet'),
+        info: tr('Belirtinin ne kadar belirgin olduğunu işaretle. Şiddetli ve '
+            'sürekli belirtilerde doktora danış.'),
+        child: AdTabs(
+          options: {
+            'mild': tr('Hafif'),
+            'moderate': tr('Orta'),
+            'severe': tr('Şiddetli'),
+          },
+          selected: _severity,
+          onSelect: (v) => setState(() => _severity = v),
+        ),
+      ),
+      AdField(label: tr('Not'), child: _noteInput()),
+    ];
   }
 
   /// Randevu hatırlatıcısı: aç/kapa + ne kadar önce (hazır + özel).
@@ -1207,6 +1253,54 @@ Future<void> confirmStopSleep(
   } else {
     await ref.read(recordActionsProvider).stopSleep(sleep);
     if (context.mounted) showAdToast(context, tr('Kaydedildi'));
+  }
+}
+
+/// Belirti kataloğu seçim ızgarası (emoji + etiket pill'leri, akışkan Wrap).
+/// Seçili pill mercan kenarlık + belirti zemini alır.
+class _SymptomGrid extends StatelessWidget {
+  final String selected;
+  final ValueChanged<String> onSelect;
+  const _SymptomGrid({required this.selected, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final s in kSymptoms)
+          _pill(context, s),
+      ],
+    );
+  }
+
+  Widget _pill(BuildContext context, SymptomKind s) {
+    final on = s.key == selected;
+    return GestureDetector(
+      onTap: () => onSelect(s.key),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: on ? AppColors.symptomBg : Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: on ? AppColors.symptom : AppColors.line, width: 2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(s.emoji, style: const TextStyle(fontSize: 16)),
+            const SizedBox(width: 7),
+            Text(s.label,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: on ? AppColors.symptom : AppColors.ink)),
+          ],
+        ),
+      ),
+    );
   }
 }
 

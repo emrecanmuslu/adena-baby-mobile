@@ -18,6 +18,8 @@ class AdenaIcons {
     'bath': '<path d="M4 12h16v3a4 4 0 01-4 4H8a4 4 0 01-4-4v-3z"/><path d="M6 12V6a2.5 2.5 0 015 0M9.5 6h3"/><path d="M5 19l-1 2M19 19l1 2"/>',
     'doctor': '<path d="M6 3v5a4 4 0 008 0V3"/><path d="M6 3H4.5M9.5 3H8"/><path d="M10 12v2.5a5.5 5.5 0 0011 0V13"/><circle cx="20" cy="11" r="2"/>',
     'solid': '<path d="M5 11a7 7 0 0114 0"/><path d="M3.5 11h17"/><path d="M6 11v3a6 6 0 0012 0v-3"/><path d="M12 4V2.5"/>',
+    'pulse': '<path d="M3 12h3.5l2-6 3.5 12 2.5-7 1.5 3H21"/>', // EKG/nabız — belirti
+    'tooth': '<path d="M6 4C4.3 4 3 5.4 3 7.3c0 1.2.4 2.3.8 3.7.5 1.8.6 5 .9 6.7.2 1 .5 2 1.3 2 .9 0 1-1.3 1.4-3 .3-1.3.6-2.4 1.6-2.4s1.3 1.1 1.6 2.4c.4 1.7.5 3 1.4 3 .8 0 1.1-1 1.3-2 .3-1.7.4-4.9.9-6.7.4-1.4.8-2.5.8-3.7C21 5.4 19.7 4 18 4c-1.5 0-2.5.8-3.8.8S13.5 4 12 4s-2 .8-3.2.8S7.5 4 6 4z"/>', // süt dişi
     // navigasyon
     'home': '<path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/>',
     'timeline': '<circle cx="5" cy="6.5" r="1.5"/><circle cx="5" cy="12" r="1.5"/><circle cx="5" cy="17.5" r="1.5"/><path d="M9.5 6.5H20M9.5 12H20M9.5 17.5H17"/>',
@@ -37,6 +39,11 @@ class AdenaIcons {
     'chevR': '<path d="M9 5l7 7-7 7"/>',
     'chevL': '<path d="M15 5l-7 7 7 7"/>',
     'chevD': '<path d="M5 9l7 7 7-7"/>',
+    'arrowUp': '<path d="M12 19V5"/><path d="M5.5 11.5L12 5l6.5 6.5"/>',
+    'compass': '<circle cx="12" cy="12" r="9"/><path d="M14.6 9.4l-1.9 4.3-4.3 1.9 1.9-4.3z"/>',
+    'comment': '<path d="M21 7v6a3 3 0 01-3 3h-6.5L7.5 19.8V16H7a3 3 0 01-3-3V7a3 3 0 013-3h11a3 3 0 013 3z"/>',
+    'send': '<path d="M21 3L10.5 13.5"/><path d="M21 3l-6.8 17-3.7-6.5L4 9.8 21 3z"/>',
+    'shieldAlert': '<path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="M12 8.5V12"/><path d="M12 15h.01"/>',
     'check': '<path d="M5 12.5l4.5 4.5L19 6.5"/>',
     'clock': '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     'edit': '<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M14 6l4 4"/>',

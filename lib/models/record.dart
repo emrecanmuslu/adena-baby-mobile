@@ -12,7 +12,8 @@ enum RecordType {
   temperature,
   medication,
   bath,
-  appointment;
+  appointment,
+  symptom;
 
   static RecordType fromString(String s) =>
       RecordType.values.firstWhere((e) => e.name == s, orElse: () => RecordType.feed);
