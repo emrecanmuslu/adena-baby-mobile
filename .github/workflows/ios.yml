@@ -1,14 +1,14 @@
 name: iOS build (imzasız ipa)
 
 # Sideloadly ile yan-yükleme için imzasız .ipa üretir.
-# Actions sekmesi → "Run workflow" → tünel URL'ini gir → bitince artifact'ı indir.
+# Actions sekmesi → "Run workflow" → (varsayılan cloud adresi hazır) → bitince artifact'ı indir.
 on:
   workflow_dispatch:
     inputs:
       api_base_url:
-        description: 'API taban adresi (cloudflared tüneli)'
+        description: 'API taban adresi (test sunucusu)'
         required: true
-        default: 'https://injured-remark-fat-whats.trycloudflare.com/api/v1'
+        default: 'https://91.99.19.82.sslip.io/api/v1'
 
 # Tüm JS aksiyonlarını Node 24'te çalıştır (checkout/upload-artifact Node 20 uyarısını susturur).
 env:
