@@ -30,6 +30,12 @@ jobs:
       - name: Sürüm
         run: flutter --version
 
+      # Firebase SPM manifest'leri CI'da bozuk (SourcePackages rsync / firebase_sdk_version.rb
+      # fileNotFound). Proje CocoaPods'a döndürüldü (pbxproj'tan SPM ref'leri çıkarıldı),
+      # SPM'i kapalı tut ki yeniden migrate etmesin. pub get'ten ÖNCE çalışmalı.
+      - name: SPM kapat (CocoaPods kullan)
+        run: flutter config --no-enable-swift-package-manager
+
       - name: Bağımlılıklar
         run: flutter pub get
 
