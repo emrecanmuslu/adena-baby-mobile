@@ -36,11 +36,6 @@ jobs:
       - name: Codegen (drift)
         run: dart run build_runner build --delete-conflicting-outputs
 
-      # Firebase plugin'leri SPM ile çözülünce 'SourcePackages rsync' hatası
-      # veriyor → CocoaPods'a zorla (podspec'ler mevcut, CocoaPods güvenilir yol).
-      - name: SPM kapat (CocoaPods kullan)
-        run: flutter config --no-enable-swift-package-manager
-
       - name: iOS derle (imzasız)
         run: >
           flutter build ios --release --no-codesign
