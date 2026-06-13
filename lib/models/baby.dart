@@ -32,6 +32,18 @@ class Baby {
 
   bool get isExpecting => status == BabyStatus.expecting;
 
+  /// Tam yazma yetkisi (owner/parent). Bakıcı (caregiver) hariç — sağlık/anı/anne
+  /// takibi salt-okunur ya da gizli, kayıtlarda yalnız kendi eklediğine dokunabilir.
+  /// myRole null (tek kullanıcı/eski veri) → tam yetki varsay.
+  bool get canFullWrite => myRole == null || myRole == 'owner' || myRole == 'parent';
+
+  /// Yalnız izleyen bakıcı mı?
+  bool get isCaregiver => myRole == 'caregiver';
+
+  /// Bildirim id "slot"u (0..999) — çok-bebekte sayaç/beslenme bildirimleri
+  /// çakışmasın diye bebek başına ayrık id tabanı. id'den deterministik üretilir.
+  int get notifSlot => id.hashCode.abs() % 1000;
+
   factory Baby.fromJson(Map<String, dynamic> json) => Baby(
         id: json['id'] as String,
         name: json['name'] as String? ?? '',

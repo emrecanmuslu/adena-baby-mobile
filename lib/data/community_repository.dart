@@ -10,13 +10,24 @@ class CommunityRepository {
   CommunityRepository(this._api);
 
   Future<List<Question>> feed(
-      {String? category, String sort = 'new', int offset = 0, int limit = 20}) async {
+      {String? category,
+      String sort = 'new',
+      String? search,
+      int offset = 0,
+      int limit = 20}) async {
     final query = <String, dynamic>{'sort': sort, 'offset': offset, 'limit': limit};
     if (category != null) query['category'] = category;
+    if (search != null && search.trim().isNotEmpty) query['search'] = search.trim();
     final resp =
         await _api.dio.get('/community/questions', queryParameters: query);
     final data = resp.data as List<dynamic>;
     return data.map((e) => Question.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Bir üyenin herkese açık topluluk profili (anonim olmayan soruları + istatistik).
+  Future<CommunityProfile> userProfile(String userId) async {
+    final resp = await _api.dio.get('/community/users/$userId');
+    return CommunityProfile.fromJson(resp.data as Map<String, dynamic>);
   }
 
   Future<Question> question(String id) async {
@@ -33,9 +44,28 @@ class CommunityRepository {
     return (resp.data as Map<String, dynamic>)['id'] as String;
   }
 
+  /// Soruyu düzenler (sahip-only). category null → kategoriyi kaldırır.
+  Future<void> updateQuestion(String id,
+      {required String title, String body = '', String? category}) async {
+    await _api.dio.patch('/community/questions/$id',
+        data: {'title': title, 'body': body, 'category': category});
+  }
+
+  Future<void> deleteQuestion(String id) async {
+    await _api.dio.delete('/community/questions/$id');
+  }
+
   Future<void> createAnswer(String questionId, String body) async {
     await _api.dio.post('/community/questions/$questionId/answers',
         data: {'body': body});
+  }
+
+  Future<void> updateAnswer(String id, String body) async {
+    await _api.dio.patch('/community/answers/$id', data: {'body': body});
+  }
+
+  Future<void> deleteAnswer(String id) async {
+    await _api.dio.delete('/community/answers/$id');
   }
 
   /// Oy ver/kaldır → {score, myVote} döndürür.

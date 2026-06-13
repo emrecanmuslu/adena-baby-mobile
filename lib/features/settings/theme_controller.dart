@@ -1,27 +1,40 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n.dart';
 import '../../data/auth_repository.dart';
+import '../../data/theme_cache.dart';
 import '../auth/auth_controller.dart';
 
-/// Tema modu — UserSettings.theme'den yüklenir, değişince sunucuya kaydedilir.
+/// Açılışta cache'ten okunan tema (main.dart bu provider'ı override eder).
+/// themeController henüz yüklenmeden ilk frame (splash) doğru temada gelsin diye
+/// fallback olarak bunu kullanırız — sistem yerine son seçilen tema.
+final cachedThemeProvider = Provider<ThemeMode>((_) => ThemeMode.system);
+
+/// Tema modu — UserSettings.theme'den yüklenir, değişince sunucuya + cache'e kaydedilir.
 /// API değerleri: light | dark | auto.
 class ThemeController extends AsyncNotifier<ThemeMode> {
   @override
   Future<ThemeMode> build() async {
+    // Oturum yoksa son seçilen yerel temayı kullan (system'e düşme → splash flaş'ı yok).
+    final cached = ref.read(cachedThemeProvider);
     final user = ref.watch(authControllerProvider).asData?.value;
-    if (user == null) return ThemeMode.system;
+    if (user == null) return cached;
     try {
       final s = await ref.read(authRepositoryProvider).settings();
-      return _fromApi(s['theme'] as String?);
+      final mode = _fromApi(s['theme'] as String?);
+      unawaited(ThemeCache().write(mode)); // sonraki açılış için sakla
+      return mode;
     } catch (_) {
-      return ThemeMode.system;
+      return cached;
     }
   }
 
   Future<void> setMode(ThemeMode mode) async {
     state = AsyncData(mode);
+    unawaited(ThemeCache().write(mode)); // açılışta flaş'sız okunsun
     try {
       await ref.read(authRepositoryProvider).updateSettings({'theme': _toApi(mode)});
     } catch (_) {

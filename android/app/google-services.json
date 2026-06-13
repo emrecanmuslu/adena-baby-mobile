@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "160566700344",
+    "project_id": "adena-baby-e71ba",
+    "storage_bucket": "adena-baby-e71ba.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:160566700344:android:5a4f7f9d13923ee4f8f9cd",
+        "android_client_info": {
+          "package_name": "com.adenababy.adena_baby"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_2G8xBQ5Aidwk_0WO2B9D7qG7gVWbiDQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

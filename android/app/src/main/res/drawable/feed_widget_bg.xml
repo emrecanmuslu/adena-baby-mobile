@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget kart arka planı — yuvarlak köşe, mercan tonlu degrade. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:startColor="#FF8A7A"
+        android:endColor="#FFB3A3"
+        android:angle="135" />
+    <corners android:radius="22dp" />
+</shape>

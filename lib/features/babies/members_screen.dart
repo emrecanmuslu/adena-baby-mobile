@@ -300,30 +300,27 @@ class _MemberRow extends ConsumerWidget {
                 style: TextStyle(
                     fontSize: 10, fontWeight: FontWeight.w900, color: s.pillFg)),
           ),
+          // Rol davet anında belirlenir; sonradan değiştirme yok. Sahip yalnız
+          // üyeyi çıkarabilir.
           if (canManage)
-            PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, color: AppColors.muted, size: 20),
-              onSelected: (v) => _onAction(context, ref, v),
-              itemBuilder: (_) => [
-                PopupMenuItem(value: 'parent', child: Text(tr('Ebeveyn yap'))),
-                PopupMenuItem(value: 'caregiver', child: Text(tr('Bakıcı yap'))),
-                PopupMenuItem(value: 'remove', child: Text(tr('Çıkar'))),
-              ],
+            IconButton(
+              icon: Icon(Icons.person_remove_outlined,
+                  color: AppColors.muted, size: 20),
+              tooltip: tr('Çıkar'),
+              onPressed: () => _remove(context, ref),
             ),
         ],
       ),
     );
   }
 
-  Future<void> _onAction(BuildContext context, WidgetRef ref, String action) async {
-    final repo = ref.read(babyRepositoryProvider);
+  Future<void> _remove(BuildContext context, WidgetRef ref) async {
     try {
-      if (action == 'remove') {
-        await repo.removeMember(babyId, membership.user.id);
-      } else {
-        await repo.updateMemberRole(babyId, membership.user.id, action);
-      }
+      await ref.read(babyRepositoryProvider).removeMember(babyId, membership.user.id);
       ref.invalidate(membersProvider(babyId));
+      if (context.mounted) {
+        showAdToast(context, trp('{name} çıkarıldı', {'name': membership.user.displayName}));
+      }
     } catch (e) {
       if (context.mounted) showAdError(context, apiErrorText(e));
     }

@@ -86,6 +86,34 @@ class RecordUi {
   /// Saat (14:32) — timeline satırı için.
   static String time(DateTime ts) => DateFormat('HH:mm').format(ts);
 
+  /// Göreli zaman: "az önce" · "12 dk önce" · "3 sa önce" · "dün" · "2 gün önce".
+  /// 7 günden eskiyse kısa tarih ("14 Haz"). Son Aktivite kartlarında kullanılır.
+  static String relative(DateTime ts) {
+    final diff = DateTime.now().difference(ts);
+    final min = diff.inMinutes;
+    if (min < 1) return tr('az önce');
+    if (min < 60) return trp('{n} dk önce', {'n': min});
+    final hrs = diff.inHours;
+    if (hrs < 24) return trp('{n} sa önce', {'n': hrs});
+    final days = diff.inDays;
+    if (days == 1) return tr('dün');
+    if (days < 7) return trp('{n} gün önce', {'n': days});
+    return DateFormat('d MMM', 'tr_TR').format(ts);
+  }
+
+  /// Akıllı tam tarih+saat: bugün → "14:30", dün → "Dün 14:30",
+  /// daha eski → "14 Haz 14:30".
+  static String shortStamp(DateTime ts) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(ts.year, ts.month, ts.day);
+    final hm = DateFormat('HH:mm').format(ts);
+    final dd = today.difference(day).inDays;
+    if (dd == 0) return hm;
+    if (dd == 1) return '${tr('Dün')} $hm';
+    return '${DateFormat('d MMM', 'tr_TR').format(ts)} $hm';
+  }
+
   /// Kayıt için kısa, okunabilir Türkçe özet. [units] verilirse hacim/ağırlık/uzunluk
   /// kanonik değerden tercih birimine çevrilir.
   static String summary(Record r, [Units units = const Units()]) {

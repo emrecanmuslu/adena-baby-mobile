@@ -8,6 +8,7 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
+import '../babies/baby_controller.dart';
 import '../babies/family_settings.dart';
 import '../babies/members_screen.dart';
 import 'record_controller.dart';
@@ -35,6 +36,11 @@ class _DeleteRecordSheet extends ConsumerWidget {
     final units = ref.watch(activeUnitsProvider);
     final who = _resolveWho(ref);
     final stamp = DateFormat('d MMMM · HH:mm', 'tr_TR').format(record.ts);
+    // Bakıcı yalnız KENDİ eklediği kaydı silebilir; owner/parent hepsini.
+    final baby = ref.watch(activeBabyProvider);
+    final me = ref.watch(authControllerProvider).asData?.value;
+    final canDelete =
+        (baby?.canFullWrite ?? true) || record.createdBy == me?.id;
 
     return SafeArea(
       child: Padding(
@@ -81,34 +87,48 @@ class _DeleteRecordSheet extends ConsumerWidget {
                 ),
               ),
             const SizedBox(height: 10),
-            Material(
-              color: AppColors.fever,
-              borderRadius: BorderRadius.circular(16),
-              child: InkWell(
+            if (canDelete)
+              Material(
+                color: AppColors.fever,
                 borderRadius: BorderRadius.circular(16),
-                onTap: () => _delete(context, ref),
-                child: Container(
-                  height: 52,
-                  alignment: Alignment.center,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const AdenaIcon('trash', size: 18, color: Colors.white),
-                      const SizedBox(width: 8),
-                      Text(tr('Sil'),
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900)),
-                    ],
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => _delete(context, ref),
+                  child: Container(
+                    height: 52,
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const AdenaIcon('trash', size: 18, color: Colors.white),
+                        const SizedBox(width: 8),
+                        Text(tr('Sil'),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900)),
+                      ],
+                    ),
                   ),
                 ),
+              )
+            else
+              // Bakıcı, başkasının eklediği kaydı silemez — bilgi notu.
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                decoration: BoxDecoration(
+                    color: fieldBg(context), borderRadius: BorderRadius.circular(14)),
+                child: Text(
+                    tr('Bu kaydı yalnız ekleyen kişi veya ebeveyn silebilir.'),
+                    style: TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
               ),
-            ),
             const SizedBox(height: 6),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(tr('Vazgeç'),
+              child: Text(tr('Kapat'),
                   style: TextStyle(
                       color: AppColors.muted, fontWeight: FontWeight.w800)),
             ),

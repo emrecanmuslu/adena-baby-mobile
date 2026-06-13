@@ -1,7 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/i18n.dart';
+import '../../core/notification_service.dart';
+import '../../data/activity_notif_cache.dart';
 import '../../data/baby_repository.dart';
+import '../../data/record_repository.dart';
 import '../../models/baby.dart';
 import '../auth/auth_controller.dart';
 
@@ -54,6 +58,37 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     state = AsyncData([
       for (final b in state.asData?.value ?? []) if (b.id != id) b,
     ]);
+  }
+
+  /// Bebek listesini sunucudan tazeler ve erişimi kaldırılan (artık üyesi olmadığın)
+  /// bebekleri tespit eder: yerel verisini temizler + "erişimin kaldırıldı" bildirimi.
+  /// Öne gelince/açılışta çağrılır (push yok → değişiklik böyle yakalanır).
+  Future<void> refresh() async {
+    if (ref.read(authControllerProvider).asData?.value == null) return;
+    final prev = state.asData?.value ?? const [];
+    final List<Baby> fresh;
+    try {
+      fresh = await _repo.list();
+    } catch (_) {
+      return; // çevrimdışı/hata → mevcut listeyi koru
+    }
+    state = AsyncData(fresh);
+    if (prev.isEmpty) return;
+    final freshIds = fresh.map((b) => b.id).toSet();
+    for (final b in prev.where((b) => !freshIds.contains(b.id))) {
+      try {
+        await ref.read(recordRepositoryProvider).purgeBaby(b.id); // eski veriyi sil
+      } catch (_) {}
+      await ActivityNotifCache().clearSeen(b.id);
+      // Sayaç/beslenme bildirimini de kapat (slot artık o bebeğe ait değil).
+      final slot = b.notifSlot;
+      NotificationService.instance.cancelTimer(NotificationService.sleepIdFor(slot));
+      NotificationService.instance.cancelTimer(NotificationService.breastIdFor(slot));
+      NotificationService.instance.scheduleFeedReminder(
+          enabled: false, nextTime: null, preMin: 0, slot: slot, babyName: b.name);
+      NotificationService.instance.showActivity(
+          title: b.name, body: tr('Bu bebeğe erişimin kaldırıldı'));
+    }
   }
 }
 

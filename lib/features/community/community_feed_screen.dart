@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,8 +16,8 @@ import '../../models/community.dart';
 import 'ask_question_sheet.dart';
 import 'community_ui.dart';
 
-/// Topluluk akışı — kızlarsoruyor tarzı soru-cevap. Sıralama (yeni/popüler) +
-/// kategori filtresi + soru kartları. FAB ile soru sor.
+/// Topluluk akışı — kızlarsoruyor tarzı soru-cevap. Arama + sıralama (yeni/
+/// popüler) + kategori filtresi + sonsuz kaydırma (sayfalı). FAB ile soru sor.
 class CommunityFeedScreen extends ConsumerStatefulWidget {
   const CommunityFeedScreen({super.key});
 
@@ -24,13 +26,110 @@ class CommunityFeedScreen extends ConsumerStatefulWidget {
 }
 
 class _CommunityFeedScreenState extends ConsumerState<CommunityFeedScreen> {
+  static const _pageSize = 20;
+
   String _sort = 'new';
   String? _category; // null = tümü
+  String _search = '';
+  final _searchCtl = TextEditingController();
+  Timer? _debounce;
+
+  final _scroll = ScrollController();
+  final List<Question> _items = [];
+  bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  Object? _error;
+
+  CommunityRepository get _repo => ref.read(communityRepositoryProvider);
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+    _fetch(reset: true);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtl.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetch({bool reset = false}) async {
+    if (reset) {
+      setState(() {
+        _loading = true;
+        _error = null;
+        _hasMore = true;
+      });
+    } else {
+      if (_loadingMore || !_hasMore || _loading) return;
+      setState(() => _loadingMore = true);
+    }
+    final offset = reset ? 0 : _items.length;
+    try {
+      final page = await _repo.feed(
+          category: _category,
+          sort: _sort,
+          search: _search,
+          offset: offset,
+          limit: _pageSize);
+      if (!mounted) return;
+      setState(() {
+        if (reset) {
+          _items
+            ..clear()
+            ..addAll(page);
+        } else {
+          _items.addAll(page);
+        }
+        _hasMore = page.length == _pageSize;
+        _loading = false;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _loading = false;
+        _loadingMore = false;
+      });
+    }
+  }
+
+  void _onScroll() {
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 320) {
+      _fetch();
+    }
+  }
+
+  void _onSearchChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      final s = v.trim();
+      if (s == _search) return;
+      _search = s;
+      _fetch(reset: true);
+    });
+  }
+
+  void _setSort(String s) {
+    if (s == _sort) return;
+    setState(() => _sort = s);
+    _fetch(reset: true);
+  }
+
+  void _setCategory(String? c) {
+    if (c == _category) return;
+    setState(() => _category = c);
+    _fetch(reset: true);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final async =
-        ref.watch(communityFeedProvider((category: _category, sort: _sort)));
     final cats = ref.watch(contentCategoriesProvider).asData?.value ?? const [];
 
     return Scaffold(
@@ -62,53 +161,22 @@ class _CommunityFeedScreenState extends ConsumerState<CommunityFeedScreen> {
       ),
       body: Column(
         children: [
-          _SortBar(
-            sort: _sort,
-            onSort: (s) => setState(() => _sort = s),
+          _SearchBar(
+            controller: _searchCtl,
+            onChanged: _onSearchChanged,
+            onClear: () {
+              _searchCtl.clear();
+              _onSearchChanged('');
+            },
           ),
+          _SortBar(sort: _sort, onSort: _setSort),
           _CategoryChips(
-            categories: cats,
-            selected: _category,
-            onSelect: (slug) => setState(() => _category = slug),
-          ),
+              categories: cats, selected: _category, onSelect: _setCategory),
           Expanded(
             child: RefreshIndicator(
               color: AppColors.coral,
-              onRefresh: () async => ref.invalidate(
-                  communityFeedProvider((category: _category, sort: _sort))),
-              child: async.when(
-                loading: () => ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  children: [
-                    for (var i = 0; i < 5; i++)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 12),
-                        child: Skeleton(height: 110, radius: 16),
-                      ),
-                  ],
-                ),
-                error: (e, _) => ListView(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(apiErrorText(e),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: AppColors.muted, fontWeight: FontWeight.w700)),
-                    ),
-                  ],
-                ),
-                data: (items) {
-                  if (items.isEmpty) return const _Empty();
-                  return ListView.separated(
-                    padding: EdgeInsets.fromLTRB(
-                        16, 8, 16, 96 + MediaQuery.of(context).padding.bottom),
-                    itemCount: items.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (_, i) => _QuestionCard(question: items[i]),
-                  );
-                },
-              ),
+              onRefresh: () => _fetch(reset: true),
+              child: _body(),
             ),
           ),
         ],
@@ -116,12 +184,147 @@ class _CommunityFeedScreenState extends ConsumerState<CommunityFeedScreen> {
     );
   }
 
+  Widget _body() {
+    if (_loading) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        children: [
+          for (var i = 0; i < 5; i++)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Skeleton(height: 110, radius: 16),
+            ),
+        ],
+      );
+    }
+    if (_error != null) {
+      return ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 40, 24, 12),
+            child: Column(
+              children: [
+                Text(apiErrorText(_error!),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: AppColors.muted, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 14),
+                OutlinedButton(
+                  onPressed: () => _fetch(reset: true),
+                  child: Text(tr('Tekrar dene')),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+    if (_items.isEmpty) {
+      return _Empty(searching: _search.isNotEmpty);
+    }
+    return ListView.separated(
+      controller: _scroll,
+      padding: EdgeInsets.fromLTRB(
+          16, 8, 16, 96 + MediaQuery.of(context).padding.bottom),
+      itemCount: _items.length + 1, // +1 = alt yükleniyor/bitti göstergesi
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (_, i) {
+        if (i == _items.length) return _footer();
+        final q = _items[i];
+        return QuestionCard(
+          question: q,
+          onTap: () async {
+            await context.push('/community/question/${q.id}');
+            if (mounted) _fetch(reset: true); // detayda değişmiş olabilir
+          },
+        );
+      },
+    );
+  }
+
+  Widget _footer() {
+    if (_loadingMore) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.coral),
+          ),
+        ),
+      );
+    }
+    if (!_hasMore && _items.length > _pageSize) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Center(
+          child: Text(tr('Hepsi bu kadar'),
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted)),
+        ),
+      );
+    }
+    return const SizedBox(height: 4);
+  }
+
   Future<void> _ask(BuildContext context) async {
     final newId = await showAskQuestionSheet(context, ref);
-    if (newId != null) {
-      ref.invalidate(communityFeedProvider((category: _category, sort: _sort)));
+    if (newId != null && newId != 'edited') {
+      await _fetch(reset: true);
       if (context.mounted) context.push('/community/question/$newId');
     }
+  }
+}
+
+/// Arama çubuğu — başlık/gövdede ara (sunucu taraflı, debounce'lu).
+class _SearchBar extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+  const _SearchBar(
+      {required this.controller, required this.onChanged, required this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: tr('Soru ara…'),
+          hintStyle: TextStyle(
+              fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.muted),
+          prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppColors.muted),
+          suffixIcon: ValueListenableBuilder(
+            valueListenable: controller,
+            builder: (_, value, _) => value.text.isEmpty
+                ? const SizedBox.shrink()
+                : IconButton(
+                    icon: Icon(Icons.close_rounded, size: 18, color: AppColors.muted),
+                    onPressed: onClear,
+                  ),
+          ),
+          filled: true,
+          fillColor: Theme.of(context).colorScheme.surface,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: BorderSide(color: AppColors.line, width: 1.5),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: const BorderSide(color: AppColors.coral, width: 1.5),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -155,7 +358,7 @@ class _SortBar extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
       child: Row(children: [tab('new', tr('Yeni')), tab('top', tr('Popüler'))]),
     );
   }
@@ -176,25 +379,26 @@ class _CategoryChips extends StatelessWidget {
       // Yatay ListView çocukları üste yaslar → Center ile dikeyde ortala.
       return Center(
         child: Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: GestureDetector(
-          onTap: () => onSelect(slug),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-            decoration: BoxDecoration(
-              color: sel ? AppColors.peachLight : Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                  color: sel ? AppColors.coral : AppColors.line, width: 1.5),
+          padding: const EdgeInsets.only(right: 8),
+          child: GestureDetector(
+            onTap: () => onSelect(slug),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+              decoration: BoxDecoration(
+                color:
+                    sel ? AppColors.peachLight : Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                    color: sel ? AppColors.coral : AppColors.line, width: 1.5),
+              ),
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: sel ? AppColors.coralDd : AppColors.ink2)),
             ),
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: sel ? AppColors.coralDd : AppColors.ink2)),
           ),
         ),
-      ),
       );
     }
 
@@ -212,143 +416,9 @@ class _CategoryChips extends StatelessWidget {
   }
 }
 
-/// Tek soru kartı — skor + başlık + özet + kategori + cevap sayısı.
-class _QuestionCard extends StatelessWidget {
-  final Question question;
-  const _QuestionCard({required this.question});
-
-  @override
-  Widget build(BuildContext context) {
-    final q = question;
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => context.push('/community/question/${q.id}'),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: AppColors.softShadow,
-          ),
-          padding: const EdgeInsets.fromLTRB(15, 13, 15, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  if (q.categoryName != null)
-                    _CatTag(q.categoryName!),
-                  const Spacer(),
-                  if (q.hasBest)
-                    Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: AppColors.growthBg,
-                          borderRadius: BorderRadius.circular(999)),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AdenaIcon('check', size: 11, color: bestGreen, sw: 3),
-                          const SizedBox(width: 4),
-                          Text(tr('Çözüldü'),
-                              style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w900,
-                                  color: bestGreen)),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 9),
-              Text(q.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 14.5, height: 1.32, fontWeight: FontWeight.w900)),
-              if (q.body.isNotEmpty) ...[
-                const SizedBox(height: 5),
-                Text(q.body,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12,
-                        height: 1.5,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.muted)),
-              ],
-              const SizedBox(height: 11),
-              Row(
-                children: [
-                  Expanded(
-                    child: AuthorRow(
-                      name: q.authorName,
-                      color: q.authorColor,
-                      anonymous: q.isAnonymous,
-                      isMine: q.isMine,
-                      time: q.createdAt,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  _QStat(icon: 'arrowUp', label: '${q.score}', highlight: q.myVote == 1),
-                  const SizedBox(width: 12),
-                  _QStat(icon: 'comment', label: '${q.answerCount}'),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Kategori etiketi (design .ad-cattag) — peach-l zemin, coral-dd, büyük harf.
-class _CatTag extends StatelessWidget {
-  final String text;
-  const _CatTag(this.text);
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-          color: AppColors.peachLight, borderRadius: BorderRadius.circular(999)),
-      child: Text(text.toUpperCase(),
-          style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.5,
-              color: AppColors.coralDd)),
-    );
-  }
-}
-
-/// Soru kartı istatistiği (design .ad-qstat) — ikon + sayı; oylanınca yeşil.
-class _QStat extends StatelessWidget {
-  final String icon;
-  final String label;
-  final bool highlight;
-  const _QStat({required this.icon, required this.label, this.highlight = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = highlight ? bestGreen : AppColors.muted;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AdenaIcon(icon, size: 14, color: c, sw: icon == 'arrowUp' ? 2.4 : 2.0),
-        const SizedBox(width: 4),
-        Text(label,
-            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: c)),
-      ],
-    );
-  }
-}
-
 class _Empty extends StatelessWidget {
-  const _Empty();
+  final bool searching;
+  const _Empty({this.searching = false});
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -357,16 +427,19 @@ class _Empty extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(32, 80, 32, 32),
           child: Column(
             children: [
-              const Text('💬', style: TextStyle(fontSize: 54)),
+              Text(searching ? '🔍' : '💬', style: const TextStyle(fontSize: 54)),
               const SizedBox(height: 10),
-              Text(tr('Henüz soru yok'),
+              Text(searching ? tr('Sonuç bulunamadı') : tr('Henüz soru yok'),
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               Text(
-                  tr('İlk soruyu sen sor — deneyimli ebeveynler ve uzmanlar '
-                      'cevaplamak için burada.'),
+                  searching
+                      ? tr('Farklı bir kelimeyle aramayı dene.')
+                      : tr('İlk soruyu sen sor — deneyimli ebeveynler ve uzmanlar '
+                          'cevaplamak için burada.'),
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600)),
+                  style:
+                      TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600)),
             ],
           ),
         ),

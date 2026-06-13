@@ -8,6 +8,7 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/subscription_repository.dart';
 import '../auth/auth_controller.dart';
+import '../babies/activity_watcher.dart';
 import '../babies/baby_controller.dart';
 import 'theme_controller.dart';
 
@@ -145,6 +146,25 @@ class SettingsScreen extends ConsumerWidget {
             meta: '${ThemeController.label(themeMode)} · birimler',
             onTap: () => context.push('/appearance'),
           ),
+          // Aile etkinlik bildirimi (opt-in): bir aile üyesi kayıt eklediğinde
+          // yerel bildirim. Çok bebekte bildirim başlığı bebek adı olur.
+          Builder(builder: (context) {
+            final on = ref.watch(activityNotifEnabledProvider).asData?.value ?? false;
+            void toggle() =>
+                ref.read(activityNotifEnabledProvider.notifier).set(!on);
+            return AdMenuItem(
+              icon: 'bell',
+              color: AppColors.coral,
+              bg: AppColors.feedBg,
+              title: tr('Aile etkinlik bildirimleri'),
+              meta: tr('Bir üye kayıt eklediğinde haber ver'),
+              trailing: Switch.adaptive(
+                value: on,
+                onChanged: (_) => toggle(),
+              ),
+              onTap: toggle,
+            );
+          }),
 
           adSec(tr('Hesap')),
           AdMenuItem(

@@ -10,6 +10,7 @@ import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
+import '../../data/feed_input_cache.dart';
 import '../../data/health_repository.dart';
 import '../../models/record.dart';
 import '../../models/symptom.dart';
@@ -146,7 +147,10 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
         }
       }
     }
-    if (widget.type == RecordType.feed) _initBreast();
+    if (widget.type == RecordType.feed) {
+      _initBreast();
+      _applyFeedCache(_sub); // Mama/Sağılmış/Katı: son girilen değeri ön-doldur
+    }
     // Çalışan sayaç (mm:ss / HH:MM:SS) için saniyelik yeniden çizim.
     if (widget.type == RecordType.feed || widget.type == RecordType.sleep) {
       _tick = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -172,6 +176,25 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
     _side = _nextSide;
     // Süren emzirme varsa emzirme sekmesini öne al.
     if (ref.read(ongoingBreastProvider(widget.babyId)) != null) _sub = 'breast';
+  }
+
+  /// Beslenme alt-türü için son girilen değeri (cache) controller'a yazar.
+  /// Anne sütü hariç (kronometre/taraf bazlı) ve düzenlemede yapılmaz.
+  /// Controller'ı önceden oluşturur → build'deki _initFor fallback'i devre dışı kalır,
+  /// böylece cache değeri öncelikli olur. Cache boşsa dokunmaz (eski prefill çalışır).
+  void _applyFeedCache(String sub) {
+    if (_editing || sub == 'breast') return;
+    final c = FeedInputCache.get(sub);
+    void setIf(String key) {
+      final v = c[key];
+      if (v != null && v.isNotEmpty) ctl(key).text = v;
+    }
+    if (sub == 'formula' || sub == 'pumped') {
+      setIf('ml');
+    } else if (sub == 'solid') {
+      setIf('food_name');
+      setIf('amount');
+    }
   }
 
   @override
@@ -219,6 +242,7 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
             final ml = _num('ml');
             if (ml == null) return _warn(trp('Miktarı ({unit}) gir', {'unit': _units.volumeLabel}));
             data['ml'] = _units.volumeToCanonical(ml.toDouble());
+            unawaited(FeedInputCache.put(_sub, {'ml': ctl('ml').text.trim()}));
           case 'solid':
             if (ctl('food_name').text.trim().isEmpty) {
               return _warn(tr('Yiyecek adını gir'));
@@ -228,6 +252,10 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
             if (amt != null && amt > 0) data['amount'] = amt;
             final reaction = ctl('reaction').text.trim();
             if (reaction.isNotEmpty) data['reaction'] = reaction;
+            unawaited(FeedInputCache.put('solid', {
+              'food_name': ctl('food_name').text.trim(),
+              if (amt != null && amt > 0) 'amount': ctl('amount').text.trim(),
+            }));
         }
       case RecordType.pumping:
         final ml = _num('ml');
@@ -393,7 +421,10 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           AdTabs(
             options: {'breast': tr('Anne sütü'), 'formula': tr('Mama'), 'pumped': tr('Sağılmış'), 'solid': tr('Katı')},
             selected: _sub,
-            onSelect: (v) => setState(() => _sub = v),
+            onSelect: (v) => setState(() {
+              _sub = v;
+              _applyFeedCache(v); // seçilen türün son değerini getir
+            }),
           ),
           const SizedBox(height: 14),
           ..._feedFields(accent),

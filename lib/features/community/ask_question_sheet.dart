@@ -7,21 +7,25 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/community_repository.dart';
 import '../../data/content_repository.dart';
+import '../../models/community.dart';
 
-/// Soru sor sheet'ini açar — başarıyla oluşturulursa yeni soru id'sini döndürür.
-Future<String?> showAskQuestionSheet(BuildContext context, WidgetRef ref) {
+/// Soru sor/düzenle sheet'ini açar. Yeni soruda oluşturulan id'yi, düzenlemede
+/// 'edited' döndürür (iptal=null). [edit] verilirse düzenleme modu.
+Future<String?> showAskQuestionSheet(BuildContext context, WidgetRef ref,
+    {Question? edit}) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
     showDragHandle: false,
     shape: adSheetShape,
-    builder: (_) => _AskQuestionSheet(ref: ref),
+    builder: (_) => _AskQuestionSheet(ref: ref, edit: edit),
   );
 }
 
 class _AskQuestionSheet extends StatefulWidget {
   final WidgetRef ref;
-  const _AskQuestionSheet({required this.ref});
+  final Question? edit;
+  const _AskQuestionSheet({required this.ref, this.edit});
 
   @override
   State<_AskQuestionSheet> createState() => _AskQuestionSheetState();
@@ -32,6 +36,19 @@ class _AskQuestionSheetState extends State<_AskQuestionSheet> {
   final _body = TextEditingController();
   String? _category;
   bool _saving = false;
+
+  bool get _editing => widget.edit != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.edit;
+    if (e != null) {
+      _title.text = e.title;
+      _body.text = e.body;
+      _category = e.categorySlug;
+    }
+  }
 
   @override
   void dispose() {
@@ -47,15 +64,22 @@ class _AskQuestionSheetState extends State<_AskQuestionSheet> {
       return;
     }
     setState(() => _saving = true);
+    final repo = widget.ref.read(communityRepositoryProvider);
     try {
-      final id = await widget.ref.read(communityRepositoryProvider).createQuestion(
-            title: title,
-            body: _body.text.trim(),
-            category: _category,
-          );
-      if (mounted) {
-        Navigator.pop(context, id);
-        showAdToast(context, tr('Sorun paylaşıldı 💬'));
+      if (_editing) {
+        await repo.updateQuestion(widget.edit!.id,
+            title: title, body: _body.text.trim(), category: _category);
+        if (mounted) {
+          Navigator.pop(context, 'edited');
+          showAdToast(context, tr('Soru güncellendi ✓'));
+        }
+      } else {
+        final id = await repo.createQuestion(
+            title: title, body: _body.text.trim(), category: _category);
+        if (mounted) {
+          Navigator.pop(context, id);
+          showAdToast(context, tr('Sorun paylaşıldı 💬'));
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -83,7 +107,7 @@ class _AskQuestionSheetState extends State<_AskQuestionSheet> {
               Center(child: adGrabHandle()),
               Padding(
                 padding: const EdgeInsets.only(left: 2, bottom: 14),
-                child: Text(tr('Soru sor'),
+                child: Text(_editing ? tr('Soruyu düzenle') : tr('Soru sor'),
                     style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
               ),
               AdField(
@@ -123,7 +147,9 @@ class _AskQuestionSheetState extends State<_AskQuestionSheet> {
               ),
               const SizedBox(height: 6),
               AdSaveButton(
-                label: _saving ? tr('Paylaşılıyor…') : tr('Paylaş'),
+                label: _saving
+                    ? (_editing ? tr('Kaydediliyor…') : tr('Paylaşılıyor…'))
+                    : (_editing ? tr('Kaydet') : tr('Paylaş')),
                 color: AppColors.coral,
                 onTap: _saving ? () {} : _save,
               ),

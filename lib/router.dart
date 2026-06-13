@@ -13,6 +13,7 @@ import 'features/babies/born_flow_screen.dart';
 import 'features/babies/caregiver_screen.dart';
 import 'features/babies/members_screen.dart';
 import 'features/community/community_feed_screen.dart';
+import 'features/community/community_profile_screen.dart';
 import 'features/community/question_detail_screen.dart';
 import 'features/content/article_detail_screen.dart';
 import 'features/content/article_list_screen.dart';
@@ -91,6 +92,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/community/question/:id',
         builder: (_, state) =>
             QuestionDetailScreen(questionId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/community/user/:id',
+        builder: (_, state) =>
+            CommunityProfileScreen(userId: state.pathParameters['id']!),
       ),
       GoRoute(path: '/milestones', builder: (_, _) => const MilestonesScreen()),
       GoRoute(path: '/teeth', builder: (_, _) => const TeethScreen()),

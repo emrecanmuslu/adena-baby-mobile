@@ -10,6 +10,7 @@ class Question {
   final String? categoryName;
   final String authorName;
   final String authorColor;
+  final String? authorId; // anonimse null → profil bağlantısı yok
   final bool isAnonymous;
   final bool isMine;
   final int score;
@@ -28,6 +29,7 @@ class Question {
     this.categoryName,
     this.authorName = '',
     this.authorColor = '#FF8A7A',
+    this.authorId,
     this.isAnonymous = false,
     this.isMine = false,
     this.score = 0,
@@ -49,6 +51,7 @@ class Question {
       categoryName: categoryName,
       authorName: authorName,
       authorColor: authorColor,
+      authorId: authorId,
       isAnonymous: isAnonymous,
       isMine: isMine,
       score: score ?? this.score,
@@ -69,6 +72,7 @@ class Question {
         categoryName: json['category_name'] as String?,
         authorName: (json['author_name'] as String?) ?? '',
         authorColor: (json['author_color'] as String?) ?? '#FF8A7A',
+        authorId: json['author_id'] as String?,
         isAnonymous: (json['is_anonymous'] as bool?) ?? false,
         isMine: (json['is_mine'] as bool?) ?? false,
         score: (json['score'] as num?)?.toInt() ?? 0,
@@ -84,6 +88,38 @@ class Question {
       );
 }
 
+/// Bir üyenin herkese açık topluluk profili — ad/renk + istatistik + soruları.
+@immutable
+class CommunityProfile {
+  final String id;
+  final String name;
+  final String color;
+  final int questionCount;
+  final int answerCount;
+  final List<Question> questions;
+
+  const CommunityProfile({
+    required this.id,
+    this.name = '',
+    this.color = '#FF8A7A',
+    this.questionCount = 0,
+    this.answerCount = 0,
+    this.questions = const [],
+  });
+
+  factory CommunityProfile.fromJson(Map<String, dynamic> json) => CommunityProfile(
+        id: json['id'] as String,
+        name: (json['name'] as String?) ?? '',
+        color: (json['color'] as String?) ?? '#FF8A7A',
+        questionCount: (json['question_count'] as num?)?.toInt() ?? 0,
+        answerCount: (json['answer_count'] as num?)?.toInt() ?? 0,
+        questions: (json['questions'] as List<dynamic>?)
+                ?.map((e) => Question.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            const [],
+      );
+}
+
 /// Bir soruya verilen cevap.
 @immutable
 class Answer {
@@ -91,6 +127,7 @@ class Answer {
   final String body;
   final String authorName;
   final String authorColor;
+  final String? authorId;
   final bool isAnonymous;
   final bool isMine;
   final int score;
@@ -103,6 +140,7 @@ class Answer {
     required this.body,
     this.authorName = '',
     this.authorColor = '#FF8A7A',
+    this.authorId,
     this.isAnonymous = false,
     this.isMine = false,
     this.score = 0,
@@ -116,6 +154,7 @@ class Answer {
         body: body,
         authorName: authorName,
         authorColor: authorColor,
+        authorId: authorId,
         isAnonymous: isAnonymous,
         isMine: isMine,
         score: score ?? this.score,
@@ -129,6 +168,7 @@ class Answer {
         body: json['body'] as String,
         authorName: (json['author_name'] as String?) ?? '',
         authorColor: (json['author_color'] as String?) ?? '#FF8A7A',
+        authorId: json['author_id'] as String?,
         isAnonymous: (json['is_anonymous'] as bool?) ?? false,
         isMine: (json['is_mine'] as bool?) ?? false,
         score: (json['score'] as num?)?.toInt() ?? 0,

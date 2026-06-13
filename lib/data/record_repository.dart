@@ -147,6 +147,13 @@ class RecordRepository {
     );
   }
 
+  /// Bir bebeğin TÜM yerel kayıtlarını + sync cursor'ını siler. Aile paylaşımından
+  /// çıkarılınca (erişim kaldırılınca) çağrılır — cihazda eski veri kalmasın.
+  Future<void> purgeBaby(String babyId) async {
+    await (_db.delete(_db.records)..where((r) => r.baby.equals(babyId))).go();
+    await (_db.delete(_db.syncCursors)..where((c) => c.baby.equals(babyId))).go();
+  }
+
   // ---- Sync (delta, son-yazan-kazanır) ----
 
   /// Bekleyen yerel değişiklikleri gönderir, sunucu değişikliklerini çeker.

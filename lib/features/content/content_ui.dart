@@ -158,6 +158,7 @@ class _Cover extends StatelessWidget {
     if (article.coverImage != null) {
       return Image.network(article.coverImage!,
           fit: BoxFit.cover,
+          cacheWidth: 400, // liste kartı küçük resmi
           errorBuilder: (_, _, _) => _placeholder());
     }
     return _placeholder();

@@ -564,6 +564,11 @@ class _ToothSheetState extends ConsumerState<_ToothSheet> {
   }
 
   Future<void> _set(bool erupted) async {
+    // Diş takibi yalnız owner/parent — bakıcı salt-okunur.
+    if (!(ref.read(activeBabyProvider)?.canFullWrite ?? true)) {
+      showAdToast(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
+      return;
+    }
     if (_busy) return;
     setState(() => _busy = true);
     try {

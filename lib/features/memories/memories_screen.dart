@@ -48,14 +48,17 @@ class MemoriesScreen extends ConsumerWidget {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showAddMemorySheet(context, ref, baby.id),
-        backgroundColor: AppColors.coral,
-        foregroundColor: Colors.white,
-        icon: const AdenaIcon('plus', size: 20, color: Colors.white, sw: 2.4),
-        label: Text(tr('Anı ekle'),
-            style: const TextStyle(fontWeight: FontWeight.w900)),
-      ),
+      // Anı ekleme yalnız owner/parent — bakıcı yalnız görüntüler.
+      floatingActionButton: baby.canFullWrite
+          ? FloatingActionButton.extended(
+              onPressed: () => showAddMemorySheet(context, ref, baby.id),
+              backgroundColor: AppColors.coral,
+              foregroundColor: Colors.white,
+              icon: const AdenaIcon('plus', size: 20, color: Colors.white, sw: 2.4),
+              label: Text(tr('Anı ekle'),
+                  style: const TextStyle(fontWeight: FontWeight.w900)),
+            )
+          : null,
       body: async.when(
         loading: () => ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -93,7 +96,8 @@ class MemoriesScreen extends ConsumerWidget {
                 for (final m in entry.value)
                   _MemoryCard(
                     memory: m,
-                    onTap: () => _showMemoryDetail(context, ref, baby.id, m),
+                    onTap: () => _showMemoryDetail(
+                        context, ref, baby.id, m, baby.canFullWrite),
                   ),
               ],
             ],
@@ -137,6 +141,9 @@ class _MemoryCard extends StatelessWidget {
                       aspectRatio: 4 / 3,
                       child: Image.network(memory.photo!,
                           fit: BoxFit.cover,
+                          // Ham foto 3000px+ olabilir; decode'u ekran genişliğine
+                          // sınırla (bellek/OOM koruması).
+                          cacheWidth: 1080,
                           errorBuilder: (_, _, _) => const _PhotoPlaceholder()),
                     ),
                     if (info != null)
@@ -320,8 +327,8 @@ class _Empty extends StatelessWidget {
 }
 
 /// Anı detay sheet'i — büyük foto + başlık + not + tarih + Sil.
-void _showMemoryDetail(
-    BuildContext context, WidgetRef ref, String babyId, Memory m) {
+void _showMemoryDetail(BuildContext context, WidgetRef ref, String babyId,
+    Memory m, bool canFullWrite) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -342,6 +349,7 @@ void _showMemoryDetail(
                   borderRadius: BorderRadius.circular(18),
                   child: Image.network(m.photo!,
                       fit: BoxFit.cover,
+                      cacheWidth: 1080,
                       errorBuilder: (_, _, _) => const SizedBox.shrink()),
                 ),
               const SizedBox(height: 14),
@@ -368,22 +376,25 @@ void _showMemoryDetail(
                     style: const TextStyle(
                         fontSize: 14, height: 1.45, fontWeight: FontWeight.w600)),
               ],
-              const SizedBox(height: 18),
-              AdSaveButton(
-                label: tr('Anıyı sil'),
-                color: AppColors.fever,
-                ghost: true,
-                onTap: () async {
-                  Navigator.pop(sheetCtx);
-                  try {
-                    await ref.read(memoryRepositoryProvider).delete(babyId, m.id);
-                    ref.invalidate(memoriesProvider(babyId));
-                    if (context.mounted) showAdToast(context, tr('Anı silindi'));
-                  } catch (e) {
-                    if (context.mounted) showAdError(context, apiErrorText(e));
-                  }
-                },
-              ),
+              // Silme yalnız owner/parent — bakıcıya gösterilmez.
+              if (canFullWrite) ...[
+                const SizedBox(height: 18),
+                AdSaveButton(
+                  label: tr('Anıyı sil'),
+                  color: AppColors.fever,
+                  ghost: true,
+                  onTap: () async {
+                    Navigator.pop(sheetCtx);
+                    try {
+                      await ref.read(memoryRepositoryProvider).delete(babyId, m.id);
+                      ref.invalidate(memoriesProvider(babyId));
+                      if (context.mounted) showAdToast(context, tr('Anı silindi'));
+                    } catch (e) {
+                      if (context.mounted) showAdError(context, apiErrorText(e));
+                    }
+                  },
+                ),
+              ],
             ],
           ),
         ),

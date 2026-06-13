@@ -10,6 +10,7 @@ import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../data/community_repository.dart';
 import '../../models/community.dart';
+import 'ask_question_sheet.dart';
 import 'community_ui.dart';
 
 /// Soru detayı — soru + cevaplar + oylama + en iyi cevap + şikayet + cevap yaz.
@@ -90,6 +91,7 @@ class _QuestionDetailScreenState extends ConsumerState<QuestionDetailScreen> {
             : (p.isBest ? -1 : 1));
         _q = _q!.copyWith(bestAnswerId: a.id, answers: answers);
       });
+      ref.invalidate(communityFeedProvider); // akışta "Çözüldü" rozeti güncel
       if (mounted) showAdToast(context, tr('En iyi cevap işaretlendi ✓'));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
@@ -104,12 +106,66 @@ class _QuestionDetailScreenState extends ConsumerState<QuestionDetailScreen> {
     try {
       await _repo.createAnswer(_q!.id, body);
       _answer.clear();
+      ref.invalidate(communityFeedProvider); // akışta cevap sayısı güncel
       await _load(); // cevaplar yeniden yüklensin (sıra/sayı güncel)
       if (mounted) showAdToast(context, tr('Cevabın eklendi 💬'));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  // ── Kendi içeriğini yönet (düzenle/sil) ──
+  Future<void> _editQuestion() async {
+    final r = await showAskQuestionSheet(context, ref, edit: _q);
+    if (r != null) {
+      ref.invalidate(communityFeedProvider); // akıştaki başlık/kategori güncel
+      await _load();
+    }
+  }
+
+  Future<void> _deleteQuestion() async {
+    final ok = await showDeleteConfirm(context,
+        title: tr('Soru silinsin mi?'),
+        message: tr('Bu soru ve tüm cevapları kalıcı olarak silinecek.'));
+    if (!ok) return;
+    try {
+      await _repo.deleteQuestion(_q!.id);
+      ref.invalidate(communityFeedProvider);
+      if (mounted) {
+        context.pop();
+        showAdToast(context, tr('Soru silindi'));
+      }
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e));
+    }
+  }
+
+  Future<void> _editAnswer(Answer a) async {
+    final body = await showEditAnswerSheet(context, a.body);
+    if (body == null || body == a.body) return;
+    try {
+      await _repo.updateAnswer(a.id, body);
+      await _load();
+      if (mounted) showAdToast(context, tr('Cevap güncellendi ✓'));
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e));
+    }
+  }
+
+  Future<void> _deleteAnswer(Answer a) async {
+    final ok = await showDeleteConfirm(context,
+        title: tr('Cevap silinsin mi?'),
+        message: tr('Bu cevap kalıcı olarak silinecek.'));
+    if (!ok) return;
+    try {
+      await _repo.deleteAnswer(a.id);
+      ref.invalidate(communityFeedProvider); // cevap sayısı değişti
+      await _load();
+      if (mounted) showAdToast(context, tr('Cevap silindi'));
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e));
     }
   }
 
@@ -144,9 +200,23 @@ class _QuestionDetailScreenState extends ConsumerState<QuestionDetailScreen> {
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(apiErrorText(_error!),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(apiErrorText(_error!),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: AppColors.muted, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 14),
+                    OutlinedButton(
+                      onPressed: () {
+                        setState(() => _error = null);
+                        _load();
+                      },
+                      child: Text(tr('Tekrar dene')),
+                    ),
+                  ],
+                ),
               ),
             )
           : _q == null
@@ -170,13 +240,18 @@ class _QuestionDetailScreenState extends ConsumerState<QuestionDetailScreen> {
     return Column(
       children: [
         Expanded(
-          child: ListView(
+          child: RefreshIndicator(
+            color: AppColors.coral,
+            onRefresh: _load,
+            child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             children: [
               _QuestionBlock(
                 q: q,
                 onVote: _voteQuestion,
                 onReport: () => _report('question', q.id, isQuestion: true),
+                onEdit: _editQuestion,
+                onDelete: _deleteQuestion,
               ),
               const SizedBox(height: 14),
               Padding(
@@ -207,9 +282,12 @@ class _QuestionDetailScreenState extends ConsumerState<QuestionDetailScreen> {
                     onVote: (v) => _voteAnswer(a, v),
                     onBest: () => _setBest(a),
                     onReport: () => _report('answer', a.id),
+                    onEdit: () => _editAnswer(a),
+                    onDelete: () => _deleteAnswer(a),
                   ),
                 ),
             ],
+          ),
           ),
         ),
         _Composer(
@@ -227,8 +305,14 @@ class _QuestionBlock extends StatelessWidget {
   final Question q;
   final ValueChanged<int> onVote;
   final VoidCallback onReport;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
   const _QuestionBlock(
-      {required this.q, required this.onVote, required this.onReport});
+      {required this.q,
+      required this.onVote,
+      required this.onReport,
+      required this.onEdit,
+      required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -287,10 +371,14 @@ class _QuestionBlock extends StatelessWidget {
                         color: q.authorColor,
                         anonymous: q.isAnonymous,
                         isMine: q.isMine,
+                        authorId: q.authorId,
                         time: q.createdAt,
                       ),
                     ),
-                    if (!q.isMine) _ReportButton(onTap: onReport),
+                    if (q.isMine)
+                      OwnerMenu(onEdit: onEdit, onDelete: onDelete)
+                    else
+                      _ReportButton(onTap: onReport),
                   ],
                 ),
               ],
@@ -309,12 +397,16 @@ class _AnswerTile extends StatelessWidget {
   final ValueChanged<int> onVote;
   final VoidCallback onBest;
   final VoidCallback onReport;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
   const _AnswerTile({
     required this.answer,
     required this.canPickBest,
     required this.onVote,
     required this.onBest,
     required this.onReport,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   @override
@@ -363,6 +455,7 @@ class _AnswerTile extends StatelessWidget {
                         color: a.authorColor,
                         anonymous: a.isAnonymous,
                         isMine: a.isMine,
+                        authorId: a.authorId,
                         time: a.createdAt,
                       ),
                     ),
@@ -385,7 +478,10 @@ class _AnswerTile extends StatelessWidget {
                           ),
                         ),
                       ),
-                    if (!a.isMine) _ReportButton(onTap: onReport),
+                    if (a.isMine)
+                      OwnerMenu(onEdit: onEdit, onDelete: onDelete)
+                    else
+                      _ReportButton(onTap: onReport),
                   ],
                 ),
               ],

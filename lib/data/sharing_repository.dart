@@ -9,8 +9,12 @@ class SharingRepository {
   final ApiClient _api;
   SharingRepository(this._api);
 
-  Future<List<ActivityEvent>> activity(String babyId) async {
-    final resp = await _api.dio.get('/babies/$babyId/activity');
+  Future<List<ActivityEvent>> activity(String babyId, {DateTime? since}) async {
+    final resp = await _api.dio.get(
+      '/babies/$babyId/activity',
+      queryParameters:
+          since != null ? {'since': since.toUtc().toIso8601String()} : null,
+    );
     final data = resp.data as List<dynamic>;
     return data.map((e) => ActivityEvent.fromJson(e as Map<String, dynamic>)).toList();
   }

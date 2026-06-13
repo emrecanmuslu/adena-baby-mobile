@@ -8,8 +8,8 @@ import '../models/reminder.dart';
 import 'i18n.dart';
 
 /// Yerel bildirim servisi — hatırlatıcıları cihaz bildirimlerine bağlar.
-/// Şimdilik yalnız "vitamin" (günlük belirli saat) tipi planlanır; kural-tabanlı
-/// tipler (feed/vaccine/nudge) ileride (arka plan iş/hesaplama gerekir).
+/// Üç tür: özel/randevu hatırlatıcıları (günlük veya tek-sefer), beslenme uyarısı
+/// (son beslenme + aralık) ve süren uyku/emzirme sayaçları.
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
@@ -21,24 +21,37 @@ class NotificationService {
   static const _channelId = 'reminders';
   static final _channelName = tr('Hatırlatıcılar');
 
-  // Süren sayaç bildirimleri (uyku/emzirme) — ayrı sessiz kanal + sabit id'ler.
+  // Süren sayaç bildirimleri (uyku/emzirme) — ayrı sessiz kanal.
   static const _timerChannelId = 'timers';
   static final _timerChannelName = tr('Süren sayaçlar');
-  static const sleepTimerId = 900001;
-  static const breastTimerId = 900002;
 
-  // Beslenme hatırlatıcısı — sesli/heads-up kanal + sabit id'ler.
+  // Beslenme hatırlatıcısı — sesli/heads-up kanal.
   static const feedChannelId = 'feed_reminders';
   static final feedChannelName = tr('Beslenme hatırlatıcıları');
   // Sessiz varyant — ayrı kanal (Android'de ses/önem kanala kilitli; aynı kanalda
   // playSound:false sonradan çalışmaz, bu yüzden iki kanal kullanıyoruz).
   static const feedSilentChannelId = 'feed_reminders_silent';
   static final feedSilentChannelName = tr('Beslenme hatırlatıcıları (sessiz)');
-  static const feedMainId = 800001; // ana uyarı
-  static const feedPreId = 800002; // ön-hatırlatma
+
+  // Çok-bebek: bildirim id'leri bebek "slot"una (0..999) göre ayrılır → aynı türde
+  // iki bebeğin bildirimi çakışmaz. Taban + slot; türler arası 10000 boşluk.
+  static const _feedMainBase = 800000;
+  static const _feedPreBase = 810000;
+  static const _sleepBase = 900000;
+  static const _breastBase = 910000;
+  static int feedMainIdFor(int slot) => _feedMainBase + slot;
+  static int feedPreIdFor(int slot) => _feedPreBase + slot;
+  static int sleepIdFor(int slot) => _sleepBase + slot;
+  static int breastIdFor(int slot) => _breastBase + slot;
   static const snoozeAction = 'snooze_feed';
   static const snoozeCategoryId = 'feed_snooze'; // iOS: "Ertele" aksiyonlu kategori
   bool _exactAsked = false;
+
+  // Aile etkinlik bildirimleri (başka üye kayıt ekleyince) — ayrı kanal + dönen id.
+  static const _activityChannelId = 'family_activity';
+  static final _activityChannelName = tr('Aile etkinliği');
+  static const _activityBaseId = 700000;
+  int _activitySeq = 0;
 
   /// iOS bildirim ayarları (kategori = ertele aksiyonu). İzinler açılışta DEĞİL,
   /// gerektiğinde (_ensurePermission) istenir → açılış engellenmez.
@@ -105,7 +118,7 @@ class NotificationService {
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
-          channelDescription: tr('Vitamin/ilaç ve bakım hatırlatıcıları'),
+          channelDescription: tr('Özel hatırlatıcılar ve randevu uyarıları'),
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -166,6 +179,36 @@ class NotificationService {
     await _plugin.cancel(id: id);
   }
 
+  /// Aile etkinlik bildirimi — başka bir üye kayıt eklediğinde (polling ile bulunur).
+  /// [title] bebeğin adı (çok bebekte hangisi olduğu ayırt edilsin), [body] eylem.
+  /// Her olay için ayrı id (üst üste binmesin) — 700000..700049 arası döner.
+  Future<void> showActivity({required String title, required String body}) async {
+    if (!_ready) await init();
+    await _ensurePermission();
+    final id = _activityBaseId + (_activitySeq++ % 50);
+    final android = AndroidNotificationDetails(
+      _activityChannelId,
+      _activityChannelName,
+      channelDescription: tr('Aile üyelerinin eklediği kayıt bildirimleri'),
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
+      category: AndroidNotificationCategory.social,
+    );
+    await _plugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: NotificationDetails(
+        android: android,
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+    );
+  }
+
   /// Tek bir hatırlatıcı bildirimini iptal eder (ör. silinince).
   Future<void> cancelReminder(int id) async {
     if (!_ready) return;
@@ -179,36 +222,46 @@ class NotificationService {
     required bool enabled,
     required DateTime? nextTime,
     required int preMin,
+    int slot = 0,
+    String babyName = '',
     bool sound = false,
     QuietHours? quiet,
   }) async {
     if (!_ready) await init();
-    await _plugin.cancel(id: feedMainId);
-    await _plugin.cancel(id: feedPreId);
+    await _plugin.cancel(id: feedMainIdFor(slot));
+    await _plugin.cancel(id: feedPreIdFor(slot));
     if (!enabled || nextTime == null) return;
     await _ensurePermission();
     await _ensureExactAlarm();
     final now = DateTime.now();
+    // Başlığa bebek adı (çok bebekte hangisi olduğu belli olsun).
+    final prefix = babyName.isNotEmpty ? '$babyName · ' : '';
     // Efektif ses = "Sesli" açık VE o bildirim anı sessiz saat penceresinde değil.
     // (Sessiz saat her zaman kazanır.) Ana uyarı ve ön-hatırlatma ayrı zamanlarda
     // olduğu için her biri için ayrı hesaplanır.
     if (nextTime.isAfter(now)) {
-      await _zonedFeed(feedMainId, nextTime, tr('Beslenme zamanı'),
-          tr('Tahmini beslenme vakti geldi 🍼'),
-          withSnooze: true, sound: sound && !(quiet?.covers(nextTime) ?? false));
+      await _zonedFeed(feedMainIdFor(slot), nextTime,
+          '$prefix${tr('Beslenme zamanı')}', tr('Tahmini beslenme vakti geldi 🍼'),
+          withSnooze: true, sound: sound && !(quiet?.covers(nextTime) ?? false),
+          slot: slot, babyName: babyName);
     }
     if (preMin > 0) {
       final pre = nextTime.subtract(Duration(minutes: preMin));
       if (pre.isAfter(now)) {
-        await _zonedFeed(feedPreId, pre, trp('Beslenmeye {n} dk', {'n': preMin}),
+        await _zonedFeed(feedPreIdFor(slot), pre,
+            '$prefix${trp('Beslenmeye {n} dk kaldı', {'n': preMin})}',
             trp('Yaklaşık {n} dk sonra beslenme zamanı', {'n': preMin}),
-            withSnooze: false, sound: sound && !(quiet?.covers(pre) ?? false));
+            withSnooze: false, sound: sound && !(quiet?.covers(pre) ?? false),
+            slot: slot, babyName: babyName);
       }
     }
   }
 
   Future<void> _zonedFeed(int id, DateTime when, String title, String body,
-      {required bool withSnooze, required bool sound}) async {
+      {required bool withSnooze,
+      required bool sound,
+      required int slot,
+      required String babyName}) async {
     final android = AndroidNotificationDetails(
       sound ? feedChannelId : feedSilentChannelId,
       sound ? feedChannelName : feedSilentChannelName,
@@ -238,17 +291,34 @@ class NotificationService {
       scheduledDate: tz.TZDateTime.from(when, tz.local),
       notificationDetails: NotificationDetails(android: android, iOS: ios),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      payload: sound ? 'feed:1' : 'feed:0', // ertele (arka plan) ses tercihini taşır
+      // Ertele (arka plan) için ses + bebek slotu + ad taşınır.
+      payload: feedPayload(sound, slot, babyName),
     );
+  }
+
+  /// Ertele payload kodla/çöz — ses + slot + bebek adı (\u0001 ayraçlı; ad içinde
+  /// görünmez). Format: feed\u00010/1\u0001slot\u0001ad.
+  static String feedPayload(bool sound, int slot, String babyName) =>
+      'feed\u0001${sound ? 1 : 0}\u0001$slot\u0001$babyName';
+
+  static ({bool sound, int slot, String babyName}) parseFeedPayload(String? p) {
+    final parts = (p ?? '').split('\u0001');
+    if (parts.length >= 4 && parts[0] == 'feed') {
+      return (sound: parts[1] == '1', slot: int.tryParse(parts[2]) ?? 0, babyName: parts[3]);
+    }
+    // Eski format ('feed:1'/'feed:0') ya da bilinmeyen → güvenli varsayılan.
+    return (sound: p == 'feed:1', slot: 0, babyName: '');
   }
 
   /// Ön plandayken "Ertele 10 dk" aksiyonu (arka plan için top-level handler).
   void _onResponse(NotificationResponse r) {
     if (r.actionId == snoozeAction) {
       final when = DateTime.now().add(const Duration(minutes: 10));
-      // Ses tercihi, ertelenen bildirimin payload'ında taşınır ('feed:1'/'feed:0').
-      _zonedFeed(feedMainId, when, tr('Beslenme zamanı (ertelendi)'), tr('10 dk ertelendi 🍼'),
-          withSnooze: true, sound: r.payload == 'feed:1');
+      final fp = parseFeedPayload(r.payload);
+      final prefix = fp.babyName.isNotEmpty ? '${fp.babyName} · ' : '';
+      _zonedFeed(feedMainIdFor(fp.slot), when,
+          '$prefix${tr('Beslenme zamanı (ertelendi)')}', tr('10 dk ertelendi 🍼'),
+          withSnooze: true, sound: fp.sound, slot: fp.slot, babyName: fp.babyName);
     }
   }
 
@@ -322,10 +392,13 @@ class NotificationService {
 @pragma('vm:entry-point')
 void notificationBackgroundHandler(NotificationResponse response) {
   if (response.actionId != NotificationService.snoozeAction) return;
-  _snoozeFeedInBackground(response.payload == 'feed:1'); // ses tercihi payload'da
+  // payload ses + bebek slotu + adı taşır (çok-bebek: doğru bebeğe ertele).
+  _snoozeFeedInBackground(NotificationService.parseFeedPayload(response.payload));
 }
 
-Future<void> _snoozeFeedInBackground(bool sound) async {
+Future<void> _snoozeFeedInBackground(
+    ({bool sound, int slot, String babyName}) fp) async {
+  final sound = fp.sound;
   final plugin = FlutterLocalNotificationsPlugin();
   const init = InitializationSettings(
     android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -360,13 +433,14 @@ Future<void> _snoozeFeedInBackground(bool sound) async {
     presentSound: sound,
     categoryIdentifier: NotificationService.snoozeCategoryId,
   );
+  final prefix = fp.babyName.isNotEmpty ? '${fp.babyName} · ' : '';
   await plugin.zonedSchedule(
-    id: NotificationService.feedMainId,
-    title: tr('Beslenme zamanı (ertelendi)'),
+    id: NotificationService.feedMainIdFor(fp.slot),
+    title: '$prefix${tr('Beslenme zamanı (ertelendi)')}',
     body: tr('10 dk ertelendi 🍼'),
     scheduledDate: when,
     notificationDetails: NotificationDetails(android: android, iOS: ios),
     androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    payload: sound ? 'feed:1' : 'feed:0',
+    payload: NotificationService.feedPayload(fp.sound, fp.slot, fp.babyName),
   );
 }

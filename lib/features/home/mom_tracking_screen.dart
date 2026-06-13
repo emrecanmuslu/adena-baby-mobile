@@ -211,6 +211,25 @@ class MomTrackingScreen extends ConsumerWidget {
       return const Scaffold(
           body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
     }
+    // Anne takibi kişisel veri — bakıcıdan gizli. (Backend de 403 döner.)
+    if (!baby.canFullWrite) {
+      return Scaffold(
+        appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            title: Text(tr('Anne takibi'))),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+                tr('Anne takibi yalnız ebeveyn ve sahibe açıktır.'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: AppColors.muted, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      );
+    }
     final units = ref.watch(activeUnitsProvider);
     final async = ref.watch(momEntriesProvider(baby.id));
 

@@ -10,7 +10,6 @@ import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
-import '../../core/notification_service.dart';
 import '../../core/ring.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
@@ -58,11 +57,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
     }
 
-    // Süren uyku/emzirme sayaçlarını cihaz bildirimine yansıt (her sekmede ayakta;
-    // değer değişince build tekrar çalışıp bildirimi günceller/iptal eder).
-    _syncSleepTimer(ref.watch(ongoingSleepProvider(baby.id)));
-    _syncBreastTimer(ref.watch(ongoingBreastProvider(baby.id)));
-    _syncFeedReminder(baby); // beslenme hatırlatıcısı (config + son beslenmeler)
+    // Süren sayaç + beslenme bildirimleri artık TÜM bebekler için FamilyNotificationSync
+    // (MaterialApp.builder) tarafından kurulur — burada (yalnız aktif bebek) tekrar
+    // kurmuyoruz; aksi halde çift/çakışan bildirim olur.
 
     final isPremium = ref.watch(isPremiumProvider);
     final appBar = AppBar(
@@ -158,69 +155,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  /// Beslenme hatırlatıcısı → config + son beslenmelerden bir sonraki zamanı
-  /// hesaplayıp planlar (kapalı/bekleme/veri yok → iptal).
-  void _syncFeedReminder(Baby baby) {
-    final cfg = ref.watch(feedReminderProvider(baby.id));
-    if (baby.isExpecting || !cfg.enabled) {
-      NotificationService.instance
-          .scheduleFeedReminder(enabled: false, nextTime: null, preMin: 0);
-      return;
-    }
-    final recs = ref.watch(recentRecordsProvider(baby.id)).asData?.value ?? const [];
-    final quiet = ref.watch(quietHoursProvider(baby.id));
-    NotificationService.instance.scheduleFeedReminder(
-      enabled: true,
-      nextTime: nextFeedEstimate(cfg, recs),
-      preMin: cfg.preMin,
-      sound: cfg.soundEnabled,
-      quiet: quiet,
-    );
-  }
-
-  /// Süren uyku → kronometre bildirimi (yoksa iptal).
-  void _syncSleepTimer(Record? r) {
-    if (r == null) {
-      NotificationService.instance.cancelTimer(NotificationService.sleepTimerId);
-      return;
-    }
-    final start =
-        DateTime.tryParse(r.data['start_ts'] as String? ?? '')?.toLocal() ?? r.ts;
-    NotificationService.instance.showTimer(
-      id: NotificationService.sleepTimerId,
-      title: tr('Uyku sürüyor'),
-      body: tr('Bebeğiniz uyuyor · dokun ve bitir'),
-      since: start,
-      running: true,
-    );
-  }
-
-  /// Süren emzirme → kronometre bildirimi (toplam süre; duraklatınca durur).
-  void _syncBreastTimer(Record? r) {
-    if (r == null) {
-      NotificationService.instance.cancelTimer(NotificationService.breastTimerId);
-      return;
-    }
-    final d = r.data;
-    final paused = d['paused'] == true;
-    final side = d['side'] == 'right' ? tr('Sağ') : tr('Sol');
-    var ms = (((d['left_ms'] as num?) ?? 0) + ((d['right_ms'] as num?) ?? 0)).toInt();
-    final seg = DateTime.tryParse(d['seg_start_ts'] as String? ?? '')?.toLocal();
-    if (seg != null && !paused) {
-      ms += DateTime.now().difference(seg).inMilliseconds.clamp(0, 24 * 3600 * 1000);
-    }
-    final since = DateTime.now().subtract(Duration(milliseconds: ms));
-    NotificationService.instance.showTimer(
-      id: NotificationService.breastTimerId,
-      title: paused ? tr('Emzirme duraklatıldı') : tr('Emzirme sürüyor'),
-      body: paused
-          ? trp('{side} meme · {min} dk (duraklatıldı)',
-              {'side': side, 'min': ms ~/ 60000})
-          : trp('{side} memeden emziriyor · dokun ve bitir', {'side': side}),
-      since: since,
-      running: !paused,
-    );
-  }
 
   Widget _navItem(String icon, int index) {
     final selected = _tab == index;
@@ -677,33 +611,42 @@ class _HomeTab extends ConsumerWidget {
     final layout =
         ref.watch(homeLayoutControllerProvider).asData?.value ?? HomeLayout.fallback;
 
-    return ListView(
-      // Alt: yüzer menü (≈76) + cihaz güvenli alanı + boşluk; içerik menü altında kalmasın.
-      padding: EdgeInsets.fromLTRB(16, 2, 16, 92 + MediaQuery.of(context).padding.bottom),
-      children: [
-        if (ongoing != null) _SleepBanner(sleep: ongoing),
-        if (ongoingBreast != null) _BreastBanner(feed: ongoingBreast),
-        _EditableSec(
-          title: tr('Hızlı Giriş'),
-          top: 4,
-          onEdit: () => showHomeLayoutEditor(context, ref,
-              isQuick: true, current: layout.quick),
-        ),
-        Row(
-          children: [
-            for (var i = 0; i < layout.quick.length; i++) ...[
-              if (i > 0) const SizedBox(width: 10),
-              _quickCardFor(context, ref, babyId, layout.quick[i], ongoing),
+    return RefreshIndicator(
+      color: AppColors.coral,
+      // Aşağı çekince sunucuyla eşitle; yerel kayıtlar zaten reaktif (drift stream)
+      // güncellenir, Future tabanlı bölümleri de tazele.
+      onRefresh: () async {
+        await ref.read(syncServiceProvider).syncAll();
+        ref.invalidate(familySettingsProvider(babyId));
+      },
+      child: ListView(
+        // Alt: yüzer menü (≈76) + cihaz güvenli alanı + boşluk; içerik menü altında kalmasın.
+        padding: EdgeInsets.fromLTRB(16, 2, 16, 92 + MediaQuery.of(context).padding.bottom),
+        children: [
+          if (ongoing != null) _SleepBanner(sleep: ongoing),
+          if (ongoingBreast != null) _BreastBanner(feed: ongoingBreast),
+          _EditableSec(
+            title: tr('Hızlı Giriş'),
+            top: 4,
+            onEdit: () => showHomeLayoutEditor(context, ref,
+                isQuick: true, current: layout.quick),
+          ),
+          Row(
+            children: [
+              for (var i = 0; i < layout.quick.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                _quickCardFor(context, ref, babyId, layout.quick[i], ongoing),
+              ],
             ],
-          ],
-        ),
-        _PredictSection(babyId: babyId),
-        _LastActivitySection(babyId: babyId, units: units),
-        _DaySummarySection(babyId: babyId),
-        _UpcomingSection(babyId: babyId),
-        _MilestoneSection(babyId: babyId),
-        _ForYouSection(babyId: babyId),
-      ],
+          ),
+          _PredictSection(babyId: babyId),
+          _LastActivitySection(babyId: babyId, units: units),
+          _DaySummarySection(babyId: babyId),
+          _UpcomingSection(babyId: babyId),
+          _MilestoneSection(babyId: babyId),
+          _ForYouSection(babyId: babyId),
+        ],
+      ),
     );
   }
 }
@@ -1071,13 +1014,17 @@ class _PredictSection extends ConsumerStatefulWidget {
   ConsumerState<_PredictSection> createState() => _PredictSectionState();
 }
 
-class _PredictSectionState extends ConsumerState<_PredictSection> {
+class _PredictSectionState extends ConsumerState<_PredictSection>
+    with SingleTickerProviderStateMixin {
   Timer? _tick;
+  late final AnimationController _pulse; // beslenme geçince kırmızı alert nabzı
 
   @override
   void initState() {
     super.initState();
-    // "~X dk sonra" ve ilerleme halkası canlı kalsın diye periyodik yeniden çiz.
+    _pulse = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 850));
+    // "X sonra" metni ve ilerleme halkası canlı kalsın diye periyodik yeniden çiz.
     _tick = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -1086,8 +1033,26 @@ class _PredictSectionState extends ConsumerState<_PredictSection> {
   @override
   void dispose() {
     _tick?.cancel();
+    _pulse.dispose();
     super.dispose();
   }
+
+  /// "120 dk" yerine insan-dostu süre: "2 saat" / "1 saat 50 dakika" / "50 dakika".
+  String _humanDur(int totalMin) {
+    final m = totalMin.abs();
+    final h = m ~/ 60, mm = m % 60;
+    if (h == 0) return trp('{m} dakika', {'m': mm});
+    if (mm == 0) return trp('{h} saat', {'h': h});
+    return trp('{h} saat {m} dakika', {'h': h, 'm': mm});
+  }
+
+  String _feedSubLabel(Record r) => switch (r.data['sub']) {
+        'breast' => tr('anne sütü'),
+        'formula' => tr('mama'),
+        'pumped' => tr('sağılmış süt'),
+        'solid' => tr('katı gıda'),
+        _ => tr('beslenme'),
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -1109,15 +1074,118 @@ class _PredictSectionState extends ConsumerState<_PredictSection> {
     final remaining = next.difference(now).inMinutes;
     final whenStr = DateFormat('HH:mm').format(next);
     final relStr = remaining > 0
-        ? trp('~{n} dk sonra', {'n': remaining})
-        : (remaining == 0 ? tr('şimdi') : trp('~{n} dk gecikti', {'n': -remaining}));
-    final subtitle = cfg.enabled
-        ? cfg.summary
-        : tr('Son beslemeye göre · her 2 saat');
+        ? trp('{d} sonra', {'d': _humanDur(remaining)})
+        : (remaining == 0 ? tr('şimdi') : trp('{d} gecikti', {'d': _humanDur(remaining)}));
 
+    // Alt satır: son beslenmenin saati + türü + ne kadar önce olduğu.
+    final lastStr = DateFormat('HH:mm').format(last);
+    final sinceMin = now.difference(last).inMinutes;
+    final subtitle = trp('Son {t} ({type}) · {ago} önce', {
+      't': lastStr,
+      'type': _feedSubLabel(feeds.first),
+      'ago': _humanDur(sinceMin),
+    });
+
+    // Durum: normal → son 30 dk uyarı → vakti geldi/geçti kırmızı alert.
+    final overdue = remaining <= 0;
+    final soon = !overdue && remaining <= 30;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final accent = dark ? const Color(0xFFFFAF9E) : AppColors.coralDd;
     final fg = dark ? Theme.of(context).colorScheme.onSurface : AppColors.ink;
+
+    final Color accent;
+    final List<Color> grad;
+    if (overdue) {
+      accent = const Color(0xFFE0533F); // kırmızı
+      grad = dark
+          ? const [Color(0xFF4A2420), Color(0xFF3F2320)]
+          : const [Color(0xFFFFDAD2), Color(0xFFFFC7BC)];
+    } else if (soon) {
+      accent = dark ? const Color(0xFFEDB052) : const Color(0xFFD98A1F); // amber uyarı
+      grad = dark
+          ? const [Color(0xFF40331E), Color(0xFF3A3022)]
+          : const [Color(0xFFFFEFD2), Color(0xFFFFE3B8)];
+    } else {
+      accent = dark ? const Color(0xFFFFAF9E) : AppColors.coralDd;
+      grad = dark
+          ? const [Color(0xFF3A2A2E), Color(0xFF3A2F28)]
+          : [AppColors.peachLight, const Color(0xFFFFE0D2)];
+    }
+
+    // Vakti geçtiyse nabız animasyonunu çalıştır, değilse durdur (pil tasarrufu).
+    if (overdue) {
+      if (!_pulse.isAnimating) _pulse.repeat(reverse: true);
+    } else if (_pulse.isAnimating) {
+      _pulse.stop();
+    }
+
+    Widget card = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: grad,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: overdue ? Border.all(color: accent.withValues(alpha: 0.55), width: 1.5) : null,
+        boxShadow: AppColors.softShadow,
+      ),
+      child: Row(
+        children: [
+          Ring(
+            size: 42,
+            pct: pct,
+            strokeWidth: 5,
+            color: accent,
+            child: AdenaIcon(overdue ? 'bell' : 'clock', size: 20, color: accent),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: fg),
+                    children: [
+                      TextSpan(text: whenStr, style: TextStyle(color: accent)),
+                      TextSpan(text: ' · $relStr'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.ink2)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // Vakti geçtiyse kart etrafında kırmızı nabız parıltısı.
+    if (overdue) {
+      card = AnimatedBuilder(
+        animation: _pulse,
+        builder: (context, child) => DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.20 + 0.30 * _pulse.value),
+                blurRadius: 10 + 14 * _pulse.value,
+                spreadRadius: 0.5 + 2.0 * _pulse.value,
+              ),
+            ],
+          ),
+          child: child,
+        ),
+        child: card,
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1125,59 +1193,7 @@ class _PredictSectionState extends ConsumerState<_PredictSection> {
         _sec(tr('Sonraki beslenme')),
         GestureDetector(
           onTap: () => showFeedReminderSheet(context, ref, babyId, cfg),
-          child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: dark
-                  ? const [Color(0xFF3A2A2E), Color(0xFF3A2F28)]
-                  : [AppColors.peachLight, const Color(0xFFFFE0D2)],
-            ),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: AppColors.softShadow,
-          ),
-          child: Row(
-            children: [
-              Ring(
-                size: 42,
-                pct: pct,
-                strokeWidth: 5,
-                color: accent,
-                child: AdenaIcon('clock', size: 20, color: accent),
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text.rich(
-                      TextSpan(
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w900, color: fg),
-                        children: [
-                          TextSpan(
-                              text: whenStr,
-                              style: TextStyle(color: accent)),
-                          TextSpan(text: ' · $relStr'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ink2)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+          child: card,
         ),
       ],
     );
@@ -1282,11 +1298,14 @@ class _LastCard extends StatelessWidget {
                   color: AppColors.muted,
                   letterSpacing: 0.3)),
           const SizedBox(height: 3),
-          Text(r != null ? RecordUi.time(r.ts) : '—',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+          // Göreli zaman (büyük) — "3 sa önce". Altında detay · akıllı tam tarih.
+          Text(r != null ? RecordUi.relative(r.ts) : '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
           const SizedBox(height: 1),
           Text(
-            r != null ? _detail(r) : tr('Kayıt yok'),
+            r != null ? _sub(r) : tr('Kayıt yok'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -1306,6 +1325,13 @@ class _LastCard extends StatelessWidget {
     if (s.startsWith('$label · ')) return s.substring(label.length + 3);
     if (s == label) return '';
     return s;
+  }
+
+  /// Alt satır: "detay · tam tarih" (detay yoksa yalnız tarih). Örn. "120ml · 14:30".
+  String _sub(Record r) {
+    final det = _detail(r);
+    final stamp = RecordUi.shortStamp(r.ts);
+    return det.isEmpty ? stamp : '$det · $stamp';
   }
 }
 

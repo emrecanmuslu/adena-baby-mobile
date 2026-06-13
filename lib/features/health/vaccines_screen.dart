@@ -210,6 +210,11 @@ class _VacRow extends ConsumerWidget {
   }
 
   Future<void> _toggle(BuildContext context, WidgetRef ref, bool done) async {
+    // Sağlık kayıtları yalnız owner/parent — bakıcı salt-okunur.
+    if (!(ref.read(activeBabyProvider)?.canFullWrite ?? true)) {
+      showAdToast(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
+      return;
+    }
     try {
       await ref.read(healthRepositoryProvider).setStatus(vaccine.id, done: done);
       ref.invalidate(vaccinesProvider(babyId));

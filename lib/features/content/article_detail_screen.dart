@@ -64,6 +64,7 @@ class ArticleDetailScreen extends ConsumerWidget {
                     aspectRatio: 16 / 9,
                     child: Image.network(a.coverImage!,
                         fit: BoxFit.cover,
+                        cacheWidth: 1080,
                         errorBuilder: (_, _, _) => const SizedBox.shrink()),
                   ),
                 ),
