@@ -16,7 +16,9 @@ env:
 
 jobs:
   build-ios:
-    runs-on: macos-14
+    # Firebase SDK Swift 6 'sending' anahtar kelimesini kullanır → Xcode 16+ (Swift 6)
+    # şart. macos-14 = Xcode 15.4 (Swift 5) → derleme hatası. macos-15 = Xcode 16.
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v5
