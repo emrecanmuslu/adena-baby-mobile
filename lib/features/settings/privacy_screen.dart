@@ -5,6 +5,7 @@ import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
+import '../../core/legal_links.dart';
 import '../../core/theme.dart';
 import '../../data/auth_repository.dart';
 import '../auth/auth_controller.dart';
@@ -140,6 +141,41 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
           _Note(
             tr('Verilerini asla satmıyor veya reklam için kullanmıyoruz. '
                 'Aile üyeleri yalnızca paylaştığın bebeği görür.'),
+          ),
+          adSec(tr('Yasal'),
+              info: tr('Belgeler çevrimiçi yayınlanır ve tarayıcıda açılır. '
+                  'Diline göre Türkçe ya da İngilizce gösterilir.')),
+          AdMenuItem(
+            icon: 'shield',
+            color: AppColors.pump,
+            bg: AppColors.pumpBg,
+            title: tr('Gizlilik Politikası'),
+            meta: tr('Web sayfasını açar'),
+            onTap: () => openLegalDoc(context, LegalDoc.privacy),
+          ),
+          AdMenuItem(
+            icon: 'check',
+            color: AppColors.growth,
+            bg: AppColors.growthBg,
+            title: tr('Kullanım Şartları'),
+            meta: tr('Web sayfasını açar'),
+            onTap: () => openLegalDoc(context, LegalDoc.terms),
+          ),
+          AdMenuItem(
+            icon: 'user',
+            color: AppColors.sleep,
+            bg: AppColors.sleepBg,
+            title: tr('KVKK Aydınlatma Metni'),
+            meta: tr('Web sayfasını açar'),
+            onTap: () => openLegalDoc(context, LegalDoc.kvkk),
+          ),
+          AdMenuItem(
+            icon: 'link',
+            color: AppColors.feed,
+            bg: AppColors.feedBg,
+            title: tr('Çerez Politikası'),
+            meta: tr('Web sayfasını açar'),
+            onTap: () => openLegalDoc(context, LegalDoc.cookies),
           ),
           adSec(tr('Tehlikeli bölge'), color: AppColors.coralDd),
           AdMenuItem(

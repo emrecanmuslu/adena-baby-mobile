@@ -13,6 +13,13 @@ class AppConfig {
   static String get mediaBaseUrl =>
       apiBaseUrl.replaceFirst(RegExp(r'/api/v\d+/?$'), '');
 
+  /// Tanıtım/yasal sitesi kökü (API'den bağımsız, her ortamda canlı domain).
+  /// Yasal sayfa linkleri (gizlilik/şartlar/KVKK/çerez) buradan açılır.
+  static const String websiteBaseUrl = String.fromEnvironment(
+    'WEBSITE_BASE_URL',
+    defaultValue: 'https://adenababy.com',
+  );
+
   // ── Sosyal giriş (Google / Apple) ──────────────────────────────────
   // Değerler `--dart-define` ile build'e verilir; gizli değil ama kaynakta
   // tutmuyoruz çünkü ortama göre değişir. Boşsa ilgili sağlayıcı butonu

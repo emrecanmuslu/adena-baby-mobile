@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,7 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
+import '../../core/legal_links.dart';
 import '../../core/theme.dart';
 import 'auth_controller.dart';
 import 'oauth_buttons.dart';
@@ -24,11 +26,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _password = TextEditingController();
   bool _obscure = true;
 
+  // Kayıt onay metnindeki tıklanır yasal linkler (build'de yeniden üretmemek
+  // için alan olarak tutulur; dispose'da serbest bırakılır).
+  late final TapGestureRecognizer _privacyTap;
+  late final TapGestureRecognizer _termsTap;
+
+  @override
+  void initState() {
+    super.initState();
+    _privacyTap = TapGestureRecognizer()
+      ..onTap = () => openLegalDoc(context, LegalDoc.privacy);
+    _termsTap = TapGestureRecognizer()
+      ..onTap = () => openLegalDoc(context, LegalDoc.terms);
+  }
+
   @override
   void dispose() {
     _name.dispose();
     _email.dispose();
     _password.dispose();
+    _privacyTap.dispose();
+    _termsTap.dispose();
     super.dispose();
   }
 
@@ -144,6 +162,34 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           )
                         : AdSaveButton(
                             label: tr('Kayıt Ol'), color: AppColors.coral, onTap: _submit),
+                    const SizedBox(height: 12),
+                    Text.rich(
+                      TextSpan(
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            height: 1.5,
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w600),
+                        children: [
+                          TextSpan(text: tr('Kayıt olarak ')),
+                          TextSpan(
+                              text: tr('Gizlilik Politikası'),
+                              style: const TextStyle(
+                                  color: AppColors.coralDark,
+                                  fontWeight: FontWeight.w800),
+                              recognizer: _privacyTap),
+                          TextSpan(text: tr(' ve ')),
+                          TextSpan(
+                              text: tr('Kullanım Şartları'),
+                              style: const TextStyle(
+                                  color: AppColors.coralDark,
+                                  fontWeight: FontWeight.w800),
+                              recognizer: _termsTap),
+                          TextSpan(text: tr('\'nı kabul etmiş olursun.')),
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                     const OAuthSection(),
                     const SizedBox(height: 18),
                     Center(
