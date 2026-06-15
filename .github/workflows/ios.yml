@@ -8,7 +8,7 @@ on:
       api_base_url:
         description: 'API taban adresi (test sunucusu)'
         required: true
-        default: 'https://91.99.19.82.sslip.io/api/v1'
+        default: 'https://api.adenababy.com/api/v1'
 
 # Tüm JS aksiyonlarını Node 24'te çalıştır (checkout/upload-artifact Node 20 uyarısını susturur).
 env:
