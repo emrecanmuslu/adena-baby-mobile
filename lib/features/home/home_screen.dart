@@ -3,16 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/ring.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
+import '../../core/tour.dart';
 import '../../core/units.dart';
 import '../../data/community_repository.dart';
 import '../../data/content_repository.dart';
@@ -28,7 +29,6 @@ import '../babies/baby_switcher.dart';
 import '../babies/family_settings.dart';
 import '../charts/charts_view.dart';
 import '../content/content_ui.dart';
-import '../health/reminders_screen.dart';
 import 'expecting_home.dart';
 import 'home_layout.dart';
 import 'home_layout_editor.dart';
@@ -106,7 +106,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (baby.isExpecting) {
       return Scaffold(
         appBar: appBar,
-        body: ExpectingHome(baby: baby),
+        body: TourMount(tourKey: 'expecting', child: ExpectingHome(baby: baby)),
       );
     }
 
@@ -116,10 +116,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // yok). Sekmelerin alt boşluğu (96) içeriği menünün arkasında bırakmaz.
       extendBody: true,
       // Lazy: yalnız aktif sekme kurulur (çok veride diğer sekmeler boşuna yüklenmesin).
+      // Her sekmeye ayrı Key: aksi halde aynı ağaç pozisyonundaki TourMount
+      // State'i sekmeler arası yeniden kullanılır ve timeline/charts turu hiç açılmaz.
       body: switch (_tab) {
-        1 => TimelineView(babyId: baby.id),
-        2 => ChartsView(babyId: baby.id),
-        _ => _HomeTab(babyId: baby.id),
+        1 => TourMount(
+            key: const ValueKey('tour_timeline'),
+            tourKey: 'timeline',
+            child: TimelineView(babyId: baby.id)),
+        2 => TourMount(
+            key: const ValueKey('tour_charts'),
+            tourKey: 'charts',
+            child: ChartsView(babyId: baby.id)),
+        _ => TourMount(
+            key: const ValueKey('tour_home'),
+            tourKey: 'home',
+            child: _HomeTab(babyId: baby.id)),
       },
       // V2 · Yüzen ada — kenarlardan kopuk hap; ikon-odaklı, FAB satır içinde.
       bottomNavigationBar: SafeArea(
@@ -507,23 +518,53 @@ class _DashedPillBorder extends CustomPainter {
   bool shouldRepaint(_DashedPillBorder oldDelegate) => oldDelegate.color != color;
 }
 
-/// Sekme için kısa yaş etiketi — "12 g", "3 ay", "2 yaş", bekleme: "Bekliyor".
+/// Sekme için kısa yaş etiketi — "5 gün", "2 ay 5 gün", "3 yaş 4 ay",
+/// bekleme: "Bekliyor". Ay/gün takvim-doğru hesaplanır (30.44 yaklaşımı değil).
 String _babyAgeShort(Baby b) {
   if (b.isExpecting) {
     final due = b.dueDate;
     if (due == null) return tr('Bekliyor');
-    final daysLeft = due.difference(DateTime.now()).inDays.clamp(0, 400);
-    final weeks = ((280 - daysLeft) / 7).floor().clamp(0, 42);
-    return '$weeks. hf';
+    // Bekleme ekranıyla BİREBİR aynı hesap: gün farkı gece yarısı bazlı olmalı
+    // (DateTime.now() saat dahil olduğundan kalan günü 1 eksik sayıp haftayı
+    // sınırda kaydırabilir). daysPregnant = 280 - kalan, hafta = tam bölüm.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final daysLeft = due.difference(today).inDays;
+    final daysPregnant = (280 - daysLeft).clamp(0, 280);
+    final weeks = daysPregnant ~/ 7;
+    return trp('{w}. hf', {'w': weeks});
   }
   final birth = b.birthDate;
   if (birth == null) return tr('Takip');
-  final days = DateTime.now().difference(birth).inDays;
-  if (days < 0) return tr('Takip');
-  if (days < 30) return '$days g';
-  final months = (days / 30.44).floor();
-  if (months < 24) return trp('{n} ay', {'n': months});
-  return trp('{n} yaş', {'n': (months / 12).floor()});
+  final now = DateTime.now();
+  final bd = DateTime(birth.year, birth.month, birth.day);
+  final today = DateTime(now.year, now.month, now.day);
+  if (today.isBefore(bd)) return tr('Takip');
+
+  // Takvim bazlı yaş: yıl/ay/gün farkı (ay gün taşımalı).
+  var years = today.year - bd.year;
+  var months = today.month - bd.month;
+  var days = today.day - bd.day;
+  if (days < 0) {
+    months -= 1;
+    days += DateTime(today.year, today.month, 0).day; // önceki ayın gün sayısı
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+  final totalMonths = years * 12 + months;
+
+  // 1 aydan küçük → yalnız gün.
+  if (totalMonths < 1) return trp('{n} gün', {'n': days});
+  // 2 yaşından küçük → ay + gün.
+  if (totalMonths < 24) {
+    final ay = trp('{n} ay', {'n': totalMonths});
+    return days > 0 ? '$ay ${trp('{n} gün', {'n': days})}' : ay;
+  }
+  // 2 yaş ve üzeri → yaş + ay.
+  final yas = trp('{n} yaş', {'n': years});
+  return months > 0 ? '$yas ${trp('{n} ay', {'n': months})}' : yas;
 }
 
 /// Bölüm başlığı (design .ad-sec): uppercase, muted, kalın, harf aralıklı.
@@ -986,10 +1027,26 @@ class _MilestoneRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(milestone.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(milestone.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 13.5)),
+                if (milestone.description.isNotEmpty) ...[
+                  const SizedBox(height: 1),
+                  Text(milestone.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.muted)),
+                ],
+              ],
+            ),
           ),
           const SizedBox(width: 8),
           Text(milestoneAgeLabel(milestone.expectedMonth),
@@ -1072,13 +1129,13 @@ class _PredictSectionState extends ConsumerState<_PredictSection>
     final pct =
         totalMin > 0 ? (now.difference(last).inMinutes / totalMin).clamp(0.0, 1.0) : 1.0;
     final remaining = next.difference(now).inMinutes;
-    final whenStr = DateFormat('HH:mm').format(next);
+    final whenStr = fmtTime(next);
     final relStr = remaining > 0
         ? trp('{d} sonra', {'d': _humanDur(remaining)})
         : (remaining == 0 ? tr('şimdi') : trp('{d} gecikti', {'d': _humanDur(remaining)}));
 
     // Alt satır: son beslenmenin saati + türü + ne kadar önce olduğu.
-    final lastStr = DateFormat('HH:mm').format(last);
+    final lastStr = fmtTime(last);
     final sinceMin = now.difference(last).inMinutes;
     final subtitle = trp('Son {t} ({type}) · {ago} önce', {
       't': lastStr,
@@ -1191,10 +1248,9 @@ class _PredictSectionState extends ConsumerState<_PredictSection>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _sec(tr('Sonraki beslenme')),
-        GestureDetector(
-          onTap: () => showFeedReminderSheet(context, ref, babyId, cfg),
-          child: card,
-        ),
+        // Besleme hatırlatıcı ayarı yalnızca Hatırlatıcılar'da yapılır;
+        // home kartı yalnız tahmini gösterir (ayar sheet'i açmaz).
+        card,
       ],
     );
   }
@@ -1448,7 +1504,7 @@ class _UpcomingSection extends ConsumerWidget {
       ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
     if (pending.isEmpty) return const SizedBox.shrink();
     final v = pending.first;
-    final dateStr = DateFormat('d MMMM', 'tr_TR').format(v.dueDate);
+    final dateStr = fmtDayMonth(v.dueDate);
 
     // Bugüne göre gün farkı (yalnız tarih, saat yok).
     final now = DateTime.now();

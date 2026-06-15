@@ -87,7 +87,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         autofillHints: const [AutofillHints.name],
                         textInputAction: TextInputAction.next,
                         style: const TextStyle(fontWeight: FontWeight.w700),
-                        decoration: _dec('Ayşe'),
+                        decoration: _dec(tr('Ayşe')),
                         validator: (v) =>
                             (v == null || v.trim().isEmpty) ? tr('Adını gir') : null,
                       ),

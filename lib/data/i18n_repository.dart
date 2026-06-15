@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/api_client.dart';
+import '../core/json_cache.dart';
 import '../core/providers.dart';
+import '../models/locale_info.dart';
 
 /// Çeviri bundle'larını sunucudan çeker, yerelde (JSON dosyası) cache'ler ve
 /// bilinmeyen TR metinleri panele raporlar. TR locale için ağ gerekmez.
@@ -67,8 +69,62 @@ class I18nRepository {
       await _api.dio.post('/i18n/report', data: {'sources': sources});
     } catch (_) {}
   }
+
+  /// Desteklenen dil listesi (sunucu-yönetimli). Yeni dil eklenince burada görünür.
+  /// Write-through cache: ağ hatasında/çevrimdışı son listeyi döner.
+  Future<List<SupportedLocale>> locales() async {
+    try {
+      final resp = await _api.dio.get('/i18n/locales');
+      final list = ((resp.data as Map<String, dynamic>)['locales'] as List)
+          .cast<Map<String, dynamic>>();
+      await JsonCache.write('locales', list);
+      return list.map(SupportedLocale.fromJson).toList();
+    } catch (_) {
+      final cached = await JsonCache.read('locales');
+      if (cached is List) {
+        return cached
+            .cast<Map<String, dynamic>>()
+            .map(SupportedLocale.fromJson)
+            .toList();
+      }
+      // Hiç cache yoksa çekirdek tr+en.
+      return const [
+        SupportedLocale(code: 'tr', nativeName: 'Türkçe', englishName: 'Turkish'),
+        SupportedLocale(
+            code: 'en', nativeName: 'English', englishName: 'English', isDefault: true),
+      ];
+    }
+  }
+
+  /// Ülke listesi + ülkeye bağlı varsayılanlar (birim/para/dil/telefon kodu).
+  /// Write-through cache: ağ hatasında/çevrimdışı son listeyi döner.
+  Future<List<CountryInfo>> countries() async {
+    try {
+      final resp = await _api.dio.get('/i18n/countries');
+      final list = ((resp.data as Map<String, dynamic>)['countries'] as List)
+          .cast<Map<String, dynamic>>();
+      await JsonCache.write('countries', list);
+      return list.map(CountryInfo.fromJson).toList();
+    } catch (_) {
+      final cached = await JsonCache.read('countries');
+      if (cached is List) {
+        return cached.cast<Map<String, dynamic>>().map(CountryInfo.fromJson).toList();
+      }
+      return const <CountryInfo>[];
+    }
+  }
 }
 
 final i18nRepositoryProvider = Provider<I18nRepository>(
   (ref) => I18nRepository(ref.watch(apiClientProvider)),
+);
+
+/// Sunucudan desteklenen diller. Yüklenene kadar UI tr+en fallback'i kullanır.
+final supportedLocalesProvider = FutureProvider<List<SupportedLocale>>(
+  (ref) => ref.watch(i18nRepositoryProvider).locales(),
+);
+
+/// Sunucudan ülke listesi (birim/para/dil varsayılanlarını sürmek için).
+final countriesProvider = FutureProvider<List<CountryInfo>>(
+  (ref) => ref.watch(i18nRepositoryProvider).countries(),
 );

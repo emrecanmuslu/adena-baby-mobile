@@ -45,7 +45,10 @@ class ContentHubScreen extends ConsumerWidget {
         padding: EdgeInsets.fromLTRB(
             16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
         children: [
-          if (age != null) _AgeStrip(ageMonths: age),
+          if (baby?.isExpecting == true)
+            _PregnancyStrip()
+          else if (age != null)
+            _AgeStrip(ageMonths: age),
           _CategoriesSection(),
         ],
       ),
@@ -113,6 +116,68 @@ class _AgeStrip extends ConsumerWidget {
 
   String _iconFor(String slug, List<ArticleCategory> cats) =>
       cats.where((c) => c.slug == slug).firstOrNull?.icon ?? '';
+}
+
+/// Bekleme (gebelik) modu öneri şeridi — 'gebelik' kategorisi makaleleri.
+/// Doğmuş bebek yaş şeridinin gebelik karşılığı (yaşa göre değil kategoriye göre).
+class _PregnancyStrip extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async =
+        ref.watch(articlesProvider((category: 'gebelik', ageMonths: null)));
+    final cats = ref.watch(contentCategoriesProvider).asData?.value ?? const [];
+
+    return async.when(
+      loading: () => const _StripSkeleton(),
+      error: (e, _) => const SizedBox.shrink(),
+      data: (articles) {
+        if (articles.isEmpty) return const SizedBox.shrink();
+        final shown = articles.take(8).toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(3, 14, 3, 10),
+              child: Row(
+                children: [
+                  Text(tr('GEBELİĞİNE ÖZEL'),
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.muted,
+                          letterSpacing: 0.7)),
+                  const SizedBox(width: 6),
+                  AdInfoDot(
+                    title: tr('Gebelik rehberi'),
+                    body: tr('Bekleme dönemine özel hazırlık ve gelişim rehberleri. '
+                        'Bebeğin doğunca öneriler otomatik olarak yaşına göre güncellenir.'),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 274,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                itemCount: shown.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (_, i) => ArticleCard(
+                  article: shown[i],
+                  categoryIcon: cats
+                          .where((c) => c.slug == shown[i].categorySlug)
+                          .firstOrNull
+                          ?.icon ??
+                      '',
+                  width: 230,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 /// Kategori listesi (AdMenuItem satırları) — dokun → kategori makale listesi.

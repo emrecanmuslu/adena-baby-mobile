@@ -16,7 +16,10 @@ class ActivityNotifEnabled extends AsyncNotifier<bool> {
   Future<void> set(bool v) async {
     await ActivityNotifCache().setEnabled(v);
     state = AsyncData(v);
-    if (v) ref.read(familyActivityWatcherProvider).poll(); // açar açmaz cursor'u kur
+    // Açar açmaz YALNIZ cursor'u kur, geçmişi bildirme. silent şart: kapalıyken
+    // birikmiş olaylar yüzünden cursor bayatlamıştır; silent olmadan tekrar açış
+    // o birikimin tamamını tek seferde bildirir (flood). bkz. _pollBaby.
+    if (v) ref.read(familyActivityWatcherProvider).poll(silent: true);
   }
 }
 
@@ -32,7 +35,10 @@ class FamilyActivityWatcher {
   bool _busy = false;
   FamilyActivityWatcher(this.ref);
 
-  Future<void> poll() async {
+  /// [silent] true ise olaylar bildirilmez; yalnız cursor en yeni damgaya çekilir.
+  /// Bildirimi açar açmaz çağrılır — bayat cursor'un birikmiş geçmişi flood
+  /// etmesini önler (yeni eşik olarak "şimdi"yi kurar).
+  Future<void> poll({bool silent = false}) async {
     if (_busy) return;
     _busy = true;
     try {
@@ -43,7 +49,9 @@ class FamilyActivityWatcher {
       final repo = ref.read(sharingRepositoryProvider);
       final cache = ActivityNotifCache();
       for (final baby in babies) {
-        await _pollBaby(repo, cache, baby.id, baby.name, me.id);
+        // Tek üyeli (paylaşımsız) bebekte başka aktör yok → yoklama gereksiz.
+        if (!baby.isShared) continue;
+        await _pollBaby(repo, cache, baby.id, baby.name, me.id, silent: silent);
       }
     } catch (_) {
       // Polling hatası sessiz — UI/uygulama akışını etkilemesin.
@@ -53,16 +61,23 @@ class FamilyActivityWatcher {
   }
 
   Future<void> _pollBaby(SharingRepository repo, ActivityNotifCache cache,
-      String babyId, String babyName, String myId) async {
+      String babyId, String babyName, String myId, {bool silent = false}) async {
     try {
       final since = await cache.lastSeen(babyId);
       final events = await repo.activity(babyId, since: since);
       if (events.isEmpty) return;
-      final newest = events.first.ts; // akış yeni→eski
-      // İlk çalıştırmada (since==null) geçmişi bildirimle doldurma; yalnız cursor kur.
-      if (since != null) {
-        for (final e in events.reversed) {
+      // Cursor'u DAİMA en yeni damgaya çek — sunucu sıralamasına güvenme (sırasız
+      // dönerse cursor geri çekilip aynı olaylar tekrar bildirilir). Bildirimleri
+      // de kronolojik (eski→yeni) bas.
+      final ordered = [...events]..sort((a, b) => a.ts.compareTo(b.ts));
+      final newest = ordered.last.ts;
+      // İlk çalıştırmada (since==null) ya da açılış sessiz turunda geçmişi bildirme;
+      // yalnız cursor kur. silent: kapalıyken biriken olayların flood'unu önler.
+      if (since != null && !silent) {
+        for (final e in ordered) {
           if (e.actor == null || e.actor!.id == myId) continue; // kendi eylemim hariç
+          // Push aynı olayı zaten göstermiş olabilir → olay-id dedup (çift önleme).
+          if (!await cache.markNotifiedIfNew(e.id)) continue;
           await NotificationService.instance
               .showActivity(title: babyName, body: activityMessage(e));
         }

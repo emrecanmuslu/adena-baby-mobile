@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import 'baby_controller.dart';
@@ -129,7 +129,7 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
                           color: AppColors.doctor,
                           bg: AppColors.doctorBg,
                           title: tr('Doğum tarihi'),
-                          subtitle: DateFormat('d MMMM y', 'tr_TR').format(_birth),
+                          subtitle: fmtDayMonthYear(_birth),
                           trailing: AdenaIcon('edit', size: 18, color: AppColors.muted),
                           onTap: _pickDate,
                           divider: false,

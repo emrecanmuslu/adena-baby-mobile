@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
 import '../../core/widget_service.dart';
+import '../../data/feed_reminder_cache.dart';
 import '../../models/baby.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
@@ -133,6 +134,20 @@ class _BabyNotifSync extends ConsumerWidget {
 
   void _syncFeed(FeedReminderConfig cfg, List<Record> recs, QuietHours quiet) {
     final slot = baby.notifSlot;
+    // Arka plan (FCM push) yeniden planlaması için parametreleri sakla — başka
+    // üye beslenme girince, uygulama kapalıyken bile hatırlatıcı kayabilsin.
+    FeedReminderCache().save(
+      baby.id,
+      FeedReminderSnapshot(
+        slot: slot,
+        enabled: cfg.enabled,
+        intervalMin: cfg.intervalMin,
+        baseType: cfg.baseType,
+        preMin: cfg.preMin,
+        sound: cfg.soundEnabled,
+        quiet: quiet,
+      ),
+    );
     if (!cfg.enabled) {
       NotificationService.instance.scheduleFeedReminder(
           enabled: false, nextTime: null, preMin: 0, slot: slot, babyName: baby.name);

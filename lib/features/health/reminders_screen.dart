@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
 import '../../core/premium_gate.dart';
@@ -351,7 +351,7 @@ String _typeLabel(Reminder r) => switch (r.type) {
 String _scheduleLabel(Reminder r) {
   // Şekil-tabanlı: tek-seferlik ('at') ya da günlük ('time').
   final at = DateTime.tryParse(r.schedule['at'] as String? ?? '')?.toLocal();
-  if (at != null) return DateFormat('d MMM · HH:mm', 'tr_TR').format(at);
+  if (at != null) return fmtDayMonTime(at);
   final time = r.schedule['time'] as String?;
   if (time != null && time.isNotEmpty) return trp('Her gün {t}', {'t': time});
   switch (r.type) {
@@ -461,7 +461,7 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
               AdField(
                 label: tr('Tarih & saat'),
                 child: _pickerRow(
-                    DateFormat('d MMMM · HH:mm', 'tr_TR').format(_onceAt), _pickOnce),
+                    fmtDayMonthTime(_onceAt), _pickOnce),
               ),
             const SizedBox(height: 6),
             AdSaveButton(
@@ -602,8 +602,12 @@ class _FeedReminderCard extends ConsumerWidget {
                 Switch.adaptive(
                   value: cfg.enabled,
                   activeThumbColor: AppColors.coral,
-                  onChanged: (v) =>
-                      updateFeedReminder(ref, babyId, cfg.copyWith(enabled: v)),
+                  onChanged: (v) {
+                    final next = cfg.copyWith(enabled: v);
+                    updateFeedReminder(ref, babyId, next);
+                    // Açılınca ayar sheet'i otomatik açılır (detayları ayarlasın).
+                    if (v) showFeedReminderSheet(context, ref, babyId, next);
+                  },
                 ),
               ],
             ),
@@ -859,8 +863,12 @@ class _QuietHoursCard extends ConsumerWidget {
                 Switch.adaptive(
                   value: q.enabled,
                   activeThumbColor: AppColors.coral,
-                  onChanged: (v) =>
-                      updateQuietHours(ref, babyId, q.copyWith(enabled: v)),
+                  onChanged: (v) {
+                    final next = q.copyWith(enabled: v);
+                    updateQuietHours(ref, babyId, next);
+                    // Açılınca saat aralığı sheet'i otomatik açılır.
+                    if (v) showQuietHoursSheet(context, ref, babyId, next);
+                  },
                 ),
               ],
             ),

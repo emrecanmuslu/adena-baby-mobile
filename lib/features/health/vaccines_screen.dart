@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
@@ -124,7 +124,6 @@ class _VacRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dateFmt = DateFormat('d MMM y', 'tr_TR');
     final v = vaccine;
     // Durum: done · due (yaklaşan/gecikmiş) · future.
     final state = v.done ? 'done' : ((highlighted || v.isOverdue) ? 'due' : 'future');
@@ -134,10 +133,10 @@ class _VacRow extends ConsumerWidget {
       _ => (AppColors.line, AppColors.muted, 'clock'),
     };
     final dateText = v.done && v.doneDate != null
-        ? trp('Yapıldı · {d}', {'d': dateFmt.format(v.doneDate!)})
+        ? trp('Yapıldı · {d}', {'d': fmtDayMonYear(v.doneDate!)})
         : (v.isOverdue
-            ? trp('Gecikti · {d}', {'d': dateFmt.format(v.dueDate)})
-            : trp('Planlanan · {d}', {'d': dateFmt.format(v.dueDate)}));
+            ? trp('Gecikti · {d}', {'d': fmtDayMonYear(v.dueDate)})
+            : trp('Planlanan · {d}', {'d': fmtDayMonYear(v.dueDate)}));
 
     return IntrinsicHeight(
       child: Row(

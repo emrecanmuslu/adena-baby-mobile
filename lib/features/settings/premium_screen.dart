@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
+import '../../models/pricing.dart';
 import '../../models/subscription.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/revenuecat_service.dart';
 import '../../core/theme.dart';
@@ -66,14 +67,27 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
     return null;
   }
 
-  /// RC paketi varsa mağaza fiyatı; yoksa geliştirme placeholder fiyatı.
-  String _price(String plan, String fallback) =>
-      _packageFor(plan)?.storeProduct.priceString ?? fallback;
+  /// Gösterilecek güncel fiyat: 1) RC mağaza fiyatı (gerçek, bölgeye göre $/₺),
+  /// 2) backend DB fiyatı (yönetilebilir), 3) dile göre son çare placeholder.
+  String _price(String plan, PlanPricing? pp, String tryFallback, String usdFallback) =>
+      _packageFor(plan)?.storeProduct.priceString ??
+      (pp?.price.isNotEmpty == true ? pp!.price : null) ??
+      (I18n.instance.locale == 'en' ? usdFallback : tryFallback);
+
+  /// İndirimdeyse üstü çizili eski fiyat (yoksa null).
+  String? _orig(PlanPricing? pp) => (pp?.onSale == true) ? pp!.originalPrice : null;
+
+  /// Backend kampanya rozeti (yoksa null → çağıran varsa kendi etiketini kullanır).
+  String? _badge(PlanPricing? pp) =>
+      (pp != null && pp.badge.isNotEmpty) ? pp.badge : null;
 
   @override
   Widget build(BuildContext context) {
     final sub = ref.watch(subscriptionProvider).asData?.value;
     final isPremium = sub?.isPremium ?? false;
+    // Yönetilebilir fiyatlar (DB) — RC fiyatı yoksa fallback + indirim gösterimi.
+    final pricing = ref.watch(pricingProvider).asData?.value ??
+        const <String, PlanPricing>{};
 
     return Scaffold(
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
@@ -224,7 +238,9 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                   child: _PlanCard(
                     selected: _plan == 'monthly',
                     period: tr('Aylık'),
-                    price: _price('monthly', '₺79'),
+                    price: _price('monthly', pricing['monthly'], '₺79', '\$4.99'),
+                    originalPrice: _orig(pricing['monthly']),
+                    tag: _badge(pricing['monthly']),
                     sub: tr('/ay'),
                     onTap: () => setState(() => _plan = 'monthly'),
                   ),
@@ -234,9 +250,10 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                   child: _PlanCard(
                     selected: _plan == 'yearly',
                     period: tr('Yıllık'),
-                    price: _price('yearly', '₺590'),
+                    price: _price('yearly', pricing['yearly'], '₺590', '\$39.99'),
+                    originalPrice: _orig(pricing['yearly']),
                     sub: tr('/yıl'),
-                    tag: tr('2 ay bedava'),
+                    tag: _badge(pricing['yearly']) ?? tr('2 ay bedava'),
                     onTap: () => setState(() => _plan = 'yearly'),
                   ),
                 ),
@@ -247,7 +264,9 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
             _PlanCard(
               selected: _plan == 'lifetime',
               period: tr('Ömür boyu'),
-              price: _price('lifetime', '₺1.490'),
+              price: _price('lifetime', pricing['lifetime'], '₺1.490', '\$79.99'),
+              originalPrice: _orig(pricing['lifetime']),
+              tag: _badge(pricing['lifetime']),
               sub: tr('tek seferlik'),
               wide: true,
               onTap: () => setState(() => _plan = 'lifetime'),
@@ -338,7 +357,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
     if (sub.store == 'dev') return tr('Geliştirme premium');
     final exp = sub.expiresAt;
     if (exp != null) {
-      final d = DateFormat('d MMM yyyy', 'tr_TR').format(exp.toLocal());
+      final d = fmtDayMonYear(exp.toLocal());
       return sub.willRenew
           ? trp('{d} tarihinde yenilenir', {'d': d})
           : trp('{d} tarihine kadar', {'d': d});
@@ -538,6 +557,7 @@ class _PlanCard extends StatelessWidget {
   final bool selected;
   final String period;
   final String price;
+  final String? originalPrice; // indirimdeyse üstü çizili eski fiyat
   final String sub;
   final String? tag;
   final bool wide;
@@ -548,6 +568,7 @@ class _PlanCard extends StatelessWidget {
     required this.price,
     required this.sub,
     required this.onTap,
+    this.originalPrice,
     this.tag,
     this.wide = false,
   });
@@ -626,6 +647,14 @@ class _PlanCard extends StatelessWidget {
         TextSpan(
           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           children: [
+            if (originalPrice != null)
+              TextSpan(
+                  text: '$originalPrice ',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.lineThrough)),
             TextSpan(text: price),
             TextSpan(
                 text: ' $sub',

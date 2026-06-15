@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,9 +7,9 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../core/tour.dart';
 import '../../data/subscription_repository.dart';
 import '../auth/auth_controller.dart';
-import '../babies/activity_watcher.dart';
 import '../babies/baby_controller.dart';
 import 'theme_controller.dart';
 
@@ -143,28 +144,22 @@ class SettingsScreen extends ConsumerWidget {
             color: AppColors.sleep,
             bg: AppColors.sleepBg,
             title: tr('Görünüm'),
-            meta: '${ThemeController.label(themeMode)} · birimler',
+            meta: trp('{theme} · birimler', {'theme': ThemeController.label(themeMode)}),
             onTap: () => context.push('/appearance'),
           ),
-          // Aile etkinlik bildirimi (opt-in): bir aile üyesi kayıt eklediğinde
-          // yerel bildirim. Çok bebekte bildirim başlığı bebek adı olur.
-          Builder(builder: (context) {
-            final on = ref.watch(activityNotifEnabledProvider).asData?.value ?? false;
-            void toggle() =>
-                ref.read(activityNotifEnabledProvider.notifier).set(!on);
-            return AdMenuItem(
-              icon: 'bell',
-              color: AppColors.coral,
-              bg: AppColors.feedBg,
-              title: tr('Aile etkinlik bildirimleri'),
-              meta: tr('Bir üye kayıt eklediğinde haber ver'),
-              trailing: Switch.adaptive(
-                value: on,
-                onChanged: (_) => toggle(),
-              ),
-              onTap: toggle,
-            );
-          }),
+          AdMenuItem(
+            icon: 'star',
+            color: AppColors.coral,
+            bg: AppColors.feedBg,
+            title: tr('Tanıtım turları'),
+            meta: tr('Ekran tanıtımlarını yeniden göster'),
+            onTap: () async {
+              await ref.read(tourControllerProvider.notifier).resetAll();
+              if (context.mounted) {
+                showAdToast(context, tr('Tanıtım turları sıfırlandı'));
+              }
+            },
+          ),
 
           adSec(tr('Hesap')),
           AdMenuItem(
@@ -183,6 +178,19 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const SizedBox.shrink(),
             onTap: () => ref.read(authControllerProvider.notifier).logout(),
           ),
+
+          // Yalnız debug derlemede görünür — bildirim/push testi için.
+          if (kDebugMode) ...[
+            adSec('Geliştirici'),
+            AdMenuItem(
+              icon: 'pulse',
+              color: AppColors.pump,
+              bg: AppColors.pumpBg,
+              title: 'Bildirim & Push Testi',
+              meta: 'Yalnız debug derlemede',
+              onTap: () => context.push('/dev'),
+            ),
+          ],
 
           const SizedBox(height: 8),
           Center(

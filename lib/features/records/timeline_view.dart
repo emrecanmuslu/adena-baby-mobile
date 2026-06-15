@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/adena_icons.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
@@ -101,10 +101,10 @@ class _TimelineViewState extends ConsumerState<TimelineView> {
 
   String _dayLabel(DateTime d) {
     final diff = _todayDate().difference(d).inDays;
-    final date = DateFormat('d MMMM', 'tr_TR').format(d);
+    final date = fmtDayMonth(d);
     if (diff == 0) return trp('Bugün · {date}', {'date': date});
     if (diff == 1) return trp('Dün · {date}', {'date': date});
-    return '${DateFormat('EEEE', 'tr_TR').format(d)} · $date';
+    return '${fmtWeekdayFull(d)} · $date';
   }
 }
 

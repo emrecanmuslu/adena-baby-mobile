@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
+import '../../core/push_service.dart';
 import '../../core/revenuecat_service.dart';
 import '../../data/auth_repository.dart';
 import '../../data/social_auth_service.dart';
@@ -72,11 +73,14 @@ class AuthController extends AsyncNotifier<User?> {
   }
 
   Future<void> deleteAccount() async {
+    await PushService.instance.unregister(ref.read(apiClientProvider));
     await _repo.deleteAccount();
     state = const AsyncData(null);
   }
 
   Future<void> logout() async {
+    // Token HÂLÂ geçerliyken bu cihazın FCM kaydını sil (çıkıştan önce).
+    await PushService.instance.unregister(ref.read(apiClientProvider));
     await _repo.logout();
     await RevenueCatService.instance.logoutUser();
     await SubscriptionCache().clear(); // sonraki kullanıcıya premium sızmasın

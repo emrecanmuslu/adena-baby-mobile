@@ -50,6 +50,7 @@ class NotificationService {
   // Aile etkinlik bildirimleri (başka üye kayıt ekleyince) — ayrı kanal + dönen id.
   static const _activityChannelId = 'family_activity';
   static final _activityChannelName = tr('Aile etkinliği');
+  static const _activityGroup = 'adena_family_activity'; // Android bildirim grubu
   static const _activityBaseId = 700000;
   int _activitySeq = 0;
 
@@ -92,6 +93,12 @@ class NotificationService {
     }
   }
 
+  /// Geliştirici/teşhis: planlı (bekleyen) bildirimler — yalnız debug ekranı için.
+  Future<List<PendingNotificationRequest>> pending() async {
+    if (!_ready) await init();
+    return _plugin.pendingNotificationRequests();
+  }
+
   /// Android 12+ kesin alarm iznini ister (yalnız bir kez). Beslenme uyarısının
   /// tam dakikasında gelmesi için gerekir.
   Future<void> _ensureExactAlarm() async {
@@ -100,6 +107,19 @@ class NotificationService {
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await android?.requestExactAlarmsPermission();
+  }
+
+  /// Kesin alarm izni varsa exact, yoksa inexact döner. Android 12+ kullanıcı
+  /// "kesin alarm"ı reddederse beslenme/randevu uyarısı TAMAMEN kaybolmasın —
+  /// ±birkaç dakika gecikmeyle de olsa gelsin.
+  Future<AndroidScheduleMode> _alarmMode() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return AndroidScheduleMode.exactAllowWhileIdle; // iOS
+    final can = await android.canScheduleExactNotifications() ?? true;
+    return can
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
   }
 
   /// Bildirim iznini ister (yalnız bir kez sorar). Android 13+ ve iOS.
@@ -193,6 +213,8 @@ class NotificationService {
       importance: Importance.defaultImportance,
       priority: Priority.defaultPriority,
       category: AndroidNotificationCategory.social,
+      // Çok aktif ailede ayrı ayrı birikmesin → sistem tek başlık altında toplar.
+      groupKey: _activityGroup,
     );
     await _plugin.show(
       id: id,
@@ -290,7 +312,7 @@ class NotificationService {
       body: body,
       scheduledDate: tz.TZDateTime.from(when, tz.local),
       notificationDetails: NotificationDetails(android: android, iOS: ios),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: await _alarmMode(),
       // Ertele (arka plan) için ses + bebek slotu + ad taşınır.
       payload: feedPayload(sound, slot, babyName),
     );
@@ -382,7 +404,7 @@ class NotificationService {
       body: tr('Hatırlatma zamanı ⏰'),
       scheduledDate: tz.TZDateTime.from(when, tz.local),
       notificationDetails: _details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: await _alarmMode(),
     );
   }
 }

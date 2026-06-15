@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'locale_util.dart';
+
 /// Birim tercihleri (FamilySettings.units). Veri kanonik saklanır
 /// (hacim=ml, ağırlık=kg, uzunluk=cm, ateş=°C); gösterim/giriş tercihe göre çevrilir.
 @immutable
@@ -16,12 +18,23 @@ class Units {
     this.temp = 'C',
   });
 
-  factory Units.fromMap(Map<String, dynamic>? m) => Units(
-        volume: m?['volume'] as String? ?? 'ml',
-        weight: m?['weight'] as String? ?? 'kg',
-        length: m?['length'] as String? ?? 'cm',
-        temp: m?['temp'] as String? ?? 'C',
-      );
+  /// Cihaz bölgesine göre varsayılan birim seti (ABD vb. → imperial, diğer → metrik).
+  /// Kullanıcı/aile henüz birim seçmemişken (FamilySettings.units boş) kullanılır.
+  factory Units.deviceDefault() => deviceUsesImperial()
+      ? const Units(volume: 'oz', weight: 'lb', length: 'in', temp: 'F')
+      : const Units();
+
+  /// Sunucudan gelen birim haritasını çözer; eksik/boş alanlar cihaz bölgesinin
+  /// varsayılanına düşer (yeni kullanıcıda ABD → imperial, diğer → metrik).
+  factory Units.fromMap(Map<String, dynamic>? m) {
+    final d = Units.deviceDefault();
+    return Units(
+      volume: m?['volume'] as String? ?? d.volume,
+      weight: m?['weight'] as String? ?? d.weight,
+      length: m?['length'] as String? ?? d.length,
+      temp: m?['temp'] as String? ?? d.temp,
+    );
+  }
 
   Map<String, dynamic> toMap() =>
       {'volume': volume, 'weight': weight, 'length': length, 'temp': temp};

@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../core/config.dart';
+import '../core/i18n.dart';
 
 /// Kullanıcıya gösterilebilir sosyal giriş hatası (apiErrorText bunu olduğu
 /// gibi gösterir). İptal durumları hata değildir → `null` döner.
@@ -27,7 +28,7 @@ class SocialAuthService {
     if (AppConfig.googleServerClientId.isEmpty &&
         AppConfig.googleIosClientId.isEmpty) {
       throw SocialAuthException(
-          'Google ile giriş yapılandırılmamış (client ID eksik)');
+          tr('Google ile giriş yapılandırılmamış (client ID eksik)'));
     }
     await GoogleSignIn.instance.initialize(
       clientId:
@@ -46,12 +47,13 @@ class SocialAuthService {
       final account = await GoogleSignIn.instance.authenticate();
       final idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
-        throw SocialAuthException('Google id_token alınamadı');
+        throw SocialAuthException(tr('Google id_token alınamadı'));
       }
       return idToken;
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) return null;
-      throw SocialAuthException('Google giriş hatası: ${e.code.name}');
+      throw SocialAuthException(
+          trp('Google giriş hatası: {e}', {'e': e.code.name}));
     }
   }
 
@@ -60,7 +62,7 @@ class SocialAuthService {
     final nativeApple = !kIsWeb && (Platform.isIOS || Platform.isMacOS);
     if (!nativeApple && AppConfig.appleServiceId.isEmpty) {
       throw SocialAuthException(
-          'Apple ile giriş bu cihazda yapılandırılmamış');
+          tr('Apple ile giriş bu cihazda yapılandırılmamış'));
     }
     try {
       final cred = await SignInWithApple.getAppleIDCredential(
@@ -77,12 +79,13 @@ class SocialAuthService {
       );
       final token = cred.identityToken;
       if (token == null || token.isEmpty) {
-        throw SocialAuthException('Apple kimlik token alınamadı');
+        throw SocialAuthException(tr('Apple kimlik token alınamadı'));
       }
       return token;
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) return null;
-      throw SocialAuthException('Apple giriş hatası: ${e.message}');
+      throw SocialAuthException(
+          trp('Apple giriş hatası: {e}', {'e': e.message}));
     }
   }
 

@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../core/api_client.dart';
+import '../core/json_cache.dart';
 import '../core/providers.dart';
 import '../core/revenuecat_service.dart';
+import '../models/pricing.dart';
 import '../models/subscription.dart';
 import 'subscription_cache.dart';
 
@@ -47,6 +49,25 @@ class SubscriptionRepository {
     return _store(Subscription.fromJson(resp.data as Map<String, dynamic>));
   }
 
+  /// Yönetilebilir fiyat planları + indirim (locale'e göre para birimi). Gerçek
+  /// satın alma fiyatı mağazadan; bu gösterim/fallback + indirim içindir.
+  Future<Map<String, PlanPricing>> pricing() async {
+    try {
+      final resp = await _api.dio.get('/pricing/plans');
+      final list = ((resp.data as Map<String, dynamic>)['plans'] as List)
+          .cast<Map<String, dynamic>>();
+      await JsonCache.write('pricing', list);
+      return {for (final p in list) p['plan'] as String: PlanPricing.fromJson(p)};
+    } catch (_) {
+      final cached = await JsonCache.read('pricing');
+      if (cached is List) {
+        final list = cached.cast<Map<String, dynamic>>();
+        return {for (final p in list) p['plan'] as String: PlanPricing.fromJson(p)};
+      }
+      return const <String, PlanPricing>{};
+    }
+  }
+
   /// Doktora/AI-hazır 1/3/7 günlük özet (premium; değilse backend 403 döner).
   Future<String> aiExport(String babyId, int days) async {
     final resp = await _api.dio.post('/babies/$babyId/ai-export', data: {'days': days});
@@ -66,6 +87,11 @@ final cachedPremiumProvider = Provider<bool>((_) => false);
 /// Mevcut abonelik durumu. Satın alma sonrası invalidate edilir.
 final subscriptionProvider = FutureProvider<Subscription>(
   (ref) => ref.watch(subscriptionRepositoryProvider).get(),
+);
+
+/// Yönetilebilir fiyat planları (DB'den, locale para birimiyle). Paywall okur.
+final pricingProvider = FutureProvider<Map<String, PlanPricing>>(
+  (ref) => ref.watch(subscriptionRepositoryProvider).pricing(),
 );
 
 /// UI gating + gösterim için premium bayrağı. Canlı durum yüklendiyse onu,

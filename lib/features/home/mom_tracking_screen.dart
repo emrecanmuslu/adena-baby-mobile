@@ -2,11 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
@@ -70,17 +70,8 @@ class _MomEntrySheetState extends ConsumerState<_MomEntrySheet> {
   }
 
   Future<void> _pick() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(_date.year - 1),
-      lastDate: DateTime(_date.year + 1),
-    );
-    if (d == null || !mounted) return;
-    final t = await showTimePicker(
-        context: context, initialTime: TimeOfDay.fromDateTime(_date));
-    setState(() => _date = DateTime(
-        d.year, d.month, d.day, t?.hour ?? _date.hour, t?.minute ?? _date.minute));
+    final dt = await pickRecordDateTime(context, _date);
+    if (dt != null) setState(() => _date = dt);
   }
 
   Future<void> _save() async {
@@ -488,7 +479,7 @@ class _ApptRow extends ConsumerWidget {
                                     fontWeight: FontWeight.w900, fontSize: 14)),
                             const SizedBox(height: 2),
                             Text(
-                                DateFormat('d MMMM · HH:mm', 'tr_TR').format(entry.date),
+                                fmtDayMonthTime(entry.date),
                                 style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
@@ -557,7 +548,7 @@ class _NoteRow extends ConsumerWidget {
                         color: AppColors.ink2,
                         height: 1.4)),
                 const SizedBox(height: 6),
-                Text(DateFormat('d MMMM · HH:mm', 'tr_TR').format(entry.date),
+                Text(fmtDayMonthTime(entry.date),
                     style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w800,

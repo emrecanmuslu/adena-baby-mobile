@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../models/baby.dart';
@@ -27,10 +27,13 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   final _name = TextEditingController();
   BabyStatus _status = BabyStatus.born;
   BabyGender _gender = BabyGender.unknown;
-  DateTime? _date; // doğmuşsa doğum tarihi, gebelikse tahmini tarih
+  DateTime? _date; // doğmuşsa doğum tarihi, gebelikse tahmini doğum tarihi (TDT)
+  bool _useLmp = false; // gebelik: TDT yerine SAT'tan hesapla
+  DateTime? _lmp; // son adet tarihi (SAT) — TDT bundan üretilir
   bool _saving = false;
 
-  final _dateFmt = DateFormat('d MMMM y', 'tr_TR');
+  /// Gebelik = 40 hafta. Naegele kuralı: TDT = SAT + 280 gün.
+  static const int _gestationDays = 280;
 
   @override
   void dispose() {
@@ -41,6 +44,23 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final isBorn = _status == BabyStatus.born;
+    // Gebelik + SAT modu: son adet tarihini seç, TDT'yi otomatik hesapla.
+    if (!isBorn && _useLmp) {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: _lmp ?? now.subtract(const Duration(days: 56)),
+        firstDate: now.subtract(const Duration(days: 300)),
+        lastDate: now,
+        helpText: tr('Son adet tarihi (SAT)'),
+      );
+      if (picked != null) {
+        setState(() {
+          _lmp = picked;
+          _date = picked.add(const Duration(days: _gestationDays)); // TDT
+        });
+      }
+      return;
+    }
     final picked = await showDatePicker(
       context: context,
       initialDate: _date ?? now,
@@ -60,7 +80,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
     if (_date == null) {
       _snack(_status == BabyStatus.born
           ? tr('Doğum tarihini seç')
-          : tr('Tahmini doğum tarihini seç'));
+          : (_useLmp ? tr('Son adet tarihini seç') : tr('Tahmini doğum tarihini seç')));
       return;
     }
     setState(() => _saving = true);
@@ -112,7 +132,8 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
             children: [
               Text(
                 onboarding
-                    ? 'Merhaba${user != null ? ' ${user.displayName}' : ''} 👋'
+                    ? trp('Merhaba{name} 👋',
+                        {'name': user != null ? ' ${user.displayName}' : ''})
                     : tr('Yeni bebek'),
                 style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
               ),
@@ -151,36 +172,73 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                 ),
               ),
 
-              AdField(
-                label: isBorn ? tr('Doğum tarihi') : tr('Tahmini doğum tarihi'),
-                child: InkWell(
-                  onTap: _pickDate,
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.line, width: 1.5),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _date != null ? _dateFmt.format(_date!) : tr('Tarih seç'),
-                            style: TextStyle(
-                              color: _date != null ? null : AppColors.muted,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        AdenaIcon('calendar', size: 19, color: AppColors.muted),
-                      ],
-                    ),
+              // Gebelikte: TDT'yi doğrudan gir ya da SAT'tan hesaplat.
+              if (!isBorn)
+                AdField(
+                  label: tr('Tarihi nasıl gireceksin?'),
+                  info: tr('Tahmini doğum tarihini biliyorsan onu seç. Bilmiyorsan '
+                      'son adet tarihini (SAT) seç — doğum tarihini biz hesaplarız '
+                      '(SAT + 40 hafta). Doktorunun verdiği tarih önceliklidir.'),
+                  child: AdTabs(
+                    options: {
+                      'due': tr('Doğum tarihi'),
+                      'lmp': tr('Son adet (SAT)'),
+                    },
+                    selected: _useLmp ? 'lmp' : 'due',
+                    onSelect: (v) => setState(() {
+                      _useLmp = v == 'lmp';
+                      _date = null;
+                      _lmp = null;
+                    }),
                   ),
+                ),
+
+              AdField(
+                label: isBorn
+                    ? tr('Doğum tarihi')
+                    : (_useLmp ? tr('Son adet tarihi (SAT)') : tr('Tahmini doğum tarihi')),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    InkWell(
+                      onTap: _pickDate,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.line, width: 1.5),
+                        ),
+                        child: Builder(builder: (_) {
+                          final shown = _useLmp ? _lmp : _date;
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  shown != null ? fmtDayMonthYear(shown) : tr('Tarih seç'),
+                                  style: TextStyle(
+                                    color: shown != null ? null : AppColors.muted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              AdenaIcon('calendar', size: 19, color: AppColors.muted),
+                            ],
+                          );
+                        }),
+                      ),
+                    ),
+                    // SAT'tan hesaplanan TDT özeti.
+                    if (!isBorn && _useLmp && _lmp != null && _date != null) ...[
+                      const SizedBox(height: 8),
+                      _DueFromLmp(due: _date!, lmp: _lmp!),
+                    ],
+                  ],
                 ),
               ),
 
+              if (!isBorn) const SizedBox(height: 2),
               AdField(
                 label: tr('Cinsiyet (isteğe bağlı)'),
                 child: AdSides(
@@ -248,6 +306,39 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// SAT'tan hesaplanan tahmini doğum tarihi + güncel gebelik haftası özeti.
+class _DueFromLmp extends StatelessWidget {
+  final DateTime due;
+  final DateTime lmp;
+  const _DueFromLmp({required this.due, required this.lmp});
+
+  @override
+  Widget build(BuildContext context) {
+    final days = DateTime.now().difference(lmp).inDays;
+    final week = (days ~/ 7).clamp(0, 42);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      decoration: BoxDecoration(
+        color: AppColors.feedBg,
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Row(
+        children: [
+          const Text('🤰', style: TextStyle(fontSize: 15)),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              trp('Tahmini doğum: {due} · ~{w}. hafta', {'due': fmtDayMonthYear(due), 'w': week}),
+              style: const TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w800, color: AppColors.coralDd),
+            ),
+          ),
+        ],
       ),
     );
   }

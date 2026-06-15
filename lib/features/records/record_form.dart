@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/adena_icons.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
 import '../../core/theme.dart';
@@ -206,22 +206,8 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
     super.dispose();
   }
 
-  Future<DateTime?> _pickDateTime(DateTime initial) async {
-    final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(now.year - 2),
-      lastDate: DateTime(now.year + 2),
-    );
-    if (date == null || !mounted) return null;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(initial),
-    );
-    if (time == null) return null;
-    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
-  }
+  Future<DateTime?> _pickDateTime(DateTime initial) =>
+      pickRecordDateTime(context, initial);
 
   num? _num(String k) => num.tryParse(ctl(k).text.trim().replaceAll(',', '.'));
 
@@ -549,6 +535,7 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           onSelect: (k) => setState(() => _symptomKey = k),
         ),
       ),
+      if (symptomByKey(_symptomKey) case final s?) _SymptomInfoCard(symptom: s),
       AdField(
         label: tr('Şiddet'),
         info: tr('Belirtinin ne kadar belirgin olduğunu işaretle. Şiddetli ve '
@@ -1099,7 +1086,7 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
               const SizedBox(height: 5),
               Text(
                   trp('arka planda devam eder · {time}\'de başladı',
-                      {'time': DateFormat('HH:mm').format(start)}),
+                      {'time': fmtTime(start)}),
                   style: TextStyle(
                       fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
             ],
@@ -1284,6 +1271,46 @@ Future<void> confirmStopSleep(
   } else {
     await ref.read(recordActionsProvider).stopSleep(sleep);
     if (context.mounted) showAdToast(context, tr('Kaydedildi'));
+  }
+}
+
+/// Seçili belirti için evde bakım + "ne zaman doktora" rehber kartı.
+/// Genel bilgilendirmedir; tıbbi tanı yerine geçmez.
+class _SymptomInfoCard extends StatelessWidget {
+  final SymptomKind symptom;
+  const _SymptomInfoCard({required this.symptom});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+          color: AppColors.symptomBg, borderRadius: BorderRadius.circular(14)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(symptom.emoji, style: const TextStyle(fontSize: 16)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(trp('{s} · bakım rehberi', {'s': symptom.label}),
+                    style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.symptom)),
+                const SizedBox(height: 3),
+                Text(symptom.info,
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.4)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -3,11 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
@@ -502,8 +502,7 @@ class _RecentTeeth extends StatelessWidget {
                                 fontWeight: FontWeight.w900, fontSize: 13.5)),
                         const SizedBox(height: 2),
                         Text(
-                            DateFormat('d MMMM y', 'tr_TR')
-                                .format(shown[i].eruptedDate!),
+                            fmtDayMonthYear(shown[i].eruptedDate!),
                             style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
@@ -663,7 +662,7 @@ class _ToothSheetState extends ConsumerState<_ToothSheet> {
                     children: [
                       AdenaIcon('calendar', size: 18, color: AppColors.coralDark),
                       const SizedBox(width: 10),
-                      Text(DateFormat('d MMMM y', 'tr_TR').format(_date),
+                      Text(fmtDayMonthYear(_date),
                           style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800)),
                       const Spacer(),
                       AdenaIcon('chevD', size: 18, color: AppColors.muted2),
@@ -704,7 +703,7 @@ class _ToothSheetState extends ConsumerState<_ToothSheet> {
   Widget _stateBadge(Tooth t) {
     final on = t.erupted;
     final text = on && t.eruptedDate != null
-        ? trp('✓ Çıktı · {d}', {'d': DateFormat('d MMM y', 'tr_TR').format(t.eruptedDate!)})
+        ? trp('✓ Çıktı · {d}', {'d': fmtDayMonYear(t.eruptedDate!)})
         : tr('Henüz çıkmadı');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

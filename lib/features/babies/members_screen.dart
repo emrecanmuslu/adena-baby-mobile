@@ -10,7 +10,9 @@ import '../../core/premium_gate.dart';
 import '../../core/theme.dart';
 import '../../data/baby_repository.dart';
 import '../../data/subscription_repository.dart';
+import '../../features/community/community_ui.dart' show showDeleteConfirm;
 import '../../models/membership.dart';
+import 'activity_watcher.dart';
 import 'baby_controller.dart';
 
 /// Aktif bebeğin üye listesi (FutureProvider — davet/rol değişince invalidate).
@@ -41,7 +43,14 @@ class MembersScreen extends ConsumerWidget {
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.coral)),
         error: (e, _) => Center(child: Text(apiErrorText(e))),
-        data: (members) => ListView(
+        data: (members) => RefreshIndicator(
+          color: AppColors.coral,
+          onRefresh: () async {
+            ref.invalidate(membersProvider(baby.id));
+            await ref.read(membersProvider(baby.id).future);
+          },
+          child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
           children: [
             adSec(tr('Bu bebeği takip edenler')),
@@ -106,7 +115,27 @@ class MembersScreen extends ConsumerWidget {
                 onAllowed: () => context.push('/caregiver'),
               ),
             ),
+
+            // Aile etkinlik bildirimi (opt-in, cihaz-yerel): bir üye kayıt
+            // eklediğinde haber ver. Doğal yeri burası — paylaşımla ilgili tercih.
+            adSec(tr('Bildirimler')),
+            Builder(builder: (context) {
+              final on =
+                  ref.watch(activityNotifEnabledProvider).asData?.value ?? false;
+              void toggle() =>
+                  ref.read(activityNotifEnabledProvider.notifier).set(!on);
+              return AdMenuItem(
+                icon: 'bell',
+                color: AppColors.coral,
+                bg: AppColors.feedBg,
+                title: tr('Aile etkinlik bildirimleri'),
+                meta: tr('Bir üye kayıt eklediğinde haber ver'),
+                trailing: Switch.adaptive(value: on, onChanged: (_) => toggle()),
+                onTap: toggle,
+              );
+            }),
           ],
+          ),
         ),
       ),
     );
@@ -194,6 +223,11 @@ class MembersScreen extends ConsumerWidget {
             SelectableText(code,
                 style: const TextStyle(
                     fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: 2)),
+            const SizedBox(height: 12),
+            Text(tr('Kod 1 gün geçerlidir ve yalnızca bir kez kullanılabilir.'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
           ],
         ),
         actions: [
@@ -315,6 +349,15 @@ class _MemberRow extends ConsumerWidget {
   }
 
   Future<void> _remove(BuildContext context, WidgetRef ref) async {
+    final name = membership.user.displayName;
+    final ok = await showDeleteConfirm(
+      context,
+      title: trp('{name} çıkarılsın mı?', {'name': name}),
+      message: tr('Bu kişi artık bu bebeği takip edemeyecek ve eklediği '
+          'erişim kaldırılacak. Dilersen tekrar davet edebilirsin.'),
+      confirmLabel: tr('Çıkar'),
+    );
+    if (!ok) return;
     try {
       await ref.read(babyRepositoryProvider).removeMember(babyId, membership.user.id);
       ref.invalidate(membersProvider(babyId));

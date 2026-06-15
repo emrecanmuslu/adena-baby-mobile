@@ -214,8 +214,9 @@ class OwnerMenu extends StatelessWidget {
 }
 
 /// Sil onayı ister (kırmızı eylem). Onaylanırsa true döner.
+/// [confirmLabel] ile onay butonunun yazısı değiştirilebilir (ör. "Çıkar").
 Future<bool> showDeleteConfirm(BuildContext context,
-    {required String title, required String message}) async {
+    {required String title, required String message, String? confirmLabel}) async {
   final ok = await showModalBottomSheet<bool>(
     context: context,
     shape: const RoundedRectangleBorder(
@@ -244,7 +245,7 @@ Future<bool> showDeleteConfirm(BuildContext context,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16))),
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text(tr('Sil'),
+              child: Text(confirmLabel ?? tr('Sil'),
                   style: const TextStyle(fontWeight: FontWeight.w900)),
             ),
             TextButton(

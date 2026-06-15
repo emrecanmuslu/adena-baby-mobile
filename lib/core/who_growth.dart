@@ -3,12 +3,13 @@ import 'dart:math' as math;
 import '../data/who_lms.dart';
 import '../models/baby.dart';
 
-/// WHO büyüme standardı (0–24 ay) — LMS yöntemiyle persentil eğrisi ve
+/// WHO büyüme standardı (0–60 ay) — LMS yöntemiyle persentil eğrisi ve
 /// bir ölçümün persentilini hesaplar. Ölçü anahtarları: wt (kg) · len/hc (cm).
+/// len: 0–24 ay uzunluk (yatarak), 24–60 ay boy (ayakta).
 class WhoGrowth {
   WhoGrowth._();
 
-  static const int maxMonth = 24;
+  static const int maxMonth = 60;
 
   /// Çizilen persentil çizgileri ve karşılık gelen z-skorları.
   static const List<int> pcts = [3, 15, 50, 85, 97];

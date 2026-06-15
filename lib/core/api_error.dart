@@ -70,7 +70,7 @@ String? _extract(dynamic data) {
     if (pairs.length > 1) {
       return pairs.map((p) {
         final label = _fieldLabels[p.key];
-        return (label != null) ? '$label: ${p.value}' : p.value;
+        return (label != null) ? '${tr(label)}: ${p.value}' : p.value;
       }).join('\n');
     }
 

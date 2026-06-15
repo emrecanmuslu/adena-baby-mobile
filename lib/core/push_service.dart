@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../data/activity_notif_cache.dart';
+import '../data/feed_reminder_cache.dart';
 import 'api_client.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
@@ -33,10 +34,37 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   final title = data['title'] ?? message.notification?.title ?? 'Adena Baby';
   final body = data['body'] ?? message.notification?.body ?? '';
 
-  // 1) Son beslenme widget'ını güncelle (beslenme olayıysa).
+  // 1) Beslenme olayı: widget + yerel hatırlatıcı güncellemesi. last_feed_ts
+  //    süren emzirme dahil her beslenmede gelir; widget_update yalnız TAMAMLANMIŞ
+  //    beslenmede (widget süren emzirmeyi "son beslenme" saymaz).
+  final lastFeed = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
   if (data['widget_update'] == 'feed') {
-    final lastFeed = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
     await WidgetService.updateLastFeed(babyName: title, lastFeed: lastFeed);
+  }
+  // Hatırlatıcı yeniden planlaması aile-etkinlik bildirimi tercihinden BAĞIMSIZ:
+  // beslenme hatırlatıcısı ayrı bir özelliktir, kullanıcı aktivite bildirimini
+  // kapatmış olsa bile çalışmalı (widget güncellemesi gibi koşulsuz).
+  if (lastFeed != null) {
+    await _rescheduleFeedReminder(data, lastFeed, title);
+  }
+
+  // sync_nudge = sessiz (güncelleme/silme). Bildirim yok; ön planda sync'i main.dart
+  // tetikler. Burada yalnız biten süren-sayaç bildirimini iptal ederiz — alıcı ARKA
+  // PLANDA olsa bile (drift'e yazamasa da) cihazdaki "uyku/emzirme sürüyor"
+  // bildirimi düşsün. Slot = baby_id'den, Baby.notifSlot ile AYNI formül.
+  if (type == 'sync_nudge') {
+    final cancel = (data['cancel'] as String?) ?? '';
+    final babyId = (data['baby_id'] as String?) ?? '';
+    if (cancel.isNotEmpty && babyId.isNotEmpty) {
+      final slot = babyId.hashCode.abs() % 1000;
+      if (cancel.contains('sleep')) {
+        await NotificationService.instance.cancelTimer(NotificationService.sleepIdFor(slot));
+      }
+      if (cancel.contains('breast')) {
+        await NotificationService.instance.cancelTimer(NotificationService.breastIdFor(slot));
+      }
+    }
+    return;
   }
 
   // 2) Bildirimi göster.
@@ -45,6 +73,10 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   // her zaman yerel basılır.
   final alreadyShownByOs = Platform.isIOS && message.notification != null;
   if (alreadyShownByOs) {
+    // OS bildirimi gösterdi → polling'in aynı olayı tekrar göstermemesi için
+    // olay-id'yi işaretle, sonra cursor'u ilerlet.
+    final eventId = (data['event_id'] as String?) ?? '';
+    if (type == 'family_activity') await ActivityNotifCache().markNotifiedIfNew(eventId);
     _advanceCursorIfFamily(type, data);
     return;
   }
@@ -52,12 +84,42 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   if (type == 'family_activity') {
     // Kullanıcı tercihi (opt-in, varsayılan kapalı) bunu da yönetir.
     if (await ActivityNotifCache().enabled()) {
-      await NotificationService.instance.showActivity(title: title, body: body);
+      // Olay-id dedup: polling aynı olayı önce işlediyse tekrar gösterme.
+      final eventId = (data['event_id'] as String?) ?? '';
+      if (await ActivityNotifCache().markNotifiedIfNew(eventId)) {
+        await NotificationService.instance.showActivity(title: title, body: body);
+      }
       await _advanceCursorIfFamily(type, data);
     }
   } else if (type.startsWith('community')) {
     await NotificationService.instance.showActivity(title: title, body: body);
   }
+}
+
+/// family_activity feed push'undan yerel beslenme hatırlatıcısını yeniden kurar.
+/// Drift'e DOKUNMAZ: parametreler ön planda FeedReminderCache'e yazılmıştır;
+/// burada yalnız "son beslenme + aralık"tan sonraki vakti hesaplayıp planlarız.
+/// Arka plan isolate'ında da güvenle çalışır (NotificationService init kendini
+/// kurar, tz dahil). baseType filtresi nextFeedEstimate ile birebir aynıdır.
+Future<void> _rescheduleFeedReminder(
+    Map<String, dynamic> data, DateTime lastFeed, String babyName) async {
+  final babyId = data['baby_id'];
+  if (babyId is! String || babyId.isEmpty) return;
+  final snap = await FeedReminderCache().read(babyId);
+  if (snap == null || !snap.enabled) return;
+  // Eklenen beslenmenin türü hatırlatıcının baz türüyle uyuşmuyorsa (ör. baz=anne
+  // sütü, eklenen=mama) hatırlatıcıyı sıfırlama — mevcut plan korunur.
+  if (!snap.matchesBase(data['feed_sub'] as String?)) return;
+  final next = lastFeed.add(Duration(minutes: snap.intervalMin));
+  await NotificationService.instance.scheduleFeedReminder(
+    enabled: true,
+    nextTime: next,
+    preMin: snap.preMin,
+    slot: snap.slot,
+    babyName: babyName,
+    sound: snap.sound,
+    quiet: snap.quiet,
+  );
 }
 
 /// Aile etkinliği gösterildiyse polling cursor'unu ilerlet (çift bildirim önleme).
@@ -110,5 +172,20 @@ class PushService {
     } catch (_) {
       // Oturum yoksa 401 → giriş sonrası tekrar denenir.
     }
+  }
+
+  /// Çıkışta çağrılır: bu cihazın FCM token'ını sunucudan siler (token HÂLÂ
+  /// geçerliyken, yani _repo.logout()'tan ÖNCE çağır). Böylece çıkılan hesaba bu
+  /// cihaza push gelmez ve aynı cihaza giren başka kullanıcıya bildirim sızmaz.
+  Future<void> unregister(ApiClient api) async {
+    try {
+      final token = _lastRegistered ?? await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await api.dio.delete('/me/devices', data: {'push_token': token});
+      }
+    } catch (_) {
+      // Ağ/oturum hatası → sessiz; token sunucuda kalsa bile kritik değil.
+    }
+    _lastRegistered = null;
   }
 }

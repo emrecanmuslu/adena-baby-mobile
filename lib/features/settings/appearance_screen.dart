@@ -3,11 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
+import '../../core/restart_widget.dart';
 import '../../core/theme.dart';
+import '../../data/i18n_repository.dart';
+import '../../models/locale_info.dart';
 import '../babies/baby_controller.dart';
 import '../babies/family_settings.dart';
 import 'locale_controller.dart';
 import 'theme_controller.dart';
+
+/// Dil kodu → bayrak emojisi (bilinmeyen için 🌐). Sunucu yeni dil eklerse de
+/// liste otomatik büyür; eşleşmeyen kodlar küre simgesiyle gösterilir.
+const _localeFlags = {
+  'tr': '🇹🇷', 'en': '🇬🇧', 'de': '🇩🇪', 'fr': '🇫🇷', 'es': '🇪🇸',
+  'it': '🇮🇹', 'ar': '🇸🇦', 'ru': '🇷🇺', 'pt': '🇵🇹', 'nl': '🇳🇱',
+};
 
 /// Görünüm (design 28 · ScrAppearance): tema seçimi + birimler (aile geneli)
 /// tek sayfada. Eski ayrı "Görünüm" (tema picker) ve "Birimler" sayfaları birleşti.
@@ -20,6 +30,13 @@ class AppearanceScreen extends ConsumerWidget {
     final locale = ref.watch(localeControllerProvider).asData?.value ?? 'tr';
     final baby = ref.watch(activeBabyProvider);
     final units = ref.watch(activeUnitsProvider);
+    // Desteklenen diller sunucudan; yüklenene kadar tr+en fallback.
+    final langs = ref.watch(supportedLocalesProvider).asData?.value ??
+        const [
+          SupportedLocale(code: 'tr', nativeName: 'Türkçe', englishName: 'Turkish'),
+          SupportedLocale(
+              code: 'en', nativeName: 'English', englishName: 'English', isDefault: true),
+        ];
 
     return Scaffold(
       appBar: AppBar(
@@ -64,17 +81,23 @@ class AppearanceScreen extends ConsumerWidget {
             ),
             child: Column(
               children: [
-                _LangRow(
-                    flag: '🇹🇷',
-                    name: 'Türkçe',
-                    selected: locale == 'tr',
-                    onTap: () => ref.read(localeControllerProvider.notifier).setLocale('tr')),
-                _LangRow(
-                    flag: '🇬🇧',
-                    name: 'English',
-                    selected: locale == 'en',
-                    onTap: () => ref.read(localeControllerProvider.notifier).setLocale('en'),
-                    last: true),
+                for (final (i, l) in langs.indexed)
+                  _LangRow(
+                    flag: _localeFlags[l.code] ?? '🌐',
+                    name: l.nativeName,
+                    selected: locale == l.code,
+                    onTap: () async {
+                      if (locale == l.code) return;
+                      // Dili kaydet, sonra uygulamayı yeniden başlat — böylece
+                      // tüm ekranlardaki metinler (const/önceden build edilmiş
+                      // dahil) yeni dilde yeniden değerlenir.
+                      await ref
+                          .read(localeControllerProvider.notifier)
+                          .setLocale(l.code);
+                      if (context.mounted) RestartWidget.restartApp(context);
+                    },
+                    last: i == langs.length - 1,
+                  ),
               ],
             ),
           ),

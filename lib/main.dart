@@ -9,13 +9,16 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/ad_service.dart';
 import 'core/i18n.dart';
+import 'core/locale_util.dart';
 import 'core/notification_service.dart';
 import 'core/providers.dart';
 import 'core/push_service.dart';
+import 'core/restart_widget.dart';
 import 'core/revenuecat_service.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_controller.dart';
 import 'data/feed_input_cache.dart';
+import 'data/i18n_repository.dart';
 import 'data/subscription_cache.dart';
 import 'data/subscription_repository.dart';
 import 'data/theme_cache.dart';
@@ -30,7 +33,7 @@ import 'router.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    await initializeDateFormatting('tr_TR'); // tarih biçimleri (DateFormat tr_TR)
+    await initializeDateFormatting(); // tüm locale tarih biçimleri (tr + en)
   } catch (_) {}
   // Firebase + push arka plan işleyicisi (config yoksa sessizce atlanır).
   try {
@@ -51,12 +54,14 @@ Future<void> main() async {
   final cachedPremium = await SubscriptionCache().read();
   // Son seçilen temayı cache'ten oku → splash/ilk frame doğru temada açılsın.
   final cachedTheme = await ThemeCache().read();
-  runApp(ProviderScope(
-    overrides: [
-      cachedPremiumProvider.overrideWithValue(cachedPremium),
-      cachedThemeProvider.overrideWithValue(cachedTheme),
-    ],
-    child: const AdenaApp(),
+  runApp(RestartWidget(
+    child: ProviderScope(
+      overrides: [
+        cachedPremiumProvider.overrideWithValue(cachedPremium),
+        cachedThemeProvider.overrideWithValue(cachedTheme),
+      ],
+      child: const AdenaApp(),
+    ),
   ));
 }
 
@@ -76,6 +81,19 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     // Push: ön plan mesaj dinleyicisi (oturum gerektirmez).
     PushService.instance.startForeground();
+    // Ön planda aile-etkinlik push'u gelince yerel kayıtları HEMEN çek → ana
+    // ekrandaki "sonraki beslenme"/akış 1 dk'lık polling'i beklemeden yenilensin
+    // (handlePushMessage drift'e dokunmaz; sync'i buradan, ref'le tetikliyoruz).
+    try {
+      FirebaseMessaging.onMessage.listen((m) {
+        final t = m.data['type'];
+        // family_activity = başka üye kayıt ekledi; sync_nudge = güncelleme/silme
+        // (uyku/emzirme bitirme dahil). İkisi de yerel kayıtları hemen çeksin.
+        if (t == 'family_activity' || t == 'sync_nudge') {
+          ref.read(syncServiceProvider).requestSyncSoon();
+        }
+      });
+    } catch (_) {}
     // Yol A: öne gelince + periyodik yoklama. İlk tetik ilk frame'den sonra
     // (oturum/bebekler yüklensin diye gecikmeli).
     WidgetsBinding.instance.addPostFrameCallback((_) => _onForeground());
@@ -128,7 +146,18 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
             (themeMode == ThemeMode.system && platformDark))
         ? Brightness.dark
         : Brightness.light;
-    final localeStr = ref.watch(localeControllerProvider).asData?.value ?? 'tr';
+    final localeStr =
+        ref.watch(localeControllerProvider).asData?.value ?? deviceDefaultLanguage();
+    // Desteklenen diller sunucudan (yeni dil eklenince otomatik); yüklenene
+    // kadar tr+en. Aktif dil listede yoksa eklenir (Localizations çözümü için).
+    final fetched = ref.watch(supportedLocalesProvider).asData?.value;
+    final codes = <String>{
+      ...(fetched != null && fetched.isNotEmpty)
+          ? fetched.map((e) => e.code)
+          : const ['tr', 'en'],
+      localeStr,
+    };
+    final supported = [for (final c in codes) Locale(c)];
     // I18n bundle/dil değişince tüm ağaç yenilensin (tr() yeniden değerlensin).
     return AnimatedBuilder(
       animation: I18n.instance,
@@ -140,7 +169,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
         themeMode: themeMode,
         routerConfig: router,
         locale: Locale(localeStr),
-        supportedLocales: const [Locale('tr'), Locale('en')],
+        supportedLocales: supported,
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,

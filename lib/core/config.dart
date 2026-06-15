@@ -8,6 +8,11 @@ class AppConfig {
     defaultValue: 'http://10.0.2.2:8000/api/v1',
   );
 
+  /// Sunucu kökü (media/static için) — `apiBaseUrl`'den `/api/v1` soneki atılır.
+  /// Ör. http://10.0.2.2:8000 → fetus görselleri: `$mediaBaseUrl/media/fetus/12.png`.
+  static String get mediaBaseUrl =>
+      apiBaseUrl.replaceFirst(RegExp(r'/api/v\d+/?$'), '');
+
   // ── Sosyal giriş (Google / Apple) ──────────────────────────────────
   // Değerler `--dart-define` ile build'e verilir; gizli değil ama kaynakta
   // tutmuyoruz çünkü ortama göre değişir. Boşsa ilgili sağlayıcı butonu

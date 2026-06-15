@@ -3,11 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
@@ -15,9 +15,9 @@ import '../../data/memory_repository.dart';
 import '../../models/memory.dart';
 import '../babies/baby_controller.dart';
 
-/// Anılar / Fotoğraf günlüğü — fotoğraf-odaklı akış (scrapbook); aylara gruplu,
-/// büyük foto kartları + "ilk" kilometre taşı rozetleri. Fotoğraflar her zaman
-/// buluta yedeklenir (herkese).
+/// Anılar / Fotoğraf günlüğü — galeri ızgarası (3 sütun kare); aylara gruplu,
+/// "ilk" kilometre taşı rozetleri. Karaya dokununca detay sheet'i açılır.
+/// Fotoğraflar her zaman buluta yedeklenir (herkese).
 class MemoriesScreen extends ConsumerWidget {
   const MemoriesScreen({super.key});
 
@@ -83,23 +83,52 @@ class MemoriesScreen extends ConsumerWidget {
           // Aylara grupla (en yeni önce; liste zaten sunucu sıralı).
           final groups = <String, List<Memory>>{};
           for (final m in items) {
-            final key = DateFormat('MMMM y', 'tr_TR').format(m.date);
+            final key = fmtMonthYear(m.date);
             (groups[key] ??= []).add(m);
           }
-          return ListView(
-            padding: EdgeInsets.fromLTRB(
-                16, 8, 16, 100 + MediaQuery.of(context).padding.bottom),
-            children: [
-              const _CloudChip(),
+          return CustomScrollView(
+            slivers: [
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: _CloudChip(),
+                ),
+              ),
               for (final entry in groups.entries) ...[
-                _MonthHeader(entry.key),
-                for (final m in entry.value)
-                  _MemoryCard(
-                    memory: m,
-                    onTap: () => _showMemoryDetail(
-                        context, ref, baby.id, m, baby.canFullWrite),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _MonthHeader(entry.key),
                   ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 6,
+                      crossAxisSpacing: 6,
+                      childAspectRatio: 1,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) {
+                        final m = entry.value[i];
+                        return _MemoryTile(
+                          memory: m,
+                          onTap: () => _showMemoryDetail(
+                              context, ref, baby.id, m, baby.canFullWrite),
+                        );
+                      },
+                      childCount: entry.value.length,
+                    ),
+                  ),
+                ),
               ],
+              SliverToBoxAdapter(
+                child: SizedBox(
+                    height: 100 + MediaQuery.of(context).padding.bottom),
+              ),
             ],
           );
         },
@@ -108,124 +137,97 @@ class MemoriesScreen extends ConsumerWidget {
   }
 }
 
-/// Büyük foto-odaklı anı kartı (scrapbook akışı): foto + üstte "ilk" rozeti +
-/// altında başlık/tarih/not önizleme.
-class _MemoryCard extends StatelessWidget {
+/// Galeri ızgarası karesi — foto kapak + (varsa) "ilk" rozeti (emoji) + fotolu
+/// olanlarda altta başlık gradyanı. Dokununca detay sheet'i açılır.
+class _MemoryTile extends StatelessWidget {
   final Memory memory;
   final VoidCallback onTap;
-  const _MemoryCard({required this.memory, required this.onTap});
+  const _MemoryTile({required this.memory, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final info = firstTagInfo(memory.firstTag);
     final hasPhoto = memory.photo != null;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: AppColors.softShadow,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (hasPhoto)
-                Stack(
-                  children: [
-                    AspectRatio(
-                      aspectRatio: 4 / 3,
-                      child: Image.network(memory.photo!,
-                          fit: BoxFit.cover,
-                          // Ham foto 3000px+ olabilir; decode'u ekran genişliğine
-                          // sınırla (bellek/OOM koruması).
-                          cacheWidth: 1080,
-                          errorBuilder: (_, _, _) => const _PhotoPlaceholder()),
-                    ),
-                    if (info != null)
-                      Positioned(
-                        top: 10,
-                        left: 10,
-                        child: _MilestonePill(
-                            emoji: info.emoji, label: info.label(), onPhoto: true),
-                      ),
-                  ],
-                ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (hasPhoto)
+              Image.network(memory.photo!,
+                  fit: BoxFit.cover,
+                  // Izgara karesi küçük; decode'u sınırla (bellek koruması).
+                  cacheWidth: 600,
+                  errorBuilder: (_, _, _) => const _PhotoPlaceholder())
+            else
+              Container(
+                color: AppColors.feedBg,
+                padding: const EdgeInsets.all(8),
+                alignment: Alignment.center,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Fotosuz anılarda rozet başlığın üstünde durur.
-                    if (!hasPhoto && info != null) ...[
-                      _MilestonePill(emoji: info.emoji, label: info.label()),
-                      const SizedBox(height: 8),
-                    ],
+                    Text(info?.emoji ?? '📝', style: const TextStyle(fontSize: 26)),
+                    const SizedBox(height: 6),
                     Text(
                       memory.title.isNotEmpty
                           ? memory.title
                           : (info?.label() ?? tr('Anı')),
-                      maxLines: 1,
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                      style: const TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        AdenaIcon('calendar', size: 13, color: AppColors.muted),
-                        const SizedBox(width: 5),
-                        Text(DateFormat('d MMMM y', 'tr_TR').format(memory.date),
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.muted)),
-                      ],
-                    ),
-                    if (memory.note.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(memory.note,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 13, height: 1.4, fontWeight: FontWeight.w600)),
-                    ],
                   ],
                 ),
               ),
-            ],
-          ),
+            // "ilk" rozeti — sol üst, emoji
+            if (info != null)
+              Positioned(
+                top: 6,
+                left: 6,
+                child: Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(info.emoji, style: const TextStyle(fontSize: 12)),
+                ),
+              ),
+            // başlık gradyanı (fotolu + başlıklı)
+            if (hasPhoto && memory.title.isNotEmpty)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(8, 16, 8, 6),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.6),
+                        Colors.transparent
+                      ],
+                    ),
+                  ),
+                  child: Text(memory.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800)),
+                ),
+              ),
+          ],
         ),
       ),
-    );
-  }
-}
-
-/// "İlk" kilometre taşı rozeti — foto üstünde koyu yarı saydam, metin alanında
-/// şeftali tonlu.
-class _MilestonePill extends StatelessWidget {
-  final String emoji;
-  final String label;
-  final bool onPhoto;
-  const _MilestonePill(
-      {required this.emoji, required this.label, this.onPhoto = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: onPhoto ? Colors.black.withValues(alpha: 0.5) : AppColors.feedBg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text('$emoji $label',
-          style: TextStyle(
-              color: onPhoto ? Colors.white : AppColors.coralDd,
-              fontSize: 11,
-              fontWeight: FontWeight.w900)),
     );
   }
 }
@@ -365,7 +367,7 @@ void _showMemoryDetail(BuildContext context, WidgetRef ref, String babyId,
               Text(m.title.isNotEmpty ? m.title : tr('Anı'),
                   style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
               const SizedBox(height: 4),
-              Text(DateFormat('d MMMM y', 'tr_TR').format(m.date),
+              Text(fmtDayMonthYear(m.date),
                   style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
@@ -683,7 +685,7 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
               children: [
                 AdenaIcon('calendar', size: 16, color: AppColors.muted),
                 const SizedBox(width: 8),
-                Text(DateFormat('d MMMM y', 'tr_TR').format(_date),
+                Text(fmtDayMonthYear(_date),
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w900,

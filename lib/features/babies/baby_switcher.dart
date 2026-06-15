@@ -84,7 +84,9 @@ Future<void> showAcceptInviteDialog(BuildContext context, WidgetRef ref) {
               final baby = await ref.read(babyRepositoryProvider).acceptInvitation(code);
               ref.invalidate(babyControllerProvider);
               ref.read(activeBabyIdProvider.notifier).set(baby.id);
-              if (context.mounted) showAdToast(context, '${baby.name} eklendi');
+              if (context.mounted) {
+                showAdToast(context, trp('{name} eklendi', {'name': baby.name}));
+              }
             } catch (_) {
               if (context.mounted) {
                 showAdError(context, tr('Kod geçersiz veya süresi dolmuş'));

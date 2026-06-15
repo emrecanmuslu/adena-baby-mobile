@@ -55,5 +55,5 @@ class QuietHours {
   }
 
   String get label => '${hhmm(startMin)} – ${hhmm(endMin)}';
-  String get summary => enabled ? trp('{r} arası sessiz', {'r': label}) : 'Kapalı';
+  String get summary => enabled ? trp('{r} arası sessiz', {'r': label}) : tr('Kapalı');
 }

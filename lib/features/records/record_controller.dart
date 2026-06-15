@@ -87,9 +87,18 @@ class SyncService with WidgetsBindingObserver {
   final Ref _ref;
   StreamSubscription? _sub;
   Timer? _poll;
+  Timer? _debounce; // push tetikli sync'i coalesce et
   bool _running = false; // çakışan eşitleme turlarını önle
 
   static const _pollInterval = Duration(minutes: 1);
+
+  /// Push (family_activity / sync_nudge) tetiklediğinde çağrılır: ~1.2 sn pencerede
+  /// gelen ardışık nudge'ları TEK syncAll'a indirger (X hızlı ardışık düzenleme
+  /// yaparsa Y'de tekrar tekrar sync olmasın).
+  void requestSyncSoon() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 1200), () => syncAll());
+  }
 
   SyncService(this._ref) {
     _sub = Connectivity().onConnectivityChanged.listen((results) {
@@ -101,7 +110,10 @@ class SyncService with WidgetsBindingObserver {
 
   void _startPolling() {
     _poll?.cancel();
-    _poll = Timer.periodic(_pollInterval, (_) => syncAll());
+    // Periyodik tur YALNIZ paylaşımlı bebekleri çeker: tek kullanıcıda başka yazan
+    // olmadığından periyodik pull gereksizdir (yükleme zaten yazınca olur). Böylece
+    // tek kullanıcı için arka planda hiç ağ isteği gitmez.
+    _poll = Timer.periodic(_pollInterval, (_) => syncAll(sharedOnly: true));
   }
 
   /// Öne gelince hemen eşitle + yoklamayı sürdür; arka plana inince yoklamayı
@@ -118,13 +130,17 @@ class SyncService with WidgetsBindingObserver {
     }
   }
 
-  Future<void> syncAll() async {
+  /// [sharedOnly] true ise yalnız paylaşımlı (member_count>1) bebekler senkronlanır
+  /// — periyodik turda kullanılır. Açılış/yazma/bağlantı olaylarında false: tüm
+  /// bebekler bir kez senkronlanır (tek kullanıcı verisi de yüklenip çekilsin).
+  Future<void> syncAll({bool sharedOnly = false}) async {
     if (_running) return; // önceki tur bitmeden yenisini başlatma
     _running = true;
     try {
       final babies = _ref.read(babyControllerProvider).asData?.value ?? [];
       final repo = _ref.read(recordRepositoryProvider);
       for (final b in babies) {
+        if (sharedOnly && !b.isShared) continue; // tek kullanıcı → periyodik atla
         try {
           await repo.sync(b.id);
         } catch (_) {
@@ -139,6 +155,7 @@ class SyncService with WidgetsBindingObserver {
   void dispose() {
     _sub?.cancel();
     _poll?.cancel();
+    _debounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
   }
 }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
 import 'adena_icons.dart';
+import 'dates.dart';
 import 'i18n.dart';
 import 'theme.dart';
 
@@ -478,6 +478,77 @@ class AdSides extends StatelessWidget {
 }
 
 /// NowChip — saat/tarih + "değiştir" zaman çipi (dokununca seçici açar).
+/// Kayıt zaman seçici — önce SAAT açılır (kayıt çoğunlukla bugün için eklenir).
+/// Saat seçicinin sol-alt butonu "Tarih seç"tir; ona basınca tarih seçiciye
+/// geçilir, tarih seçildikten sonra tekrar saat seçiciye dönülür. Onay = "Tamam".
+/// İptal, tarih adımındaki "Vazgeç" ile yapılır. Tümü yerel Material seçiciler.
+Future<DateTime?> pickRecordDateTime(BuildContext context, DateTime initial) async {
+  final now = DateTime.now();
+  var cur = initial;
+  while (true) {
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(cur),
+      helpText: tr('Saat seç'),
+      cancelText: tr('Tarih seç'),
+      confirmText: tr('Tamam'),
+    );
+    if (time != null) {
+      return DateTime(cur.year, cur.month, cur.day, time.hour, time.minute);
+    }
+    // "Tarih seç" (veya kapatıldı) → tarihe geç.
+    if (!context.mounted) return null;
+    final date = await _pickDateAutoAdvance(
+        context, cur, DateTime(now.year - 2), DateTime(now.year + 2));
+    if (date == null || !context.mounted) return null; // Vazgeç → tüm akış iptal.
+    cur = DateTime(date.year, date.month, date.day, cur.hour, cur.minute);
+    // Döngü başa sarar → tekrar saat seçici.
+  }
+}
+
+/// Takvim diyaloğu — bir güne dokununca onay beklemeden anında kapanır
+/// (otomatik saate döner). Sağ üst "Vazgeç" tüm akışı iptal eder.
+Future<DateTime?> _pickDateAutoAdvance(
+    BuildContext context, DateTime initial, DateTime first, DateTime last) {
+  return showDialog<DateTime>(
+    context: context,
+    builder: (ctx) => Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
+            child: Row(
+              children: [
+                Text(tr('Tarih seç'),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w900, fontSize: 16)),
+                const Spacer(),
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(tr('Vazgeç'),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.coralDark))),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 340,
+            child: CalendarDatePicker(
+              initialDate: initial,
+              firstDate: first,
+              lastDate: last,
+              onDateChanged: (d) => Navigator.pop(ctx, d),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class AdTimeChip extends StatelessWidget {
   final DateTime? value;
   final VoidCallback onTap;
@@ -489,8 +560,8 @@ class AdTimeChip extends StatelessWidget {
     final text = v == null
         ? tr('Tarih/saat seç')
         : (DateUtils.isSameDay(v, DateTime.now())
-            ? trp('Bugün · {t}', {'t': DateFormat('HH:mm').format(v)})
-            : DateFormat('d MMM · HH:mm', 'tr_TR').format(v));
+            ? trp('Bugün · {t}', {'t': fmtTime(v)})
+            : fmtDayMonTime(v));
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,

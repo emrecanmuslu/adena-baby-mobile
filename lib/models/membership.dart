@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/i18n.dart';
 import 'user.dart';
 
 /// Bir bebeğe üyelik (rol-bazlı paylaşım). API_SOZLESME §3.
@@ -22,9 +23,9 @@ class Membership {
       );
 
   static String roleLabel(String role) => switch (role) {
-        'owner' => 'Sahip',
-        'parent' => 'Ebeveyn',
-        'caregiver' => 'Bakıcı',
+        'owner' => tr('Sahip'),
+        'parent' => tr('Ebeveyn'),
+        'caregiver' => tr('Bakıcı'),
         _ => role,
       };
 }

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
@@ -183,7 +183,6 @@ class _VacMiniRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateFmt = DateFormat('d MMM', 'tr_TR');
     final v = vaccine;
     final state = v.done ? 'done' : ((highlighted || v.isOverdue) ? 'due' : 'future');
     final (Color mbg, Color mfg, String icon) = switch (state) {
@@ -194,8 +193,8 @@ class _VacMiniRow extends StatelessWidget {
     final dateText = v.done
         ? tr('Yapıldı')
         : (v.isOverdue
-            ? 'Gecikti · ${dateFmt.format(v.dueDate)}'
-            : 'Planlanan · ${dateFmt.format(v.dueDate)}');
+            ? trp('Gecikti · {d}', {'d': fmtDayMon(v.dueDate)})
+            : trp('Planlanan · {d}', {'d': fmtDayMon(v.dueDate)}));
 
     return Padding(
       padding: EdgeInsets.only(bottom: last ? 0 : 13),
@@ -261,7 +260,7 @@ class _ApptRow extends StatelessWidget {
     final t = _apptTime(record);
     final title = record.data['title'] as String? ?? tr('Randevu');
     final note = record.data['note'] as String?;
-    final whenStr = DateFormat('d MMMM · HH:mm', 'tr_TR').format(t);
+    final whenStr = fmtDayMonthTime(t);
     final meta = (note != null && note.isNotEmpty) ? '$whenStr · $note' : whenStr;
 
     return Container(

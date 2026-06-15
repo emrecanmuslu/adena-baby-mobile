@@ -10,6 +10,8 @@ class Milestone {
   final String key;
   final String category; // motor|social|language|cognitive
   final String title;
+  final String description; // basamağın nasıl göründüğü (katalogtan)
+  final String tip; // nasıl desteklenebileceği (katalogtan)
   final int expectedMonth;
   final bool achieved;
   final DateTime? achievedDate;
@@ -19,6 +21,8 @@ class Milestone {
     required this.key,
     required this.category,
     required this.title,
+    this.description = '',
+    this.tip = '',
     required this.expectedMonth,
     required this.achieved,
     this.achievedDate,
@@ -29,6 +33,8 @@ class Milestone {
         key: json['key'] as String? ?? '',
         category: json['category'] as String? ?? 'motor',
         title: json['title'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        tip: json['tip'] as String? ?? '',
         expectedMonth: (json['expected_month'] as num?)?.toInt() ?? 0,
         achieved: json['achieved'] as bool? ?? false,
         achievedDate: json['achieved_date'] != null

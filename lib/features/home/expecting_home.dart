@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/config.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/ring.dart';
 import '../../core/theme.dart';
+import '../../data/pregnancy_repository.dart';
 import '../../data/pregnancy_weeks.dart';
 import '../../models/baby.dart';
 import '../../models/mom_entry.dart';
@@ -36,15 +38,15 @@ class ExpectingHome extends ConsumerWidget {
     final weeks = daysPregnant ~/ 7;
     final progress = (daysPregnant / 280).clamp(0.0, 1.0);
     final weeksLeft = (daysLeft / 7).ceil();
-    final stage = fruitStageFor(weeks);
-    // Hafta görselindeki etiket: tamamlanan + içinde bulunulan hafta (weeks+1).
-    final displayWeek = (weeks + 1).clamp(1, 42);
+    // Gebelik verisi API'den (yüklenene/çevrimdışıyken gömülü tabloya düşer).
+    final pw = ref.watch(pregnancyWeeksProvider).asData?.value ??
+        PregnancyWeeksData.embedded;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
       children: [
-        // Meyve boyut sahnesi
-        _FruitStage(weekLabel: '$displayWeek. Hafta', stage: stage),
+        // Gelişim görseli sahnesi (fetus görseli + boyut karşılaştırması)
+        _FruitStage(daysPregnant: daysPregnant, data: pw),
         const SizedBox(height: 18),
 
         // Doğuma kalan halka kartı
@@ -90,8 +92,10 @@ class ExpectingHome extends ConsumerWidget {
                             fontWeight: FontWeight.w900, fontSize: 15)),
                     const SizedBox(height: 2),
                     Text(
-                      'Tahmini: ${DateFormat('d MMMM y', 'tr_TR').format(due)}'
-                      '${daysLeft > 0 ? ' · ~$weeksLeft hafta' : ''}',
+                      trp('Tahmini: {due}', {'due': fmtDayMonthYear(due)}) +
+                          (daysLeft > 0
+                              ? trp(' · ~{w} hafta', {'w': weeksLeft})
+                              : ''),
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -113,7 +117,7 @@ class ExpectingHome extends ConsumerWidget {
             borderRadius: BorderRadius.circular(15),
           ),
           child: Text(
-            weeklyNote(weeks),
+            pw.noteFor(weeks),
             style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
@@ -210,43 +214,137 @@ class ExpectingHome extends ConsumerWidget {
   }
 }
 
-/// Meyve/sebze boyut sahnesi (design .ad-fruitstage): hafta rozeti + büyük
-/// daire (emoji) + "bir X büyüklüğünde" + ölçü.
-class _FruitStage extends StatelessWidget {
-  final String weekLabel;
-  final FruitStage stage;
-  const _FruitStage({required this.weekLabel, required this.stage});
+/// Gelişim görseli sahnesi (design .ad-fruitstage): "X. Hafta Y. gün" rozeti +
+/// haftalık 9:16 fetus görseli (API media'dan, kenarları zemine kaynaşacak
+/// şekilde yumuşatılmış) + "bir X büyüklüğünde" + ölçü. Yan oklarla ±5 gün
+/// ileri/geri gidilebilir; görsel yalnız hafta değişince değişir (gün içinde
+/// aynı kalır). "Bugün" dışındaysa dönüş rozeti çıkar.
+class _FruitStage extends StatefulWidget {
+  /// Bugünkü gebelik yaşı (gün cinsinden, 0–280).
+  final int daysPregnant;
+  /// Hafta verisi (API/cache/gömülü) — boyut sahnesi buradan okunur.
+  final PregnancyWeeksData data;
+  const _FruitStage({required this.daysPregnant, required this.data});
+
+  @override
+  State<_FruitStage> createState() => _FruitStageState();
+}
+
+class _FruitStageState extends State<_FruitStage> {
+  // Görselleri olan hafta aralığı (API media/fetus/4..40.png).
+  static const int _minWeek = 4;
+  static const int _maxWeek = 40;
+  // Bugünden en fazla kaç gün ileri/geri gidilebilir.
+  static const int _maxDayOffset = 5;
+
+  /// Bugüne göre gün kaydırması (oklarla değişir, ±5). 0 = bugün.
+  int _dayOffset = 0;
+
+  int get _viewedDays => (widget.daysPregnant + _dayOffset).clamp(0, 287);
+  // Tamamlanan gebelik haftası = obstetrik "X hafta Y gün"in haftası (LMP'den).
+  // Görsel/ölçü/etiket hepsi BUNA dayanır (badge ile veri tutarlı olsun diye).
+  int get _displayWeek => _viewedDays ~/ 7;
+  // Haftanın günü (1–7) — "39. Hafta 1. gün" = 39 hafta 0 gün (39w0d).
+  int get _dayInWeek => (_viewedDays % 7) + 1;
+  // Görsel haftası — mevcut görsel aralığına kıstırılır.
+  int get _imageWeek => _displayWeek.clamp(_minWeek, _maxWeek);
+
+  bool get _isToday => _dayOffset == 0;
+  bool get _canPrev => _dayOffset > -_maxDayOffset && _viewedDays > 0;
+  bool get _canNext => _dayOffset < _maxDayOffset && _viewedDays < 287;
+
+  void _step(int delta) => setState(
+      () => _dayOffset = (_dayOffset + delta).clamp(-_maxDayOffset, _maxDayOffset));
+
+  void _reset() => setState(() => _dayOffset = 0);
 
   @override
   Widget build(BuildContext context) {
+    // Görsel, ölçü ve etiket aynı haftaya (tamamlanan hafta) dayanır.
+    final stage = widget.data.stageFor(_displayWeek);
+    final imageUrl = '${AppConfig.mediaBaseUrl}/media/fetus/$_imageWeek.png';
+
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.peach,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(weekLabel,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12.5,
-                  color: AppColors.coralDd)),
-        ),
-        const SizedBox(height: 14),
-        Container(
-          width: 148,
-          height: 148,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppColors.peachLight, Color(0xFFFFE0D2)],
-            ),
-          ),
-          alignment: Alignment.center,
-          child: Text(stage.emoji, style: const TextStyle(fontSize: 70)),
+        // Büyük 9:16 görsel; rozetler ve oklar görselin ÜZERİNDE (overlay).
+        LayoutBuilder(
+          builder: (context, c) {
+            // Yuvarlatılmış köşeli 9:16 hero; yüksekliği makul bir tavanla sınırla.
+            var w = c.maxWidth.clamp(0.0, 300.0);
+            var h = w * 16 / 9;
+            const maxH = 500.0;
+            if (h > maxH) {
+              h = maxH;
+              w = h * 9 / 16;
+            }
+            return Center(
+              child: SizedBox(
+                width: w,
+                height: h,
+                child: Stack(
+                  children: [
+                    // Görsel — yuvarlak köşe + yumuşak gölge.
+                    Positioned.fill(
+                      child: _FetusImage(
+                        url: imageUrl,
+                        weekKey: _imageWeek,
+                        fallbackEmoji: stage.emoji,
+                      ),
+                    ),
+
+                    // Üst sol: "X. Hafta Y. gün" rozeti.
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: _overlayBadge(
+                        trp('{w}. Hafta {d}. gün',
+                            {'w': _displayWeek, 'd': _dayInWeek}),
+                        color: AppColors.coralDd,
+                      ),
+                    ),
+
+                    // Üst sağ: bugün değilse "Bugüne dön".
+                    if (!_isToday)
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: GestureDetector(
+                          onTap: _reset,
+                          child: _overlayBadge(tr('Bugüne dön'),
+                              color: AppColors.coralDark),
+                        ),
+                      ),
+
+                    // Sol/sağ ortada: gün gezinme okları.
+                    Positioned(
+                      left: 8,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: _NavArrow(
+                          icon: 'chevL',
+                          enabled: _canPrev,
+                          onTap: () => _step(-1),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: _NavArrow(
+                          icon: 'chevR',
+                          enabled: _canNext,
+                          onTap: () => _step(1),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 14),
         Text.rich(
@@ -263,10 +361,144 @@ class _FruitStage extends StatelessWidget {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 3),
-        Text(stage.size,
-            style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(stage.size,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.muted)),
+            ),
+            const SizedBox(width: 6),
+            AdInfoDot(
+              title: tr('Boy ve kilo'),
+              body: tr(
+                  'Buradaki boy ve kilo, o haftadaki bebeklerin ortalamasıdır; '
+                  'yalnızca fikir vermek içindir. Her bebek kendine özgüdür ve '
+                  'sağlıklı bebekler arasında bile belirgin farklar olabilir; '
+                  'gerçek ölçüler bundan az ya da çok olabilir, bu normaldir.\n\n'
+                  'İlk haftalarda uzunluk baş–popo (CRL) ölçülür; yaklaşık 20. '
+                  'haftadan sonra baş–topuk ölçülür, bu yüzden 20. haftada boyda '
+                  'doğal bir sıçrama görürsünüz.\n\n'
+                  'Bebeğinizin kendi gelişimini doktorunuzla ve doğumdan sonra '
+                  'Grafikler bölümünden takip edebilirsiniz.'),
+            ),
+          ],
+        ),
       ],
+    );
+  }
+
+  /// Görsel üzerine binen okunaklı rozet — yarı saydam beyaz zemin + küçük gölge.
+  Widget _overlayBadge(String text, {required Color color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: AppColors.smallShadow,
+      ),
+      child: Text(text,
+          style: TextStyle(
+              fontWeight: FontWeight.w900, fontSize: 12, color: color)),
+    );
+  }
+}
+
+/// Haftalık fetus görseli — 9:16 dikey oran, yuvarlatılmış köşeler + yumuşak
+/// gölge. Hafta değişince çapraz-solma ile geçer. Yüklenemezse emojiye düşer.
+class _FetusImage extends StatelessWidget {
+  final String url;
+  final int weekKey;
+  final String fallbackEmoji;
+  const _FetusImage(
+      {required this.url, required this.weekKey, required this.fallbackEmoji});
+
+  static const double _radius = 26;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(_radius),
+        boxShadow: AppColors.softShadow,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_radius),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 420),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          child: Image.network(
+            url,
+            key: ValueKey(weekKey),
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            gaplessPlayback: true,
+            loadingBuilder: (context, child, progress) {
+              if (progress == null) return child;
+              return ColoredBox(
+                color: AppColors.peachLight,
+                child: const Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.5, color: AppColors.coralDd),
+                  ),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stack) => ColoredBox(
+              color: AppColors.peachLight,
+              child: Center(
+                child: Text(fallbackEmoji, style: const TextStyle(fontSize: 72)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Gün gezinme oku (±1 gün). Devre dışıyken soluk.
+class _NavArrow extends StatelessWidget {
+  final String icon;
+  final bool enabled;
+  final VoidCallback onTap;
+  const _NavArrow(
+      {required this.icon, required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.25,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        shape: const CircleBorder(),
+        elevation: 0,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: enabled ? onTap : null,
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: AppColors.softShadow,
+              color: Theme.of(context).colorScheme.surface,
+            ),
+            alignment: Alignment.center,
+            child: AdenaIcon(icon, size: 18, color: AppColors.coralDark),
+          ),
+        ),
+      ),
     );
   }
 }

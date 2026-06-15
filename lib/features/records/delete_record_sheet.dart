@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../models/record.dart';
@@ -35,7 +35,7 @@ class _DeleteRecordSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final units = ref.watch(activeUnitsProvider);
     final who = _resolveWho(ref);
-    final stamp = DateFormat('d MMMM · HH:mm', 'tr_TR').format(record.ts);
+    final stamp = fmtDayMonthTime(record.ts);
     // Bakıcı yalnız KENDİ eklediği kaydı silebilir; owner/parent hepsini.
     final baby = ref.watch(activeBabyProvider);
     final me = ref.watch(authControllerProvider).asData?.value;

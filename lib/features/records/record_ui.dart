@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/adena_icons.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
@@ -84,7 +84,7 @@ class RecordUi {
   }
 
   /// Saat (14:32) — timeline satırı için.
-  static String time(DateTime ts) => DateFormat('HH:mm').format(ts);
+  static String time(DateTime ts) => fmtTime(ts);
 
   /// Göreli zaman: "az önce" · "12 dk önce" · "3 sa önce" · "dün" · "2 gün önce".
   /// 7 günden eskiyse kısa tarih ("14 Haz"). Son Aktivite kartlarında kullanılır.
@@ -98,7 +98,7 @@ class RecordUi {
     final days = diff.inDays;
     if (days == 1) return tr('dün');
     if (days < 7) return trp('{n} gün önce', {'n': days});
-    return DateFormat('d MMM', 'tr_TR').format(ts);
+    return fmtDayMon(ts);
   }
 
   /// Akıllı tam tarih+saat: bugün → "14:30", dün → "Dün 14:30",
@@ -107,11 +107,11 @@ class RecordUi {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final day = DateTime(ts.year, ts.month, ts.day);
-    final hm = DateFormat('HH:mm').format(ts);
+    final hm = fmtTime(ts);
     final dd = today.difference(day).inDays;
     if (dd == 0) return hm;
     if (dd == 1) return '${tr('Dün')} $hm';
-    return '${DateFormat('d MMM', 'tr_TR').format(ts)} $hm';
+    return '${fmtDayMon(ts)} $hm';
   }
 
   /// Kayıt için kısa, okunabilir Türkçe özet. [units] verilirse hacim/ağırlık/uzunluk

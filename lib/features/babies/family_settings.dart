@@ -1,11 +1,33 @@
+import 'dart:ui';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/locale_util.dart';
 import '../../core/units.dart';
 import '../../data/baby_repository.dart';
+import '../../data/i18n_repository.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
 import 'baby_controller.dart';
+
+/// Cihazın bölge (ülke) kodu — ISO2, büyük harf (ör. 'US', 'TR').
+final deviceCountryCodeProvider = Provider<String?>(
+    (_) => PlatformDispatcher.instance.locale.countryCode?.toUpperCase());
+
+/// Bölge imperial birim mi — önce sunucu Country tablosundan (cihaz ülkesine
+/// göre), yüklenene/eşleşmeyene kadar cihaz heuristiğine (US/LR/MM) düşer.
+final regionImperialProvider = Provider<bool>((ref) {
+  final cc = ref.watch(deviceCountryCodeProvider);
+  final countries = ref.watch(countriesProvider).asData?.value;
+  if (countries != null && cc != null) {
+    for (final c in countries) {
+      if (c.code == cc) return c.usesImperial;
+    }
+  }
+  return deviceUsesImperial();
+});
+
 
 /// Aktif bebeğin aile ayarları (units, enabled_types, …) — sunucudan.
 final familySettingsProvider =
@@ -13,12 +35,24 @@ final familySettingsProvider =
   (ref, babyId) => ref.watch(babyRepositoryProvider).familySettings(babyId),
 );
 
-/// Aktif bebeğin birim tercihleri (yüklenene kadar varsayılan ml/kg/cm/C).
+/// Aktif bebeğin birim tercihleri. Aile birim seçmemişse (boş) bölge (ülke)
+/// varsayılanına düşer: Country tablosundan imperial/metrik, o yüklenene kadar
+/// cihaz heuristiği. Açık seçilen birimler her zaman korunur.
 final activeUnitsProvider = Provider<Units>((ref) {
+  final imperial = ref.watch(regionImperialProvider);
+  final region = imperial
+      ? const Units(volume: 'oz', weight: 'lb', length: 'in', temp: 'F')
+      : const Units();
   final baby = ref.watch(activeBabyProvider);
-  if (baby == null) return const Units();
+  if (baby == null) return region;
   final fs = ref.watch(familySettingsProvider(baby.id)).asData?.value;
-  return Units.fromMap(fs?['units'] as Map<String, dynamic>?);
+  final m = fs?['units'] as Map<String, dynamic>?;
+  return Units(
+    volume: m?['volume'] as String? ?? region.volume,
+    weight: m?['weight'] as String? ?? region.weight,
+    length: m?['length'] as String? ?? region.length,
+    temp: m?['temp'] as String? ?? region.temp,
+  );
 });
 
 /// Birim tercihlerini günceller (tüm units sözlüğünü gönderir) ve önbelleği tazeler.

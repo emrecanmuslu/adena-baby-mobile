@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'core/ad_service.dart';
 import 'core/i18n.dart';
+import 'core/tour.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
@@ -18,6 +19,7 @@ import 'features/community/question_detail_screen.dart';
 import 'features/content/article_detail_screen.dart';
 import 'features/content/article_list_screen.dart';
 import 'features/content/content_hub_screen.dart';
+import 'features/dev/dev_tools_screen.dart';
 import 'features/discover/discover_screen.dart';
 import 'features/health/health_screen.dart';
 import 'features/health/reminders_screen.dart';
@@ -60,20 +62,56 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/baby-add',
           builder: (_, _) => const BabySetupScreen(onboarding: false)),
-      GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
-      GoRoute(path: '/members', builder: (_, _) => const MembersScreen()),
-      GoRoute(path: '/caregiver', builder: (_, _) => const CaregiverScreen()),
-      GoRoute(path: '/baby-edit', builder: (_, _) => const BabyEditScreen()),
-      GoRoute(path: '/health', builder: (_, _) => const HealthScreen()),
-      GoRoute(path: '/vaccines', builder: (_, _) => const VaccinesScreen()),
-      GoRoute(path: '/reminders', builder: (_, _) => const RemindersScreen()),
+      GoRoute(
+          path: '/settings',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'settings', child: SettingsScreen())),
+      // Yalnız debug derlemede: geliştirici/bildirim test ekranı.
+      if (kDebugMode)
+        GoRoute(path: '/dev', builder: (_, _) => const DevToolsScreen()),
+      GoRoute(
+          path: '/members',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'members', child: MembersScreen())),
+      GoRoute(
+          path: '/caregiver',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'caregiver', child: CaregiverScreen())),
+      GoRoute(
+          path: '/baby-edit',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'babyedit', child: BabyEditScreen())),
+      GoRoute(
+          path: '/health',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'health', child: HealthScreen())),
+      GoRoute(
+          path: '/vaccines',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'vaccines', child: VaccinesScreen())),
+      GoRoute(
+          path: '/reminders',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'reminders', child: RemindersScreen())),
       GoRoute(path: '/appearance', builder: (_, _) => const AppearanceScreen()),
       GoRoute(path: '/privacy', builder: (_, _) => const PrivacyScreen()),
-      GoRoute(path: '/premium', builder: (_, _) => const PremiumScreen()),
+      GoRoute(
+          path: '/premium',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'premium', child: PremiumScreen())),
       GoRoute(path: '/ai-export', builder: (_, _) => const AIExportScreen()),
-      GoRoute(path: '/mom', builder: (_, _) => const MomTrackingScreen()),
-      GoRoute(path: '/memories', builder: (_, _) => const MemoriesScreen()),
-      GoRoute(path: '/content', builder: (_, _) => const ContentHubScreen()),
+      GoRoute(
+          path: '/mom',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'mom', child: MomTrackingScreen())),
+      GoRoute(
+          path: '/memories',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'memories', child: MemoriesScreen())),
+      GoRoute(
+          path: '/content',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'content', child: ContentHubScreen())),
       GoRoute(
         path: '/content/articles',
         builder: (_, state) => ArticleListScreen(
@@ -86,8 +124,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) =>
             ArticleDetailScreen(slug: state.pathParameters['slug']!),
       ),
-      GoRoute(path: '/discover', builder: (_, _) => const DiscoverScreen()),
-      GoRoute(path: '/community', builder: (_, _) => const CommunityFeedScreen()),
+      GoRoute(
+          path: '/discover',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'discover', child: DiscoverScreen())),
+      GoRoute(
+          path: '/community',
+          builder: (_, _) => const TourMount(
+              tourKey: 'community', child: CommunityFeedScreen())),
       GoRoute(
         path: '/community/question/:id',
         builder: (_, state) =>
@@ -98,8 +142,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) =>
             CommunityProfileScreen(userId: state.pathParameters['id']!),
       ),
-      GoRoute(path: '/milestones', builder: (_, _) => const MilestonesScreen()),
-      GoRoute(path: '/teeth', builder: (_, _) => const TeethScreen()),
+      GoRoute(
+          path: '/milestones',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'milestones', child: MilestonesScreen())),
+      GoRoute(
+          path: '/teeth',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'teeth', child: TeethScreen())),
       GoRoute(path: '/born-flow', builder: (_, _) => const BornFlowScreen()),
     ],
     redirect: (context, state) {

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
@@ -27,8 +27,6 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
   DateTime? _date; // born→birth_date, expecting→due_date
   bool _saving = false;
   bool _init = false;
-
-  final _dateFmt = DateFormat('d MMMM y', 'tr_TR');
 
   @override
   void initState() {
@@ -183,7 +181,7 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          _date != null ? _dateFmt.format(_date!) : tr('Tarih seç'),
+                          _date != null ? fmtDayMonthYear(_date!) : tr('Tarih seç'),
                           style: TextStyle(
                             color: _date != null ? null : AppColors.muted,
                             fontWeight: FontWeight.w700,

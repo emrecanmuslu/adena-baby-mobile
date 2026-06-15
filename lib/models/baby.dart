@@ -17,6 +17,7 @@ class Baby {
   final DateTime? dueDate;
   final DateTime? lastMenstrualDate;
   final String? myRole; // owner|parent|caregiver
+  final int memberCount; // bebeği paylaşan üye sayısı (varsayılan 1 = tek kullanıcı)
 
   const Baby({
     required this.id,
@@ -28,9 +29,15 @@ class Baby {
     this.dueDate,
     this.lastMenstrualDate,
     this.myRole,
+    this.memberCount = 1,
   });
 
   bool get isExpecting => status == BabyStatus.expecting;
+
+  /// Bebek birden fazla kişiyle mi paylaşılıyor? Paylaşımsızsa (tek üye) istemci
+  /// periyodik sync/aktivite yoklamasını yapmaz — başka yazan olmadığından veri
+  /// yalnız uygulama açılınca + kayıt yazınca güncellenir (boşa istek atılmaz).
+  bool get isShared => memberCount > 1;
 
   /// Tam yazma yetkisi (owner/parent). Bakıcı (caregiver) hariç — sağlık/anı/anne
   /// takibi salt-okunur ya da gizli, kayıtlarda yalnız kendi eklediğine dokunabilir.
@@ -56,6 +63,7 @@ class Baby {
         dueDate: _date(json['due_date']),
         lastMenstrualDate: _date(json['last_menstrual_date']),
         myRole: json['my_role'] as String?,
+        memberCount: (json['member_count'] as num?)?.toInt() ?? 1,
       );
 
   /// POST /babies için gövde. id istemci-üretimli (offline-first).

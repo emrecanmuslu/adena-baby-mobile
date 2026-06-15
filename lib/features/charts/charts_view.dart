@@ -2,10 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/premium_gate.dart';
 import '../../core/skeleton.dart';
@@ -13,6 +13,7 @@ import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../../core/who_growth.dart';
 import '../../data/subscription_repository.dart';
+import '../../data/who_lms_repository.dart';
 import '../../models/baby.dart';
 import '../../models/record.dart';
 import '../babies/baby_controller.dart';
@@ -56,6 +57,9 @@ class _ChartsViewState extends ConsumerState<ChartsView> {
     final async = ref.watch(recordsProvider(widget.babyId));
     final units = ref.watch(activeUnitsProvider);
     final baby = ref.watch(activeBabyProvider);
+    // WHO LMS tablosunu API/cache ile güncelle (tamamlanınca yeniden çizilir;
+    // çevrimdışıyken gömülü tabloyla devam). Eğri verisi `whoLms`'ten okunur.
+    ref.watch(whoLmsProvider);
 
     if (async.isLoading) {
       return const SkeletonRecordList(count: 6, padding: EdgeInsets.all(16));
@@ -240,7 +244,7 @@ class _PercentileSection extends StatelessWidget {
 
     final canPct = birth != null && gender != BabyGender.unknown;
 
-    // Grafikte işaretlenecek noktalar (0–24 ay).
+    // Grafikte işaretlenecek noktalar (0–60 ay).
     final babyPts = <({double age, double v})>[];
     if (birth != null) {
       for (final r in growth) {
@@ -781,7 +785,6 @@ class _BarCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final max = values.fold<double>(0, (a, b) => b > a ? b : a);
-    final dayFmt = DateFormat('E', 'tr_TR');
     final today = DateTime.now();
     final todayKey = DateTime(today.year, today.month, today.day);
     return Container(
@@ -836,7 +839,7 @@ class _BarCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text(dayFmt.format(days[i]),
+                      Text(fmtWeekdayShort(days[i]),
                           style: TextStyle(
                               fontSize: 9, fontWeight: FontWeight.w800, color: AppColors.muted)),
                     ],

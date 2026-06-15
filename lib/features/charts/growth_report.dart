@@ -2,10 +2,10 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/providers.dart';
 import '../../core/units.dart';
@@ -102,7 +102,7 @@ Map<String, dynamic> buildGrowthReportPayload(
         growth.length > 12 ? growth.sublist(growth.length - 12) : growth;
     final history = [
       for (final r in histRecs)
-        [DateFormat('d MMM', 'tr_TR').format(r.ts), fmt(r.data[m.field] as num)]
+        [fmtDayMon(r.ts), fmt(r.data[m.field] as num)]
     ];
 
     measuresOut.add({
@@ -151,7 +151,7 @@ Map<String, dynamic> buildGrowthReportPayload(
               : 'unknown',
       'age_label': _ageLabel(birth, now),
     },
-    'generated_at': DateFormat('d MMMM y', 'tr_TR').format(now),
+    'generated_at': fmtDayMonthYear(now),
     'measures': measuresOut,
     'trends': {
       'feed_avg': feedTotal > 0 ? (feedTotal / 7).round().toString() : '0',
@@ -160,7 +160,7 @@ Map<String, dynamic> buildGrowthReportPayload(
       'days': [
         for (final d in days)
           [
-            DateFormat('E', 'tr_TR').format(d),
+            fmtWeekdayShort(d),
             feedByDay[d]!.toInt(),
             double.parse(sleepByDay[d]!.toStringAsFixed(1)),
           ]

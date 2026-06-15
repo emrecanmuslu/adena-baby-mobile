@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
@@ -191,7 +191,7 @@ String _relative(DateTime ts) {
   if (d.inMinutes < 60) return trp('{n} dk önce', {'n': d.inMinutes});
   if (d.inHours < 24) return trp('{n} sa önce', {'n': d.inHours});
   if (d.inDays < 7) return trp('{n} gün önce', {'n': d.inDays});
-  return DateFormat('d MMM', 'tr_TR').format(ts);
+  return fmtDayMon(ts);
 }
 
 Color _avatarColor(User? u) {
