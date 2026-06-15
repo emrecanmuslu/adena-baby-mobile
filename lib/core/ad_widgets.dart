@@ -1025,3 +1025,44 @@ Widget adSec(String title, {Color? color, String? info}) => Padding(
         ],
       ),
     );
+
+/// Tıbbi sorumluluk reddi — sağlık/gelişim ekranlarında KALICI uyarı (tur değil).
+/// Kalkan ikonu + nötr metin; varsayılan genel feragat, [text] ile özelleştirilir.
+/// Makale, grafikler, gebelik ve semptom rehberi ortak kullanır.
+class AdMedicalNote extends StatelessWidget {
+  final String? text;
+  const AdMedicalNote({super.key, this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.line, width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AdenaIcon('shield', size: 18, color: AppColors.muted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text ??
+                  tr('Bu ekran genel bilgilendirme amaçlıdır ve tıbbi tanı, '
+                      'muayene veya tedavinin yerine geçmez. Bebeğinin sağlığıyla '
+                      'ilgili kararlarda mutlaka doktoruna danış.'),
+              style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.45,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -535,7 +535,11 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           onSelect: (k) => setState(() => _symptomKey = k),
         ),
       ),
-      if (symptomByKey(_symptomKey) case final s?) _SymptomInfoCard(symptom: s),
+      if (symptomByKey(_symptomKey) case final s?) ...[
+        _SymptomInfoCard(symptom: s),
+        const SizedBox(height: 8),
+        const AdMedicalNote(),
+      ],
       AdField(
         label: tr('Şiddet'),
         info: tr('Belirtinin ne kadar belirgin olduğunu işaretle. Şiddetli ve '

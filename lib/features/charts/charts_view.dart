@@ -86,6 +86,8 @@ class _ChartsViewState extends ConsumerState<ChartsView> {
         const SizedBox(height: 20),
         _ReportButton(
             babyId: widget.babyId, baby: baby, records: records, units: units),
+        const SizedBox(height: 16),
+        const AdMedicalNote(),
       ],
     );
   }

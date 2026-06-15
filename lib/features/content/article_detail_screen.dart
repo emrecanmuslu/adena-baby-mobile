@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_markdown.dart';
+import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
@@ -148,32 +149,10 @@ class _Disclaimer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.line, width: 1),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AdenaIcon('shield', size: 18, color: AppColors.muted),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              tr('Bu içerik genel bilgilendirme amaçlıdır ve tıbbi tanı, '
-                  'muayene veya tedavinin yerine geçmez. Bebeğinin sağlığıyla '
-                  'ilgili kararlarda mutlaka doktoruna danış.'),
-              style: TextStyle(
-                  fontSize: 11.5,
-                  height: 1.45,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.muted),
-            ),
-          ),
-        ],
-      ),
+    return AdMedicalNote(
+      text: tr('Bu içerik genel bilgilendirme amaçlıdır ve tıbbi tanı, '
+          'muayene veya tedavinin yerine geçmez. Bebeğinin sağlığıyla '
+          'ilgili kararlarda mutlaka doktoruna danış.'),
     );
   }
 }

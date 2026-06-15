@@ -209,6 +209,8 @@ class ExpectingHome extends ConsumerWidget {
           label: Text(tr('Bilgileri düzenle')),
           style: TextButton.styleFrom(foregroundColor: AppColors.coralDark),
         ),
+        const SizedBox(height: 14),
+        const AdMedicalNote(),
       ],
     );
   }
