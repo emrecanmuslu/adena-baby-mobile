@@ -67,6 +67,14 @@ class AuthController extends AsyncNotifier<User?> {
     _syncRevenueCat(state.value);
   }
 
+  /// Yasal rıza kapısından onay kaydı: backend'e yazar, oturum kullanıcısının
+  /// consentRequired'ını düşürür → router rıza kapısından çıkarır.
+  Future<void> recordConsent() async {
+    await _repo.recordConsent();
+    final u = state.value;
+    if (u != null) state = AsyncData(u.copyWith(consentRequired: false));
+  }
+
   Future<void> updateName(String name) async {
     final user = await _repo.updateName(name);
     state = AsyncData(user);

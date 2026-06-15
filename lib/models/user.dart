@@ -9,12 +9,17 @@ class User {
   final String? avatarColor;
   final DateTime? createdAt;
 
+  /// Yasal rıza kapısı gerekli mi (istemci-tarafı; API yanıtında `user`'ın yanında
+  /// `consent_required` olarak gelir). true → uygulamaya girmeden rıza ekranı.
+  final bool consentRequired;
+
   const User({
     required this.id,
     required this.email,
     required this.name,
     this.avatarColor,
     this.createdAt,
+    this.consentRequired = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) => User(
@@ -25,6 +30,15 @@ class User {
         createdAt: json['created_at'] != null
             ? DateTime.tryParse(json['created_at'] as String)
             : null,
+      );
+
+  User copyWith({bool? consentRequired}) => User(
+        id: id,
+        email: email,
+        name: name,
+        avatarColor: avatarColor,
+        createdAt: createdAt,
+        consentRequired: consentRequired ?? this.consentRequired,
       );
 
   Map<String, dynamic> toJson() => {

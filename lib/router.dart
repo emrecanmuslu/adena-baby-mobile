@@ -6,6 +6,7 @@ import 'core/ad_service.dart';
 import 'core/i18n.dart';
 import 'core/tour.dart';
 import 'features/auth/auth_controller.dart';
+import 'features/auth/consent_gate_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/babies/baby_controller.dart';
@@ -57,6 +58,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+      GoRoute(
+          path: '/consent-gate', builder: (_, _) => const ConsentGateScreen()),
       GoRoute(path: '/onboarding', builder: (_, _) => const BabySetupScreen()),
       GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
       GoRoute(
@@ -168,6 +171,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (user == null) {
         return onAuthPage ? null : '/login';
       }
+
+      // Yasal rıza kapısı — sosyal giriş yapan / güncel sürümü kabul etmemiş
+      // kullanıcı uygulamaya girmeden önce 18+ ve Gizlilik/Şartlar'ı kabul eder.
+      if (user.consentRequired) {
+        return loc == '/consent-gate' ? null : '/consent-gate';
+      }
+      if (loc == '/consent-gate') return '/home'; // rıza alındı → devam
 
       // Oturum açık — bebek listesini bekle.
       final babies = ref.read(babyControllerProvider);

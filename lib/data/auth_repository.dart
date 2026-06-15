@@ -23,7 +23,15 @@ class AuthRepository {
   }) async {
     final resp = await _dio.post(
       '/auth/register',
-      data: {'email': email, 'password': password, 'name': name},
+      // Yasal rıza kayıt ekranındaki zorunlu kutuyla alınır; backend Consent
+      // kaydı yazar. Kutu işaretlenmeden submit edilemez → her zaman true.
+      data: {
+        'email': email,
+        'password': password,
+        'name': name,
+        'accepted_legal': true,
+        'age_confirmed': true,
+      },
       options: Options(extra: {'noAuth': true}),
     );
     return _consumeAuth(resp.data as Map<String, dynamic>);
@@ -49,11 +57,22 @@ class AuthRepository {
     return _consumeAuth(resp.data as Map<String, dynamic>);
   }
 
-  /// Mevcut oturum sahibini getirir (GET /auth/me).
+  /// Mevcut oturum sahibini getirir (GET /auth/me). Yanıttaki `consent_required`
+  /// kullanıcıya iliştirilir (rıza kapısı yönlendirmesi için).
   Future<User> me() async {
     final resp = await _dio.get('/auth/me');
     final data = resp.data as Map<String, dynamic>;
-    return User.fromJson(data['user'] as Map<String, dynamic>);
+    return User.fromJson(data['user'] as Map<String, dynamic>)
+        .copyWith(consentRequired: data['consent_required'] as bool? ?? false);
+  }
+
+  /// Yasal rızayı kaydeder (rıza kapısı / sosyal giriş sonrası). POST /auth/consent.
+  Future<void> recordConsent() async {
+    await _dio.post('/auth/consent', data: {
+      'accepted_legal': true,
+      'age_confirmed': true,
+      'source': 'gate',
+    });
   }
 
   /// Kullanıcı ayarlarını getirir (GET /auth/me/settings).
@@ -93,13 +112,15 @@ class AuthRepository {
     await _tokens.clear();
   }
 
-  /// {user, access, refresh} yanıtını işler: token'ları yazar, User döner.
+  /// {user, access, refresh, consent_required} yanıtını işler: token'ları yazar,
+  /// User'a rıza durumunu iliştirir, User döner.
   Future<User> _consumeAuth(Map<String, dynamic> data) async {
     await _tokens.saveTokens(
       access: data['access'] as String,
       refresh: data['refresh'] as String?,
     );
-    return User.fromJson(data['user'] as Map<String, dynamic>);
+    return User.fromJson(data['user'] as Map<String, dynamic>)
+        .copyWith(consentRequired: data['consent_required'] as bool? ?? false);
   }
 }
 
