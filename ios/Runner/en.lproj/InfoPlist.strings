@@ -1,0 +1,4 @@
+/* iOS izin açıklamaları — İngilizce (ABD). Xcode'da Runner target > Localizations'a
+   English eklenip bu dosya InfoPlist.strings variant group'una bağlanmalı. */
+"NSCameraUsageDescription" = "Used to take photos to add to your baby's memories.";
+"NSPhotoLibraryUsageDescription" = "Lets you choose photos from your library to add to memories.";
