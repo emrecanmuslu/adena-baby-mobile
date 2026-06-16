@@ -9,48 +9,26 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
+import '../../data/auth_repository.dart';
 import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 import '../records/record_controller.dart';
 
-/// Kullanıcının tüm yerel verisini (profil + bebekler + kayıtlar) JSON olarak
-/// toplar, geçici bir dosyaya yazar ve sistem paylaşım sayfasını açar.
-/// Offline-first: veriyi yerel DB'den okur, backend gerektirmez.
+/// Kullanıcının verisini JSON olarak toplar, dosyaya yazar ve paylaşımı açar.
+/// Önce sunucudan TAM kopyayı (GET /auth/me/export — foto URL'leri, topluluk Q&A,
+/// tüm cihaz kayıtları, hatırlatıcı/aşı/gelişim, rıza izi, abonelik) çeker;
+/// çevrimdışı / hata olursa yerel DB'den toplar (fallback).
 Future<void> exportUserData(BuildContext context, WidgetRef ref) async {
   try {
-    final user = ref.read(authControllerProvider).asData?.value;
-    final babies = ref.read(babyControllerProvider).asData?.value ?? const [];
-
-    final babyList = <Map<String, dynamic>>[];
-    for (final b in babies) {
-      final records = await ref.read(recordsProvider(b.id).future);
-      babyList.add({
-        'id': b.id,
-        'name': b.name,
-        'status': b.status.name,
-        'gender': b.gender.name,
-        'birth_date': b.birthDate?.toIso8601String(),
-        'due_date': b.dueDate?.toIso8601String(),
-        'records': [
-          for (final r in records.where((r) => !r.isDeleted))
-            {
-              'id': r.id,
-              'type': r.type.name,
-              'ts': r.ts.toIso8601String(),
-              'data': r.data,
-            },
-        ],
-      });
+    Map<String, dynamic> export;
+    try {
+      // GDPR/KVKK taşınabilirliği: sunucudaki eksiksiz kopya.
+      export = await ref.read(authRepositoryProvider).exportData();
+      export['exported_at'] = DateTime.now().toIso8601String();
+    } catch (_) {
+      // Çevrimdışı fallback — yalnız yerel veri (profil + bebekler + kayıtlar).
+      export = await _localExport(ref);
     }
-
-    final export = <String, dynamic>{
-      'app': 'Adena Baby',
-      'exported_at': DateTime.now().toIso8601String(),
-      'user': user == null
-          ? null
-          : {'id': user.id, 'email': user.email, 'name': user.name},
-      'babies': babyList,
-    };
 
     final jsonStr = const JsonEncoder.withIndent('  ').convert(export);
     final dir = await getTemporaryDirectory();
@@ -68,4 +46,40 @@ Future<void> exportUserData(BuildContext context, WidgetRef ref) async {
   } catch (_) {
     if (context.mounted) showAdToast(context, tr('Dışa aktarılamadı'));
   }
+}
+
+/// Çevrimdışı fallback: yalnız yerel DB'den (profil + bebekler + kayıtlar).
+Future<Map<String, dynamic>> _localExport(WidgetRef ref) async {
+  final user = ref.read(authControllerProvider).asData?.value;
+  final babies = ref.read(babyControllerProvider).asData?.value ?? const [];
+  final babyList = <Map<String, dynamic>>[];
+  for (final b in babies) {
+    final records = await ref.read(recordsProvider(b.id).future);
+    babyList.add({
+      'id': b.id,
+      'name': b.name,
+      'status': b.status.name,
+      'gender': b.gender.name,
+      'birth_date': b.birthDate?.toIso8601String(),
+      'due_date': b.dueDate?.toIso8601String(),
+      'records': [
+        for (final r in records.where((r) => !r.isDeleted))
+          {
+            'id': r.id,
+            'type': r.type.name,
+            'ts': r.ts.toIso8601String(),
+            'data': r.data,
+          },
+      ],
+    });
+  }
+  return {
+    'app': 'Adena Baby',
+    'partial': true, // yalnız yerel veri (sunucuya ulaşılamadı)
+    'exported_at': DateTime.now().toIso8601String(),
+    'user': user == null
+        ? null
+        : {'id': user.id, 'email': user.email, 'name': user.name},
+    'babies': babyList,
+  };
 }

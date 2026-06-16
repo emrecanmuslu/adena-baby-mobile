@@ -98,6 +98,13 @@ class AuthRepository {
     await _tokens.clear();
   }
 
+  /// Sunucudaki tüm kullanıcı verisinin tam kopyası (GDPR/KVKK taşınabilirlik).
+  /// GET /auth/me/export — foto URL'leri, topluluk Q&A, tüm cihaz kayıtları dâhil.
+  Future<Map<String, dynamic>> exportData() async {
+    final resp = await _dio.get('/auth/me/export');
+    return resp.data as Map<String, dynamic>;
+  }
+
   Future<void> logout() async {
     final refresh = await _tokens.refreshToken;
     try {
