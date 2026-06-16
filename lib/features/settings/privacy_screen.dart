@@ -183,7 +183,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
             color: AppColors.fever,
             bg: AppColors.feverBg,
             title: tr('Hesabı & verileri sil'),
-            meta: tr('GDPR · geri alınamaz'),
+            meta: tr('GDPR · 30 gün içinde geri yüklenebilir'),
             titleColor: AppColors.fever,
             onTap: _deleteAccount,
           ),
@@ -203,8 +203,10 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
       context: context,
       builder: (dialogCtx) => AlertDialog(
         title: Text(tr('Hesabı & verileri sil')),
-        content: Text(
-            tr('Hesabın ve tüm bebek verilerin kalıcı olarak silinecek. Bu geri alınamaz.')),
+        content: Text(tr(
+            'Hesabın devre dışı bırakılacak ve oturumun her cihazda kapanacak. '
+            '30 gün içinde tekrar giriş yapmazsan hesabın ve tüm bebek verilerin '
+            'kalıcı olarak silinir. Bu süre içinde giriş yaparsan silme iptal olur.')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogCtx, false),
