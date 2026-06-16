@@ -76,6 +76,7 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 IconButton(
+                  tooltip: tr('Adı düzenle'),
                   icon: Icon(Icons.edit_outlined, color: AppColors.muted),
                   onPressed: () => _editName(context, ref, user?.name ?? ''),
                 ),

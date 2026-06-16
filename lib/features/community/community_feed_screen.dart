@@ -307,6 +307,7 @@ class _SearchBar extends StatelessWidget {
             builder: (_, value, _) => value.text.isEmpty
                 ? const SizedBox.shrink()
                 : IconButton(
+                    tooltip: tr('Aramayı temizle'),
                     icon: Icon(Icons.close_rounded, size: 18, color: AppColors.muted),
                     onPressed: onClear,
                   ),

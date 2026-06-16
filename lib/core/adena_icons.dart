@@ -74,7 +74,12 @@ class AdenaIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double sw;
-  const AdenaIcon(this.name, {super.key, this.size = 24, this.color, this.sw = 1.8});
+  /// Erişilebilirlik: anlamlı (tek başına bilgi taşıyan) ikona ekran okuyucu
+  /// etiketi ver. Boş bırakılırsa ikon DEKORATİF sayılır (etiketli bir butonun
+  /// içindeyken doğru davranış — okuyucu butonun kendi etiketini okur).
+  final String? semanticLabel;
+  const AdenaIcon(this.name,
+      {super.key, this.size = 24, this.color, this.sw = 1.8, this.semanticLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +88,8 @@ class AdenaIcon extends StatelessWidget {
       AdenaIcons.svg(name, c, sw),
       width: size,
       height: size,
+      semanticsLabel: semanticLabel,
+      excludeFromSemantics: semanticLabel == null,
     );
   }
 }

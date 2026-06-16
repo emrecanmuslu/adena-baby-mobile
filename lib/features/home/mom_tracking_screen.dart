@@ -511,6 +511,7 @@ class _ApptRow extends ConsumerWidget {
   }
 
   Widget _delBtn(BuildContext context, WidgetRef ref) => IconButton(
+        tooltip: tr('Sil'),
         icon: Icon(Icons.close, size: 18, color: AppColors.muted),
         onPressed: () async {
           await ref.read(momRepositoryProvider).delete(babyId, entry.id);

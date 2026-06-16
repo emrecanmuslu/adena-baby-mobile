@@ -153,10 +153,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _navItem('home', 0),
-                _navItem('timeline', 1),
+                _navItem('home', 0, tr('Ana sayfa')),
+                _navItem('timeline', 1, tr('Günlük akış')),
                 _navFab(() => showAddRecordMenu(context, ref, baby.id)),
-                _navItem('charts', 2),
+                _navItem('charts', 2, tr('Grafikler')),
                 _navDiscover(context),
               ],
             ),
@@ -167,47 +167,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
 
-  Widget _navItem(String icon, int index) {
+  Widget _navItem(String icon, int index, String label) {
     final selected = _tab == index;
-    return InkWell(
-      onTap: () => setState(() => _tab = index),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: selected ? AppColors.feedBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        onTap: () => setState(() => _tab = index),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: selected ? AppColors.feedBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          alignment: Alignment.center,
+          child: AdenaIcon(icon,
+              color: selected ? AppColors.coralDd : AppColors.muted2,
+              size: 23,
+              sw: selected ? 2.1 : 1.8),
         ),
-        alignment: Alignment.center,
-        child: AdenaIcon(icon,
-            color: selected ? AppColors.coralDd : AppColors.muted2,
-            size: 23,
-            sw: selected ? 2.1 : 1.8),
       ),
     );
   }
 
   /// Satır içi merkez FAB — mercan gradyan daire, kayıt ekleme menüsünü açar.
   Widget _navFab(VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 46,
-        height: 46,
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppColors.coral, AppColors.coralDd],
+    return Semantics(
+      button: true,
+      label: tr('Kayıt ekle'),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 46,
+          height: 46,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.coral, AppColors.coralDd],
+            ),
+            boxShadow: [
+              BoxShadow(color: Color(0x66E2553F), blurRadius: 16, offset: Offset(0, 6)),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(color: Color(0x66E2553F), blurRadius: 16, offset: Offset(0, 6)),
-          ],
+          alignment: Alignment.center,
+          child: const AdenaIcon('plus', color: Colors.white, size: 24, sw: 2.4),
         ),
-        alignment: Alignment.center,
-        child: const AdenaIcon('plus', color: Colors.white, size: 24, sw: 2.4),
       ),
     );
   }
@@ -215,14 +224,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// Keşfet — takip dışı yüzeyleri toplayan hub (Bebeğin Sağlığı · Topluluk ·
   /// Uzman Rehberi · Anılar). Sekme değil, sayfa açar.
   Widget _navDiscover(BuildContext context) {
-    return InkWell(
-      onTap: () => context.push('/discover'),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        child: AdenaIcon('compass', color: AppColors.muted2, size: 23),
+    return Semantics(
+      button: true,
+      label: tr('Keşfet'),
+      child: InkWell(
+        onTap: () => context.push('/discover'),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          child: AdenaIcon('compass', color: AppColors.muted2, size: 23),
+        ),
       ),
     );
   }
@@ -269,17 +282,21 @@ class _HeaderBell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.push('/reminders'),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
+    return Semantics(
+      button: true,
+      label: tr('Hatırlatıcılar'),
+      child: GestureDetector(
+        onTap: () => context.push('/reminders'),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: const AdenaIcon('bell', size: 20, color: AppColors.coralDd),
         ),
-        alignment: Alignment.center,
-        child: const AdenaIcon('bell', size: 20, color: AppColors.coralDd),
       ),
     );
   }
@@ -297,7 +314,10 @@ class _HeaderAvatar extends ConsumerWidget {
     final online = ref.watch(onlineProvider).asData?.value ?? true;
     final ring = Theme.of(context).scaffoldBackgroundColor;
 
-    return GestureDetector(
+    return Semantics(
+      button: true,
+      label: tr('Profil ve ayarlar'),
+      child: GestureDetector(
       onTap: onTap,
       child: SizedBox(
         width: 40,
@@ -346,6 +366,7 @@ class _HeaderAvatar extends ConsumerWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }

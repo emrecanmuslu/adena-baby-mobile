@@ -101,6 +101,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         onFieldSubmitted: (_) => loading ? null : _submit(),
                         decoration: _dec('••••••••',
                             suffix: IconButton(
+                              tooltip:
+                                  tr(_obscure ? 'Şifreyi göster' : 'Şifreyi gizle'),
                               icon: Icon(
                                   _obscure ? Icons.visibility_off : Icons.visibility,
                                   color: AppColors.muted, size: 20),
