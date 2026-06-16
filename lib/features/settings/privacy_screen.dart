@@ -139,8 +139,9 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
           ),
           adSec(tr('Şeffaflık')),
           _Note(
-            tr('Verilerini asla satmıyor veya reklam için kullanmıyoruz. '
-                'Aile üyeleri yalnızca paylaştığın bebeği görür.'),
+            tr('Verilerini satmıyoruz. Hizmeti sunmak için kullandığımız üçüncü '
+                'taraflar (analitik, ödeme, reklam) Gizlilik Politikası\'nda '
+                'açıklanır. Aile üyeleri yalnızca paylaştığın bebeği görür.'),
           ),
           adSec(tr('Yasal'),
               info: tr('Belgeler çevrimiçi yayınlanır ve tarayıcıda açılır. '
