@@ -37,16 +37,34 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await m.createAll();
+          await _createIndexes(m);
+        },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
             await m.addColumn(records, records.createdBy);
           }
+          if (from < 3) {
+            await _createIndexes(m);
+          }
         },
       );
+
+  /// Home/timeline/grafik sorguları için indeksler. Tüm okumalar `baby`'ye
+  /// göre filtreleyip `ts`'e göre sıralar; (baby, type, ts) ise tipe özel
+  /// "en son kayıt" (Son Aktivite) ve tip filtreli akışı hızlandırır.
+  Future<void> _createIndexes(Migrator m) async {
+    await m.database.customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_records_baby_ts ON records (baby, ts)');
+    await m.database.customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_records_baby_type_ts '
+        'ON records (baby, type, ts)');
+  }
 
   static QueryExecutor _open() => driftDatabase(name: 'adena');
 }

@@ -32,6 +32,14 @@ final recentRecordsProvider = StreamProvider.family<List<Record>, String>(
   (ref, babyId) => ref.watch(recordRepositoryProvider).watchRecent(babyId),
 );
 
+/// Ana sayfa "Son Aktivite" — her tipin en son kaydı (son-15 penceresine
+/// takılmaz; seyrek tipler de doğru görünür).
+final latestByTypeProvider =
+    StreamProvider.family<Map<RecordType, Record>, String>(
+  (ref, babyId) =>
+      ref.watch(recordRepositoryProvider).watchLatestByType(babyId),
+);
+
 /// Bugünün kayıtları (gece yarısından beri) — "Bugün" özeti için.
 final todayRecordsProvider = StreamProvider.family<List<Record>, String>(
   (ref, babyId) {

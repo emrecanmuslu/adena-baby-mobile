@@ -1286,7 +1286,7 @@ class _LastActivitySection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(recentRecordsProvider(babyId));
+    final async = ref.watch(latestByTypeProvider(babyId));
     final types = ref.watch(homeLayoutControllerProvider).asData?.value.lastActivity ??
         HomeLayout.fallback.lastActivity;
     return Column(
@@ -1308,14 +1308,7 @@ class _LastActivitySection extends ConsumerWidget {
           ),
           error: (e, _) => Text(apiErrorText(e),
               style: TextStyle(color: AppColors.muted)),
-          data: (recent) {
-            Record? latestOf(RecordType t) {
-              for (final r in recent) {
-                if (r.type == t) return r;
-              }
-              return null;
-            }
-
+          data: (latest) {
             return Row(
               children: [
                 for (var i = 0; i < types.length; i++) ...[
@@ -1323,7 +1316,7 @@ class _LastActivitySection extends ConsumerWidget {
                   Expanded(
                     child: _LastCard(
                       type: types[i],
-                      record: latestOf(types[i]),
+                      record: latest[types[i]],
                       units: units,
                     ),
                   ),

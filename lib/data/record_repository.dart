@@ -35,6 +35,29 @@ class RecordRepository {
     return q.watch().map((rows) => rows.map(_toModel).toList());
   }
 
+  /// Her kayıt tipinin EN SON kaydı (ana sayfa "Son Aktivite" için).
+  /// watchRecent'in son-15 penceresine takılmadan seyrek tipleri (banyo,
+  /// boy/kilo vb.) de doğru gösterir: tip başına yalnız MAX(ts) satırı.
+  Stream<Map<RecordType, Record>> watchLatestByType(String babyId) {
+    final q = _db.customSelect(
+      'SELECT r.* FROM records r '
+      'WHERE r.baby = ?1 AND r.is_deleted = 0 '
+      'AND r.ts = (SELECT MAX(r2.ts) FROM records r2 '
+      '  WHERE r2.baby = ?1 AND r2.is_deleted = 0 AND r2.type = r.type) '
+      'GROUP BY r.type',
+      variables: [Variable.withString(babyId)],
+      readsFrom: {_db.records},
+    );
+    return q.watch().map((rows) {
+      final out = <RecordType, Record>{};
+      for (final row in rows) {
+        final rec = _toModel(_db.records.map(row.data));
+        out[rec.type] = rec;
+      }
+      return out;
+    });
+  }
+
   /// Sayfalı akış (infinite scroll): limit'e kadar, opsiyonel tip filtresi.
   Stream<List<Record>> watchPaged(String babyId,
       {required int limit, RecordType? type}) {
