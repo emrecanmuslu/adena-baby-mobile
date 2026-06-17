@@ -61,3 +61,4 @@
 - [Açık rıza + yaş kapısı](acik-riza-yas-kapisi.md) — KVKK consent kutusu + 18+ + sosyal giriş rıza kapısı + denetlenebilir Consent modeli; YAYIN #7/#8 kapandı; backend migration+seed DEPLOY BEKLİYOR
 - [Adet takvimi modülü](adet-takvimi-modulu.md) — doğum sonrası annelere adet takibi; Claude Design prompt'u hazır (8 ekran+2 modal), tasarım bekleniyor (PARK)
 - [macOS iOS kurulum oturumu](macos-ios-kurulum-oturumu.md) — KALDIĞIMIZ NOKTA: macOS 15 VM'de Flutter projeyi iOS simülatörde ayağa kaldırma; Adım 6 (Xcode tanıtma) bekliyor; VM clipboard bozuk, Xcode 16.4, deploy key ile klonlandı
+- [iOS VM Apple ID engeli](ios-vm-apple-id-engeli.md) — VM'de Apple ID/iCloud/Xcode girişi sahte donanım kimliği yüzünden "Verification Failed"; ücretsiz imzalama VM içinden imkânsız → Windows Sideloadly veya .vmx SMBIOS spoof
