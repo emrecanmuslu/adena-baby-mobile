@@ -37,6 +37,10 @@ Kullanıcı kararı: 99 USD GEREKTİRMEYEN işler şimdi (kodu yaz + derlensin).
 
 Ücretsiz yapılabilecek her şey bitti. Bundan sonrası (aşağıdaki "99 USD'ye kalan") üyelik + gerçek cihaz ister.
 
+## ⛔ FİZİKSEL CİHAZ KURULUMU — VM ENGELİ (2026-06-17)
+iPhone 15 Pro VM'e USB passthrough ile bağlandı + Xcode'da eşleşti (`flutter devices` görüyor). Ama **ücretsiz Apple ID ile imzalama bu VM içinden YAPILAMADI**: Xcode → Accounts ve iCloud girişi **"Verification Failed – an unknown error occurred"** veriyor. Sebep: VM'in **sahte donanım kimliği** (`Model VMware20,1`, `Serial VMaC2GbubG9E`, `board-id 0VPTXG`) — Apple auth gerçek Apple donanımı görmüyor. Hesap/ağ/saat sağlam. Detay + çözüm yolları: hafıza `claude-memory/ios-vm-apple-id-engeli.md`.
+Karar: fiziksel iOS testi **şimdilik ertelendi**. İki çıkış: (1) Windows host'ta Sideloadly/AltStore ile imzasız build'i kurmak, (2) `.vmx` SMBIOS spoof.
+
 ## 99 USD'YE KALAN (üyelik alınınca)
 - Runner + FeedWidget hedeflerine **App Group `group.com.adenababy.adena_baby`** capability.
 - **APNs Auth Key (.p8)** → Firebase Console → Cloud Messaging'e yükle.
