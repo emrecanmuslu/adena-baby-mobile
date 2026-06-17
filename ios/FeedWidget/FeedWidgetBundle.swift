@@ -12,6 +12,5 @@ import SwiftUI
 struct FeedWidgetBundle: WidgetBundle {
     var body: some Widget {
         FeedWidget()
-        FeedWidgetControl()
     }
 }

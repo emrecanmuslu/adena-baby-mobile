@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase iOS config (API anahtari icerir, repoya girmesin)
+ios/GoogleService-Info.plist
