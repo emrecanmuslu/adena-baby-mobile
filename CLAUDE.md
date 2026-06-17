@@ -2,6 +2,15 @@
 
 Bu dosya, bu dizinde çalışan Claude Code'a rehberlik eder. Talimatlara uy.
 
+## 🧠 KALICI HAFIZA (claude-memory/) — Windows + Mac ortak
+Bu projenin kalıcı hafızası **`./claude-memory/`** klasöründe, git ile versiyonlanır ve **iki makine (Windows host + macOS VM) arasında senkrondur.** Makineye-özgü `~/.claude/.../memory` yerine BURASI tek doğru kaynaktır.
+
+- **Oturum başında:** `git pull` yap, sonra **`claude-memory/MEMORY.md`** indeksini oku; ilgili konularda tek tek dosyaları aç.
+- **Yeni/değişen bilgi öğrenince:** `claude-memory/` içinde ilgili `.md` dosyasını ekle/güncelle (frontmatter: `name`, `description`, `metadata.type` = user|feedback|project|reference; gövdede ilişkili notlara `[[name]]` ile bağ ver) + **`MEMORY.md`'ye tek satırlık girdi** ekle.
+- **Her hafıza değişikliğinden sonra commit + push** et ki diğer makine `git pull` ile güncel hafızayı alsın. (Kullanıcı bunu açıkça istedi: hafıza her zaman iki makinede güncel olmalı.)
+- İletişim **Türkçe**; çok adımlı işlerde adımları **tek tek** ver. Detaylar ilgili hafıza dosyalarında.
+- ⚠️ Repo **private**; hafızada hassas veri var (sunucu IP, kişisel veri, strateji) — repo'yu **public yapma / yetkisiz erişim verme.**
+
 ## Genel Bakış
 "Adena Baby" bebek bakım takip uygulamasının mobil istemcisi. **Flutter**, **Android-öncelikli** (iOS sonra Mac/CI ile). Tüm UI Türkçe. Backend: `../api` (Django REST, `../API_SOZLESME.md`). Tasarım referansı: `../design/Adena Baby - Standalone.html` + `../TASARIM_PROMPT.md` (onaylı palet/yerleşim — yeniden icat etme, uygula).
 
