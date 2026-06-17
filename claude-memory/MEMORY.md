@@ -3,6 +3,7 @@
 - [İletişim dili Türkçe](iletisim-dili-turkce.md) — kullanıcıyla iletişim her zaman, istisnasız Türkçe
 - [iOS hata SS klasörü](ios-hata-ss-klasoru.md) — "ss aldım hataya bakar mısın" denince ios-erros klasöründeki en son görseli oku
 - [Adım adım tek tek](adim-adim-tek-tek.md) — çok adımlı işlemlerde adımları tek tek ver, "sonraki adım" denmeden devamını yazma
+- [Hafıza repoda senkron](hafiza-repoda-senkron.md) — kalıcı hafıza mobile-app/claude-memory/ altında, Win+Mac git ile senkron; değişince commit+push
 - [Faz 2/3 seçilen kapsam](faz2-faz3-secilen-kapsam.md) — anılar/foto günlüğü + milestone + semptom + diş + uzman içeriği; başlangıç=foto günlüğü; iOS live activity & push iptal
 - [Manuel test tercihi](manuel-test-tercihi.md) — analyze temizse otomatik APK build+adb install; UI tap/screencap otomasyonu yok, uygulamayı kullanıcı açıp test eder
 - [Kayıt zaman seçici akışı](kayit-zaman-secici-akisi.md) — önce saat; "Tarih seç"→takvimde güne dokununca otomatik saate dön; paylaşımlı pickRecordDateTime
