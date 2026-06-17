@@ -1,0 +1,20 @@
+---
+name: landing-one-page
+description: "adenababy.com one-page tanıtım sitesi; Claude Design prompt'u + mock SS'ler + seed_demo"
+metadata: 
+  node_type: memory
+  type: project
+  originSessionId: e8fcfebc-75f1-4705-8208-8d60b10fc4a5
+---
+
+Alan adı **adenababy.com** için tek-sayfa tanıtım sitesi (Claude Design ile yapılacak). Hazırlananlar:
+
+- **Claude Design prompt'u:** `docs/landing/claude-design-prompt.md` — iki dilli (TR/EN), telefon-mockup'lı, **zengin/etkileşimli animasyon** (hero'da canlı app demo, scroll-reveal, yüzen blob, sticky "nasıl çalışır"), dürüstlük kısıtı (sahte yorum/puan YOK). CTA = App Store + Google Play rozetleri. Fiyatlar **statik** yazıldı (tasarım önce; ileride API'den çekilebilir): Aylık ₺79/$4.99 · Yıllık ₺590/$39.99 · Ömür boyu ₺1490/$79.99.
+- **Ekran görüntüleri:** `screenshots/tr/01..10-*.png` (TR, 10 ekran) + `screenshots/en/*.png` (EN, 9 ekran — aşı atlandı, US'e TR şeması uymadığı için → YAYIN_EKSIKLERI #20 CDC). Hepsi 1080×2308, durum çubuğu kırpılmış. EN için DB kayıtları İngilizce + imperial (lb/in) yapıldı (seed değil, doğrudan DB edit), üye adları Mom/Dad. Logo ref: `screenshots/brand/logo-splash-ref.png`. Kırpma scripti: `screenshots/crop_status.py` (top 92px, _view kopyaları `_work`'e).
+- **Mock veri:** `api/apps/records/management/commands/seed_demo.py` — iki persona, **aile paylaşımlı** (Anne owner + Baba parent, kayıtlar bölünmüş): `demo-bebek@adena.test` (Defne 4 ay, dolu takip), `demo-gebelik@adena.test` (32 hf), şifre `sifre123`. Telifsiz fotolar `api/media/demo/`.
+
+SS çekim yöntemi: emülatörde adb screencap; **soft klavye sorunu** için `adb shell ime disable <ime>`; tutarlı durum çubuğu için **demo mode** (09:41). Bkz [[para-kazanma-modeli]], [[tasarim-kaynagi]], [[hedef-kitle-konumlandirma]].
+
+**2026-06-15 — YAYINA HAZIR SİTE ÜRETİLDİ:** `web/` klasörü. Claude Design `.dc.html`'i (şablon motoru, doğrudan yayınlanamaz) → bağımsız statik HTML'e çevrildi. `index.html` (TR kök) + `en/index.html` (EN), `assets/styles.css`, `assets/screens/` (720px optimize), favicon seti + `og-image.png` (PIL ile `assets/_gen_assets.py`), `site.webmanifest`/`robots.txt`/`sitemap.xml`. SEO TAM: çift dil URL + hreflang, OG/Twitter, JSON-LD (Organization/WebSite/MobileApplication/FAQPage), tek h1. Mimari kararlar: web=adenababy.com kök + /en/, API=**api.adenababy.com** (mobil app dart-define ile yeniden build gerekir, eski sslip.io çalışır), hosting=aynı Hetzner nginx, dağıtım=ayrı GitHub repo `adena-baby-web` → sunucuda `/opt/adena/web` git pull. **DNS+SSL = Alastyr→Cloudflare nameserver devri→sunucu**: kayıtlar Cloudflare'de, üçü de Proxied (turuncu); SSL=Cloudflare Origin Certificate (`/etc/ssl/cloudflare/adenababy.pem|.key`) + **Full (strict)** + Always Use HTTPS; **certbot YOK**. nginx 443 dinler (port 80→443 redirect; eski nginx 1.24 için `listen 443 ssl http2;` formu, `http2 on;` değil). Adım adım yayın+DNS rehberi: `web/DEPLOY.md`, nginx config: `web/deploy/nginx-adenababy.conf`.
+
+**2026-06-15 — CANLI YAYINDA ✅** https://adenababy.com (TR) + /en/ (EN) + https://api.adenababy.com hepsi 200, Cloudflare aktif (NS alina/elmo.ns.cloudflare.com), Full(strict)+Always Use HTTPS çalışıyor, www→apex 301. Sunucu kurulum detayları: repo private kaldı → sunucuda web'e özel deploy key `~/.ssh/adena_web_deploy` + SSH config alias **`Host github-web`** (API'nin `adena_deploy`/github.com mapping'ini bozmadan). REDEPLOY: yerelde push → `ssh root@91.99.19.82 'cd /opt/adena/web && git pull'` (remote=git@github-web:...). nginx: `/etc/nginx/sites-available/adenababy` (mevcut sslip `adena` config'i duruyor, 443'te SNI ile bir arada). Origin cert: `/etc/ssl/cloudflare/adenababy.{pem,key}`. Django ALLOWED_HOSTS'a api.adenababy.com+adenababy.com eklendi (.env, yedek .env.bak.*). Bilinen küçük: settings'te CSRF_TRUSTED_ORIGINS/SECURE_PROXY_SSL_HEADER yok (API için sorun değil; admin'i yeni domainden POST'larsan gerekebilir). Footer legal linkleri (Gizlilik/Şartlar/İletişim) ŞİMDİLİK `#` — sonra. Yerel git repo init+commit yapıldı, GitHub remote+push bekliyor (gh CLI yok). Bkz [[cloud-deploy-hetzner]].

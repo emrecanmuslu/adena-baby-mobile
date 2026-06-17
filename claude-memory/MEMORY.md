@@ -1,0 +1,62 @@
+# Memory Index
+
+- [İletişim dili Türkçe](iletisim-dili-turkce.md) — kullanıcıyla iletişim her zaman, istisnasız Türkçe
+- [iOS hata SS klasörü](ios-hata-ss-klasoru.md) — "ss aldım hataya bakar mısın" denince ios-erros klasöründeki en son görseli oku
+- [Adım adım tek tek](adim-adim-tek-tek.md) — çok adımlı işlemlerde adımları tek tek ver, "sonraki adım" denmeden devamını yazma
+- [Faz 2/3 seçilen kapsam](faz2-faz3-secilen-kapsam.md) — anılar/foto günlüğü + milestone + semptom + diş + uzman içeriği; başlangıç=foto günlüğü; iOS live activity & push iptal
+- [Manuel test tercihi](manuel-test-tercihi.md) — analyze temizse otomatik APK build+adb install; UI tap/screencap otomasyonu yok, uygulamayı kullanıcı açıp test eder
+- [Kayıt zaman seçici akışı](kayit-zaman-secici-akisi.md) — önce saat; "Tarih seç"→takvimde güne dokununca otomatik saate dön; paylaşımlı pickRecordDateTime
+- [Skeleton ve performans](skeleton-ve-performans.md) — yüklemede skeleton, lazy sekme, infinite scroll, limitli sorgu standardı
+- [Tasarım kaynağı](tasarim-kaynagi.md) — design/AdenaBaby/ okunabilir JSX+CSS; ekranları birebir eşlemek için kullan
+- [WHO LMS veri kaynağı](who-lms-veri-kaynagi.md) — Charts persentil eğrisi: CDC/NCHS WHO LMS CSV'leri + hesap motoru, yeniden üretim
+- [Tasarım bileşen kiti](tasarim-bilesen-kiti.md) — tüm ekranlar core/ad_widgets.dart (.ad-* bileşenleri) kullanmalı, düz Material değil
+- [Bilgi rozeti ilkesi](bilgi-rozeti-ilkesi.md) — her alan/başlık yanına "!" yardım rozeti (AdField info: / adSec info: / AdInfoDot + showAdInfo); acemi kullanıcı için zorunlu
+- [Süren sayaç bildirimi](suren-sayac-bildirimi.md) — uyku/emzirme cihaz bildirimi: kronometre yöntemi, foreground service yok (bilinçli)
+- [Beslenme hatırlatıcısı](beslenme-hatirlatici.md) — yapılandırılabilir besleme uyarısı; config family-settings feed_reminder, kesin alarm + heads-up + ertele
+- [Beslenme hatırlatıcısı push-sync](beslenme-hatirlatici-push-sync.md) — paylaşımlı bebekte başka üye beslenme girince Y'nin yerel hatırlatıcısı FCM push ile yeniden planlanır (opt-in'den bağımsız); FeedReminderCache snapshot + feed_sub
+- [Sync/polling mimarisi](sync-polling-mimarisi.md) — üç mekanizma (delta-sync+aktivite poll+push); tek kullanıcıda periyodik istek KAPALI (member_count gating); push veriyi taşımaz sync'i tetikler
+- [Sessiz saat](sessiz-saat.md) — zaman pencereli bildirim susturma (quiet_hours); Sesli/Sessiz toggle'dan farklı, pencerede her zaman sessiz
+- [Hatırlatıcı sistemi](hatirlatici-sistemi.md) — özel/randevu hatırlatıcı, tek-sefer+günlük schedule, randevu sheet entegrasyonu; eski vitamin/aşı/dürtükleme sadeleşti
+- [Devir notu kaldırıldı](devir-notu-kaldirildi.md) — HandoffNote tamamen silindi; ekip bakımında yalnız Canlı aktivite kaldı (FAZ_1 "ana farklılaşma" demesine rağmen geri ekleme)
+- [Görünüm+Birimler birleşti](gorunum-birimler-birlesti.md) — ayarlarda tek /appearance sayfası (tasarım 28): Tema+Dil+Birimler; units_screen silindi
+- [i18n çeviri sistemi](i18n-ceviri-sistemi.md) — sunucu-yönetimli çeviri, kaynak=anahtar, Django admin, tr()/trp()+otomatik toplama+versiyonlu cache; tüm UI sarıldı (static+interp+bildirim)
+- [Kayıt silme sheet'i](kayit-silme-sheet.md) — timeline swipe artık anında silmiyor; kim/ne zaman ekledi + Sil onay sheet'i (design ScrEditModal)
+- [Dark mod tema renkleri](dark-mod-tema-renkleri.md) — AppColors semantik nötrleri tema-duyarlı getter; tasarım Gece Modu paleti
+- [Hata gösterimi standardı](hata-gosterimi-standardi.md) — API hataları her yerde apiErrorText(e) ile (core/api_error.dart); ham DioException/generic mesaj gösterme
+- [API değişiklik izni](api-degisiklik-izni.md) — gerekli/standartsa backend (../api Django) değiştirmekten çekinme; migration sonrası sunucu restart hatırlat
+- [FAZ 1 kararları 2026-06-11](faz1-kararlari-2026-06-11.md) — sosyal giriş yapılıyor, AI export çıkarıldı, düzeltilmiş yaş kalıcı kaldırıldı, sync=polling (NOT: "her şey free" kararı sonra güncellendi → premium aktif, bkz para-kazanma-modeli)
+- [Platform paritesi](platform-paritesi.md) — iOS ve Android ikisi de eşit öncelikli; her özellik/düzeltmeyi iki platformda da tasarla ve doğrula, çapraz uyumluluk şart
+- [Oturum durumu — fiziksel test](oturum-durumu-fiziksel-test.md) — KALDIĞIMIZ NOKTA (2026-06-13): FAZ 1/2/3 + monetizasyon + topluluk hepsi tam; bekleyen operasyonel iş yok (runserver autoreload); bilinen sorunlar + test/deploy kurulumu burada
+- [FAZ 3c uzman içerik/topluluk planı](faz3-uzman-icerik-topluluk-plani.md) — TAMAMLANDI; verilen kararların kaydı (içerik=admin+seed markdown; topluluk=soru-cevap+oy+en iyi+rapor eşik3)
+- [Navigasyon — Keşfet hub'ı](navigasyon-kesfet-hub.md) — alt menü 5. slot = ✨Keşfet; Sağlık/Topluluk/Uzman Rehberi/Anılar oraya toplandı, tekrarlar kaldırıldı
+- [Home özelleştirme + Senin için](home-ozellestirme-ve-senin-icin.md) — Hızlı Giriş/Son Aktivite seçilebilir (quick_actions/home_cards); "Senin için" keşif bölümü
+- [Para kazanma modeli](para-kazanma-modeli.md) — freemium + yumuşak reklam + premium (abonelik & lifetime: reklamsız/aile/export/sınırsız hatırlatıcı); tip jar İPTAL → destek notu; free=çekirdek izleme (foto artık herkese ücretsiz)
+- [Cloud deploy (Hetzner)](cloud-deploy-hetzner.md) — API CANLI: api.adenababy.com (Cloudflare+geçerli TLS; sslip KAPALI); Postgres+gunicorn+nginx; git pull deploy runbook + güvenlik sertleştirme; APK/iOS dart-define; Swagger /api/docs
+- [Firebase App Distribution](firebase-app-distribution.md) — Android test build dağıtımı (adb yerine); scripts/distribute-android.sh + firebase CLI; iOS TestFlight Mac sonrası
+- [Fiziksel dağıtım kuralı](fiziksel-dagitim-kurali.md) — yalnız kullanıcı "fiziksel cihazlara gönderelim" deyince; her seferinde build no +1 + semantik bump (ben belirlerim) + App Distribution & TestFlight
+- [Local dev = local API](local-dev-local-api.md) — local geliştirme her zaman local Django'ya bağlanır (tünel yok); cloud yalnız fiziksel telefon/iOS build; emülatör build'inde dart-define verme
+- [Hedef kitle/konumlandırma](hedef-kitle-konumlandirma.md) — reklam hedefi birincil 3. trimester + 0-12 ay; 2-5 yaş ana vaat değil, ürün o yaşta zayıf
+- [Yaş genişletme backlog](yas-genisletme-backlog.md) — 2-5 yaş zenginleştirme ileriye ertelendi: WHO 24-60 ay + milestone uzatma + içerik (retention özelliği)
+- [Entegrasyon bekleyen tokenlar](entegrasyon-bekleyen-tokenlar.md) — test aşaması: Google/Apple login+ödeme kod TAM (token kaldı), reklam SDK'sı HENÜZ entegre değil (google_mobile_ads yok, placeholder); Google web bağlandı, SHA-1/iOS client/RC key/AdMob bekliyor
+- [Bakıcı+bildirim+paylaşım 2026-06-13](bakici-bildirim-paylasim-2026-06-13.md) — bakıcı sınırlı-yazma, aile etkinlik bildirimi (polling), çok-bebek bildirim id slot, çıkarılan üye temizliği; rol değiştirme kaldırıldı
+- [Home screen widget + push](home-screen-widget-backlog.md) — "son beslenme" ana ekran widget'ı + aile/topluluk FCM push: Android+backend TAMAM (kuruldu), iOS bekliyor
+- [iOS push/widget kalanlar](ios-push-widget-kalanlar.md) — Mac'te yapılacak: GoogleService-Info.plist, APNs key, App Group, WidgetKit FeedWidget extension
+- [Seed/içerik genişletme](seed-icerik-genisletme.md) — milestone+gebelik notu+semptom rehberi+makaleler genişletildi (özgün); gebelik makalesi=NEGATİF yaş aralığı konvansiyonu
+- [Onboarding tur sistemi](onboarding-tour-sistemi.md) — ekran başına bir-kez kart-kart tanıtım turu (TourMount + tourFor); charts'ta WHO persentil anlatımı; ayarlardan sıfırlanır
+- [Statik içerik → API migrasyonu](statik-icerik-api-migrasyonu.md) — gömülü bilgi içerikleri kademeli API'ye; gebelik haftaları + WHO LMS taşındı; symptom i18n'de bırakıldı; desen=cache'li repo + gömülü fallback
+- [Gebelik haftası veri doğrulama](gebelik-haftasi-veri-dogrulama.md) — kilo=Hadlock, boy=BabyCentre baş-topuk, hafta=tamamlanan; CRL→baş-topuk 20.hf doğal sıçrama
+- [Aşı takvimi verisi](asi-takvimi-veri.md) — TR (Sağlık Bakanlığı 2025 altılı karma) + US (CDC/ACIP) bölgeye göre seçim; ücretli aşı "(ücretli)" etiketi; doğrulanmış kaynaklar + dava-riski denetimi
+- [Fetus görseli bekleme ekranı](fetus-gorseli-bekleme-ekrani.md) — haftalık görsel API media'dan (9:16), yuvarlak köşe overlay, ±5 gün gezinme
+- [İngilizce + bölgeselleştirme](ingilizce-ve-bolgesellestirme.md) — TR+US lansmanı: 891 UI metni EN seed, içerik modelleri locale'li, cihaz-bölgesine bağlı dil/birim/tarih; seed_translations/seed_content_en
+- [Çeviri EN karşılığı zorunlu](ceviri-en-karsiligi-zorunlu.md) — yeni/düzeltilen her tr()/trp() metni için en.json'a EN ekle/güncelle + seed et (yoksa EN'de Türkçe görünür)
+- [Dil değişince app restart](dil-degisince-app-restart.md) — dil seçilince RestartWidget ile tüm ağaç sıfırlanır + LocaleCache; tr() her yerde yeniden değerlensin
+- [Yayın eksikleri checklist](yayin-eksikleri-checklist.md) — TR+ABD mağaza yayını öncesi eksikler kök YAYIN_EKSIKLERI.md'de; madde bitince satır silinir
+- [Landing one-page](landing-one-page.md) — adenababy.com tanıtım sitesi: Claude Design prompt'u + mock SS'ler + seed_demo (aile paylaşımlı demo hesaplar); CANLI yayında
+- [Web deploy runbook](web-deploy-runbook.md) — adenababy.com CANLI; push + ssh root@91.99.19.82 'bash /opt/adena/web/deploy/deploy.sh'; Cloudflare+Origin Cert detayları
+- [Legal veri sorumlusu](legal-veri-sorumlusu.md) — yasal belgeler: veri sorumlusu Emrecan Muslu (bireysel), emrecan.muslu@gmail.com, Sakarya/Türkiye; LegalDocument API modeli planı
+- [Deploy yalnız açık talimatla](deploy-yalniz-acik-talimatla.md) — web+cloud'a ASLA otomatik deploy yok; yalnız kullanıcı "deploy et" deyince
+- [Legal+pricing uygulama durumu](legal-pricing-uygulama-durumu.md) — TAMAMLANDI+CANLI: 4 yasal belge (TR+EN) API+site, pricing API-fetch, CORS sertleştirme; api+web deploy edildi; uygulama-içi linkler de eklendi
+- [Local-first premium planı](local-first-premium-plani.md) — free=yerel/premium=cloud yedek fikri; tasarım notu kök LOCAL_FIRST_PREMIUM_TASARIM.md, başka oturumda uygulanacak
+- [Açık rıza + yaş kapısı](acik-riza-yas-kapisi.md) — KVKK consent kutusu + 18+ + sosyal giriş rıza kapısı + denetlenebilir Consent modeli; YAYIN #7/#8 kapandı; backend migration+seed DEPLOY BEKLİYOR
+- [Adet takvimi modülü](adet-takvimi-modulu.md) — doğum sonrası annelere adet takibi; Claude Design prompt'u hazır (8 ekran+2 modal), tasarım bekleniyor (PARK)
+- [macOS iOS kurulum oturumu](macos-ios-kurulum-oturumu.md) — KALDIĞIMIZ NOKTA: macOS 15 VM'de Flutter projeyi iOS simülatörde ayağa kaldırma; Adım 6 (Xcode tanıtma) bekliyor; VM clipboard bozuk, Xcode 16.4, deploy key ile klonlandı
