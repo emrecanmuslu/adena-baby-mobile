@@ -49,6 +49,14 @@ class AppColors {
   static Color get doctorBg => _d ? const Color(0xFF2A2540) : const Color(0xFFEFEAF9);
   static Color get symptomBg => _d ? const Color(0xFF3A2630) : const Color(0xFFFBE3EC); // gül/erik zemin
 
+  // ── Adet Takvimi modülü aksanı (gül/bordo + loşia) — tema-duyarlı.
+  // Bebek cinsiyet temasından bağımsız; doğum sonrası anne modülüne özel.
+  static Color get rose => _d ? const Color(0xFFD9799A) : const Color(0xFFC2576E);
+  static Color get roseD => _d ? const Color(0xFFEBA0BA) : const Color(0xFFA33D58);
+  static Color get roseBg => _d ? const Color(0xFF3C2032) : const Color(0xFFF8E4EC);
+  static Color get lochia => _d ? const Color(0xFFC8907A) : const Color(0xFFB8755E);
+  static Color get lochiaBg => _d ? const Color(0xFF3A2218) : const Color(0xFFF5E1D6);
+
   /// Yumuşak kart gölgesi (--sh).
   // Premium (altın) — paywall/AI export rozetleri.
   static const premiumGold = Color(0xFFFFC24B);

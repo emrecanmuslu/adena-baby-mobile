@@ -407,6 +407,57 @@ class NotificationService {
       androidScheduleMode: await _alarmMode(),
     );
   }
+
+  // Adet Takvimi hatırlatıcıları — kullanıcıya özel, kendi id aralığı (feed/sayaç/
+  // hatırlatıcı id'lerinden ayrı). 0=adet, 1=doğurganlık, 2=PMS, 3=günlük kayıt.
+  static const _cycleBase = 600000;
+
+  /// Adet modülü hatırlatıcılarını cihaz bildirimlerine kurar. Önce kendi
+  /// aralığını temizler, sonra ayar + döngü tahminine göre etkin olanları planlar.
+  /// [reminders] = {period:{on}, fertile:{on}, pms:{on}, log:{on,time}}.
+  Future<void> syncCycle({
+    required Map<String, dynamic> reminders,
+    DateTime? nextPeriod,
+    DateTime? fertileStart,
+    int periodLeadDays = 3,
+  }) async {
+    if (!_ready) await init();
+    for (var i = 0; i < 4; i++) {
+      await _plugin.cancel(id: _cycleBase + i);
+    }
+    final now = DateTime.now();
+    bool on(String k) => reminders[k] is Map && (reminders[k]['on'] == true);
+    final anyOn = ['period', 'fertile', 'pms', 'log'].any(on);
+    if (anyOn) await _ensurePermission();
+
+    if (on('period') && nextPeriod != null) {
+      final at = DateTime(nextPeriod.year, nextPeriod.month, nextPeriod.day, 9)
+          .subtract(Duration(days: periodLeadDays));
+      if (at.isAfter(now)) {
+        await _scheduleOnce(_cycleBase + 0, at, tr('Adetin yaklaşıyor 🌸'));
+      }
+    }
+    if (on('fertile') && fertileStart != null) {
+      final at = DateTime(fertileStart.year, fertileStart.month, fertileStart.day, 9);
+      if (at.isAfter(now)) {
+        await _scheduleOnce(_cycleBase + 1, at, tr('Doğurganlık pencereniz başlıyor'));
+      }
+    }
+    if (on('pms') && nextPeriod != null) {
+      final at = DateTime(nextPeriod.year, nextPeriod.month, nextPeriod.day, 9)
+          .subtract(const Duration(days: 5));
+      if (at.isAfter(now)) {
+        await _scheduleOnce(_cycleBase + 2, at, tr('PMS dönemi yaklaşıyor'));
+      }
+    }
+    if (on('log')) {
+      final time = (reminders['log']?['time'] as String?) ?? '21:00';
+      final parts = time.split(':');
+      final h = int.tryParse(parts.first) ?? 21;
+      final m = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+      await _scheduleDaily(_cycleBase + 3, h, m, tr('Bugünü kaydetmeyi unutma 🌙'));
+    }
+  }
 }
 
 /// Arka planda (uygulama kapalı/öldürülmüş) "Ertele 10 dk" aksiyonu — beslenme

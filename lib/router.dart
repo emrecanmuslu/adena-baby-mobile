@@ -20,6 +20,10 @@ import 'features/community/question_detail_screen.dart';
 import 'features/content/article_detail_screen.dart';
 import 'features/content/article_list_screen.dart';
 import 'features/content/content_hub_screen.dart';
+import 'features/cycle/cycle_calendar_screen.dart';
+import 'features/cycle/cycle_dashboard_screen.dart';
+import 'features/cycle/cycle_settings_screen.dart';
+import 'features/cycle/cycle_stats_screen.dart';
 import 'features/dev/dev_tools_screen.dart';
 import 'features/discover/discover_screen.dart';
 import 'features/health/health_screen.dart';
@@ -154,6 +158,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) =>
               const TourMount(tourKey: 'teeth', child: TeethScreen())),
       GoRoute(path: '/born-flow', builder: (_, _) => const BornFlowScreen()),
+      // Adet Takvimi (doğum sonrası anne — kişisel). Keşfet'ten açılır.
+      GoRoute(
+          path: '/cycle',
+          builder: (_, _) =>
+              const TourMount(tourKey: 'cycle', child: CycleScreen())),
+      GoRoute(
+          path: '/cycle/calendar',
+          builder: (_, _) => const CycleCalendarScreen()),
+      GoRoute(path: '/cycle/stats', builder: (_, _) => const CycleStatsScreen()),
+      GoRoute(
+          path: '/cycle/settings',
+          builder: (_, _) => const CycleSettingsScreen()),
     ],
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);

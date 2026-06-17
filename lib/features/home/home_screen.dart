@@ -48,6 +48,15 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _tab = 0;
+  // Ana sayfa sekmesi scroll'u — alt menüde zaten Ana sayfadayken tekrar
+  // dokununca en üste kaydırmak için (yaygın "geri başa dön" davranışı).
+  final _homeScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _homeScroll.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +139,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _ => TourMount(
             key: const ValueKey('tour_home'),
             tourKey: 'home',
-            child: _HomeTab(babyId: baby.id)),
+            child: _HomeTab(babyId: baby.id, scrollController: _homeScroll)),
       },
       // V2 · Yüzen ada — kenarlardan kopuk hap; ikon-odaklı, FAB satır içinde.
       bottomNavigationBar: SafeArea(
@@ -174,7 +183,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       selected: selected,
       label: label,
       child: InkWell(
-        onTap: () => setState(() => _tab = index),
+        onTap: () {
+          // Zaten Ana sayfadayken Ana sayfaya dokunma → içeriği en üste kaydır.
+          if (index == 0 && _tab == 0) {
+            if (_homeScroll.hasClients) {
+              _homeScroll.animateTo(0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic);
+            }
+            return;
+          }
+          setState(() => _tab = index);
+        },
         borderRadius: BorderRadius.circular(16),
         child: Container(
           width: 44,
@@ -663,7 +683,8 @@ Widget _quickCardFor(BuildContext context, WidgetRef ref, String babyId,
 /// Aktivite · Bugün · Yaklaşan.
 class _HomeTab extends ConsumerWidget {
   final String babyId;
-  const _HomeTab({required this.babyId});
+  final ScrollController? scrollController;
+  const _HomeTab({required this.babyId, this.scrollController});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -682,6 +703,7 @@ class _HomeTab extends ConsumerWidget {
         ref.invalidate(familySettingsProvider(babyId));
       },
       child: ListView(
+        controller: scrollController,
         // Alt: yüzer menü (≈76) + cihaz güvenli alanı + boşluk; içerik menü altında kalmasın.
         padding: EdgeInsets.fromLTRB(16, 2, 16, 92 + MediaQuery.of(context).padding.bottom),
         children: [
