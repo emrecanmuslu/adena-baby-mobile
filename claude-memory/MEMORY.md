@@ -57,7 +57,8 @@
 - [Legal veri sorumlusu](legal-veri-sorumlusu.md) — yasal belgeler: veri sorumlusu Emrecan Muslu (bireysel), emrecan.muslu@gmail.com, Sakarya/Türkiye; LegalDocument API modeli planı
 - [Deploy yalnız açık talimatla](deploy-yalniz-acik-talimatla.md) — web+cloud'a ASLA otomatik deploy yok; yalnız kullanıcı "deploy et" deyince
 - [Legal+pricing uygulama durumu](legal-pricing-uygulama-durumu.md) — TAMAMLANDI+CANLI: 4 yasal belge (TR+EN) API+site, pricing API-fetch, CORS sertleştirme; api+web deploy edildi; uygulama-içi linkler de eklendi
-- [Local-first premium planı](local-first-premium-plani.md) — free=yerel/premium=cloud yedek fikri; tasarım notu kök LOCAL_FIRST_PREMIUM_TASARIM.md, başka oturumda uygulanacak
+- [Local-first premium planı](local-first-premium-plani.md) — free=yerel/premium=cloud yedek fikri; tasarım notu kök LOCAL_FIRST_PREMIUM_TASARIM.md (UYGULANDI → bkz local-first-uygulama)
+- [Local-first UYGULAMA](local-first-uygulama.md) — big-bang uygulandı: cloudSyncEnabled bayrağı, Drift tabloları, cutover initial_import, free→premium migration overlay, health hesap-gerektiren bırakıldı
 - [Açık rıza + yaş kapısı](acik-riza-yas-kapisi.md) — KVKK consent kutusu + 18+ + sosyal giriş rıza kapısı + denetlenebilir Consent modeli; YAYIN #7/#8 kapandı; backend migration+seed DEPLOY BEKLİYOR
 - [Adet takvimi modülü](adet-takvimi-modulu.md) — doğum sonrası annelere adet takibi; Claude Design prompt'u hazır (8 ekran+2 modal), tasarım bekleniyor (PARK)
 - [macOS iOS kurulum oturumu](macos-ios-kurulum-oturumu.md) — KALDIĞIMIZ NOKTA: macOS 15 VM'de Flutter projeyi iOS simülatörde ayağa kaldırma; Adım 6 (Xcode tanıtma) bekliyor; VM clipboard bozuk, Xcode 16.4, deploy key ile klonlandı
