@@ -55,10 +55,7 @@ class HealthScreen extends ConsumerWidget {
           _AppointmentSummary(records: records),
 
           // ── Son sağlık kayıtları (ateş · ilaç · belirti) ──
-          adSec(tr('Son sağlık kayıtları'),
-              info: tr('En son ateş, ilaç ve belirti kayıtların. Yeni kayıt '
-                  'eklemek için + düğmesini kullan. Tümünü Günlük Akış\'ta '
-                  'görebilirsin.')),
+          adSec(tr('Son sağlık kayıtları')),
           _FeverMedSummary(records: records),
 
           const SizedBox(height: 8),

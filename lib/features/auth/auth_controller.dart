@@ -4,6 +4,8 @@ import '../../core/providers.dart';
 import '../../core/push_service.dart';
 import '../../core/revenuecat_service.dart';
 import '../../data/auth_repository.dart';
+import '../../data/initial_import.dart';
+import '../../data/local_session.dart';
 import '../../data/social_auth_service.dart';
 import '../../data/subscription_cache.dart';
 import '../../models/user.dart';
@@ -20,6 +22,11 @@ class AuthController extends AsyncNotifier<User?> {
     try {
       final user = await _repo.me();
       _syncRevenueCat(user);
+      // Yerel veri izolasyonu: aktif hesabı set et (repo'lar buna göre kapsamlar).
+      LocalSession.setActiveAccount(user.id);
+      // Bu hesabın sunucu verisini bir kez yerele indir (local-first geçişi /
+      // farklı cihaz). Hesap-bazlı bayrakla bir kez koşar.
+      await ref.read(initialImportProvider).runIfNeeded();
       return user;
     } catch (_) {
       // Token geçersiz/temizlenmiş — çıkış durumuna düş.
@@ -39,6 +46,7 @@ class AuthController extends AsyncNotifier<User?> {
       () => _repo.login(email: email, password: password),
     );
     _syncRevenueCat(state.value);
+    await _postLogin();
   }
 
   Future<void> register({
@@ -51,6 +59,17 @@ class AuthController extends AsyncNotifier<User?> {
       () => _repo.register(email: email, password: password, name: name),
     );
     _syncRevenueCat(state.value);
+    await _postLogin();
+  }
+
+  /// Giriş/kayıt sonrası: oturum açıldıysa mevcut hesabın sunucu verisini bir
+  /// kez yerele indir (taze login'de build() yeniden koşmaz; bu yolu da kapsar).
+  Future<void> _postLogin() async {
+    final u = state.value;
+    if (u != null) {
+      LocalSession.setActiveAccount(u.id);
+      await ref.read(initialImportProvider).runIfNeeded();
+    }
   }
 
   /// Sosyal giriş (provider: 'google' | 'apple'). Kullanıcı sağlayıcı
@@ -65,6 +84,7 @@ class AuthController extends AsyncNotifier<User?> {
       return _repo.social(provider: provider, idToken: idToken);
     });
     _syncRevenueCat(state.value);
+    await _postLogin();
   }
 
   /// Yasal rıza kapısından onay kaydı: backend'e yazar, oturum kullanıcısının
@@ -92,9 +112,15 @@ class AuthController extends AsyncNotifier<User?> {
     await _repo.logout();
     await RevenueCatService.instance.logoutUser();
     await SubscriptionCache().clear(); // sonraki kullanıcıya premium sızmasın
+    LocalSession.setActiveAccount(null); // yerel veri kapsamı kapanır (silinmez)
     state = const AsyncData(null);
   }
 }
 
 final authControllerProvider =
     AsyncNotifierProvider<AuthController, User?>(AuthController.new);
+
+/// O an oturum açık hesabın id'si — repo'lar/controller'lar yerel veriyi buna
+/// göre kapsamlar (hesap değişince ilgili akışlar yeniden kurulur).
+final activeAccountIdProvider = Provider<String?>(
+    (ref) => ref.watch(authControllerProvider).asData?.value?.id);

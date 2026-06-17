@@ -112,8 +112,6 @@ class _AskQuestionSheetState extends State<_AskQuestionSheet> {
               ),
               AdField(
                 label: tr('Sorun'),
-                info: tr('Net ve kısa bir başlık yaz. Örn. "6 aylık bebek gece '
-                    'sık uyanıyor, ne önerirsiniz?"'),
                 child: AdInput(
                   controller: _title,
                   hint: tr('Sorunu buraya yaz'),
@@ -122,8 +120,6 @@ class _AskQuestionSheetState extends State<_AskQuestionSheet> {
               ),
               AdField(
                 label: tr('Detay'),
-                info: tr('İstersen durumu biraz aç — yaş, ne denedin, neyi merak '
-                    'ediyorsun. İsteğe bağlı.'),
                 child: AdInput(
                   controller: _body,
                   hint: tr('isteğe bağlı'),
@@ -132,8 +128,6 @@ class _AskQuestionSheetState extends State<_AskQuestionSheet> {
               ),
               AdField(
                 label: tr('Kategori'),
-                info: tr('Sorunu bir konuya bağla — doğru kişilere ulaşsın. '
-                    'İsteğe bağlı.'),
                 child: SizedBox(
                   height: 42,
                   child: ListView(

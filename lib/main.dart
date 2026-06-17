@@ -8,8 +8,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/ad_service.dart';
+import 'core/api_client.dart';
 import 'core/i18n.dart';
 import 'core/locale_util.dart';
+import 'core/token_storage.dart';
+import 'data/locale_cache.dart';
 import 'core/notification_service.dart';
 import 'core/providers.dart';
 import 'core/push_service.dart';
@@ -19,6 +22,8 @@ import 'core/theme.dart';
 import 'features/auth/auth_controller.dart';
 import 'data/feed_input_cache.dart';
 import 'data/i18n_repository.dart';
+import 'data/local_session.dart';
+import 'data/migration_service.dart';
 import 'data/subscription_cache.dart';
 import 'data/subscription_repository.dart';
 import 'data/theme_cache.dart';
@@ -27,6 +32,7 @@ import 'features/babies/baby_controller.dart';
 import 'features/babies/notification_sync.dart';
 import 'features/records/record_controller.dart';
 import 'features/settings/locale_controller.dart';
+import 'features/settings/migration_overlay.dart';
 import 'features/settings/theme_controller.dart';
 import 'router.dart';
 
@@ -50,6 +56,15 @@ Future<void> main() async {
   unawaited(AdService.instance.init());
   // Beslenme formu son-değer cache'ini belleğe al (form senkron okusun).
   unawaited(FeedInputCache.ensureLoaded());
+  // Local-first kimlik & rıza: localUserId + yerel rıza durumunu belleğe yükle
+  // (hesapsız çalışma; router/repository senkron okur). Açılışı bloklamamalı ama
+  // router rızayı ilk frame'de doğru görsün diye await edilir (çok hızlı).
+  await LocalSession.ensureLoaded();
+  // İlk açılışta (dil cache yokken) cihaz dili TR değilse çeviri bundle'ını
+  // splash öncesi getir → İLK ekran (rıza/welcome) doğru dilde açılsın, TR flaş'ı
+  // olmasın. Cache varsa anında uygulanır (ağ beklenmez). En fazla 4 sn bekler;
+  // ağ yok/timeout → router'ın I18n dinleyicisi bundle gelince yakalar.
+  await _preloadLocaleBundle();
   // Son bilinen premium durumunu cache'ten oku → açılıştan itibaren flaş'sız.
   final cachedPremium = await SubscriptionCache().read();
   // Son seçilen temayı cache'ten oku → splash/ilk frame doğru temada açılsın.
@@ -63,6 +78,28 @@ Future<void> main() async {
       child: const AdenaApp(),
     ),
   ));
+}
+
+/// İlk açılışta çeviri bundle'ını splash öncesi getirir (cache yoksa ve cihaz
+/// dili TR değilse). Cache varsa anında uygular, ağ beklemez. En fazla 4 sn.
+Future<void> _preloadLocaleBundle() async {
+  try {
+    final cached = await LocaleCache().read();
+    final locale = cached ?? deviceDefaultLanguage();
+    if (locale == 'tr') return; // TR = kaynak dil, bundle gerekmez
+    final repo = I18nRepository(ApiClient(TokenStorage()));
+    final (_, existing) = await repo.readCache(locale);
+    if (existing.isNotEmpty) {
+      I18n.instance.apply(locale, existing); // cache var → anında
+      return;
+    }
+    // İlk açılış: bundle'ı getirip uygula (kısa timeout; takılırsa router yakalar).
+    final fresh = await repo.sync(locale).timeout(const Duration(seconds: 4));
+    I18n.instance.apply(locale, fresh);
+  } catch (_) {
+    // ağ yok/timeout → ilk ekran TR fallback; bundle gelince router I18n
+    // dinleyicisi mevcut sayfayı tazeler.
+  }
 }
 
 class AdenaApp extends ConsumerStatefulWidget {
@@ -136,6 +173,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     });
     ref.watch(syncServiceProvider); // connectivity dinleyicisini canlı tut
     ref.watch(premiumSyncProvider); // RC entitlement → backend senkron dinleyicisi
+    ref.watch(localToCloudMigrationProvider); // free→premium: yerel veriyi yükle
     // Henüz yüklenmediyse cache'lenen temaya düş (sistem koyu olsa bile flaş yok).
     final themeMode =
         ref.watch(themeControllerProvider).asData?.value ?? ref.watch(cachedThemeProvider);
@@ -181,6 +219,9 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
           children: [
             ?child,
             const Offstage(child: FamilyNotificationSync()),
+            // free→premium yükleme sürecini gösteren tam-ekran overlay
+            // (yalnız migrasyon çalışırken/biterken görünür).
+            const MigrationOverlay(),
           ],
         ),
       ),

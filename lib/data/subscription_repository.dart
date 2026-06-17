@@ -7,6 +7,7 @@ import '../core/api_client.dart';
 import '../core/json_cache.dart';
 import '../core/providers.dart';
 import '../core/revenuecat_service.dart';
+import '../features/auth/auth_controller.dart';
 import '../models/pricing.dart';
 import '../models/subscription.dart';
 import 'subscription_cache.dart';
@@ -38,6 +39,15 @@ class SubscriptionRepository {
   /// Tek-kullanımlık premium kodunu kullan (aylık/yıllık/lifetime → backend belirler).
   Future<Subscription> redeem(String code) async {
     final resp = await _api.dio.post('/auth/me/subscription/redeem', data: {'code': code});
+    return _store(Subscription.fromJson(resp.data as Map<String, dynamic>));
+  }
+
+  /// Premium bitince (lapsed/free): kullanıcının kendi CLOUD verisini hemen kalıcı
+  /// siler (60 günü beklemeden) → abonelik free'ye düşer. Yerel/telefon verisi
+  /// etkilenmez. Çağırmadan ÖNCE `InitialImportService.forceImport()` ile
+  /// cloud→yerel indirilmeli (kayıp olmasın).
+  Future<Subscription> purgeCloudData() async {
+    final resp = await _api.dio.post('/auth/me/cloud-data/purge');
     return _store(Subscription.fromJson(resp.data as Map<String, dynamic>));
   }
 
@@ -85,9 +95,13 @@ final subscriptionRepositoryProvider = Provider<SubscriptionRepository>(
 final cachedPremiumProvider = Provider<bool>((_) => false);
 
 /// Mevcut abonelik durumu. Satın alma sonrası invalidate edilir.
-final subscriptionProvider = FutureProvider<Subscription>(
-  (ref) => ref.watch(subscriptionRepositoryProvider).get(),
-);
+/// Local-first: hesapsız (oturum yok) kullanıcıda sunucuya HİÇ gitmez → 401 olmaz,
+/// doğrudan free döner (free kullanıcı zaten premium değil).
+final subscriptionProvider = FutureProvider<Subscription>((ref) {
+  final loggedIn = ref.watch(authControllerProvider).asData?.value != null;
+  if (!loggedIn) return const Subscription(tier: 'free');
+  return ref.watch(subscriptionRepositoryProvider).get();
+});
 
 /// Yönetilebilir fiyat planları (DB'den, locale para birimiyle). Paywall okur.
 final pricingProvider = FutureProvider<Map<String, PlanPricing>>(

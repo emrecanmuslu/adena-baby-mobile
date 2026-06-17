@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
+import '../../core/premium_gate.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../babies/baby_controller.dart';
@@ -42,7 +43,12 @@ class DiscoverScreen extends ConsumerWidget {
               bg: AppColors.feverBg,
               title: tr('Bebeğin Sağlığı'),
               meta: tr('Aşı · randevu · ateş & ilaç · diş · gelişim'),
-              onTap: () => context.push('/health'),
+              // Sağlık (aşı/gelişim/diş) takvimi cloud'dan üretilir → hesap gerekir.
+              onTap: () => requireAccount(context, ref,
+                  feature: tr('Bebeğin Sağlığı'),
+                  desc: tr('Aşı takvimi, gelişim ve diş takibi buluttan gelir; '
+                      'ücretsiz bir hesap oluşturman yeterli.'),
+                  onAllowed: () => context.push('/health')),
             ),
           ],
 
@@ -66,7 +72,12 @@ class DiscoverScreen extends ConsumerWidget {
             bg: AppColors.sleepBg,
             title: tr('Topluluk'),
             meta: tr('Ebeveynlere soru sor, deneyim paylaş'),
-            onTap: () => context.push('/community'),
+            // Topluluk cloud + hesap gerektirir (free'ye açık).
+            onTap: () => requireAccount(context, ref,
+                feature: tr('Topluluk'),
+                desc: tr('Sorular sormak ve deneyim paylaşmak için ücretsiz bir '
+                    'hesap oluştur.'),
+                onAllowed: () => context.push('/community')),
           ),
           AdMenuItem(
             icon: 'star',

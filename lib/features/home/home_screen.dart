@@ -18,6 +18,7 @@ import '../../core/units.dart';
 import '../../data/community_repository.dart';
 import '../../data/content_repository.dart';
 import '../../data/health_repository.dart';
+import '../../data/local_session.dart';
 import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
 import '../../models/feed_reminder.dart';
@@ -37,6 +38,7 @@ import '../records/record_controller.dart';
 import '../records/record_form.dart';
 import '../records/record_ui.dart';
 import '../records/timeline_view.dart';
+import '../settings/backup_nag.dart';
 
 /// Ana ekran: aktif bebek başlığı + 3 sekme (Ana Sayfa·Akış·Grafikler) + merkez (+).
 class HomeScreen extends ConsumerStatefulWidget {
@@ -331,6 +333,10 @@ class _HeaderAvatar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).asData?.value;
+    // Local-first: hesapsız kullanıcıda baş harf yerel addan gelir (hesap yok).
+    final account = user?.displayName ?? '';
+    final name = account.isNotEmpty ? account : ref.watch(localNameProvider);
+    final initial = (name.characters.firstOrNull ?? '?').toUpperCase();
     final online = ref.watch(onlineProvider).asData?.value ?? true;
     final ring = Theme.of(context).scaffoldBackgroundColor;
 
@@ -364,7 +370,7 @@ class _HeaderAvatar extends ConsumerWidget {
               ),
               alignment: Alignment.center,
               child: Text(
-                (user?.displayName.characters.firstOrNull ?? '?').toUpperCase(),
+                initial,
                 style: const TextStyle(
                     color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16),
               ),
@@ -707,6 +713,8 @@ class _HomeTab extends ConsumerWidget {
         // Alt: yüzer menü (≈76) + cihaz güvenli alanı + boşluk; içerik menü altında kalmasın.
         padding: EdgeInsets.fromLTRB(16, 2, 16, 92 + MediaQuery.of(context).padding.bottom),
         children: [
+          // Local-first: free kullanıcıya "verin yalnız bu telefonda" yedek uyarısı.
+          const BackupNagBanner(),
           if (ongoing != null) _SleepBanner(sleep: ongoing),
           if (ongoingBreast != null) _BreastBanner(feed: ongoingBreast),
           _EditableSec(
@@ -753,10 +761,15 @@ class _ForYouSection extends ConsumerWidget {
     final article =
         (articles != null && articles.isNotEmpty) ? articles.first : null;
 
-    final questions = ref
-        .watch(communityFeedProvider((category: null, sort: 'top')))
-        .asData
-        ?.value;
+    // Topluluk hesap gerektirir → hesapsız kullanıcıda çekme (401 olmaz, teaser
+    // gizlenir). Makale teaser'ı public, herkese görünür.
+    final loggedIn = ref.watch(authControllerProvider).asData?.value != null;
+    final questions = loggedIn
+        ? ref
+            .watch(communityFeedProvider((category: null, sort: 'top')))
+            .asData
+            ?.value
+        : null;
     final question =
         (questions != null && questions.isNotEmpty) ? questions.first : null;
 

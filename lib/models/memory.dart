@@ -24,6 +24,11 @@ class Memory {
 
   bool get isFirst => firstTag.isNotEmpty;
 
+  /// Foto yerel dosya yolu mu (free, henüz yüklenmemiş) yoksa sunucu URL'i mi?
+  /// Local-first: free kullanıcıda foto telefonda tutulur (http ile başlamaz).
+  bool get hasPhoto => photo != null && photo!.isNotEmpty;
+  bool get isLocalPhoto => hasPhoto && !photo!.startsWith('http');
+
   factory Memory.fromJson(Map<String, dynamic> json) => Memory(
         id: json['id'] as String,
         date: DateTime.parse(json['date'] as String),

@@ -2,17 +2,16 @@
 
 Bu dosya, bu dizinde çalışan Claude Code'a rehberlik eder. Talimatlara uy.
 
-## 🧠 KALICI HAFIZA (claude-memory/) — Windows + Mac ortak
-Bu projenin kalıcı hafızası **`./claude-memory/`** klasöründe, git ile versiyonlanır ve **iki makine (Windows host + macOS VM) arasında senkrondur.** Makineye-özgü `~/.claude/.../memory` yerine BURASI tek doğru kaynaktır.
+## 🧠 KALICI HAFIZA (yalnız yerel — git senkronu YOK)
+Kalıcı hafıza, Claude Code'un makineye-özgü yerel yolunda tutulur: `~/.claude/projects/C--Users-Dev-Desktop-baby-app/memory/`. **2026-06-17'de git senkronu iptal edildi** (macOS VM bırakıldı; iki-makine ortaklığına gerek yok). Repodaki eski `claude-memory/` mirror'ı artık güncellenmiyor/stale.
 
-- **Oturum başında:** `git pull` yap, sonra **`claude-memory/MEMORY.md`** indeksini oku; ilgili konularda tek tek dosyaları aç.
-- **Yeni/değişen bilgi öğrenince:** `claude-memory/` içinde ilgili `.md` dosyasını ekle/güncelle (frontmatter: `name`, `description`, `metadata.type` = user|feedback|project|reference; gövdede ilişkili notlara `[[name]]` ile bağ ver) + **`MEMORY.md`'ye tek satırlık girdi** ekle.
-- **Her hafıza değişikliğinden sonra commit + push** et ki diğer makine `git pull` ile güncel hafızayı alsın. (Kullanıcı bunu açıkça istedi: hafıza her zaman iki makinede güncel olmalı.)
+- **Oturum başında:** otomatik enjekte edilen `MEMORY.md` indeksini oku; ilgili konularda tek tek dosyaları aç. (`git pull` yapma.)
+- **Yeni/değişen bilgi öğrenince:** yerel memory yolundaki ilgili `.md` dosyasını ekle/güncelle (frontmatter: `name`, `description`, `metadata.type` = user|feedback|project|reference; gövdede `[[name]]` ile bağ ver) + **`MEMORY.md`'ye tek satırlık girdi** ekle. **Git commit/push YAPMA.**
 - İletişim **Türkçe**; çok adımlı işlerde adımları **tek tek** ver. Detaylar ilgili hafıza dosyalarında.
-- ⚠️ Repo **private**; hafızada hassas veri var (sunucu IP, kişisel veri, strateji) — repo'yu **public yapma / yetkisiz erişim verme.**
+- ⚠️ Hafızada hassas veri var (sunucu IP, kişisel/legal veri, strateji) — dışarı sızdırma.
 
 ## Genel Bakış
-"Adena Baby" bebek bakım takip uygulamasının mobil istemcisi. **Flutter**, **Android-öncelikli** (iOS sonra Mac/CI ile). Tüm UI Türkçe. Backend: `../api` (Django REST, `../API_SOZLESME.md`). Tasarım referansı: `../design/Adena Baby - Standalone.html` + `../TASARIM_PROMPT.md` (onaylı palet/yerleşim — yeniden icat etme, uygula).
+"Adena Baby" bebek bakım takip uygulamasının mobil istemcisi. **Flutter**, **Android-öncelikli** (iOS sonra Mac/CI ile). Tüm UI Türkçe. Backend: `../api` (Django REST, `../API_SOZLESME.md`). Tasarım referansı: `../design/Adena Baby - Standalone.html` + `../PROJE_OZET.md` "Tasarım Brief Özü" (onaylı palet/yerleşim — yeniden icat etme, uygula).
 
 ## Geliştirme
 
@@ -68,4 +67,4 @@ lib/
 - Build: `android/app/build.gradle.kts` — compileSdk/targetSdk=36, minSdk=Flutter varsayılanı (Android 6.0 hedefi). applicationId `com.adenababy.adena_baby`.
 
 ## Durum
-Tamamlanan + sıradaki adım için bkz. **`../DURUM.md`**. Şu an temel (tema/api client/token/config/splash) kuruldu, MuMu'da çalışıyor; sıradaki: **auth dikey dilimi** (modeller + repository/provider + go_router + giriş/onboarding ekranları).
+Proje özeti/mimari için bkz. **`../PROJE_OZET.md`**. Güncel "kaldığımız yer" ve kararlar kalıcı hafızada (`claude-memory/` → bu makinede `~/.claude/.../memory/`).

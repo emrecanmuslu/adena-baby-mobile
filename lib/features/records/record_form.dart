@@ -14,6 +14,7 @@ import '../../data/feed_input_cache.dart';
 import '../../data/health_repository.dart';
 import '../../models/record.dart';
 import '../../models/symptom.dart';
+import '../auth/auth_controller.dart';
 import '../babies/family_settings.dart';
 import 'entry_widgets.dart';
 import 'record_controller.dart';
@@ -306,6 +307,8 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
   /// hatırlatıcıyı siler; açıksa ve hatırlatma anı gelecekteyse yeni tek-seferlik
   /// hatırlatıcı kurar, id'sini [data]'ya yazar (sonraki düzenlemede bulunsun).
   Future<void> _syncApptReminder(Map<String, dynamic> data) async {
+    // Misafir (oturumsuz) kullanıcıda hatırlatıcı kurulmaz — alan da gizli.
+    if (ref.read(authControllerProvider).asData?.value == null) return;
     final repo = ref.read(healthRepositoryProvider);
     final oldId = widget.existing?.data['reminder_id'];
     if (oldId is int) {
@@ -367,18 +370,34 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
               Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
             ]),
             const SizedBox(height: 16),
-            ..._fields(accent),
-            // Uyku/emzirme kendi zaman/aksiyon butonlarını yönetir; diğerleri genel.
-            if (!_handlesActionsInternally) ...[
-              AdField(
-                label: tr('Zaman'),
-                child: AdTimeChip(
-                    value: _ts, onTap: () => _pick(_ts, (dt) => setState(() => _ts = dt))),
+            // İçerik kaydırılabilir: uzun formlar (ör. belirti + bakım rehberi +
+            // şiddet + not) sheet'i taşırmasın. Kısa formlarda Flexible(loose)
+            // sayesinde sheet yine içeriğe göre kompakt kalır.
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ..._fields(accent),
+                    // Uyku/emzirme kendi zaman/aksiyon butonlarını yönetir; diğerleri genel.
+                    if (!_handlesActionsInternally) ...[
+                      AdField(
+                        label: tr('Zaman'),
+                        child: AdTimeChip(
+                            value: _ts,
+                            onTap: () => _pick(_ts, (dt) => setState(() => _ts = dt))),
+                      ),
+                      const SizedBox(height: 8),
+                      AdSaveButton(
+                          label: _editing ? tr('Güncelle') : tr('Kaydet'),
+                          color: accent,
+                          onTap: _save),
+                    ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              AdSaveButton(
-                  label: _editing ? tr('Güncelle') : tr('Kaydet'), color: accent, onTap: _save),
-            ],
+            ),
           ],
         ),
       ),
@@ -560,6 +579,10 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
 
   /// Randevu hatırlatıcısı: aç/kapa + ne kadar önce (hazır + özel).
   Widget _apptReminderField() {
+    // Hatırlatıcı sunucuda oluşturulur → hesap gerektirir. Misafir kullanıcıya
+    // "hatırlatıcı kur" gösterilmez; arka planda da reminder kurulmaz (false).
+    final loggedIn = ref.watch(authControllerProvider).asData?.value != null;
+    if (!loggedIn) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

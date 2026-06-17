@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -6,24 +8,36 @@ import '../../core/notification_service.dart';
 import '../../data/activity_notif_cache.dart';
 import '../../data/baby_repository.dart';
 import '../../data/record_repository.dart';
+import '../../data/sync_gate.dart';
 import '../../models/baby.dart';
 import '../auth/auth_controller.dart';
 
 const _uuid = Uuid();
 
-/// Kullanıcının erişebildiği bebekler. Oturum değişince yeniden yüklenir.
+/// Kullanıcının bebekleri — **local-first**. Yerel drift akışını dinler; premium
+/// + oturum açıkken sunucudan da çeker (reconcile). Free'de yalnız yerel.
 class BabyController extends AsyncNotifier<List<Baby>> {
   BabyRepository get _repo => ref.read(babyRepositoryProvider);
 
   @override
   Future<List<Baby>> build() async {
-    // Oturuma bağımlı: çıkış yapılınca boş liste, giriş yapılınca yeniden çek.
-    final user = ref.watch(authControllerProvider).asData?.value;
-    if (user == null) return [];
-    return _repo.list();
+    // Hesap değişince controller yeniden kurulsun (yerel veri aktif hesaba göre
+    // kapsamlanır → farklı hesaba girişte doğru bebek listesi gelir).
+    ref.watch(activeAccountIdProvider);
+    // Yerel akışı dinle: yerel yazımlar (create/update/delete) state'i otomatik
+    // günceller — çıkışta bile veri kalır (local her zaman birincil).
+    final sub = _repo.watchAll().listen((list) {
+      state = AsyncData(list);
+    });
+    ref.onDispose(sub.cancel);
+    // Cloud senkron açık (premium + oturum) ise sunucuyla reconcile et.
+    if (ref.watch(cloudSyncEnabledProvider)) {
+      unawaited(_pull());
+    }
+    return _repo.getAll();
   }
 
-  /// Onboarding'den yeni bebek oluşturur (istemci-üretimli UUID).
+  /// Onboarding'den yeni bebek oluşturur (istemci-üretimli UUID, yerele yazılır).
   Future<Baby> create({
     required String name,
     required BabyStatus status,
@@ -38,58 +52,62 @@ class BabyController extends AsyncNotifier<List<Baby>> {
       status: status,
       birthDate: birthDate,
       dueDate: dueDate,
+      myRole: 'owner',
     );
     final created = await _repo.create(baby);
-    state = AsyncData([...(state.asData?.value ?? []), created]);
+    _pushSoon();
     return created;
   }
 
   /// Bebek alanlarını günceller (ad/cinsiyet/tarih, "doğdu" geçişi).
   Future<Baby> updateBaby(String id, Map<String, dynamic> fields) async {
     final updated = await _repo.update(id, fields);
-    state = AsyncData([
-      for (final b in state.asData?.value ?? []) b.id == id ? updated : b,
-    ]);
+    _pushSoon();
     return updated;
   }
 
   Future<void> deleteBaby(String id) async {
     await _repo.delete(id);
-    state = AsyncData([
-      for (final b in state.asData?.value ?? []) if (b.id != id) b,
-    ]);
+    _pushSoon();
   }
 
-  /// Bebek listesini sunucudan tazeler ve erişimi kaldırılan (artık üyesi olmadığın)
-  /// bebekleri tespit eder: yerel verisini temizler + "erişimin kaldırıldı" bildirimi.
-  /// Öne gelince/açılışta çağrılır (push yok → değişiklik böyle yakalanır).
-  Future<void> refresh() async {
-    if (ref.read(authControllerProvider).asData?.value == null) return;
-    final prev = state.asData?.value ?? const [];
-    final List<Baby> fresh;
-    try {
-      fresh = await _repo.list();
-    } catch (_) {
-      return; // çevrimdışı/hata → mevcut listeyi koru
+  /// Premium'da yerel dirty bebekleri arka planda sunucuya gönderir.
+  void _pushSoon() {
+    if (ref.read(cloudSyncEnabledProvider)) {
+      unawaited(_repo.pushDirty());
     }
-    state = AsyncData(fresh);
-    if (prev.isEmpty) return;
-    final freshIds = fresh.map((b) => b.id).toSet();
-    for (final b in prev.where((b) => !freshIds.contains(b.id))) {
+  }
+
+  /// Sunucudan çekip yereli reconcile eder; erişimi kaldırılan bebeklerin yerel
+  /// verisini temizler + bildirim. Yalnız premium + oturum açıkken anlamlı.
+  Future<void> _pull() async {
+    if (!ref.read(cloudSyncEnabledProvider)) return;
+    List<Baby> removed;
+    try {
+      await _repo.pushDirty(); // önce yerel değişiklikleri yolla (idempotent)
+      removed = await _repo.pullFromServer();
+    } catch (_) {
+      return; // çevrimdışı/hata → yerel korunur
+    }
+    for (final b in removed) {
       try {
-        await ref.read(recordRepositoryProvider).purgeBaby(b.id); // eski veriyi sil
+        await ref.read(recordRepositoryProvider).purgeBaby(b.id);
       } catch (_) {}
       await ActivityNotifCache().clearSeen(b.id);
-      // Sayaç/beslenme bildirimini de kapat (slot artık o bebeğe ait değil).
       final slot = b.notifSlot;
-      NotificationService.instance.cancelTimer(NotificationService.sleepIdFor(slot));
-      NotificationService.instance.cancelTimer(NotificationService.breastIdFor(slot));
+      NotificationService.instance
+          .cancelTimer(NotificationService.sleepIdFor(slot));
+      NotificationService.instance
+          .cancelTimer(NotificationService.breastIdFor(slot));
       NotificationService.instance.scheduleFeedReminder(
           enabled: false, nextTime: null, preMin: 0, slot: slot, babyName: b.name);
       NotificationService.instance.showActivity(
           title: b.name, body: tr('Bu bebeğe erişimin kaldırıldı'));
     }
   }
+
+  /// Öne gelince/açılışta çağrılır. Premium'da sunucuyla reconcile; free'de no-op.
+  Future<void> refresh() => _pull();
 }
 
 final babyControllerProvider =

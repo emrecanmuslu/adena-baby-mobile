@@ -27,6 +27,19 @@ class Subscription {
   /// Lifetime (tek-seferlik) premium: aktif ama yenileme/bitiş yok.
   bool get isLifetime => isPremium && expiresAt == null;
 
+  /// Premium süresi dolmuş (yenilenmedi/iptal): tier premium ama artık aktif
+  /// değil + bitiş tarihi var. Free'ye düştü ama veri yerelde duruyor (ayna).
+  bool get isLapsed => tier == 'premium' && !isPremium && expiresAt != null;
+
+  /// Bitişten bu yana geçen güne göre 60 günlük bulut grace'inden kalan gün.
+  /// Süre sonunda backend cloud kopyayı siler; yerel veri her hâlükârda kalır.
+  int graceDaysLeft({int graceDays = 60}) {
+    final exp = expiresAt;
+    if (exp == null) return 0;
+    final left = graceDays - DateTime.now().difference(exp).inDays;
+    return left < 0 ? 0 : left;
+  }
+
   factory Subscription.fromJson(Map<String, dynamic> json) {
     final tier = json['tier'] as String? ?? 'free';
     return Subscription(

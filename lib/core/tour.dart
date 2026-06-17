@@ -84,19 +84,6 @@ List<TourStep>? tourFor(String key) => switch (key) {
               tr('Her hafta "neler oluyor?" notuyla bebeğinin gelişimini öğren. '
                   'Bebeğin doğunca tek dokunuşla takip moduna geçersin.')),
         ],
-      'discover' => [
-          TourStep('✨', tr('Keşfet'),
-              tr('Sağlık, topluluk, uzman rehberi ve anılar gibi tüm ek bölümlere '
-                  'buradan ulaşırsın.')),
-        ],
-      'health' => [
-          TourStep('❤️', tr('Sağlık'),
-              tr('Aşı takvimi, gelişim basamakları, diş çıkarma ve hatırlatıcılar '
-                  'tek bir yerde toplanır.')),
-          TourStep('🔔', tr('Hatırlatıcılar'),
-              tr('Aşı, randevu ve özel hatırlatıcılar kurarak önemli anları '
-                  'kaçırma.')),
-        ],
       'milestones' => [
           TourStep('🎯', tr('Gelişim'),
               tr('Yaşa göre beklenen gelişim basamakları. Bebeğin başardıkça '
@@ -104,16 +91,6 @@ List<TourStep>? tourFor(String key) => switch (key) {
           TourStep('💡', tr('Rehberdir, yarış değil'),
               tr('Bir basamağa dokununca ne anlama geldiğini ve nasıl '
                   'destekleyebileceğini görürsün. Her bebek kendi temposunda gelişir.')),
-        ],
-      'teeth' => [
-          TourStep('🦷', tr('Diş Gelişimi'),
-              tr('Ağız haritasında çıkan dişlere dokunup tarihiyle işaretle. '
-                  'Şeftali renkli dişler sırada beklenenlerdir.')),
-        ],
-      'memories' => [
-          TourStep('📸', tr('Anılar'),
-              tr('Bebeğinin fotoğraflarını ve özel anlarını kaydet; "ilk"leri '
-                  'işaretleyip zaman içinde sakla.')),
         ],
       'community' => [
           TourStep('💬', tr('Topluluk'),
@@ -123,16 +100,6 @@ List<TourStep>? tourFor(String key) => switch (key) {
               tr('Topluluk paylaşımları kişisel deneyimdir, tıbbi tavsiye yerine '
                   'geçmez. Sağlık kaygılarında doktoruna danış.')),
         ],
-      'content' => [
-          TourStep('📚', tr('Uzman Rehberi'),
-              tr('Uyku, beslenme, gelişim ve daha fazlası için uzman onaylı '
-                  'rehberler. Bebeğinin yaşına uygun öneriler en üstte.')),
-        ],
-      'mom' => [
-          TourStep('🌸', tr('Anne Takibi'),
-              tr('Gebelik sürecinde kilonu, randevularını ve notlarını kaydet. '
-                  'Bu alan sana özeldir.')),
-        ],
       'vaccines' => [
           TourStep('💉', tr('Aşı Takvimi'),
               tr('Sağlık Bakanlığı çocukluk dönemi aşı şemasına göre, bebeğinin '
@@ -140,39 +107,6 @@ List<TourStep>? tourFor(String key) => switch (key) {
           TourStep('✅', tr('Yapıldıkça işaretle'),
               tr('Olan aşıları tarihiyle işaretle; yaklaşanları kaçırmamak için '
                   'hatırlatıcı kurabilirsin. Kesin program için doktoruna danış.')),
-        ],
-      'reminders' => [
-          TourStep('🔔', tr('Hatırlatıcılar'),
-              tr('İlaç, vitamin, randevu ya da istediğin her şey için hatırlatıcı '
-                  'kur. Tek seferlik veya her gün tekrarlı olabilir.')),
-        ],
-      'members' => [
-          TourStep('👨‍👩‍👧', tr('Aile & Paylaşım'),
-              tr('Eşini ya da bakıcını davet koduyla ekle; bebeği birlikte, aynı '
-                  'anda takip edin.')),
-          TourStep('🔑', tr('Roller'),
-              tr('Ebeveyn kayıt ekler ve düzenler; bakıcı yalnız okur (sınırlı '
-                  'yazma). Daveti istediğinde iptal edebilirsin.')),
-        ],
-      'caregiver' => [
-          TourStep('👀', tr('Bakıcı Akışı'),
-              tr('Ekibin eklediği kayıtların canlı, salt-okunur akışı. Bebeğe ne '
-                  'zaman ne yapıldığını tek bakışta gör.')),
-        ],
-      'premium' => [
-          TourStep('⭐', tr('Adena Premium'),
-              tr('Reklamsız kullanım, geniş aile paylaşımı, veri dışa aktarma ve '
-                  'sınırsız hatırlatıcı. Çekirdek takip her zaman ücretsiz kalır.')),
-        ],
-      'babyedit' => [
-          TourStep('📝', tr('Bebek Bilgileri'),
-              tr('Ad, cinsiyet ve tarihi güncelle. Bekleme modundaysan, bebeğin '
-                  'doğunca "Bebeğim doğdu" ile takip moduna geçersin.')),
-        ],
-      'settings' => [
-          TourStep('⚙️', tr('Ayarlar'),
-              tr('Paylaşım, görünüm, premium ve hesap ayarların burada. Tanıtım '
-                  'turlarını da buradan yeniden başlatabilirsin.')),
         ],
       _ => null,
     };

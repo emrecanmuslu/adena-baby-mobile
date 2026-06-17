@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../../models/pricing.dart';
 import '../../models/subscription.dart';
+
+import '../auth/auth_controller.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
@@ -13,6 +16,7 @@ import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/revenuecat_service.dart';
 import '../../core/theme.dart';
+import '../../data/initial_import.dart';
 import '../../data/subscription_repository.dart';
 
 /// Premium / paywall (design ScrPremium): özellik listesi + planlar + CTA + kod.
@@ -47,10 +51,14 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
 
   // NOT: getter — `static final` tr()'yi dondurur (dil değişince eski kalır).
   List<(String, String)> get _feats => [
-        (tr('Reklamsız deneyim'), tr('Hiç reklam yok, kesintisiz')),
-        (tr('Aile paylaşımı'), tr('Eş + bakıcılar aynı bebeği takip eder')),
-        (tr('Gelişmiş grafik + PDF'), tr('Doktora hazır rapor çıktısı')),
-        (tr('Sınırsız hatırlatıcı'), tr('İstediğin kadar özel hatırlatıcı')),
+        (tr('Reklamsız, kesintisiz'), tr('Tek bir reklam yok — dikkatin hep bebeğinde')),
+        (tr('Sınırsız aile & bakıcı'),
+            tr('Eş, anneanne, bakıcı — herkes aynı bebekte, gerçek zamanlı')),
+        (tr('Bulut yedekleme'),
+            tr('Tüm verin ve fotoğrafların buluta otomatik, cihazlar arası güvende')),
+        (tr('Doktora hazır PDF rapor'),
+            tr('Büyüme, WHO persentil ve beslenme/uyku özeti tek dokunuşta')),
+        (tr('Sınırsız hatırlatıcı'), tr('Aşı, randevu, beslenme — hiçbirini kaçırma')),
       ];
 
   Package? _packageFor(String plan) {
@@ -118,7 +126,8 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               Text(tr('Adena Premium'),
                   style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
               const SizedBox(height: 4),
-              Text(tr('Ücretsiz katman zaten cömert — Premium ekstra güç katar.'),
+              Text(
+                  tr('Bebeğinin her anına tam odaklan — reklamsız, sınırsız ve tüm aile bir arada.'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.muted)),
@@ -230,6 +239,54 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               ),
             ],
           ] else ...[
+            if (sub?.isLapsed ?? false) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.peachLight,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const AdenaIcon('star',
+                        size: 18, color: AppColors.coralDd, sw: 2.2),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(tr('Premium\'un sona erdi'),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13.5,
+                                  color: AppColors.coralDd)),
+                          const SizedBox(height: 2),
+                          Text(
+                            tr('Verilerin telefonunda güvende. Yeniden abone olup '
+                                'tekrar buluta yedekleyebilirsin.'),
+                            style: const TextStyle(
+                                fontSize: 12,
+                                height: 1.4,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.coralDd),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              AdSaveButton(
+                label: _saving
+                    ? tr('İşleniyor…')
+                    : tr('Verilerimi indir, bulut yedeğini sil'),
+                color: AppColors.muted,
+                ghost: true,
+                onTap: _saving ? () {} : _purgeCloud,
+              ),
+            ],
             const SizedBox(height: 14),
             // Aylık + Yıllık yan yana
             Row(
@@ -277,6 +334,18 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               color: AppColors.coral,
               onTap: _saving ? () {} : _subscribe,
             ),
+            const SizedBox(height: 12),
+            // Güven rozetleri — satın alma kararını destekleyen gerçek sinyaller.
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _TrustBadge(tr('İstediğin zaman iptal')),
+                _TrustBadge(tr('KVKK & GDPR uyumlu')),
+                _TrustBadge(tr('Verini asla satmayız')),
+              ],
+            ),
             const SizedBox(height: 10),
             // Kod kullan + (RC varsa) geri yükle
             Row(
@@ -318,7 +387,17 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
     );
   }
 
+  /// Premium işlemleri hesap gerektirir (RevenueCat entitlement + cloud yedek).
+  /// Misafir kullanıcıyı girişe/kayıta yönlendir.
+  bool _ensureLoggedIn() {
+    if (ref.read(authControllerProvider).asData?.value != null) return true;
+    showAdToast(context, tr('Premium için önce giriş yap / hesap oluştur'));
+    context.push('/login');
+    return false;
+  }
+
   Future<void> _subscribe() async {
+    if (!_ensureLoggedIn()) return;
     setState(() => _saving = true);
     try {
       final pkg = _packageFor(_plan);
@@ -383,6 +462,47 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
     }
   }
 
+  /// Premium bitince kullanıcı-tetikli: önce cloud'u yerele indir (güvenlik),
+  /// sonra bulut yedeğini kalıcı sil → abonelik free'ye düşer. Yerel veri kalır.
+  Future<void> _purgeCloud() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Bulut yedeğini sil')),
+        content: Text(tr('Buluttaki yedeğin kalıcı olarak silinecek. Verilerin '
+            'telefonunda kalmaya devam eder. Devam edilsin mi?')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(tr('Vazgeç'))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.coral, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(tr('İndir ve sil')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _saving = true);
+    try {
+      // Güvenlik: cloud'da olup yerelde olmayan bir şey kalmasın.
+      await ref.read(initialImportProvider).forceImport();
+      await ref.read(subscriptionRepositoryProvider).purgeCloudData();
+      ref.invalidate(subscriptionProvider);
+      if (mounted) {
+        setState(() => _saving = false);
+        showAdToast(context, tr('Bulut yedeğin silindi · verilerin telefonunda'));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        showAdError(context, apiErrorText(e));
+      }
+    }
+  }
+
   Future<void> _restore() async {
     setState(() => _saving = true);
     try {
@@ -403,6 +523,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
   }
 
   Future<void> _redeem() async {
+    if (!_ensureLoggedIn()) return;
     final code = await _showRedeemSheet(context);
     if (code == null || code.trim().isEmpty) return;
     try {
@@ -476,6 +597,34 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TrustBadge extends StatelessWidget {
+  final String text;
+  const _TrustBadge(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.growthBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const AdenaIcon('check', size: 12, color: Color(0xFF349970), sw: 2.6),
+          const SizedBox(width: 5),
+          Text(text,
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1F8A5B))),
+        ],
       ),
     );
   }

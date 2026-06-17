@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'core/ad_service.dart';
 import 'core/i18n.dart';
 import 'core/tour.dart';
+import 'data/local_session.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/consent_gate_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -24,7 +25,6 @@ import 'features/cycle/cycle_calendar_screen.dart';
 import 'features/cycle/cycle_dashboard_screen.dart';
 import 'features/cycle/cycle_settings_screen.dart';
 import 'features/cycle/cycle_stats_screen.dart';
-import 'features/dev/dev_tools_screen.dart';
 import 'features/discover/discover_screen.dart';
 import 'features/health/health_screen.dart';
 import 'features/health/reminders_screen.dart';
@@ -35,7 +35,6 @@ import 'features/development/milestones_screen.dart';
 import 'features/development/teeth_screen.dart';
 import 'features/memories/memories_screen.dart';
 import 'features/onboarding/baby_setup_screen.dart';
-import 'features/settings/ai_export_screen.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/premium_screen.dart';
 import 'features/settings/privacy_screen.dart';
@@ -47,6 +46,20 @@ class _RouterRefresh extends ChangeNotifier {
   _RouterRefresh(Ref ref) {
     ref.listen(authControllerProvider, (_, _) => notifyListeners());
     ref.listen(babyControllerProvider, (_, _) => notifyListeners());
+    ref.listen(localConsentProvider, (_, _) => notifyListeners());
+    ref.listen(localNameProvider, (_, _) => notifyListeners());
+    // Çeviri bundle'ı (EN) açılışta async gelir; go_router mevcut sayfayı
+    // refresh olmadan yeniden çizmez → ilk ekran (rıza/welcome) gezinmeye kadar
+    // kaynak (TR) dilde kalırdı. I18n değişince router'ı tazele → anında EN.
+    I18n.instance.addListener(_onI18n);
+  }
+
+  void _onI18n() => notifyListeners();
+
+  @override
+  void dispose() {
+    I18n.instance.removeListener(_onI18n);
+    super.dispose();
   }
 }
 
@@ -73,9 +86,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/settings',
           builder: (_, _) =>
               const TourMount(tourKey: 'settings', child: SettingsScreen())),
-      // Yalnız debug derlemede: geliştirici/bildirim test ekranı.
-      if (kDebugMode)
-        GoRoute(path: '/dev', builder: (_, _) => const DevToolsScreen()),
       GoRoute(
           path: '/members',
           builder: (_, _) =>
@@ -106,7 +116,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/premium',
           builder: (_, _) =>
               const TourMount(tourKey: 'premium', child: PremiumScreen())),
-      GoRoute(path: '/ai-export', builder: (_, _) => const AIExportScreen()),
       GoRoute(
           path: '/mom',
           builder: (_, _) =>
@@ -172,40 +181,50 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) => const CycleSettingsScreen()),
     ],
     redirect: (context, state) {
+      // HESAP ZORUNLU: misafir/hesapsız akış kaldırıldı. Sıra: karşılama →
+      // giriş/kayıt → rıza (hesaba bağlı) → bebek → ana sayfa.
       final auth = ref.read(authControllerProvider);
       final loc = state.matchedLocation;
       final onAuthPage = loc == '/login' || loc == '/register';
 
-      // İlk açılışta oturum çözülürken splash'te bekle — ama login/register'da
-      // DEĞİL (kendi yükleme/hata UI'larını yönetirler; yoksa kayıt/giriş hatası
-      // gösterilemeden kullanıcı splash'e atılır).
-      if ((auth.isLoading || !auth.hasValue) && !onAuthPage) {
+      // Oturum çözülürken splash'te bekle — auth/rıza sayfaları kendi UI'larını
+      // yönetir.
+      if ((auth.isLoading || !auth.hasValue) &&
+          !onAuthPage &&
+          loc != '/consent-gate') {
         return loc == '/' ? null : '/';
       }
-
       final user = auth.asData?.value;
+
+      // 1) Oturum yok → doğrudan giriş ekranı (ara karşılama yok; kayıt giriş
+      //    ekranından erişilir).
       if (user == null) {
         return onAuthPage ? null : '/login';
       }
 
-      // Yasal rıza kapısı — sosyal giriş yapan / güncel sürümü kabul etmemiş
-      // kullanıcı uygulamaya girmeden önce 18+ ve Gizlilik/Şartlar'ı kabul eder.
+      // 2) Rıza (hesaba bağlı) — kayıt/giriş sonrası alınır.
       if (user.consentRequired) {
         return loc == '/consent-gate' ? null : '/consent-gate';
       }
-      if (loc == '/consent-gate') return '/home'; // rıza alındı → devam
 
-      // Oturum açık — bebek listesini bekle.
+      // 3) Bebek (yerel) — yüklenmesini bekle.
       final babies = ref.read(babyControllerProvider);
       if (babies.isLoading || !babies.hasValue) {
-        return loc == '/' ? null : '/';
+        return (loc == '/' || onAuthPage || loc == '/consent-gate') ? null : '/';
       }
       final hasBaby = (babies.asData?.value ?? []).isNotEmpty;
+      if (!hasBaby) {
+        return loc == '/onboarding' ? null : '/onboarding';
+      }
 
-      if (!hasBaby) return loc == '/onboarding' ? null : '/onboarding';
-
-      // Bebek var → ana sayfa. Splash/auth/onboarding'te kalma.
-      if (onAuthPage || loc == '/' || loc == '/onboarding') return '/home';
+      // 4) Her şey tamam → ara ekranlardan (splash/rıza/onboarding/auth) ana
+      //    sayfaya.
+      if (loc == '/' ||
+          onAuthPage ||
+          loc == '/consent-gate' ||
+          loc == '/onboarding') {
+        return '/home';
+      }
       return null;
     },
   );

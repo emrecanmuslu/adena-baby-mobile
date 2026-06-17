@@ -8,6 +8,7 @@ import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/local_session.dart';
 import '../../models/baby.dart';
 import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
@@ -106,6 +107,11 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authControllerProvider).asData?.value;
+    final localName = ref.watch(localNameProvider);
+    // Selamlama adı: oturum açıksa hesap adı, değilse yerel ad (ilk kelime).
+    final greetName = user != null
+        ? user.displayName
+        : (localName.isNotEmpty ? localName.split(' ').first : '');
     final isBorn = _status == BabyStatus.born;
 
     final onboarding = widget.onboarding;
@@ -115,7 +121,8 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
         elevation: 0,
         title: onboarding ? null : Text(tr('Bebek ekle')),
         actions: [
-          if (onboarding)
+          // Çıkış yalnız oturum açıkken (hesapsız local-first kullanıcıda anlamsız).
+          if (onboarding && user != null)
             TextButton(
               onPressed: _saving
                   ? null
@@ -133,7 +140,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
               Text(
                 onboarding
                     ? trp('Merhaba{name} 👋',
-                        {'name': user != null ? ' ${user.displayName}' : ''})
+                        {'name': greetName.isNotEmpty ? ' $greetName' : ''})
                     : tr('Yeni bebek'),
                 style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
               ),
@@ -271,7 +278,6 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                     )
                   : AdSaveButton(label: tr('Devam et'), color: AppColors.coral, onTap: _save),
 
-              // Davetli ebeveyn/bakıcı: yeni bebek yaratmak yerine kodla katıl.
               if (onboarding) ...[
                 const SizedBox(height: 22),
                 Row(
@@ -289,19 +295,43 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                AdSaveButton(
-                  label: tr('Davet kodum var'),
-                  color: AppColors.coralDark,
-                  ghost: true,
-                  onTap: () => _saving ? null : showAcceptInviteDialog(context, ref),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  tr('Eşin veya bakıcın bebeği zaten eklediyse, paylaştığı kodla katıl.'),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
-                ),
+                // Oturum açıkken: davet koduyla paylaşımlı bebeğe katıl (cloud/hesap işi).
+                if (user != null) ...[
+                  AdSaveButton(
+                    label: tr('Davet kodum var'),
+                    color: AppColors.coralDark,
+                    ghost: true,
+                    onTap: () =>
+                        _saving ? null : showAcceptInviteDialog(context, ref),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    tr('Eşin veya bakıcın bebeği zaten eklediyse, paylaştığı kodla katıl.'),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ] else ...[
+                  // Hesapsız: davet kodu yerine giriş seçeneği. Davetli/dönen
+                  // kullanıcı önce giriş yapar; davet kabulü oturum gerektirir.
+                  AdSaveButton(
+                    label: tr('Giriş yap / Hesap oluştur'),
+                    color: AppColors.coralDark,
+                    ghost: true,
+                    onTap: () => _saving ? null : context.push('/login'),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    tr('Zaten hesabın varsa veya bir bebeğe davet edildiysen giriş yap.'),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
               ],
             ],
           ),

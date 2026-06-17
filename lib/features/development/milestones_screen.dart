@@ -550,8 +550,6 @@ class _MilestoneSheetState extends ConsumerState<_MilestoneSheet> {
               const SizedBox(height: 16),
               AdField(
                 label: tr('Başardığı tarih'),
-                info: tr('Bu basamağı ilk yaptığı günü seç. Emin değilsen yaklaşık '
-                    'bir tarih girebilirsin; sonradan değiştirebilirsin.'),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(14),
                   onTap: _pickDate,

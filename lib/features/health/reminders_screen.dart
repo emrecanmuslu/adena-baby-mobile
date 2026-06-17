@@ -13,6 +13,7 @@ import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
 import '../../data/subscription_repository.dart';
+import '../auth/auth_controller.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/reminder.dart';
@@ -86,23 +87,27 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
       return const Scaffold(
           body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
     }
-    final async = ref.watch(remindersProvider(baby.id));
     final isPremium = ref.watch(isPremiumProvider);
-    // Free limit: en fazla 2 özel (custom) hatırlatıcı. Aşı/dürtükleme sistem
-    // hatırlatıcıları sayılmaz; beslenme/sessiz saat ayrı kartlar.
-    final customCount = (async.asData?.value ?? [])
+    // Özel (sunucu) hatırlatıcılar hesap gerektirir. Beslenme + sessiz saat
+    // ZATEN yerel (hesapsızda da çalışır) → onları her zaman gösteririz.
+    final loggedIn = ref.watch(authControllerProvider).asData?.value != null;
+    final async = loggedIn ? ref.watch(remindersProvider(baby.id)) : null;
+    // Free limit: en fazla 2 özel (custom) hatırlatıcı.
+    final customCount = (async?.asData?.value ?? const [])
         .where((r) => r.type == 'custom' && !_hidden.contains(r.id))
         .length;
 
-    // Liste değiştikçe (yükleme/ekle/aç-kapa/sil) cihaz bildirimlerini eşitle +
-    // süresi geçmiş tek-seferlik hatırlatıcıları temizle.
-    ref.listen(remindersProvider(baby.id), (_, next) {
-      final list = next.asData?.value;
-      if (list != null) {
-        NotificationService.instance.sync(list);
-        _pruneExpiredOnce(baby.id, list);
-      }
-    });
+    // Liste değiştikçe cihaz bildirimlerini eşitle + süresi geçmiş tek-seferlikleri
+    // temizle. Yalnız hesaplı kullanıcıda (hesapsızda sunucu listesi yok).
+    if (loggedIn) {
+      ref.listen(remindersProvider(baby.id), (_, next) {
+        final list = next.asData?.value;
+        if (list != null) {
+          NotificationService.instance.sync(list);
+          _pruneExpiredOnce(baby.id, list);
+        }
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -119,59 +124,64 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           adSec(tr('Sessiz saat')),
           _QuietHoursCard(babyId: baby.id),
           adSec(tr('Aktif hatırlatıcılar')),
-          async.when(
-            loading: () => Column(
-              children: [
-                for (var i = 0; i < 3; i++)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 10),
-                    child: Skeleton(height: 68, radius: 16),
-                  ),
-              ],
-            ),
-            error: (e, _) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(apiErrorText(e),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700)),
-            ),
-            data: (reminders) {
-              final visible =
-                  reminders.where((r) => !_hidden.contains(r.id)).toList();
-              if (visible.isEmpty) return const _Empty();
-              return Column(
+          // Hesapsız: özel hatırlatıcılar (ilaç/randevu) cloud + hesap gerektirir.
+          if (!loggedIn)
+            const _CustomRemindersLocked()
+          else ...[
+            async!.when(
+              loading: () => Column(
                 children: [
-                  for (final r in visible)
-                    _ReminderTile(
-                      reminder: r,
-                      babyId: baby.id,
-                      onDelete: () => _delete(baby.id, r),
+                  for (var i = 0; i < 3; i++)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 10),
+                      child: Skeleton(height: 68, radius: 16),
                     ),
                 ],
-              );
-            },
-          ),
-          const SizedBox(height: 4),
-          AdSaveButton(
-            label: tr('Hatırlatıcı ekle'),
-            color: AppColors.coralDd,
-            ghost: true,
-            onTap: () {
-              if (!isPremium && customCount >= 2) {
-                // Free 2 limit dolu → premium upsell.
-                showPremiumUpsell(
-                  context,
-                  feature: tr('Sınırsız hatırlatıcı'),
-                  desc: tr('Ücretsizde 2 özel hatırlatıcı kurabilirsin. Premium ile '
-                      'sınırsız hatırlatıcı + reklamsız.'),
-                ).then((go) {
-                  if (go == true && context.mounted) context.push('/premium');
-                });
-              } else {
-                _showAddReminderSheet(context, ref, baby.id);
-              }
-            },
-          ),
+              ),
+              error: (e, _) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text(apiErrorText(e),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: AppColors.muted, fontWeight: FontWeight.w700)),
+              ),
+              data: (reminders) {
+                final visible =
+                    reminders.where((r) => !_hidden.contains(r.id)).toList();
+                if (visible.isEmpty) return const _Empty();
+                return Column(
+                  children: [
+                    for (final r in visible)
+                      _ReminderTile(
+                        reminder: r,
+                        babyId: baby.id,
+                        onDelete: () => _delete(baby.id, r),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 4),
+            AdSaveButton(
+              label: tr('Hatırlatıcı ekle'),
+              color: AppColors.coralDd,
+              ghost: true,
+              onTap: () {
+                if (!isPremium && customCount >= 2) {
+                  showPremiumUpsell(
+                    context,
+                    feature: tr('Sınırsız hatırlatıcı'),
+                    desc: tr('Ücretsizde 2 özel hatırlatıcı kurabilirsin. Premium '
+                        'ile sınırsız hatırlatıcı + reklamsız.'),
+                  ).then((go) {
+                    if (go == true && context.mounted) context.push('/premium');
+                  });
+                } else {
+                  _showAddReminderSheet(context, ref, baby.id);
+                }
+              },
+            ),
+          ],
         ],
       ),
     );
@@ -292,6 +302,50 @@ class _ReminderTile extends ConsumerWidget {
       ref.invalidate(remindersProvider(babyId));
       if (context.mounted) showAdError(context, apiErrorText(e));
     }
+  }
+}
+
+/// Hesapsız kullanıcıya özel hatırlatıcıların hesap gerektirdiğini anlatan kart.
+/// Beslenme hatırlatıcısı + sessiz saat zaten yerel çalışır; bu yalnız özel
+/// (ilaç/randevu) hatırlatıcılar için.
+class _CustomRemindersLocked extends StatelessWidget {
+  const _CustomRemindersLocked();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppColors.softShadow,
+      ),
+      child: Column(
+        children: [
+          AdenaIcon('bell', size: 38, color: AppColors.peach),
+          const SizedBox(height: 10),
+          Text(tr('Özel hatırlatıcılar için giriş yap'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(
+              tr('İlaç, vitamin ve randevu hatırlatıcıları hesabınla cihazların '
+                  'arasında senkronlanır. Beslenme hatırlatıcısı ve sessiz saat '
+                  'hesapsız da çalışır.'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 14),
+          AdSaveButton(
+            label: tr('Giriş yap / Hesap oluştur'),
+            color: AppColors.coral,
+            onTap: () => context.push('/login'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -430,8 +484,6 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
             ),
             AdField(
               label: tr('Başlık'),
-              info: tr('Hatırlatıcının adı — bildirimde bu yazı görünür. '
-                  'Örn. "D vitamini" ya da "Doktoru ara".'),
               child: AdInput(
                 controller: _title,
                 hint: tr('örn. D vitamini, Doktoru ara'),
@@ -440,8 +492,6 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
             ),
             AdField(
               label: tr('Tekrar'),
-              info: tr('"Her gün" → seçtiğin saatte her gün tekrar eder (ilaç/vitamin gibi). '
-                  '"Bir kez" → yalnız seçtiğin tarih-saatte bir defa uyarır.'),
               child: AdTabs(
                 options: {'daily': tr('Her gün'), 'once': tr('Bir kez')},
                 selected: _repeat,
@@ -713,9 +763,6 @@ class _FeedReminderSheetState extends State<_FeedReminderSheet> {
               ),
               AdField(
                 label: tr('Ön-hatırlatma'),
-                info: tr('Asıl uyarıdan önce kısa bir "yaklaşıyor" bildirimi ister misin? '
-                    'Örneğin 30 dk seçersen, beslenme zamanından 30 dk önce ekstra bir '
-                    'hatırlatma daha gelir. İstemiyorsan "Kapalı" bırak.'),
                 child: AdTabs(
                   options: {'0': tr('Kapalı'), '5': tr('5 dk'), '15': tr('15 dk'), '30': tr('30 dk')},
                   selected: _pre.toString(),

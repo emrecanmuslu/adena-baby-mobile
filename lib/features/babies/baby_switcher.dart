@@ -6,6 +6,7 @@ import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/baby_repository.dart';
+import '../auth/auth_controller.dart';
 import 'baby_controller.dart';
 
 /// "+" sekmesinden açılan bebek ekleme sheet'i: yeni bebek ekle · davet kodu gir.
@@ -39,16 +40,31 @@ Future<void> showAddBabySheet(BuildContext context, WidgetRef ref) {
                   context.push('/baby-add');
                 },
               ),
-              AdMenuItem(
-                icon: 'link',
-                color: AppColors.pump,
-                bg: AppColors.pumpBg,
-                title: tr('Davet kodu gir'),
-                onTap: () {
-                  Navigator.pop(sheetCtx);
-                  showAcceptInviteDialog(context, ref);
-                },
-              ),
+              // Davet kabulü hesap gerektirir (cloud/paylaşım). Misafir kullanıcıya
+              // davet kodu yerine giriş seçeneği göster.
+              if (ref.read(authControllerProvider).asData?.value != null)
+                AdMenuItem(
+                  icon: 'link',
+                  color: AppColors.pump,
+                  bg: AppColors.pumpBg,
+                  title: tr('Davet kodu gir'),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    showAcceptInviteDialog(context, ref);
+                  },
+                )
+              else
+                AdMenuItem(
+                  icon: 'logout',
+                  color: AppColors.coral,
+                  bg: AppColors.feedBg,
+                  title: tr('Giriş yap / Hesap oluştur'),
+                  meta: tr('Davet koduyla katılmak için hesap gerekir'),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    context.push('/login');
+                  },
+                ),
             ],
           ),
         ),

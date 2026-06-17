@@ -15,9 +15,21 @@ import '../../data/memory_repository.dart';
 import '../../models/memory.dart';
 import '../babies/baby_controller.dart';
 
+/// Anı fotoğrafını gösterir — local-first: yerel dosya yolu (free, henüz
+/// yüklenmemiş) ise Image.file, sunucu URL'i (premium) ise Image.network.
+Widget _memoryPhoto(String path,
+    {required int cacheWidth, required Widget error}) {
+  Widget eb(BuildContext _, Object _, StackTrace? _) => error;
+  return path.startsWith('http')
+      ? Image.network(path,
+          fit: BoxFit.cover, cacheWidth: cacheWidth, errorBuilder: eb)
+      : Image.file(File(path),
+          fit: BoxFit.cover, cacheWidth: cacheWidth, errorBuilder: eb);
+}
+
 /// Anılar / Fotoğraf günlüğü — galeri ızgarası (3 sütun kare); aylara gruplu,
 /// "ilk" kilometre taşı rozetleri. Karaya dokununca detay sheet'i açılır.
-/// Fotoğraflar her zaman buluta yedeklenir (herkese).
+/// Local-first: foto free'de telefonda; premium'da buluta yedeklenir.
 class MemoriesScreen extends ConsumerWidget {
   const MemoriesScreen({super.key});
 
@@ -156,11 +168,9 @@ class _MemoryTile extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             if (hasPhoto)
-              Image.network(memory.photo!,
-                  fit: BoxFit.cover,
-                  // Izgara karesi küçük; decode'u sınırla (bellek koruması).
-                  cacheWidth: 600,
-                  errorBuilder: (_, _, _) => const _PhotoPlaceholder())
+              // Izgara karesi küçük; decode'u sınırla (bellek koruması).
+              _memoryPhoto(memory.photo!,
+                  cacheWidth: 600, error: const _PhotoPlaceholder())
             else
               Container(
                 color: AppColors.feedBg,
@@ -349,10 +359,8 @@ void _showMemoryDetail(BuildContext context, WidgetRef ref, String babyId,
               if (m.photo != null)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(18),
-                  child: Image.network(m.photo!,
-                      fit: BoxFit.cover,
-                      cacheWidth: 1080,
-                      errorBuilder: (_, _, _) => const SizedBox.shrink()),
+                  child: _memoryPhoto(m.photo!,
+                      cacheWidth: 1080, error: const SizedBox.shrink()),
                 ),
               const SizedBox(height: 14),
               if (info != null)
@@ -595,7 +603,6 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
               const SizedBox(height: 14),
               AdField(
                 label: tr('Başlık'),
-                info: tr('Anıya kısa bir ad ver (isteğe bağlı). Örn. "Parkta ilk gün".'),
                 child: AdInput(
                   controller: _title,
                   hint: tr('örn. Parkta ilk gün'),
@@ -604,8 +611,6 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
               ),
               AdField(
                 label: tr('"İlk" mi?'),
-                info: tr('Bu bir kilometre taşıysa etiketle (ilk gülümseme, ilk diş…). '
-                    'Değilse "Düz anı" bırak.'),
                 child: _firstTagPicker(),
               ),
               AdField(
@@ -614,7 +619,6 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
               ),
               AdField(
                 label: tr('Not'),
-                info: tr('Anıyla ilgili birkaç söz (isteğe bağlı).'),
                 child: AdInput(
                   controller: _note,
                   hint: tr('isteğe bağlı'),

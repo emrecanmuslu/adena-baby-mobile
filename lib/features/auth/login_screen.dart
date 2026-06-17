@@ -6,6 +6,7 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
+import '../../core/language_quick_pick.dart';
 import '../../core/theme.dart';
 import 'auth_controller.dart';
 import 'oauth_buttons.dart';
@@ -53,6 +54,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     return Scaffold(
+      // Geri butonu: welcome/onboarding'ten push ile gelinir → hesapsız akışa
+      // dönebilmek için (AppBar otomatik geri okunu sağlar).
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -135,7 +139,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 18),
                     Center(
                       child: GestureDetector(
-                        onTap: loading ? null : () => context.go('/register'),
+                        onTap:
+                            loading ? null : () => context.pushReplacement('/register'),
                         child: Text.rich(
                           TextSpan(
                             style: TextStyle(
@@ -154,6 +159,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 22),
+                    const LanguageQuickPick(),
                   ],
                 ),
               ),

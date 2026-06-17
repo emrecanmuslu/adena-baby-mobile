@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
 import '../core/providers.dart';
+import '../features/auth/auth_controller.dart';
 import '../models/milestone.dart';
 import '../models/reminder.dart';
 import '../models/tooth.dart';
@@ -102,22 +103,36 @@ final healthRepositoryProvider = Provider<HealthRepository>(
   (ref) => HealthRepository(ref.watch(apiClientProvider)),
 );
 
+// Sağlık verisi (aşı/gelişim/diş/hatırlatıcı) sunucu kataloğundan üretilir ve
+// hesap gerektirir (local-first kapsam dışı). Hesapsız (oturum yok) kullanıcıda
+// boş döneriz → 401 olmaz; ekranlar "giriş yap" istemi/boş durum gösterir.
+bool _loggedIn(Ref ref) =>
+    ref.watch(authControllerProvider).asData?.value != null;
+
 /// Aktif bebeğin aşıları (due_date'e göre sıralı gelir).
 final vaccinesProvider = FutureProvider.family<List<Vaccine>, String>(
-  (ref, babyId) => ref.watch(healthRepositoryProvider).vaccines(babyId),
+  (ref, babyId) => _loggedIn(ref)
+      ? ref.watch(healthRepositoryProvider).vaccines(babyId)
+      : Future.value(const <Vaccine>[]),
 );
 
 /// Aktif bebeğin hatırlatıcıları.
 final remindersProvider = FutureProvider.family<List<Reminder>, String>(
-  (ref, babyId) => ref.watch(healthRepositoryProvider).reminders(babyId),
+  (ref, babyId) => _loggedIn(ref)
+      ? ref.watch(healthRepositoryProvider).reminders(babyId)
+      : Future.value(const <Reminder>[]),
 );
 
 /// Aktif bebeğin gelişim/kilometre taşları (beklenen aya göre sıralı).
 final milestonesProvider = FutureProvider.family<List<Milestone>, String>(
-  (ref, babyId) => ref.watch(healthRepositoryProvider).milestones(babyId),
+  (ref, babyId) => _loggedIn(ref)
+      ? ref.watch(healthRepositoryProvider).milestones(babyId)
+      : Future.value(const <Milestone>[]),
 );
 
 /// Aktif bebeğin süt dişleri (çene/pozisyona göre sıralı gelir).
 final teethProvider = FutureProvider.family<List<Tooth>, String>(
-  (ref, babyId) => ref.watch(healthRepositoryProvider).teeth(babyId),
+  (ref, babyId) => _loggedIn(ref)
+      ? ref.watch(healthRepositoryProvider).teeth(babyId)
+      : Future.value(const <Tooth>[]),
 );

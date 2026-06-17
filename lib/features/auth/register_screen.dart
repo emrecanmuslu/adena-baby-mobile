@@ -6,6 +6,7 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
+import '../../core/language_quick_pick.dart';
 import '../../core/theme.dart';
 import 'auth_controller.dart';
 import 'legal_consent_checkbox.dart';
@@ -161,7 +162,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     const SizedBox(height: 18),
                     Center(
                       child: GestureDetector(
-                        onTap: loading ? null : () => context.go('/login'),
+                        onTap: loading ? null : () => context.pushReplacement('/login'),
                         child: Text.rich(
                           TextSpan(
                             style: TextStyle(
@@ -180,6 +181,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 20),
+                    const LanguageQuickPick(),
                   ],
                 ),
               ),

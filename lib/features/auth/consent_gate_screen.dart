@@ -5,7 +5,9 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
+import '../../core/language_quick_pick.dart';
 import '../../core/theme.dart';
+import '../../data/local_session.dart';
 import 'auth_controller.dart';
 import 'legal_consent_checkbox.dart';
 
@@ -30,8 +32,12 @@ class _ConsentGateScreenState extends ConsumerState<ConsentGateScreen> {
     }
     setState(() => _saving = true);
     try {
-      await ref.read(authControllerProvider.notifier).recordConsent();
-      // Başarılıysa router consentRequired=false ile otomatik yönlendirir.
+      // Rıza her zaman YERELDE kaydedilir (hesaptan bağımsız). Oturum açıksa
+      // backend'e de yazılır (consentRequired düşer). Router'ı yerel rıza açar.
+      await ref.read(localConsentProvider.notifier).accept();
+      if (ref.read(authControllerProvider).asData?.value != null) {
+        await ref.read(authControllerProvider.notifier).recordConsent();
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
@@ -105,15 +111,22 @@ class _ConsentGateScreenState extends ConsumerState<ConsentGateScreen> {
                           label: tr('Devam et'),
                           color: AppColors.coral,
                           onTap: _continue),
-                  const SizedBox(height: 6),
-                  Center(
-                    child: TextButton(
-                      onPressed: _saving ? null : _logout,
-                      child: Text(tr('Çıkış yap'),
-                          style: TextStyle(
-                              color: AppColors.muted, fontWeight: FontWeight.w700)),
+                  // Çıkış yalnız oturum açıkken anlamlı (hesapsız free'de gizli).
+                  if (ref.watch(authControllerProvider).asData?.value != null) ...[
+                    const SizedBox(height: 6),
+                    Center(
+                      child: TextButton(
+                        onPressed: _saving ? null : _logout,
+                        child: Text(tr('Çıkış yap'),
+                            style: TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w700)),
+                      ),
                     ),
-                  ),
+                  ],
+                  // Dil seçici — kullanıcı isterse en alttan dili değiştirir.
+                  const SizedBox(height: 26),
+                  const LanguageQuickPick(),
                 ],
               ),
             ),

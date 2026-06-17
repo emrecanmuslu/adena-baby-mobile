@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/subscription_repository.dart';
+import '../features/auth/auth_controller.dart';
 import 'adena_icons.dart';
 import 'i18n.dart';
 import 'theme.dart';
@@ -25,6 +26,91 @@ Future<void> requirePremium(
   }
   final go = await showPremiumUpsell(context, feature: feature, desc: desc);
   if (go == true && context.mounted) context.push('/premium');
+}
+
+/// Hesap duvarı: local-first'te bazı yüzeyler (topluluk, bebek sağlığı, aile
+/// paylaşımı) cloud + hesap gerektirir. Kullanıcı oturum açıksa [onAllowed]
+/// çalışır; değilse hesap gerektiğini anlatan bir sheet açar ve "Giriş yap"
+/// derse /login'e götürür. Free hesap yeterli (premium gerekmez).
+Future<void> requireAccount(
+  BuildContext context,
+  WidgetRef ref, {
+  required String feature,
+  required String desc,
+  required VoidCallback onAllowed,
+}) async {
+  if (ref.read(authControllerProvider).asData?.value != null) {
+    onAllowed();
+    return;
+  }
+  final go = await showModalBottomSheet<bool>(
+    context: context,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (ctx) => Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 48,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 18),
+            decoration: BoxDecoration(
+                color: AppColors.line, borderRadius: BorderRadius.circular(99)),
+          ),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              color: AppColors.coral.withValues(alpha: 0.15),
+            ),
+            alignment: Alignment.center,
+            child: const AdenaIcon('family', size: 28, color: AppColors.coral, sw: 2.2),
+          ),
+          const SizedBox(height: 12),
+          Text(feature,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          Text(desc,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.45,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted)),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.coral,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr('Giriş yap / Hesap oluştur'),
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+            ),
+          ),
+          const SizedBox(height: 6),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(tr('Şimdi değil'),
+                style: TextStyle(
+                    color: AppColors.muted, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (go == true && context.mounted) context.push('/login');
 }
 
 /// Premium tanıtım sayfası (alt sheet). Döner: kullanıcı "Premium'a Geç" dedi mi.

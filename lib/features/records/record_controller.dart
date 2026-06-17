@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/ad_service.dart';
 import '../../data/record_repository.dart';
 import '../../data/subscription_repository.dart';
+import '../../data/sync_gate.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
 import '../babies/baby_controller.dart';
@@ -142,6 +143,9 @@ class SyncService with WidgetsBindingObserver {
   /// — periyodik turda kullanılır. Açılış/yazma/bağlantı olaylarında false: tüm
   /// bebekler bir kez senkronlanır (tek kullanıcı verisi de yüklenip çekilsin).
   Future<void> syncAll({bool sharedOnly = false}) async {
+    // Local-first gating: cloud senkron yalnız oturum açık + premium iken.
+    // Free kullanıcıda kayıtlar yalnız yerelde (drift) tutulur, ağa gitmez.
+    if (!_ref.read(cloudSyncEnabledProvider)) return;
     if (_running) return; // önceki tur bitmeden yenisini başlatma
     _running = true;
     try {

@@ -646,8 +646,6 @@ class _ToothSheetState extends ConsumerState<_ToothSheet> {
             const SizedBox(height: 16),
             AdField(
               label: tr('Çıkış tarihi'),
-              info: tr('Dişin çıktığı günü seç. Emin değilsen yaklaşık bir tarih '
-                  'girebilirsin; sonradan değiştirebilirsin.'),
               child: InkWell(
                 borderRadius: BorderRadius.circular(14),
                 onTap: _pickDate,

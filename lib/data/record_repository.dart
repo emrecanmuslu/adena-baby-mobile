@@ -237,6 +237,28 @@ class RecordRepository {
     });
   }
 
+  /// Tek-seferlik mevcut-kullanıcı import'u: kayıtları `/sync` POST yerine
+  /// salt-okuma `GET /babies/{id}/records` ile sayfalayarak çeker (free kullanıcı
+  /// premium-gated /sync'e yazamaz; GET herkese açık). Yerele temiz yazar.
+  Future<void> importFromCloud(String babyId) async {
+    String? cursor;
+    for (var guard = 0; guard < 500; guard++) {
+      final qp = <String, dynamic>{'limit': 200};
+      if (cursor != null) qp['cursor'] = cursor;
+      final resp =
+          await _api.dio.get('/babies/$babyId/records', queryParameters: qp);
+      final data = resp.data as Map<String, dynamic>;
+      final results = (data['results'] as List? ?? []);
+      await _db.transaction(() async {
+        for (final r in results) {
+          await _applyServerRow(r as Map<String, dynamic>);
+        }
+      });
+      cursor = data['next_cursor'] as String?;
+      if (cursor == null || results.isEmpty) break;
+    }
+  }
+
   Future<void> _applyServerRow(Map<String, dynamic> srv) async {
     DateTime? parse(dynamic v) =>
         (v is String && v.isNotEmpty) ? DateTime.parse(v) : null;

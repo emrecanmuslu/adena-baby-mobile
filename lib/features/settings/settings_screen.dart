@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
+import '../../core/premium_gate.dart';
 import '../../core/theme.dart';
 import '../../core/tour.dart';
 import '../../data/subscription_repository.dart';
@@ -36,6 +36,13 @@ class SettingsScreen extends ConsumerWidget {
       'caregiver' => tr('Bakıcı'),
       _ => null,
     };
+    // Hesap zorunlu → profil her zaman hesaptan gelir.
+    final profileName = user?.displayName ?? '—';
+    final avatarInitial =
+        (profileName.characters.firstOrNull ?? '?').toUpperCase();
+    final profileSubtitle = user != null
+        ? '${user.email}${role != null ? ' · $role' : ''}'
+        : '';
 
     return Scaffold(
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
@@ -51,7 +58,7 @@ class SettingsScreen extends ConsumerWidget {
                   radius: 26,
                   backgroundColor: AppColors.peach,
                   child: Text(
-                    (user?.displayName.characters.firstOrNull ?? '?').toUpperCase(),
+                    avatarInitial,
                     style: const TextStyle(
                         color: AppColors.coralDark,
                         fontWeight: FontWeight.w900,
@@ -63,11 +70,10 @@ class SettingsScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(user?.displayName ?? '—',
+                      Text(profileName.isNotEmpty ? profileName : '—',
                           style: const TextStyle(
                               fontSize: 18, fontWeight: FontWeight.w900)),
-                      Text(
-                          '${user?.email ?? ''}${role != null ? ' · $role' : ''}',
+                      Text(profileSubtitle,
                           style: TextStyle(
                               color: AppColors.muted,
                               fontSize: 12,
@@ -78,7 +84,7 @@ class SettingsScreen extends ConsumerWidget {
                 IconButton(
                   tooltip: tr('Adı düzenle'),
                   icon: Icon(Icons.edit_outlined, color: AppColors.muted),
-                  onPressed: () => _editName(context, ref, user?.name ?? ''),
+                  onPressed: () => _editName(context, ref, profileName),
                 ),
               ],
             ),
@@ -93,7 +99,14 @@ class SettingsScreen extends ConsumerWidget {
             meta: baby?.name,
             // Aile paylaşımı premium — değilse altın "Premium" rozeti.
             trailing: showProBadge ? const AdProBadge(withChevron: true) : null,
-            onTap: baby == null ? null : () => context.push('/members'),
+            // Paylaşım cloud + hesap gerektirir → hesapsızda "giriş yap" istemi.
+            onTap: baby == null
+                ? null
+                : () => requireAccount(context, ref,
+                    feature: tr('Aile / Paylaşım'),
+                    desc: tr('Bebeğini eşin veya bakıcınla paylaşmak için ücretsiz '
+                        'bir hesap oluştur.'),
+                    onAllowed: () => context.push('/members')),
           ),
           // Keşfet (Bebeğin Sağlığı · Topluluk · Uzman Rehberi · Anılar) takip
           // modunda alt menüdeki ✨ slotundan açılır; bekleme modunda alt menü
@@ -127,17 +140,6 @@ class SettingsScreen extends ConsumerWidget {
                 : tr('Reklamsız · aile paylaşımı · bulut yedek'),
             onTap: () => context.push('/premium'),
           ),
-          if (!expecting)
-            AdMenuItem(
-              icon: 'ai',
-              color: AppColors.med,
-              bg: AppColors.medBg,
-              title: tr('AI Veri Dışa Aktarımı'),
-              meta: isPremium ? tr('Doktora hazır özet') : tr('Doktora hazır PDF özet'),
-              // design ScrMenu: premium-kilitli satırda altın "Premium" rozeti.
-              trailing: showProBadge ? const AdProBadge(withChevron: true) : null,
-              onTap: () => context.push('/ai-export'),
-            ),
 
           adSec(tr('Uygulama')),
           AdMenuItem(
@@ -149,7 +151,7 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.push('/appearance'),
           ),
           AdMenuItem(
-            icon: 'star',
+            icon: 'compass',
             color: AppColors.coral,
             bg: AppColors.feedBg,
             title: tr('Tanıtım turları'),
@@ -179,19 +181,6 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const SizedBox.shrink(),
             onTap: () => ref.read(authControllerProvider.notifier).logout(),
           ),
-
-          // Yalnız debug derlemede görünür — bildirim/push testi için.
-          if (kDebugMode) ...[
-            adSec('Geliştirici'),
-            AdMenuItem(
-              icon: 'pulse',
-              color: AppColors.pump,
-              bg: AppColors.pumpBg,
-              title: 'Bildirim & Push Testi',
-              meta: 'Yalnız debug derlemede',
-              onTap: () => context.push('/dev'),
-            ),
-          ],
 
           const SizedBox(height: 8),
           Center(
