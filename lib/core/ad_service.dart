@@ -215,14 +215,22 @@ class AdService {
   /// Uygulama öne geldiğinde (lifecycle resume) çağrılır. İlk çağrı = soğuk
   /// başlangıç/onboarding → gösterilmez, yalnız ön-yüklenir. Sonraki resume'larda
   /// limitler uygunsa app-open gösterilir. [isPremium] → premium reklamsız.
-  Future<void> onAppForeground({required bool isPremium}) async {
+  ///
+  /// [hasBaby] = kullanıcının en az bir bebeği var. Hiç bebek yokken (giriş/
+  /// onboarding, bebek ekleme öncesi) app-open gösterilMEZ — interstitial'lar
+  /// zaten kayıt kaydından geçtiği için doğal olarak bebek gerektirir.
+  Future<void> onAppForeground({
+    required bool isPremium,
+    required bool hasBaby,
+  }) async {
     // İlk foreground (cold start) → gösterme, sadece ön-yükle.
     if (!_firstForegroundSeen) {
       _firstForegroundSeen = true;
-      _loadAppOpen();
+      if (hasBaby) _loadAppOpen();
       return;
     }
     if (isPremium) return;
+    if (!hasBaby) return; // bebek yok → app-open yok
     if (_showingAd) return; // bir reklam zaten ekranda / reklam dönüşü
     // İlk 24 saat reklamsız (debug atlar).
     final first = _firstLaunch;

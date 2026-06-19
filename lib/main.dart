@@ -179,8 +179,13 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     _pollActivity();
     ref.read(babyControllerProvider.notifier).refresh();
     // App-Open reklamı: ilk çağrı (cold start) yalnız ön-yükler; sonraki
-    // resume'larda limitler uygunsa gösterir (premium muaf).
-    AdService.instance.onAppForeground(isPremium: ref.read(isPremiumProvider));
+    // resume'larda limitler uygunsa gösterir (premium muaf). Hiç bebek yokken
+    // (giriş/onboarding) gösterilmez — reklam ancak bebek eklendikten sonra.
+    final babies = ref.read(babyControllerProvider).asData?.value ?? const [];
+    AdService.instance.onAppForeground(
+      isPremium: ref.read(isPremiumProvider),
+      hasBaby: babies.isNotEmpty,
+    );
     // İçeriksiz segment özellikleri (rıza yoksa/debug'da no-op): premium + dil.
     unawaited(AnalyticsService.instance.setUserProperty(
         'is_premium', ref.read(isPremiumProvider) ? 'yes' : 'no'));
