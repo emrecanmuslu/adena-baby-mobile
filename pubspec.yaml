@@ -115,6 +115,7 @@ flutter:
   assets:
     - assets/health_catalog_tr.json
     - assets/health_catalog_en.json
+    - assets/brand/wordmark.svg
 
   # To add assets to your application, add an assets section, like this:
   # assets:

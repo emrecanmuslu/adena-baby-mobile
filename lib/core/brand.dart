@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import 'theme.dart';
 
@@ -25,43 +26,26 @@ class BrandEmblem extends StatelessWidget {
   }
 }
 
-/// "aden❤a baby" kelime-logosu (design .ad-logo / Logo ile birebir).
-/// aden=ink · dolu koyu-mercan kalp · a=koyu-mercan · baby=muted(600), ağırlık 900.
+/// "aden❤a baby" kelime-logosu — Nunito w900 gliflerinden birebir çıkarılmış
+/// **vektör** (assets/brand/wordmark.svg). "aden" `currentColor` ile çizilir;
+/// karanlık temada açık ink rengine döner (kalp/a=mercan, baby=muted sabit).
+/// [fontSize] eski API ile uyumlu: harf em-boyu fontSize'a denk gelir.
 class BrandWordmark extends StatelessWidget {
   final double fontSize;
   const BrandWordmark({super.key, this.fontSize = 34});
+
+  // SVG viewBox yüksekliği / 1000 (em) — em-boyu fontSize'a eşitlemek için.
+  static const double _vhPerEm = 0.9516;
 
   @override
   Widget build(BuildContext context) {
     final inkColor = Theme.of(context).brightness == Brightness.dark
         ? const Color(0xFFF2E8E3)
         : AppColors.ink;
-    return RichText(
-      text: TextSpan(
-        style: TextStyle(
-          fontSize: fontSize,
-          fontWeight: FontWeight.w900,
-          fontFamily: 'Nunito',
-          letterSpacing: -fontSize * 0.02,
-          height: 1.0,
-        ),
-        children: [
-          TextSpan(text: 'aden', style: TextStyle(color: inkColor)),
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: fontSize * 0.02),
-              child: Icon(Icons.favorite,
-                  color: AppColors.coralDark, size: fontSize * 0.42),
-            ),
-          ),
-          const TextSpan(text: 'a', style: TextStyle(color: AppColors.coralDark)),
-          TextSpan(
-            text: ' baby',
-            style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
+    return SvgPicture.asset(
+      'assets/brand/wordmark.svg',
+      height: fontSize * _vhPerEm,
+      theme: SvgTheme(currentColor: inkColor),
     );
   }
 }
