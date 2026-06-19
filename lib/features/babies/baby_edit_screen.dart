@@ -12,6 +12,7 @@ import '../../data/health_repository.dart';
 import '../../models/baby.dart';
 import 'baby_actions.dart';
 import 'baby_controller.dart';
+import 'premature_section.dart';
 
 /// Aktif bebeğin bilgilerini düzenle / sil / "doğdu" geçişi.
 class BabyEditScreen extends ConsumerStatefulWidget {
@@ -25,6 +26,8 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
   late final TextEditingController _name;
   BabyGender _gender = BabyGender.unknown;
   DateTime? _date; // born→birth_date, expecting→due_date
+  int? _gestWeeks; // prematüre: doğumdaki gebelik haftası (null = değil)
+  int _gestDays = 0; // gebelik haftası üstüne gün (0..6)
   bool _saving = false;
   bool _init = false;
 
@@ -40,6 +43,8 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
     _name.text = b.name;
     _gender = b.gender;
     _date = b.isExpecting ? b.dueDate : b.birthDate;
+    _gestWeeks = b.gestationalWeeks;
+    _gestDays = b.gestationalDays;
   }
 
   @override
@@ -75,6 +80,11 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
       'gender': _gender == BabyGender.unknown ? '' : _gender.name,
       if (_date != null)
         (b.isExpecting ? 'due_date' : 'birth_date'): _iso(_date!),
+      // Prematüre alanları yalnız doğmuş bebekte (null → temizle).
+      if (!b.isExpecting) ...{
+        'gestational_age_weeks': _gestWeeks,
+        'gestational_age_days': _gestWeeks == null ? 0 : _gestDays,
+      },
     };
     try {
       await ref.read(babyControllerProvider.notifier).updateBaby(b.id, fields);
@@ -194,6 +204,18 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
                 ),
               ),
             ),
+
+            // Prematüre girişi yalnız doğmuş bebekte (bekleme modunda gizli).
+            if (isBorn)
+              PrematureSection(
+                weeks: _gestWeeks,
+                days: _gestDays,
+                onChanged: (w, d) => setState(() {
+                  _gestWeeks = w;
+                  _gestDays = d;
+                }),
+              ),
+
             const SizedBox(height: 14),
 
             _saving

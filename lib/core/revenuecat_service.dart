@@ -19,7 +19,7 @@ class RevenueCatService {
   static final RevenueCatService instance = RevenueCatService._();
 
   /// RC dashboard'daki entitlement tanımlayıcısı (Offerings ile aynı olmalı).
-  static const String entitlementId = 'premium';
+  static const String entitlementId = 'Adena Baby Pro';
 
   bool _configured = false;
   bool get isConfigured => _configured;

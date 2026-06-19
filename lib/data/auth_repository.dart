@@ -46,6 +46,31 @@ class AuthRepository {
     return _consumeAuth(resp.data as Map<String, dynamic>);
   }
 
+  /// Parola sıfırlama kodu ister (POST /auth/password/forgot). Sunucu, hesap
+  /// var olsun olmasın her zaman 200 döner (e-posta varlığı sızdırılmaz).
+  Future<void> forgotPassword(String email) async {
+    await _dio.post(
+      '/auth/password/forgot',
+      data: {'email': email},
+      options: Options(extra: {'noAuth': true}),
+    );
+  }
+
+  /// Kod + yeni şifreyle sıfırlar (POST /auth/password/reset). Başarılıysa sunucu
+  /// token döner → kullanıcı otomatik giriş yapmış olur (login gibi işlenir).
+  Future<User> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final resp = await _dio.post(
+      '/auth/password/reset',
+      data: {'email': email, 'code': code, 'new_password': newPassword},
+      options: Options(extra: {'noAuth': true}),
+    );
+    return _consumeAuth(resp.data as Map<String, dynamic>);
+  }
+
   /// Sosyal giriş: sağlayıcının id_token'ını backend'e doğrulatır (kullanıcı
   /// yoksa oluşturulur), JWT döner. provider: 'google' | 'apple'.
   Future<User> social({required String provider, required String idToken}) async {

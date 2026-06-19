@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ad_service.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
+import '../../data/subscription_repository.dart';
 import '../../models/cycle.dart';
 import 'cycle_engine.dart';
 import 'cycle_widgets.dart';
@@ -104,7 +108,14 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
       final flags = _symptoms.where(redFlagSymptoms.contains).toList();
       Navigator.pop(context);
       showAdToast(context, tr('Kaydedildi'));
-      if (flags.isNotEmpty) showCycleRedFlag(context, flags);
+      if (flags.isNotEmpty) {
+        showCycleRedFlag(context, flags); // sağlık uyarısı üstüne reklam koyma
+      } else {
+        // Tamamlanan adet kaydı → interstitial sayılır (frekans/grace/premium
+        // limitleri AdService'te).
+        unawaited(AdService.instance
+            .onRecordSaved(isPremium: ref.read(isPremiumProvider)));
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);

@@ -10,6 +10,7 @@ import '../core/revenuecat_service.dart';
 import '../features/auth/auth_controller.dart';
 import '../models/pricing.dart';
 import '../models/subscription.dart';
+import 'local_session.dart';
 import 'subscription_cache.dart';
 
 /// Abonelik + AI dışa aktarım uçları (API §9).
@@ -21,6 +22,21 @@ class SubscriptionRepository {
   /// Her başarılı yanıtta premium durumunu kalıcı cache'e yaz (açılış flaş'ını önler).
   Subscription _store(Subscription s) {
     unawaited(_cache.write(s.isPremium));
+    // Cloud verisi SADECE gerçekten silindiyse (manuel "buluttan sil" ya da grace sonu
+    // cron purge → sunucu cloud_purged_at damgası) "tam yüklendi" bayrağını temizle →
+    // yeniden abonelikte migrasyon tam yeniden-yükleme yapsın. Grace içinde (cloud hâlâ
+    // dolu, purge YOK) bayrak korunur → yeniden abonelikte zaten cloud'da olan veri
+    // TEKRAR YÜKLENMEZ (veri/maliyet/bekleme tasarrufu). Damga "işlenen"den yeni mi
+    // diye karşılaştırılır (aynı purge iki kez tetiklemesin).
+    final acct = LocalSession.activeAccountId;
+    final purged = s.cloudPurgedAt;
+    if (acct != null && purged != null) {
+      final handled = LocalSession.lastPurgeHandled(acct);
+      if (handled == null || purged.isAfter(handled)) {
+        unawaited(LocalSession.clearPremiumSyncedForAccount(acct));
+        unawaited(LocalSession.setPurgeHandled(acct, purged));
+      }
+    }
     return s;
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/ad_banner.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
@@ -159,6 +160,7 @@ class _CommunityFeedScreenState extends ConsumerState<CommunityFeedScreen> {
         label: Text(tr('Soru sor'),
             style: const TextStyle(fontWeight: FontWeight.w900)),
       ),
+      bottomNavigationBar: const AdBanner(),
       body: Column(
         children: [
           _SearchBar(

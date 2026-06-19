@@ -70,6 +70,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
   @override
   Widget build(BuildContext context) {
     final loggedIn = ref.watch(authControllerProvider).asData?.value != null;
+    final analyticsOn = ref.watch(localAnalyticsConsentProvider);
     // Bulut yedeği yalnız premium + oturum açıkken aktif (local-first).
     final cloudBackup = ref.watch(cloudSyncEnabledProvider);
     return Scaffold(
@@ -164,6 +165,24 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
             tr('Verilerini satmıyoruz. Hizmeti sunmak için kullandığımız üçüncü '
                 'taraflar (analitik, ödeme, reklam) Gizlilik Politikası\'nda '
                 'açıklanır. Aile üyeleri yalnızca paylaştığın bebeği görür.'),
+          ),
+          AdMenuItem(
+            icon: 'compass',
+            color: AppColors.sleep,
+            bg: AppColors.sleepBg,
+            title: tr('Kullanım analitiği'),
+            meta: analyticsOn
+                ? tr('Açık · isimsiz kullanım verisiyle uygulamayı geliştiriyoruz')
+                : tr('Kapalı · kullanım verisi toplanmaz'),
+            trailing: Switch.adaptive(
+              value: analyticsOn,
+              activeThumbColor: AppColors.coral,
+              onChanged: (v) =>
+                  ref.read(localAnalyticsConsentProvider.notifier).set(v),
+            ),
+            onTap: () => ref
+                .read(localAnalyticsConsentProvider.notifier)
+                .set(!analyticsOn),
           ),
           adSec(tr('Yasal')),
           AdMenuItem(

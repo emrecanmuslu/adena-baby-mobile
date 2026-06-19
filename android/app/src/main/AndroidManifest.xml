@@ -36,6 +36,12 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- AdMob uygulama kimliği (interstitial reklam). Birim id'leri dart-define
+             ile gelir; debug'da Google test id'leri kullanılır (ad_service.dart). -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-2269501677957979~9555308420" />
+
         <!-- flutter_local_notifications: planlı bildirim + yeniden başlatma sonrası -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"

@@ -2,21 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/adena_icons.dart';
+import '../../core/age.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../models/article.dart';
 import '../../models/baby.dart';
 
 /// Bebeğin yaşını ay olarak verir (bekleme modu/doğum yok → null).
-int? babyAgeMonths(Baby? b) {
-  if (b == null || b.isExpecting) return null;
-  final bd = b.birthDate;
-  if (bd == null) return null;
-  final now = DateTime.now();
-  var m = (now.year - bd.year) * 12 + (now.month - bd.month);
-  if (now.day < bd.day) m -= 1;
-  return m < 0 ? 0 : m;
-}
+/// İçerik önerileri yaşa göre filtrelendiği için prematüre bebeklerde
+/// düzeltilmiş yaş kullanılır ([correctedAgeMonths]); term bebekte takvim
+/// yaşına eşittir. Saf / test edilebilir.
+int? babyAgeMonths(Baby? b) => correctedAgeMonths(b);
 
 /// "#9B8CE8" → Color (geçersizse null).
 Color? parseHexColor(String? hex) {

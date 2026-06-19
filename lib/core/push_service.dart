@@ -67,6 +67,13 @@ Future<void> handlePushMessage(RemoteMessage message) async {
     return;
   }
 
+  // baby_update = sahip bebek profilini değiştirdi (gebelik→doğdu vb). Sessiz: görünür
+  // bildirim yok. Ön planda main.dart bebek listesini tazeler; arka planda ise bir
+  // sonraki öne gelişte (_onForeground → babyController.refresh) status güncellenir.
+  if (type == 'baby_update') {
+    return;
+  }
+
   // 2) Bildirimi göster.
   // iOS'ta görünür 'notification' payload'ı APNs tarafından zaten gösterilir →
   // tekrar yerel bildirim basma (çift olmasın). Android data-only geldiği için

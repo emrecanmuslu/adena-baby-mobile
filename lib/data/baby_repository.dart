@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/analytics_service.dart';
 import '../core/api_client.dart';
 import '../core/providers.dart';
 import '../models/baby.dart';
@@ -31,6 +32,21 @@ class BabyRepository {
     return q.watch().map((rows) => rows.map(_toModel).toList());
   }
 
+  /// Buluttan inmiş (dirty=false) en az bir bebek var mı? initialImport sonrası
+  /// kullanılır: bulut bu hesabın verisini zaten taşıyorsa free→premium "yükleme
+  /// göçü" overlay'i tetiklenmemeli (veri indirildi, yüklenmedi).
+  Future<bool> hasCleanBabies() async {
+    final acct = LocalSession.activeAccountId;
+    if (acct == null) return false;
+    final rows = await (_db.select(_db.babies)
+          ..where((b) =>
+              b.accountId.equals(acct) &
+              b.isDeleted.equals(false) &
+              b.dirty.equals(false)))
+        .get();
+    return rows.isNotEmpty;
+  }
+
   Future<List<Baby>> getAll() async {
     final acct = LocalSession.activeAccountId;
     if (acct == null) return const [];
@@ -55,6 +71,8 @@ class BabyRepository {
             birthDate: Value(baby.birthDate),
             dueDate: Value(baby.dueDate),
             lastMenstrualDate: Value(baby.lastMenstrualDate),
+            gestationalWeeks: Value(baby.gestationalWeeks),
+            gestationalDays: Value(baby.gestationalDays),
             myRole: Value(baby.myRole ?? 'owner'),
             memberCount: Value(baby.memberCount),
             clientUpdatedAt: Value(DateTime.now().toUtc()),
@@ -90,6 +108,12 @@ class BabyRepository {
           : const Value.absent(),
       lastMenstrualDate: fields.containsKey('last_menstrual_date')
           ? Value(d(fields['last_menstrual_date']))
+          : const Value.absent(),
+      gestationalWeeks: fields.containsKey('gestational_age_weeks')
+          ? Value((fields['gestational_age_weeks'] as num?)?.toInt())
+          : const Value.absent(),
+      gestationalDays: fields.containsKey('gestational_age_days')
+          ? Value((fields['gestational_age_days'] as num?)?.toInt() ?? 0)
           : const Value.absent(),
       clientUpdatedAt: Value(DateTime.now().toUtc()),
       dirty: const Value(true),
@@ -164,6 +188,8 @@ class BabyRepository {
                 birthDate: Value(b.birthDate),
                 dueDate: Value(b.dueDate),
                 lastMenstrualDate: Value(b.lastMenstrualDate),
+                gestationalWeeks: Value(b.gestationalWeeks),
+                gestationalDays: Value(b.gestationalDays),
                 myRole: Value(b.myRole),
                 memberCount: Value(b.memberCount),
                 clientUpdatedAt: const Value.absent(),
@@ -171,9 +197,14 @@ class BabyRepository {
               ),
             );
       }
-      // Sunucuda olmayan + yerelde temiz (push beklemeyen) bebek = erişim kalktı.
+      // Yalnız PAYLAŞILAN (sahibi başkası) bebek otomatik kaldırılır: sunucudan
+      // düşüp yerelde temizse erişim kalkmıştır (paylaşımdan çıkarılma / sahibin
+      // premium'unun bitmesi). KENDİ (sahip) bebeğim asla pull ile silinmez — pull
+      // artık free/lapsed oturumda da koşuyor, local-first gereği sahip verisi korunur
+      // (kendi bebeğimin silinmesi yalnız açık delete ile, pushDirty üzerinden olur).
       for (final r in localRows) {
-        if (!freshIds.contains(r.id) && !r.dirty) {
+        final shared = r.myRole == 'parent' || r.myRole == 'caregiver';
+        if (shared && !freshIds.contains(r.id) && !r.dirty) {
           removed.add(_toModel(r));
           await (_db.delete(_db.babies)..where((b) => b.id.equals(r.id))).go();
         }
@@ -182,10 +213,33 @@ class BabyRepository {
     return removed;
   }
 
+  /// free→premium migrasyonunda TAM yükleme garanti et: aktif hesabın tüm
+  /// bebeklerini dirty işaretle. Grace sonrası cloud silinmişse (ya da kullanıcı
+  /// "buluttan sil" demişse) eski temiz kayıtlar da yeniden yüklensin diye gerekir.
+  Future<void> markAllDirty() async {
+    final acct = LocalSession.activeAccountId;
+    if (acct == null) return;
+    // YALNIZ sahip olunan bebekler. Paylaşımlı (myRole='parent'/'caregiver') bebek
+    // sahibine ait → üye onu buluta YÜKLEMEZ (POST /babies 403 döner) ve migrasyon
+    // overlay'i de göstermez. Yerelde myRole owner/null = sahiplik.
+    await (_db.update(_db.babies)
+          ..where((b) =>
+              b.accountId.equals(acct) &
+              (b.myRole.equals('owner') | b.myRole.isNull())))
+        .write(const BabiesCompanion(dirty: Value(true)));
+  }
+
   /// Yerel dirty bebekleri sunucuya gönderir (premium push). Migrasyon/edit sonrası.
+  /// YALNIZ aktif hesabın SAHİP olduğu bebekler — çoklu yerel hesapta başka hesabın
+  /// verisini yüklememek + paylaşımlı (sahibi başkası) bebeği POST'layıp 403 almamak için.
   Future<void> pushDirty() async {
+    final acct = LocalSession.activeAccountId;
+    if (acct == null) return;
     final dirty = await (_db.select(_db.babies)
-          ..where((b) => b.dirty.equals(true)))
+          ..where((b) =>
+              b.dirty.equals(true) &
+              b.accountId.equals(acct) &
+              (b.myRole.equals('owner') | b.myRole.isNull())))
         .get();
     for (final r in dirty) {
       try {
@@ -224,6 +278,7 @@ class BabyRepository {
       'role': role,
       if (email != null && email.isNotEmpty) 'email': email,
     });
+    await AnalyticsService.instance.log('family_invite_sent', {'role': role});
     return resp.data as Map<String, dynamic>;
   }
 
@@ -267,6 +322,8 @@ class BabyRepository {
         birthDate: r.birthDate,
         dueDate: r.dueDate,
         lastMenstrualDate: r.lastMenstrualDate,
+        gestationalWeeks: r.gestationalWeeks,
+        gestationalDays: r.gestationalDays,
         myRole: r.myRole,
         memberCount: r.memberCount,
       );

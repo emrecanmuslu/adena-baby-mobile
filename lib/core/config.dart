@@ -83,4 +83,28 @@ class AppConfig {
     'ADMOB_IOS_INTERSTITIAL_ID',
     defaultValue: '',
   );
+
+  // App-Open reklam birim id'leri (uygulama öne gelince). Boşsa app-open
+  // gösterilmez. Debug'da Google test id'leri kullanılır (ad_service.dart).
+  static const String admobAndroidAppOpenId = String.fromEnvironment(
+    'ADMOB_ANDROID_APP_OPEN_ID',
+    defaultValue: '',
+  );
+
+  static const String admobIosAppOpenId = String.fromEnvironment(
+    'ADMOB_IOS_APP_OPEN_ID',
+    defaultValue: '',
+  );
+
+  // Banner reklam birim id'leri (içerik/liste ekranları). Boşsa banner
+  // gösterilmez. Debug'da Google test id'leri kullanılır (banner widget).
+  static const String admobAndroidBannerId = String.fromEnvironment(
+    'ADMOB_ANDROID_BANNER_ID',
+    defaultValue: '',
+  );
+
+  static const String admobIosBannerId = String.fromEnvironment(
+    'ADMOB_IOS_BANNER_ID',
+    defaultValue: '',
+  );
 }

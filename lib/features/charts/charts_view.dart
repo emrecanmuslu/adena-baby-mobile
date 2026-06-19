@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_widgets.dart';
+import '../../core/age.dart';
+import '../../core/analytics_service.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
@@ -51,6 +54,13 @@ class ChartsView extends ConsumerStatefulWidget {
 
 class _ChartsViewState extends ConsumerState<ChartsView> {
   int _sel = 0; // seçili ölçü
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(AnalyticsService.instance
+        .log('chart_viewed', {'chart_type': _measures[_sel].key}));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -237,6 +247,13 @@ class _PercentileSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final birth = baby?.birthDate;
     final gender = baby?.gender ?? BabyGender.unknown;
+    // Prematüre bebekte WHO eğrisi düzeltilmiş yaşa göre çizilir: efektif doğum
+    // anı = doğum + erken doğum süresi. Term bebekte birth ile aynıdır, davranış
+    // değişmez. Düzeltme rozeti yalnız aktifken (usesCorrectedAge) gösterilir.
+    final corrected = usesCorrectedAge(baby);
+    final effBirth = (birth != null && baby != null && baby!.isPremature)
+        ? birth.add(Duration(days: prematureEarlyDays(baby)))
+        : birth;
 
     // Seçili ölçünün ölçümleri (eskiden yeniye), yaş (ay) + kanonik değer.
     final growth = records
@@ -248,9 +265,9 @@ class _PercentileSection extends StatelessWidget {
 
     // Grafikte işaretlenecek noktalar (0–60 ay).
     final babyPts = <({double age, double v})>[];
-    if (birth != null) {
+    if (effBirth != null) {
       for (final r in growth) {
-        final age = r.ts.difference(birth).inHours / 24 / 30.4375;
+        final age = r.ts.difference(effBirth).inHours / 24 / 30.4375;
         if (age < 0 || age > WhoGrowth.maxMonth) continue;
         babyPts.add((age: age, v: (r.data[measure.field] as num).toDouble()));
       }
@@ -265,8 +282,8 @@ class _PercentileSection extends StatelessWidget {
     final latestCanon =
         hasData ? (growth.last.data[measure.field] as num).toDouble() : null;
     double? latestAge;
-    if (birth != null && hasData) {
-      latestAge = growth.last.ts.difference(birth).inHours / 24 / 30.4375;
+    if (effBirth != null && hasData) {
+      latestAge = growth.last.ts.difference(effBirth).inHours / 24 / 30.4375;
     }
     final pct = (canPct && latestCanon != null && latestAge != null)
         ? WhoGrowth.percentile(measure.key, gender, latestAge, latestCanon)
@@ -312,6 +329,7 @@ class _PercentileSection extends StatelessWidget {
         babyName: baby?.name ?? tr('Bebek'),
         pct: pct,
         hasData: hasData,
+        corrected: corrected,
       ));
     }
 
@@ -394,6 +412,7 @@ class _ChartCard extends StatelessWidget {
   final String babyName;
   final double? pct;
   final bool hasData;
+  final bool corrected;
 
   const _ChartCard({
     required this.measure,
@@ -404,6 +423,7 @@ class _ChartCard extends StatelessWidget {
     required this.babyName,
     required this.pct,
     required this.hasData,
+    required this.corrected,
   });
 
   @override
@@ -441,6 +461,34 @@ class _ChartCard extends StatelessWidget {
                 ),
             ],
           ),
+          if (corrected) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Flexible(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.feedBg,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(tr('Düzeltilmiş yaşa göre çizilir'),
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.coralDd)),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                AdInfoDot(
+                  title: tr('Düzeltilmiş yaş'),
+                  body: correctedAgeInfoBody(),
+                  size: 15,
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 8),
           AspectRatio(
             aspectRatio: 300 / 188,

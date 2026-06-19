@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/age.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/dates.dart';
@@ -566,53 +567,10 @@ class _DashedPillBorder extends CustomPainter {
 }
 
 /// Sekme için kısa yaş etiketi — "5 gün", "2 ay 5 gün", "3 yaş 4 ay",
-/// bekleme: "Bekliyor". Ay/gün takvim-doğru hesaplanır (30.44 yaklaşımı değil).
-String _babyAgeShort(Baby b) {
-  if (b.isExpecting) {
-    final due = b.dueDate;
-    if (due == null) return tr('Bekliyor');
-    // Bekleme ekranıyla BİREBİR aynı hesap: gün farkı gece yarısı bazlı olmalı
-    // (DateTime.now() saat dahil olduğundan kalan günü 1 eksik sayıp haftayı
-    // sınırda kaydırabilir). daysPregnant = 280 - kalan, hafta = tam bölüm.
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final daysLeft = due.difference(today).inDays;
-    final daysPregnant = (280 - daysLeft).clamp(0, 280);
-    final weeks = daysPregnant ~/ 7;
-    return trp('{w}. hf', {'w': weeks});
-  }
-  final birth = b.birthDate;
-  if (birth == null) return tr('Takip');
-  final now = DateTime.now();
-  final bd = DateTime(birth.year, birth.month, birth.day);
-  final today = DateTime(now.year, now.month, now.day);
-  if (today.isBefore(bd)) return tr('Takip');
-
-  // Takvim bazlı yaş: yıl/ay/gün farkı (ay gün taşımalı).
-  var years = today.year - bd.year;
-  var months = today.month - bd.month;
-  var days = today.day - bd.day;
-  if (days < 0) {
-    months -= 1;
-    days += DateTime(today.year, today.month, 0).day; // önceki ayın gün sayısı
-  }
-  if (months < 0) {
-    years -= 1;
-    months += 12;
-  }
-  final totalMonths = years * 12 + months;
-
-  // 1 aydan küçük → yalnız gün.
-  if (totalMonths < 1) return trp('{n} gün', {'n': days});
-  // 2 yaşından küçük → ay + gün.
-  if (totalMonths < 24) {
-    final ay = trp('{n} ay', {'n': totalMonths});
-    return days > 0 ? '$ay ${trp('{n} gün', {'n': days})}' : ay;
-  }
-  // 2 yaş ve üzeri → yaş + ay.
-  final yas = trp('{n} yaş', {'n': years});
-  return months > 0 ? '$yas ${trp('{n} ay', {'n': months})}' : yas;
-}
+/// bekleme: "Bekliyor". Prematüre + düzeltme etkinse düzeltilmiş kısa yaşı
+/// gösterir (kompakt sekme rozetinde ikili etiket sığmaz); term bebekte takvim
+/// yaşına eşittir. Saf hesap [correctedAgeShort] içine taşındı (test edilebilir).
+String _babyAgeShort(Baby b) => correctedAgeShort(b);
 
 /// Bölüm başlığı (design .ad-sec): uppercase, muted, kalın, harf aralıklı.
 /// [top] ile üst boşluk ayarlanır (ilk bölümde küçük tutulur).
@@ -715,6 +673,8 @@ class _HomeTab extends ConsumerWidget {
         children: [
           // Local-first: free kullanıcıya "verin yalnız bu telefonda" yedek uyarısı.
           const BackupNagBanner(),
+          // Paylaşılan bebek + sahip premium bitti: eklenenler yalnız yerelde kalıyor.
+          const SharedReadonlyBanner(),
           if (ongoing != null) _SleepBanner(sleep: ongoing),
           if (ongoingBreast != null) _BreastBanner(feed: ongoingBreast),
           _EditableSec(
@@ -1047,14 +1007,7 @@ class _MilestoneSection extends ConsumerWidget {
     );
   }
 
-  static int? _ageMonths(Baby? b) {
-    final bd = b?.birthDate;
-    if (bd == null) return null;
-    final now = DateTime.now();
-    var m = (now.year - bd.year) * 12 + (now.month - bd.month);
-    if (now.day < bd.day) m -= 1;
-    return m < 0 ? 0 : m;
-  }
+  static int? _ageMonths(Baby? b) => ageInMonths(b);
 }
 
 class _MilestoneRow extends StatelessWidget {

@@ -9,13 +9,20 @@ class ApiClient {
   final Dio dio;
   final TokenStorage _tokens;
 
-  ApiClient(this._tokens)
+  /// Refresh isteğinin atıldığı ayrı Dio. Varsayılan: aynı baseUrl ile taze bir
+  /// Dio (üretim davranışı değişmez). Test, buraya DioAdapter'lı bir Dio
+  /// enjekte ederek /auth/refresh'i stub'layabilir.
+  final Dio _refreshClient;
+
+  ApiClient(this._tokens, {Dio? refreshClient})
       : dio = Dio(BaseOptions(
           baseUrl: AppConfig.apiBaseUrl,
           contentType: 'application/json',
           connectTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 20),
-        )) {
+        )),
+        _refreshClient =
+            refreshClient ?? Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl)) {
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         // Aktif dili gönder → sunucu (DRF/Django) hata mesajlarını bu dilde
@@ -50,7 +57,7 @@ class ApiClient {
     final refresh = await _tokens.refreshToken;
     if (refresh == null) return false;
     try {
-      final resp = await Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl))
+      final resp = await _refreshClient
           .post('/auth/refresh', data: {'refresh': refresh});
       await _tokens.saveTokens(
         access: resp.data['access'] as String,

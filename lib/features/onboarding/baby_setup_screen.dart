@@ -13,6 +13,7 @@ import '../../models/baby.dart';
 import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 import '../babies/baby_switcher.dart';
+import '../babies/premature_section.dart';
 
 /// Bebek kurulumu: "Bebek doğdu mu?" → ad/tarih → oluştur.
 /// [onboarding] true → ilk kurulum (router yönlendirir); false → ek bebek (geri döner).
@@ -31,6 +32,8 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   DateTime? _date; // doğmuşsa doğum tarihi, gebelikse tahmini doğum tarihi (TDT)
   bool _useLmp = false; // gebelik: TDT yerine SAT'tan hesapla
   DateTime? _lmp; // son adet tarihi (SAT) — TDT bundan üretilir
+  int? _gestWeeks; // prematüre: doğumdaki gebelik haftası (null = değil)
+  int _gestDays = 0; // gebelik haftası üstüne gün (0..6)
   bool _saving = false;
 
   /// Gebelik = 40 hafta. Naegele kuralı: TDT = SAT + 280 gün.
@@ -92,6 +95,8 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
             gender: _gender,
             birthDate: _status == BabyStatus.born ? _date : null,
             dueDate: _status == BabyStatus.expecting ? _date : null,
+            gestationalWeeks: _status == BabyStatus.born ? _gestWeeks : null,
+            gestationalDays: _status == BabyStatus.born ? _gestDays : 0,
           );
       ref.read(activeBabyIdProvider.notifier).set(baby.id);
       // Onboarding'de router redirect ana sayfaya götürür; ek bebekte elle dön.
@@ -162,6 +167,11 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                   onSelect: (v) => setState(() {
                     _status = v == 'born' ? BabyStatus.born : BabyStatus.expecting;
                     _date = null;
+                    // Bekleme moduna geçince prematüre girişini temizle.
+                    if (_status == BabyStatus.expecting) {
+                      _gestWeeks = null;
+                      _gestDays = 0;
+                    }
                   }),
                   items: [
                     (key: 'born', label: tr('🎉 Doğdu'), small: tr('Hemen takip')),
@@ -244,6 +254,17 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                   ],
                 ),
               ),
+
+              // Prematüre girişi yalnız doğmuş bebekte (bekleme modunda gizli).
+              if (isBorn)
+                PrematureSection(
+                  weeks: _gestWeeks,
+                  days: _gestDays,
+                  onChanged: (w, d) => setState(() {
+                    _gestWeeks = w;
+                    _gestDays = d;
+                  }),
+                ),
 
               if (!isBorn) const SizedBox(height: 2),
               AdField(

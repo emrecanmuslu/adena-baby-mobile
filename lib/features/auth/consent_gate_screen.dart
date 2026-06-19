@@ -23,6 +23,7 @@ class ConsentGateScreen extends ConsumerStatefulWidget {
 
 class _ConsentGateScreenState extends ConsumerState<ConsentGateScreen> {
   bool _accepted = false;
+  bool _analytics = false; // opsiyonel kullanım analitiği rızası (varsayılan kapalı)
   bool _saving = false;
 
   Future<void> _continue() async {
@@ -35,6 +36,7 @@ class _ConsentGateScreenState extends ConsumerState<ConsentGateScreen> {
       // Rıza her zaman YERELDE kaydedilir (hesaptan bağımsız). Oturum açıksa
       // backend'e de yazılır (consentRequired düşer). Router'ı yerel rıza açar.
       await ref.read(localConsentProvider.notifier).accept();
+      await ref.read(localAnalyticsConsentProvider.notifier).set(_analytics);
       if (ref.read(authControllerProvider).asData?.value != null) {
         await ref.read(authControllerProvider.notifier).recordConsent();
       }
@@ -93,6 +95,46 @@ class _ConsentGateScreenState extends ConsumerState<ConsentGateScreen> {
                     child: LegalConsentCheckbox(
                       value: _accepted,
                       onChanged: (v) => setState(() => _accepted = v),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Opsiyonel: kullanım analitiği rızası (işaretsiz; "Devam"ı engellemez).
+                  InkWell(
+                    onTap: () => setState(() => _analytics = !_analytics),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: Checkbox(
+                              value: _analytics,
+                              activeColor: AppColors.coral,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              onChanged: (v) =>
+                                  setState(() => _analytics = v ?? false),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              tr('İsteğe bağlı: uygulamayı geliştirmemize yardımcı '
+                                  'olmak için isimsiz kullanım istatistiklerini paylaş. '
+                                  'İstediğin an Ayarlar\'dan kapatabilirsin.'),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: AppColors.muted,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 18),

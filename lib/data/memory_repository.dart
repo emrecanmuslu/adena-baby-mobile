@@ -24,7 +24,9 @@ class MemoryRepository {
   final AppDatabase _db;
   final ApiClient _api;
   final String _localUserId;
-  final bool Function() _cloudEnabled;
+  /// Bu BEBEK bulut senkronuna tabi mi? Per-baby (Seçenek 2): paylaşılan bebek
+  /// sahibin premium'uyla senkronlanır, kendi bebeğim kendi premium'umla.
+  final bool Function(String babyId) _cloudEnabled;
 
   MemoryRepository(this._db, this._api, this._localUserId, this._cloudEnabled);
 
@@ -32,7 +34,7 @@ class MemoryRepository {
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   Future<List<Memory>> list(String babyId) async {
-    if (_cloudEnabled()) {
+    if (_cloudEnabled(babyId)) {
       try {
         await pushDirty(babyId);
         await _pull(babyId);
@@ -70,7 +72,7 @@ class MemoryRepository {
             dirty: const Value(true),
           ),
         );
-    if (_cloudEnabled()) {
+    if (_cloudEnabled(babyId)) {
       try {
         await pushDirty(babyId);
       } catch (_) {}
@@ -86,7 +88,7 @@ class MemoryRepository {
         clientUpdatedAt: Value(DateTime.now().toUtc()),
       ),
     );
-    if (_cloudEnabled()) {
+    if (_cloudEnabled(babyId)) {
       try {
         await pushDirty(babyId);
       } catch (_) {}
@@ -97,6 +99,11 @@ class MemoryRepository {
 
   /// Tek-seferlik mevcut-kullanıcı import'u için (premium gate'inden bağımsız).
   Future<void> importFromCloud(String babyId) => _pull(babyId);
+
+  /// Erişim kaldırılınca (paylaşımdan düşme) bu bebeğin tüm anılarını yerelden sil.
+  Future<void> purgeBaby(String babyId) async {
+    await (_db.delete(_db.memories)..where((m) => m.baby.equals(babyId))).go();
+  }
 
   Future<void> _pull(String babyId) async {
     final resp = await _api.dio.get('/babies/$babyId/memories');
@@ -119,6 +126,21 @@ class MemoryRepository {
             );
       }
     });
+  }
+
+  /// Migrasyonda tam yükleme için bu bebeğin TÜM anılarını dirty işaretle.
+  /// Yerel foto kopyası olanların cloud URL'ini de temizle → pushDirty fotoyu
+  /// yeniden gönderir (grace-purge sonrası cloud'da foto kalmamış olabilir).
+  /// Yerel kopyası olmayanlarda (yalnız cloud URL) foto geri yüklenemez, yalnız
+  /// metadata dirty olur.
+  Future<void> markAllDirty(String babyId) async {
+    await (_db.update(_db.memories)
+          ..where((m) => m.baby.equals(babyId) & m.localPhotoPath.isNotNull()))
+        .write(const MemoriesCompanion(
+            photo: Value(null), dirty: Value(true)));
+    await (_db.update(_db.memories)
+          ..where((m) => m.baby.equals(babyId) & m.localPhotoPath.isNull()))
+        .write(const MemoriesCompanion(dirty: Value(true)));
   }
 
   /// Yerel dirty anıları sunucuya yollar (premium / migrasyon). Foto varsa
@@ -196,7 +218,7 @@ final memoryRepositoryProvider = Provider<MemoryRepository>(
     ref.watch(databaseProvider),
     ref.watch(apiClientProvider),
     ref.watch(localUserIdProvider),
-    () => ref.read(cloudSyncEnabledProvider),
+    (babyId) => ref.read(babyCloudSyncedProvider(babyId)),
   ),
 );
 

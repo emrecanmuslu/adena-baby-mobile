@@ -45,6 +45,9 @@ class Babies extends Table with _SyncCols {
   DateTimeColumn get birthDate => dateTime().nullable()();
   DateTimeColumn get dueDate => dateTime().nullable()();
   DateTimeColumn get lastMenstrualDate => dateTime().nullable()();
+  // Prematüre: doğumdaki gebelik haftası/günü. null hafta = bilinmiyor/zamanında.
+  IntColumn get gestationalWeeks => integer().nullable()();
+  IntColumn get gestationalDays => integer().withDefault(const Constant(0))();
   TextColumn get myRole => text().nullable()();
   IntColumn get memberCount => integer().withDefault(const Constant(1))();
   // Aile ayarları (units, enabled_types, defaults, reminder_schedule,
@@ -132,6 +135,35 @@ class SyncCursors extends Table {
   Set<Column> get primaryKey => {baby};
 }
 
+/// Sağlık durumu (aşı/gelişim/diş işaretleri) — local-first. Katalog (hangi
+/// kalemler) içerik olarak ayrı gelir; burada YALNIZ bebeğe özel durum tutulur.
+/// `kind` = vaccine|milestone|tooth, `itemKey` = aşı adı / milestone-diş key.
+/// Premium'da tüm küme `/health/sync` ile buluta yansıtılır (son-yazan-kazanır).
+@DataClassName('HealthStatusRow')
+class HealthStatuses extends Table {
+  TextColumn get baby => text()();
+  TextColumn get kind => text()(); // vaccine | milestone | tooth
+  TextColumn get itemKey => text()();
+  BoolColumn get done => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get statusDate => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {baby, kind, itemKey};
+}
+
+/// Hatırlatıcı (özel/randevu) — local-first. Bildirim sistemi kimliği olarak
+/// yerel autoincrement `localId` kullanılır (NotificationService int id ister).
+/// Premium'da tüm küme `/health/sync` ile buluta yansıtılır (replace-set).
+@DataClassName('ReminderRow')
+class LocalReminders extends Table {
+  IntColumn get localId => integer().autoIncrement()();
+  TextColumn get baby => text()();
+  TextColumn get type => text().withDefault(const Constant('custom'))();
+  TextColumn get scheduleJson => text().withDefault(const Constant('{}'))();
+  BoolColumn get enabled => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().nullable()();
+}
+
 @DriftDatabase(tables: [
   Records,
   Babies,
@@ -140,12 +172,14 @@ class SyncCursors extends Table {
   CycleSettingsTable,
   CycleEntries,
   SyncCursors,
+  HealthStatuses,
+  LocalReminders,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -176,6 +210,16 @@ class AppDatabase extends _$AppDatabase {
             // (id=accountId) olur; eski 'me' satırı sahipsiz kalır.
             await m.addColumn(babies, babies.accountId);
             await m.addColumn(cycleEntries, cycleEntries.accountId);
+          }
+          if (from < 6) {
+            // Prematüre desteği: doğumdaki gebelik yaşı kolonları.
+            await m.addColumn(babies, babies.gestationalWeeks);
+            await m.addColumn(babies, babies.gestationalDays);
+          }
+          if (from < 7) {
+            // Sağlık local-first: aşı/gelişim/diş durumu + hatırlatıcılar yerelde.
+            await m.createTable(healthStatuses);
+            await m.createTable(localReminders);
           }
         },
       );

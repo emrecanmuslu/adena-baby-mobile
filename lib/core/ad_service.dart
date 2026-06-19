@@ -1,26 +1,29 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:go_router/go_router.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-import 'adena_icons.dart';
 import 'config.dart';
-import 'i18n.dart';
-import 'theme.dart';
 
-/// Reklam overlay'ini (placeholder/interstitial) herhangi bir ekranın üstünden
-/// göstermek için kök navigator. MaterialApp.router'a verilir (router.dart).
+/// Reklam overlay'ini herhangi bir ekranın üstünden göstermek için kök
+/// navigator. MaterialApp.router'a verilir (router.dart). Gerçek interstitial
+/// kendi tam-ekranını açar; bu key go_router'ın kök navigatörü içindir.
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
-/// Frekans-limitli geçiş (interstitial) reklam yöneticisi.
+/// Frekans-limitli geçiş (interstitial) reklam yöneticisi — AdMob.
 ///
 /// Optimizasyon ([[para-kazanma-modeli]] yumuşak doz): kaydı BLOKLAMAZ — kayıt
 /// tamamlandıktan sonra çağrılır; premium muaftır; en az [_minRecords] kayıt VE
-/// son reklamdan [_minGap] geçmeden gösterilmez (peş peşe girişte çıkmaz).
+/// son reklamdan [_minGap] geçmeden gösterilmez (peş peşe girişte çıkmaz); ilk
+/// [_graceWindow] kadar reklamsızdır (onboarding).
 ///
-/// AdMob birim id'si yoksa gerçek reklam yerine geliştirme **placeholder**'ı
-/// gösterilir — böylece frekans mantığı token'sız da test edilir.
+/// Reklam birimi: **debug** build'de Google'ın resmî **test** id'leri kullanılır
+/// (kendi reklamına tıklama → hesap kapanması riski yok); **release**'de
+/// `dart_defines.json`'daki gerçek AdMob birim id'leri (boşsa reklam çıkmaz).
+/// Reklam o an yüklü değilse gösterim **sessizce atlanır** ve bir sonraki için
+/// ön-yükleme yapılır — kullanıcıya hiçbir zaman boş/sahte kutu gösterilmez.
 class AdService {
   AdService._();
   static final AdService instance = AdService._();
@@ -28,15 +31,36 @@ class AdService {
   static const int _minRecords = 3;
   static const Duration _minGap = Duration(minutes: 3);
   static const Duration _graceWindow = Duration(hours: 24); // ilk gün reklamsız
+  // App-Open: uygulama öne gelince en fazla bu sıklıkta + reklam 4 saat geçerli.
+  static const Duration _appOpenMinGap = Duration(hours: 4);
+  static const Duration _appOpenTtl = Duration(hours: 4);
   static const _storage = FlutterSecureStorage();
   static const _kFirstLaunch = 'ad_first_launch';
+
+  // Google resmî test birim id'leri (debug'da kullanılır).
+  static const _testAndroidUnit = 'ca-app-pub-3940256099942544/1033173712';
+  static const _testIosUnit = 'ca-app-pub-3940256099942544/4411468910';
+  static const _testAndroidAppOpen = 'ca-app-pub-3940256099942544/9257395921';
+  static const _testIosAppOpen = 'ca-app-pub-3940256099942544/5575463023';
 
   int _recordsSinceAd = 0;
   DateTime? _lastShown;
   DateTime? _firstLaunch;
 
-  /// Açılışta bir kez. İlk kurulum zamanını kalıcı saklar (ilk 24 saat reklamsız —
-  /// onboarding sırasında kullanıcıyı kaçırmamak için). Hata uygulamayı engellemez.
+  InterstitialAd? _ad;
+  bool _loading = false;
+
+  /// Bir tam-ekran reklam (interstitial veya app-open) o an ekrandayken true —
+  /// ikisinin üst üste binmesini ve reklam dönüşünde app-open tetiklenmesini önler.
+  bool _showingAd = false;
+
+  AppOpenAd? _appOpenAd;
+  DateTime? _appOpenLoadedAt;
+  DateTime? _lastAppOpenShown;
+  bool _firstForegroundSeen = false; // ilk açılış (cold start) = gösterme, ön-yükle
+
+  /// Açılışta bir kez. SDK'yı başlatır, ilk reklamı ön-yükler ve ilk kurulum
+  /// zamanını kalıcı saklar (ilk 24 saat reklamsız). Hata uygulamayı engellemez.
   Future<void> init() async {
     try {
       final stored = await _storage.read(key: _kFirstLaunch);
@@ -48,15 +72,44 @@ class AdService {
             key: _kFirstLaunch, value: _firstLaunch!.toIso8601String());
       }
     } catch (_) {}
+    try {
+      await MobileAds.instance.initialize();
+      _preload();
+    } catch (_) {}
   }
 
   String get _unitId {
+    if (kDebugMode) {
+      if (Platform.isAndroid) return _testAndroidUnit;
+      if (Platform.isIOS) return _testIosUnit;
+      return '';
+    }
     if (Platform.isAndroid) return AppConfig.admobAndroidInterstitialId;
     if (Platform.isIOS) return AppConfig.admobIosInterstitialId;
     return '';
   }
 
-  bool get _realAdsConfigured => _unitId.isNotEmpty;
+  bool get _adsAvailable => _unitId.isNotEmpty;
+
+  /// Bir sonraki gösterim için interstitial'ı ön-yükle (idempotent).
+  void _preload() {
+    if (!_adsAvailable || _loading || _ad != null) return;
+    _loading = true;
+    InterstitialAd.load(
+      adUnitId: _unitId,
+      request: const AdRequest(),
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: (ad) {
+          _ad = ad;
+          _loading = false;
+        },
+        onAdFailedToLoad: (_) {
+          _ad = null;
+          _loading = false;
+        },
+      ),
+    );
+  }
 
   /// Tamamlanmış bir kullanıcı kaydından sonra çağrılır (form kaydet, hızlı bez/
   /// beslenme, uyku/emzirme durdur). Süren-sayaç mutasyonlarından (başlat/duraklat/
@@ -69,15 +122,17 @@ class AdService {
     if (suppress) return; // sessiz saat / süren sayaç — uygunsuz an
     _recordsSinceAd++;
     if (!_shouldShow()) return;
-    _recordsSinceAd = 0;
-    _lastShown = DateTime.now();
     await _present();
   }
 
   bool _shouldShow() {
-    // İlk 24 saat reklamsız (onboarding).
+    if (!_adsAvailable) return false;
+    // İlk 24 saat reklamsız (onboarding). Debug'da test edebilmek için atlanır
+    // (release'de gerçek grace aynen işler).
     final first = _firstLaunch;
-    if (first != null && DateTime.now().difference(first) < _graceWindow) {
+    if (!kDebugMode &&
+        first != null &&
+        DateTime.now().difference(first) < _graceWindow) {
       return false;
     }
     if (_recordsSinceAd < _minRecords) return false;
@@ -87,92 +142,130 @@ class AdService {
   }
 
   Future<void> _present() async {
-    // Kayıt sheet'i kendi Navigator.pop'unu yapana kadar bekle — yoksa o pop
-    // bizim dialog'umuzu kapatır (ikisi de kök navigator'da). Sheet kapanış
-    // animasyonu (~250ms) bitsin diye küçük gecikme.
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    final ctx = rootNavigatorKey.currentContext;
-    if (ctx == null) return;
-    if (_realAdsConfigured) {
-      // TODO(reklam): google_mobile_ads ile InterstitialAd yükle + göster.
-      // SDK/anahtar gelene kadar aşağıdaki placeholder gösterilir.
+    final ad = _ad;
+    if (ad == null) {
+      // Reklam henüz hazır değil → bu fırsatı tüketme, sayaçları sıfırlama;
+      // sıradaki için yükle, bir sonraki uygun kayıtta gösterilir.
+      _preload();
+      return;
     }
-    // ctx await'ten SONRA taze alındı (kök navigator key context'i, State değil).
-    // ignore: use_build_context_synchronously
-    await _showPlaceholder(ctx);
+    _ad = null;
+    _recordsSinceAd = 0;
+    _lastShown = DateTime.now();
+    _showingAd = true;
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        _showingAd = false;
+        ad.dispose();
+        _preload(); // sonraki gösterim için hazırla
+      },
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        _showingAd = false;
+        ad.dispose();
+        _preload();
+      },
+    );
+    try {
+      await ad.show();
+    } catch (_) {
+      _showingAd = false;
+      ad.dispose();
+      _preload();
+    }
   }
 
-  Future<void> _showPlaceholder(BuildContext context) {
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        insetPadding: const EdgeInsets.all(24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Reklam alanı placeholder'ı
-              Container(
-                height: 220,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: AppColors.feedBg,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.line, width: 1),
-                ),
-                alignment: Alignment.center,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AdenaIcon('star', size: 30, color: AppColors.muted, sw: 2),
-                    const SizedBox(height: 8),
-                    Text(tr('Reklam alanı'),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w900, fontSize: 15)),
-                    const SizedBox(height: 2),
-                    Text(tr('Geliştirme placeholder’ı'),
-                        style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.muted)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        rootNavigatorKey.currentContext?.push('/premium');
-                      },
-                      child: Text(tr('Reklamsız yap'),
-                          style: const TextStyle(fontWeight: FontWeight.w800)),
-                    ),
-                  ),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.coral,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => Navigator.pop(ctx),
-                      child: Text(tr('Kapat'),
-                          style: const TextStyle(fontWeight: FontWeight.w900)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+  // ── App-Open reklamı (uygulama öne gelince) ─────────────────────────────────
+
+  String get _appOpenUnitId {
+    if (kDebugMode) {
+      if (Platform.isAndroid) return _testAndroidAppOpen;
+      if (Platform.isIOS) return _testIosAppOpen;
+      return '';
+    }
+    if (Platform.isAndroid) return AppConfig.admobAndroidAppOpenId;
+    if (Platform.isIOS) return AppConfig.admobIosAppOpenId;
+    return '';
+  }
+
+  void _loadAppOpen() {
+    if (_appOpenUnitId.isEmpty || _appOpenAd != null) return;
+    AppOpenAd.load(
+      adUnitId: _appOpenUnitId,
+      request: const AdRequest(),
+      adLoadCallback: AppOpenAdLoadCallback(
+        onAdLoaded: (ad) {
+          _appOpenAd = ad;
+          _appOpenLoadedAt = DateTime.now();
+        },
+        onAdFailedToLoad: (_) {
+          _appOpenAd = null;
+          _appOpenLoadedAt = null;
+        },
       ),
     );
+  }
+
+  bool get _appOpenValid {
+    final at = _appOpenLoadedAt;
+    return _appOpenAd != null &&
+        at != null &&
+        DateTime.now().difference(at) < _appOpenTtl;
+  }
+
+  /// Uygulama öne geldiğinde (lifecycle resume) çağrılır. İlk çağrı = soğuk
+  /// başlangıç/onboarding → gösterilmez, yalnız ön-yüklenir. Sonraki resume'larda
+  /// limitler uygunsa app-open gösterilir. [isPremium] → premium reklamsız.
+  Future<void> onAppForeground({required bool isPremium}) async {
+    // İlk foreground (cold start) → gösterme, sadece ön-yükle.
+    if (!_firstForegroundSeen) {
+      _firstForegroundSeen = true;
+      _loadAppOpen();
+      return;
+    }
+    if (isPremium) return;
+    if (_showingAd) return; // bir reklam zaten ekranda / reklam dönüşü
+    // İlk 24 saat reklamsız (debug atlar).
+    final first = _firstLaunch;
+    if (!kDebugMode &&
+        first != null &&
+        DateTime.now().difference(first) < _graceWindow) {
+      _loadAppOpen();
+      return;
+    }
+    // App-open kendi min aralığı.
+    final lastAo = _lastAppOpenShown;
+    if (lastAo != null && DateTime.now().difference(lastAo) < _appOpenMinGap) {
+      return;
+    }
+    // Yakında interstitial çıktıysa üst üste bindirme.
+    final lastInt = _lastShown;
+    if (lastInt != null && DateTime.now().difference(lastInt) < _minGap) return;
+    if (!_appOpenValid) {
+      _loadAppOpen();
+      return;
+    }
+    _showAppOpen();
+  }
+
+  void _showAppOpen() {
+    final ad = _appOpenAd;
+    if (ad == null) return;
+    _appOpenAd = null;
+    _appOpenLoadedAt = null;
+    _showingAd = true;
+    _lastAppOpenShown = DateTime.now();
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        _showingAd = false;
+        ad.dispose();
+        _loadAppOpen();
+      },
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        _showingAd = false;
+        ad.dispose();
+        _loadAppOpen();
+      },
+    );
+    ad.show();
   }
 }

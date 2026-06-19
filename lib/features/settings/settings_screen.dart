@@ -99,14 +99,30 @@ class SettingsScreen extends ConsumerWidget {
             meta: baby?.name,
             // Aile paylaşımı premium — değilse altın "Premium" rozeti.
             trailing: showProBadge ? const AdProBadge(withChevron: true) : null,
-            // Paylaşım cloud + hesap gerektirir → hesapsızda "giriş yap" istemi.
+            // Paylaşım cloud + hesap + premium gerektirir: bebek ancak premium'da
+            // buluta gider; free'de yerelde kalır → /members 403 verirdi. Önce
+            // hesap, sonra premium kapısı. İstisna: bebek bana ait değilse
+            // (paylaşımlı; myRole parent/caregiver) sahibi yüklemiştir, ben üyeyim
+            // → bebek sunucuda, premium aramadan aç.
             onTap: baby == null
                 ? null
                 : () => requireAccount(context, ref,
                     feature: tr('Aile / Paylaşım'),
                     desc: tr('Bebeğini eşin veya bakıcınla paylaşmak için ücretsiz '
                         'bir hesap oluştur.'),
-                    onAllowed: () => context.push('/members')),
+                    onAllowed: () {
+                      final shared = baby.myRole == 'parent' ||
+                          baby.myRole == 'caregiver';
+                      if (shared) {
+                        context.push('/members');
+                        return;
+                      }
+                      requirePremium(context, ref,
+                          feature: tr('Aile / Paylaşım'),
+                          desc: tr('Bebeğini eşin veya bakıcınla paylaş; '
+                              'etkinlikleri birlikte takip edin.'),
+                          onAllowed: () => context.push('/members'));
+                    }),
           ),
           // Keşfet (Bebeğin Sağlığı · Topluluk · Uzman Rehberi · Anılar) takip
           // modunda alt menüdeki ✨ slotundan açılır; bekleme modunda alt menü

@@ -1,16 +1,61 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/auth/auth_controller.dart';
+import '../features/babies/baby_controller.dart';
 import 'subscription_repository.dart';
 
-/// Local-first mimarinin merkez bayrağı: **cloud senkron yalnız oturum açık VE
-/// premium iken**. Free kullanıcı (hesaplı ya da hesapsız) yerel-önce çalışır,
-/// kullanıcı verisi (bebek/kayıt/anı/anne/adet) telefonda kalır, ağa gitmez.
+/// Oturum açık mı? Bulut işlemlerinin tabanı (bebek listesi pull, paylaşılan bebek
+/// sync). Premium gerektirmez — paylaşılan bebek erişimi/sync'i sahibin premium'una
+/// bağlıdır, üyenin kendi premium'una değil (bkz. [babyCloudSyncedProvider]).
+final loggedInProvider = Provider<bool>((ref) =>
+    ref.watch(authControllerProvider).asData?.value != null);
+
+/// Kişisel bulut yedeği açık mı: **oturum açık VE KENDİ premium'um**. Bu BEBEK-BAĞIMSIZ
+/// global bayrak yalnız kişisel/sahip verileri kapsar (cycle = annenin adet takibi,
+/// ve sahip olduğum bebeklerin kişisel yedeği). Free kullanıcı yerel-önce çalışır.
 ///
-/// İstisnalar bu bayrağa tabi DEĞİL (her zaman cloud): topluluk (soru-cevap),
-/// içerik/çeviri/medya (haftalık görsel, WHO LMS, makaleler, aşı takvimi).
+/// Paylaşılan bebek için BUNU KULLANMA → [babyCloudSyncedProvider] (per-baby).
+/// İstisnalar (her zaman cloud, bu bayrağa tabi DEĞİL): topluluk, içerik/çeviri/medya.
 final cloudSyncEnabledProvider = Provider<bool>((ref) {
-  final loggedIn = ref.watch(authControllerProvider).asData?.value != null;
-  final premium = ref.watch(isPremiumProvider);
-  return loggedIn && premium;
+  return ref.watch(loggedInProvider) && ref.watch(isPremiumProvider);
+});
+
+/// Belirli bir bebek bulut senkronuna tabi mi? **Seçenek 2 — sahip-finanse, per-baby
+/// efektif premium.**
+/// - Paylaşılan bebek (myRole = parent/caregiver): veri SAHİBİN bulutunda yaşar; sahip
+///   premium olduğu için zaten paylaşıldı → üyenin KENDİ premium'undan BAĞIMSIZ
+///   senkronlanır (oturum yeterli). Davetli üye free olsa da kayıt/anı/anne takibini
+///   okur ve katkı yapar — sahibin satın aldığı aile paylaşımı üyeyi de kapsar.
+/// - Kendi bebeğim (owner / myRole null): kişisel bulut yedeği → KENDİ premium'um.
+/// Bu OTURUMDA bulut yazımı reddedilen (403) paylaşılan bebekler. Sahibin premium'u
+/// bitince (grace) üyenin /sync'i 403 döner → bebek bu sete eklenir → o bebek için
+/// push/sync denemesi durur (403 spam'i önlenir); veri yerel salt-okunur mirror olarak
+/// kalır. Restart'ta temizlenir → sahip yeniden abone olursa senkron kendiliğinden döner.
+class _CloudReadonlyBabies extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => <String>{};
+  void add(String babyId) {
+    if (state.contains(babyId)) return;
+    state = {...state, babyId};
+  }
+}
+
+final cloudReadonlyBabiesProvider =
+    NotifierProvider<_CloudReadonlyBabies, Set<String>>(_CloudReadonlyBabies.new);
+
+final babyCloudSyncedProvider = Provider.family<bool, String>((ref, babyId) {
+  if (!ref.watch(loggedInProvider)) return false;
+  // Bu oturumda 403 alındıysa (sahip premium bitti / grace) → senkron deneme.
+  if (ref.watch(cloudReadonlyBabiesProvider).contains(babyId)) return false;
+  final babies = ref.watch(babyControllerProvider).asData?.value ?? const [];
+  String? role;
+  for (final b in babies) {
+    if (b.id == babyId) {
+      role = b.myRole;
+      break;
+    }
+  }
+  final shared = role == 'parent' || role == 'caregiver';
+  if (shared) return true;
+  return ref.watch(isPremiumProvider);
 });

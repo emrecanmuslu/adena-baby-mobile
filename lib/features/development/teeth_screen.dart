@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/age.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
@@ -85,7 +86,8 @@ class TeethScreen extends ConsumerWidget {
             padding: EdgeInsets.fromLTRB(
                 16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
             children: [
-              _ProgressHeader(erupted: erupted, ageMonths: ageMonths),
+              _ProgressHeader(
+                  erupted: erupted, ageMonths: ageMonths, baby: baby),
               const SizedBox(height: 12),
               _MouthCard(
                 teeth: teeth,
@@ -257,7 +259,9 @@ String _mouthSvg(List<Tooth> teeth, Set<int> nextMonths) {
 class _ProgressHeader extends StatelessWidget {
   final int erupted;
   final int? ageMonths;
-  const _ProgressHeader({required this.erupted, required this.ageMonths});
+  final Baby baby;
+  const _ProgressHeader(
+      {required this.erupted, required this.ageMonths, required this.baby});
 
   static const _growthD = Color(0xFF349970);
 
@@ -294,17 +298,29 @@ class _ProgressHeader extends StatelessWidget {
                         fontSize: 17, fontWeight: FontWeight.w900, color: AppColors.ink)),
               ])),
               const Spacer(),
-              if (ageMonths != null)
+              if (ageMonths != null) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
                   decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(999),
                       boxShadow: AppColors.smallShadow),
-                  child: Text(trp('Şu an: {n}. ay', {'n': ageMonths}),
+                  child: Text(
+                      usesCorrectedAge(baby)
+                          ? trp('Şu an: {n}. ay (düzeltilmiş)', {'n': ageMonths})
+                          : trp('Şu an: {n}. ay', {'n': ageMonths}),
                       style: const TextStyle(
                           fontSize: 11, fontWeight: FontWeight.w900, color: _growthD)),
                 ),
+                if (usesCorrectedAge(baby)) ...[
+                  const SizedBox(width: 6),
+                  AdInfoDot(
+                    title: tr('Düzeltilmiş yaş'),
+                    body: correctedAgeInfoBody(),
+                    size: 16,
+                  ),
+                ],
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -571,7 +587,8 @@ class _ToothSheetState extends ConsumerState<_ToothSheet> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await ref.read(healthRepositoryProvider).setToothErupted(widget.tooth.id,
+      await ref.read(healthRepositoryProvider).setToothErupted(
+          widget.babyId, widget.tooth.key,
           erupted: erupted, date: erupted ? _date : null);
       ref.invalidate(teethProvider(widget.babyId));
       if (!mounted) return;
@@ -717,12 +734,7 @@ class _ToothSheetState extends ConsumerState<_ToothSheet> {
   }
 }
 
-/// Bebeğin ay cinsinden yaşı (doğmamışsa/born değilse null).
-int? _babyAgeMonths(Baby b) {
-  final bd = b.birthDate;
-  if (bd == null) return null;
-  final now = DateTime.now();
-  var months = (now.year - bd.year) * 12 + (now.month - bd.month);
-  if (now.day < bd.day) months -= 1;
-  return months < 0 ? 0 : months;
-}
+/// Diş takibi için "şu an" ayı — prematüre bebeklerde düzeltilmiş yaş (diş
+/// çıkışı olması gereken doğum tarihine göre kıyaslanır). Saf hesap
+/// [correctedAgeMonths] içine taşındı (test edilebilir).
+int? _babyAgeMonths(Baby b) => correctedAgeMonths(b);

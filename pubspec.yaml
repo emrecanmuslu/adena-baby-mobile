@@ -60,7 +60,10 @@ dependencies:
   home_widget: ^0.9.3
   firebase_core: 3.6.0
   firebase_messaging: 15.1.3
+  firebase_crashlytics: 4.1.3
+  firebase_analytics: 11.3.3
   url_launcher: ^6.3.1  # yasal sayfaları (gizlilik/şartlar/KVKK/çerez) harici tarayıcıda aç
+  google_mobile_ads: ^9.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -74,6 +77,10 @@ dev_dependencies:
   drift_dev: ^2.33.0
   build_runner: ^2.15.0
   flutter_launcher_icons: ^0.14.4
+  mocktail: ^1.0.4          # repository/controller testlerinde mock
+  http_mock_adapter: ^0.6.1 # Dio yanıtlarını stub'lama (api_client/repository testleri)
+  path_provider_platform_interface: any # testlerde PathProviderPlatform mock (cache/repo testleri)
+  plugin_platform_interface: any        # ^ MockPlatformInterfaceMixin
 
 # Uygulama simgesi (mercan gradient + beyaz kalp amblemi). Üret:
 #   dart run flutter_launcher_icons
@@ -101,6 +108,12 @@ flutter:
     - family: Nunito
       fonts:
         - asset: assets/fonts/Nunito.ttf
+
+  # Sağlık kataloğu (aşı/gelişim/diş) — local-first çevrimdışı fallback.
+  # Kaynak gerçek: API /content/health-catalog; bu asset ilk açılış/offline içindir.
+  assets:
+    - assets/health_catalog_tr.json
+    - assets/health_catalog_en.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:

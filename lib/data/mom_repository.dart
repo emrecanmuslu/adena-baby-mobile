@@ -17,12 +17,14 @@ class MomRepository {
   final AppDatabase _db;
   final ApiClient _api;
   final String _localUserId;
-  final bool Function() _cloudEnabled;
+  /// Bu BEBEK bulut senkronuna tabi mi? Per-baby (Seçenek 2): paylaşılan bebek
+  /// sahibin premium'uyla senkronlanır, kendi bebeğim kendi premium'umla.
+  final bool Function(String babyId) _cloudEnabled;
 
   MomRepository(this._db, this._api, this._localUserId, this._cloudEnabled);
 
   Future<List<MomEntry>> list(String babyId) async {
-    if (_cloudEnabled()) {
+    if (_cloudEnabled(babyId)) {
       try {
         await pushDirty(babyId);
         await _pull(babyId);
@@ -58,7 +60,7 @@ class MomRepository {
             dirty: const Value(true),
           ),
         );
-    if (_cloudEnabled()) {
+    if (_cloudEnabled(babyId)) {
       try {
         await pushDirty(babyId);
       } catch (_) {}
@@ -74,7 +76,7 @@ class MomRepository {
         clientUpdatedAt: Value(DateTime.now().toUtc()),
       ),
     );
-    if (_cloudEnabled()) {
+    if (_cloudEnabled(babyId)) {
       try {
         await pushDirty(babyId);
       } catch (_) {}
@@ -85,6 +87,11 @@ class MomRepository {
 
   /// Tek-seferlik mevcut-kullanıcı import'u için (premium gate'inden bağımsız).
   Future<void> importFromCloud(String babyId) => _pull(babyId);
+
+  /// Erişim kaldırılınca (paylaşımdan düşme) bu bebeğin tüm anne kayıtlarını sil.
+  Future<void> purgeBaby(String babyId) async {
+    await (_db.delete(_db.momEntries)..where((m) => m.baby.equals(babyId))).go();
+  }
 
   Future<void> _pull(String babyId) async {
     final resp = await _api.dio.get('/babies/$babyId/mom-entries');
@@ -111,24 +118,53 @@ class MomRepository {
     });
   }
 
+  /// Migrasyonda tam yükleme için bu bebeğin TÜM anne kayıtlarını dirty işaretle.
+  Future<void> markAllDirty(String babyId) async {
+    await (_db.update(_db.momEntries)..where((m) => m.baby.equals(babyId)))
+        .write(const MomEntriesCompanion(dirty: Value(true)));
+  }
+
   Future<void> pushDirty(String babyId) async {
     final dirty = await (_db.select(_db.momEntries)
           ..where((m) => m.baby.equals(babyId) & m.dirty.equals(true)))
         .get();
+    if (dirty.isEmpty) return;
+
+    // Silmeler (nadir) tek tek DELETE; oluştur/güncellemeler TEK toplu istek
+    // (/mom-entries/bulk) — migrasyonda N kayıt için N istek yerine 1 istek.
+    final upserts = <MomEntryRow>[];
     for (final r in dirty) {
-      try {
-        if (r.isDeleted) {
+      if (r.isDeleted) {
+        try {
           await _api.dio.delete('/babies/$babyId/mom-entries/${r.id}');
           await (_db.delete(_db.momEntries)..where((m) => m.id.equals(r.id)))
               .go();
-          continue;
-        }
-        await _api.dio.post('/babies/$babyId/mom-entries',
-            data: _toModel(r).toCreateJson());
-        await (_db.update(_db.momEntries)..where((m) => m.id.equals(r.id)))
-            .write(const MomEntriesCompanion(dirty: Value(false)));
-      } catch (_) {}
+        } catch (_) {}
+      } else {
+        upserts.add(r);
+      }
     }
+    if (upserts.isEmpty) return;
+
+    try {
+      final resp = await _api.dio.post(
+        '/babies/$babyId/mom-entries/bulk',
+        data: [for (final r in upserts) _toModel(r).toCreateJson()],
+      );
+      // Sunucunun onayladığı id'leri temizle (kısmî başarıda kalanlar dirty kalır,
+      // sonraki senkronda yeniden denenir).
+      final saved = (((resp.data as Map)['saved'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toSet();
+      await _db.transaction(() async {
+        for (final r in upserts) {
+          if (saved.contains(r.id)) {
+            await (_db.update(_db.momEntries)..where((m) => m.id.equals(r.id)))
+                .write(const MomEntriesCompanion(dirty: Value(false)));
+          }
+        }
+      });
+    } catch (_) {}
   }
 
   Future<MomEntry?> _byId(String id) async {
@@ -152,7 +188,7 @@ final momRepositoryProvider = Provider<MomRepository>(
     ref.watch(databaseProvider),
     ref.watch(apiClientProvider),
     ref.watch(localUserIdProvider),
-    () => ref.read(cloudSyncEnabledProvider),
+    (babyId) => ref.read(babyCloudSyncedProvider(babyId)),
   ),
 );
 

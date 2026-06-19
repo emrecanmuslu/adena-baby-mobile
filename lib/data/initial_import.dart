@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'baby_repository.dart';
 import 'cycle_repository.dart';
+import 'health_repository.dart';
 import 'local_session.dart';
 import 'memory_repository.dart';
 import 'mom_repository.dart';
@@ -49,11 +50,21 @@ class InitialImportService {
         try {
           await _ref.read(momRepositoryProvider).importFromCloud(b.id);
         } catch (_) {}
+        try {
+          await _ref.read(healthRepositoryProvider).importFromCloud(b.id);
+        } catch (_) {}
       }
       try {
         await _ref.read(cycleRepositoryProvider).importFromCloud();
       } catch (_) {}
       await LocalSession.markImportedForAccount(acct);
+      // Bulut bu hesabın verisini taşıyordu (indirdik) → free→premium "buluta
+      // yükleniyor" göç overlay'ini ATLA. Aksi halde yeni cihazda ilk premium
+      // girişte, inen veri markAllDirty ile yeniden "yükleniyor" diye gösterilir
+      // (veri aslında indirildi). Buluttan inen (dirty=false) bebek varsa işaretle.
+      if (await babyRepo.hasCleanBabies()) {
+        await LocalSession.markPremiumSyncedForAccount(acct);
+      }
     } catch (_) {
       // Çevrimdışı/hata → bayrak set EDİLMEZ; sonraki açılışta tekrar denenir.
     }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/age.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
@@ -85,7 +86,10 @@ class MilestonesScreen extends ConsumerWidget {
                 16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
             children: [
               _ProgressHeader(
-                  items: items, achieved: achieved, ageMonths: ageMonths),
+                  items: items,
+                  achieved: achieved,
+                  ageMonths: ageMonths,
+                  baby: baby),
               for (final month in months) ...[
                 _GroupHeader(month: month, ageMonths: ageMonths),
                 for (final m in groups[month]!)
@@ -112,7 +116,7 @@ class MilestonesScreen extends ConsumerWidget {
     try {
       await ref
           .read(healthRepositoryProvider)
-          .setMilestoneAchieved(m.id, achieved: !m.achieved);
+          .setMilestoneAchieved(babyId, m.key, achieved: !m.achieved);
       ref.invalidate(milestonesProvider(babyId));
       if (context.mounted && !m.achieved) {
         showAdToast(context, tr('Tebrikler! 🎉 Yeni bir kilometre taşı'));
@@ -139,8 +143,12 @@ class _ProgressHeader extends StatelessWidget {
   final List<Milestone> items;
   final int achieved;
   final int? ageMonths;
+  final Baby baby;
   const _ProgressHeader(
-      {required this.items, required this.achieved, required this.ageMonths});
+      {required this.items,
+      required this.achieved,
+      required this.ageMonths,
+      required this.baby});
 
   @override
   Widget build(BuildContext context) {
@@ -173,18 +181,32 @@ class _ProgressHeader extends StatelessWidget {
               Text(trp('{a} / {t} başarıldı', {'a': achieved, 't': total}),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
               const Spacer(),
-              if (ageMonths != null)
+              if (ageMonths != null) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.6),
                       borderRadius: BorderRadius.circular(999)),
-                  child: Text(trp('Şu an: {age}', {'age': milestoneAgeLabel(ageMonths!)}),
+                  child: Text(
+                      usesCorrectedAge(baby)
+                          ? trp('Şu an: {age} (düzeltilmiş)',
+                              {'age': milestoneAgeLabel(ageMonths!)})
+                          : trp('Şu an: {age}',
+                              {'age': milestoneAgeLabel(ageMonths!)}),
                       style: const TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w900,
                           color: AppColors.coralDd)),
                 ),
+                if (usesCorrectedAge(baby)) ...[
+                  const SizedBox(width: 6),
+                  AdInfoDot(
+                    title: tr('Düzeltilmiş yaş'),
+                    body: correctedAgeInfoBody(),
+                    size: 16,
+                  ),
+                ],
+              ],
             ],
           ),
           const SizedBox(height: 10),
@@ -437,7 +459,8 @@ class _MilestoneSheetState extends ConsumerState<_MilestoneSheet> {
     setState(() => _busy = true);
     try {
       await ref.read(healthRepositoryProvider).setMilestoneAchieved(
-          widget.milestone.id,
+          widget.babyId,
+          widget.milestone.key,
           achieved: achieved,
           date: achieved ? _date : null);
       ref.invalidate(milestonesProvider(widget.babyId));
@@ -632,12 +655,7 @@ class _MilestoneSheetState extends ConsumerState<_MilestoneSheet> {
   }
 }
 
-/// Bebeğin ay cinsinden yaşı (doğmamışsa/born değilse null).
-int? _babyAgeMonths(Baby b) {
-  final bd = b.birthDate;
-  if (bd == null) return null;
-  final now = DateTime.now();
-  var months = (now.year - bd.year) * 12 + (now.month - bd.month);
-  if (now.day < bd.day) months -= 1;
-  return months < 0 ? 0 : months;
-}
+/// Gelişim için "şu an" ayı — prematüre bebeklerde düzeltilmiş yaş (gelişim
+/// basamakları olması gereken doğum tarihine göre kıyaslanır). Saf hesap
+/// [correctedAgeMonths] içine taşındı (test edilebilir).
+int? _babyAgeMonths(Baby b) => correctedAgeMonths(b);

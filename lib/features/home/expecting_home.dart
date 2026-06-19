@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/age.dart';
 import '../../core/config.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
@@ -33,8 +34,8 @@ class ExpectingHome extends ConsumerWidget {
     }
 
     final daysLeft = due.difference(todayDate).inDays;
-    // 40 hafta = 280 gün. Gebelik günü = 280 - kalan.
-    final daysPregnant = (280 - daysLeft).clamp(0, 280);
+    // 40 hafta = 280 gün. Paylaşılan saf hesap (bkz core/age.dart).
+    final daysPregnant = pregnancyDays(due);
     final weeks = daysPregnant ~/ 7;
     final progress = (daysPregnant / 280).clamp(0.0, 1.0);
     final weeksLeft = (daysLeft / 7).ceil();

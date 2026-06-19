@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/analytics_service.dart';
 import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
 import '../../data/activity_notif_cache.dart';
 import '../../data/baby_repository.dart';
+import '../../data/memory_repository.dart';
+import '../../data/mom_repository.dart';
 import '../../data/record_repository.dart';
 import '../../data/sync_gate.dart';
 import '../../models/baby.dart';
@@ -30,8 +33,11 @@ class BabyController extends AsyncNotifier<List<Baby>> {
       state = AsyncData(list);
     });
     ref.onDispose(sub.cancel);
-    // Cloud senkron açık (premium + oturum) ise sunucuyla reconcile et.
-    if (ref.watch(cloudSyncEnabledProvider)) {
+    // Oturum açıksa sunucuyla reconcile et. Premium ŞART DEĞİL: paylaşılan bebeğin
+    // profili (ör. gebelik→doğdu) + üyelik değişiklikleri sahibin bulutundan gelir →
+    // free üye de bunu çekmeli (Seçenek 2). Kendi bebeklerimi YÜKLEMEK ise _pull
+    // içinde kendi premium'uma bağlı kalır.
+    if (ref.watch(loggedInProvider)) {
       unawaited(_pull());
     }
     return _repo.getAll();
@@ -44,6 +50,8 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     BabyGender gender = BabyGender.unknown,
     DateTime? birthDate,
     DateTime? dueDate,
+    int? gestationalWeeks,
+    int gestationalDays = 0,
   }) async {
     final baby = Baby(
       id: _uuid.v4(),
@@ -52,9 +60,14 @@ class BabyController extends AsyncNotifier<List<Baby>> {
       status: status,
       birthDate: birthDate,
       dueDate: dueDate,
+      gestationalWeeks: gestationalWeeks,
+      gestationalDays: gestationalDays,
       myRole: 'owner',
     );
     final created = await _repo.create(baby);
+    unawaited(AnalyticsService.instance.log('baby_created', {
+      'baby_status': status.name,
+    }));
     _pushSoon();
     return created;
   }
@@ -78,20 +91,29 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     }
   }
 
-  /// Sunucudan çekip yereli reconcile eder; erişimi kaldırılan bebeklerin yerel
-  /// verisini temizler + bildirim. Yalnız premium + oturum açıkken anlamlı.
+  /// Sunucudan çekip yereli reconcile eder; erişimi kaldırılan (paylaşımdan düşen)
+  /// bebeklerin yerel verisini temizler + bildirim. Oturum açıkken anlamlı.
   Future<void> _pull() async {
-    if (!ref.read(cloudSyncEnabledProvider)) return;
+    if (!ref.read(loggedInProvider)) return;
     List<Baby> removed;
     try {
-      await _repo.pushDirty(); // önce yerel değişiklikleri yolla (idempotent)
+      // Kendi (sahip) bebeklerimi buluta yüklemek KENDİ premium'uma bağlı (local-first:
+      // free'de kendi verim telefonda kalır). pullFromServer ise her oturumda koşar →
+      // paylaşılan bebek profilini/üyeliği tazeler.
+      if (ref.read(cloudSyncEnabledProvider)) {
+        await _repo.pushDirty();
+      }
       removed = await _repo.pullFromServer();
     } catch (_) {
       return; // çevrimdışı/hata → yerel korunur
     }
     for (final b in removed) {
+      // Erişim kaldırıldı (paylaşımdan düşme / sahibin premium'u bitti): bu bebeğin
+      // TÜM yerel verisini temizle (kayıt + anı + anne). Veri sahibe aitti.
       try {
         await ref.read(recordRepositoryProvider).purgeBaby(b.id);
+        await ref.read(memoryRepositoryProvider).purgeBaby(b.id);
+        await ref.read(momRepositoryProvider).purgeBaby(b.id);
       } catch (_) {}
       await ActivityNotifCache().clearSeen(b.id);
       final slot = b.notifSlot;

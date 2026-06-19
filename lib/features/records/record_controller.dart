@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/ad_service.dart';
+import '../../core/analytics_service.dart';
 import '../../data/record_repository.dart';
 import '../../data/subscription_repository.dart';
 import '../../data/sync_gate.dart';
@@ -143,9 +145,8 @@ class SyncService with WidgetsBindingObserver {
   /// — periyodik turda kullanılır. Açılış/yazma/bağlantı olaylarında false: tüm
   /// bebekler bir kez senkronlanır (tek kullanıcı verisi de yüklenip çekilsin).
   Future<void> syncAll({bool sharedOnly = false}) async {
-    // Local-first gating: cloud senkron yalnız oturum açık + premium iken.
-    // Free kullanıcıda kayıtlar yalnız yerelde (drift) tutulur, ağa gitmez.
-    if (!_ref.read(cloudSyncEnabledProvider)) return;
+    // Oturum yoksa hiç senkron yok (saf local-first).
+    if (!_ref.read(loggedInProvider)) return;
     if (_running) return; // önceki tur bitmeden yenisini başlatma
     _running = true;
     try {
@@ -153,8 +154,22 @@ class SyncService with WidgetsBindingObserver {
       final repo = _ref.read(recordRepositoryProvider);
       for (final b in babies) {
         if (sharedOnly && !b.isShared) continue; // tek kullanıcı → periyodik atla
+        // Per-baby gating (Seçenek 2): paylaşılan bebek sahibin bulutunda → kendi
+        // premium'umdan bağımsız senkronla; kendi bebeğim için kendi premium'um gerekir.
+        // Free kullanıcının KENDİ bebeklerinin kaydı yalnız yerelde kalır (ağa gitmez).
+        if (!_ref.read(babyCloudSyncedProvider(b.id))) continue;
         try {
           await repo.sync(b.id);
+        } on DioException catch (e) {
+          if (e.response?.statusCode == 403) {
+            // Paylaşılan bebeğin bulutu artık yazılamıyor (sahip premium bitti) ya da
+            // erişimim kaldırıldı. Bu oturumda bu bebeği "salt-okunur" işaretle (403
+            // spam'i dursun, yerel veri korunsun) + bebek listesini tazele: erişim
+            // gerçekten kalktıysa pull bebeği düşürüp yerel verisini temizler.
+            _ref.read(cloudReadonlyBabiesProvider.notifier).add(b.id);
+            unawaited(_ref.read(babyControllerProvider.notifier).refresh());
+          }
+          // 403 dışı (çevrimdışı/5xx) → yerel korunur, sonra tekrar denenir.
         } catch (_) {
           // Çevrimdışı/sunucu hatası — yerel veri korunur, sonra tekrar denenir.
         }
@@ -200,6 +215,10 @@ class RecordActions {
         isPremium: _ref.read(isPremiumProvider),
         suppress: _suppressAd(r),
       ));
+      // İçeriksiz analitik: yalnız kayıt türü (bebek adı/değer/tarih GÖNDERME).
+      unawaited(AnalyticsService.instance.log('record_added', {
+        'record_type': r.type.name,
+      }));
     }
   }
 

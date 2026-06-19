@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ad_service.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
@@ -11,6 +13,7 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../../data/mom_repository.dart';
+import '../../data/subscription_repository.dart';
 import '../../models/mom_entry.dart';
 import '../babies/baby_controller.dart';
 import '../babies/family_settings.dart';
@@ -96,6 +99,10 @@ class _MomEntrySheetState extends ConsumerState<_MomEntrySheet> {
       await ref.read(momRepositoryProvider).add(widget.babyId,
           kind: widget.kind, date: _date, weightKg: weightKg, title: title, note: note);
       ref.invalidate(momEntriesProvider(widget.babyId));
+      // Tamamlanan anne kaydı → interstitial sayılır (bekleme/postpartum kullanıcı
+      // da reklam görsün); frekans/grace/premium limitleri AdService'te.
+      unawaited(AdService.instance
+          .onRecordSaved(isPremium: ref.read(isPremiumProvider)));
       if (!mounted) return;
       showAdToast(context, tr('Kaydedildi'));
       Navigator.pop(context);

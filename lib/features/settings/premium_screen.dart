@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/pricing.dart';
 import '../../models/subscription.dart';
@@ -11,12 +16,13 @@ import '../auth/auth_controller.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/analytics_service.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/revenuecat_service.dart';
 import '../../core/theme.dart';
-import '../../data/initial_import.dart';
+import '../../data/migration_service.dart';
 import '../../data/subscription_repository.dart';
 
 /// Premium / paywall (design ScrPremium): özellik listesi + planlar + CTA + kod.
@@ -42,6 +48,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
   void initState() {
     super.initState();
     _loadOffering();
+    unawaited(AnalyticsService.instance.log('paywall_shown', {'plan': _plan}));
   }
 
   Future<void> _loadOffering() async {
@@ -218,18 +225,28 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            // İptal notu (isteğe bağlı bilgi). Abonelik iptali mağaza üzerinden olur.
-            if (sub?.willRenew ?? false)
+            // Abonelik iptali mağaza (App Store / Google Play) üzerinden olur —
+            // uygulama içinden programatik iptal mümkün değil; mağaza yönetim
+            // sayfasını açan buton sunulur (Apple Guideline 3.1.2 gereği de zorunlu).
+            if (sub?.willRenew ?? false) ...[
               _InfoCard(tr('Aboneliğini istediğin zaman telefonunun App Store / '
                   'Google Play hesabından iptal edebilirsin. İptal etsen bile mevcut '
-                  'dönemin sonuna kadar Premium açık kalır.'))
-            else if (sub?.isLifetime ?? false)
+                  'dönemin sonuna kadar Premium açık kalır.')),
+              const SizedBox(height: 8),
+              AdSaveButton(
+                label: tr('Aboneliği yönet / iptal et'),
+                color: AppColors.muted,
+                ghost: true,
+                onTap: _manageSubscription,
+              ),
+            ] else if (sub?.isLifetime ?? false)
               _InfoCard(tr('Ömür boyu premium — yenileme yok, iptal gerekmez 💛'))
             else
               _InfoCard(tr('Bu premium bir kod/deneme ile verildi; süresi dolunca '
                   'otomatik olarak ücretsiz katmana döner.')),
-            // GELİŞTİRME: token yokken premium'u test için kapatma.
-            if (!_rc) ...[
+            // GELİŞTİRME: yalnız debug build'inde premium'u test için kapatma
+            // (RC yapılandırılmış olsa da). Release'de asla görünmez.
+            if (kDebugMode) ...[
               const SizedBox(height: 8),
               AdSaveButton(
                 label: _saving ? tr('İşleniyor…') : tr('Premium\'u kapat (geliştirme)'),
@@ -263,8 +280,16 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                                   color: AppColors.coralDd)),
                           const SizedBox(height: 2),
                           Text(
-                            tr('Verilerin telefonunda güvende. Yeniden abone olup '
-                                'tekrar buluta yedekleyebilirsin.'),
+                            (sub!.graceDaysLeft() > 0)
+                                ? trp(
+                                    'Tüm verilerin telefonunda güvende — kaybolmaz. '
+                                    'Bulut yedeğin {n} gün daha saklanıyor; bu süre '
+                                    'içinde yeniden abone olursan kaldığın yerden '
+                                    'kesintisiz devam edersin.',
+                                    {'n': sub.graceDaysLeft()})
+                                : tr('Tüm verilerin telefonunda güvende. Bulut yedeğin '
+                                    'silindi; yeniden abone olduğunda verilerin tekrar '
+                                    'buluta yüklenir.'),
                             style: const TextStyle(
                                 fontSize: 12,
                                 height: 1.4,
@@ -381,6 +406,17 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                   style: TextStyle(
                       fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
             ),
+            // GELİŞTİRME: emülatörde gerçek satın alma çalışmadığından debug'da
+            // sahte premium aç (release'de görünmez).
+            if (kDebugMode) ...[
+              const SizedBox(height: 8),
+              AdSaveButton(
+                label: _saving ? tr('İşleniyor…') : tr('Premium aç (geliştirme)'),
+                color: AppColors.muted,
+                ghost: true,
+                onTap: _saving ? () {} : _devActivate,
+              ),
+            ],
           ],
         ],
       ),
@@ -403,7 +439,11 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
       final pkg = _packageFor(_plan);
       if (_rc && pkg != null) {
         final ok = await RevenueCatService.instance.purchase(pkg);
-        if (ok) await ref.read(subscriptionRepositoryProvider).refresh();
+        if (ok) {
+          unawaited(AnalyticsService.instance
+              .log('purchase_completed', {'plan': _plan}));
+          await ref.read(subscriptionRepositoryProvider).refresh();
+        }
       } else {
         // Geliştirme modu — backend dev-activate ile sahte premium.
         await ref.read(subscriptionRepositoryProvider).devActivate(plan: _plan);
@@ -442,6 +482,39 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
           : trp('{d} tarihine kadar', {'d': d});
     }
     return tr('Premium');
+  }
+
+  /// Son kullanıcı aboneliğini iptal/yönet: cihazın mağaza abonelik sayfasını
+  /// harici tarayıcıda/uygulamada açar (uygulama içinden iptal mümkün değildir —
+  /// satın alma mağazada tutulur). Apple 3.1.2 / Google önerisi.
+  Future<void> _manageSubscription() async {
+    final uri = Platform.isIOS
+        ? Uri.parse('https://apps.apple.com/account/subscriptions')
+        : Uri.parse('https://play.google.com/store/account/subscriptions');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e));
+    }
+  }
+
+  /// GELİŞTİRME: backend dev-activate ile sahte premium aç (emülatör testi —
+  /// gerçek mağaza satın alması çalışmadığında). Yalnız debug'da çağrılır.
+  Future<void> _devActivate() async {
+    setState(() => _saving = true);
+    try {
+      await ref.read(subscriptionRepositoryProvider).devActivate(plan: _plan);
+      ref.invalidate(subscriptionProvider);
+      if (mounted) {
+        setState(() => _saving = false);
+        showAdToast(context, tr('Premium etkinleştirildi 🎉'));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        showAdError(context, apiErrorText(e));
+      }
+    }
   }
 
   /// GELİŞTİRME: backend dev-activate(active:false) ile premium'u kapat (test).
@@ -485,22 +558,11 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
       ),
     );
     if (ok != true) return;
-    setState(() => _saving = true);
-    try {
-      // Güvenlik: cloud'da olup yerelde olmayan bir şey kalmasın.
-      await ref.read(initialImportProvider).forceImport();
-      await ref.read(subscriptionRepositoryProvider).purgeCloudData();
-      ref.invalidate(subscriptionProvider);
-      if (mounted) {
-        setState(() => _saving = false);
-        showAdToast(context, tr('Bulut yedeğin silindi · verilerin telefonunda'));
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _saving = false);
-        showAdError(context, apiErrorText(e));
-      }
-    }
+    // İndirme (tam sayfalama) + bulut silme süreci, yükleme ekranıyla aynı
+    // tam-ekran overlay'de adım-adım gösterilir → kullanıcı boş spinner yerine
+    // ne olduğunu görür (işlem yükleme kadar uzun sürebilir). Hata yönetimi ve
+    // premiumSynced bayrağı runPurge/purgeCloudData içinde ele alınır.
+    await ref.read(migrationControllerProvider.notifier).runPurge();
   }
 
   Future<void> _restore() async {

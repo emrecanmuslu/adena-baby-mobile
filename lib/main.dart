@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -8,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/ad_service.dart';
+import 'core/analytics_service.dart';
 import 'core/api_client.dart';
 import 'core/i18n.dart';
 import 'core/locale_util.dart';
@@ -45,6 +49,16 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    // Crashlytics: debug'da topla(ma) — yalnız release'te çökme/raporları yolla.
+    await FirebaseCrashlytics.instance
+        .setCrashlyticsCollectionEnabled(!kDebugMode);
+    // Flutter framework hataları → Crashlytics (önce konsola da bas).
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    // Framework dışı (async/platform) yakalanmamış hatalar → Crashlytics.
+    WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
   } catch (_) {}
   // Bildirim/timezone init'i açılışı ENGELLEMESİN — iOS'ta hata/izin sorunu
   // tüm uygulamayı beyaz ekranda bırakmasın. Arka planda kurulur; planlama
@@ -54,6 +68,8 @@ Future<void> main() async {
   unawaited(RevenueCatService.instance.configure());
   // Reklam ilk-gün penceresi için kurulum zamanını sakla.
   unawaited(AdService.instance.init());
+  // Analytics: consent-gated; rıza yoksa/ debug'da sessiz no-op (varsayılan kapalı).
+  unawaited(AnalyticsService.instance.init());
   // Beslenme formu son-değer cache'ini belleğe al (form senkron okusun).
   unawaited(FeedInputCache.ensureLoaded());
   // Local-first kimlik & rıza: localUserId + yerel rıza durumunu belleğe yükle
@@ -129,6 +145,13 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
         if (t == 'family_activity' || t == 'sync_nudge') {
           ref.read(syncServiceProvider).requestSyncSoon();
         }
+        // baby_update = sahip bebek profilini değiştirdi (ör. gebelik→doğdu);
+        // access_removed = paylaşımdan çıkarıldım / sahibin cloud'u silindi → ikisi de
+        // bebek listesini hemen tazelesin (status güncellensin / erişimi kalkan bebek
+        // düşürülüp yerel verisi temizlensin), 90 sn polling beklenmesin.
+        if (t == 'baby_update' || t == 'access_removed') {
+          ref.read(babyControllerProvider.notifier).refresh();
+        }
       });
     } catch (_) {}
     // Yol A: öne gelince + periyodik yoklama. İlk tetik ilk frame'den sonra
@@ -155,6 +178,14 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   void _onForeground() {
     _pollActivity();
     ref.read(babyControllerProvider.notifier).refresh();
+    // App-Open reklamı: ilk çağrı (cold start) yalnız ön-yükler; sonraki
+    // resume'larda limitler uygunsa gösterir (premium muaf).
+    AdService.instance.onAppForeground(isPremium: ref.read(isPremiumProvider));
+    // İçeriksiz segment özellikleri (rıza yoksa/debug'da no-op): premium + dil.
+    unawaited(AnalyticsService.instance.setUserProperty(
+        'is_premium', ref.read(isPremiumProvider) ? 'yes' : 'no'));
+    unawaited(
+        AnalyticsService.instance.setUserProperty('app_locale', I18n.instance.locale));
   }
 
   void _pollActivity() {

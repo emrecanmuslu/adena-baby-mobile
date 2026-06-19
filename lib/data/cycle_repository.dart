@@ -196,6 +196,17 @@ class CycleRepository {
     await _pullEntries();
   }
 
+  /// Migrasyonda tam yükleme için aktif hesabın TÜM adet kayıt + ayarını dirty
+  /// işaretle (grace sonrası cloud silinmişse geri yüklensin).
+  Future<void> markAllDirty() async {
+    final acct = _acct;
+    if (acct == null) return;
+    await (_db.update(_db.cycleEntries)..where((e) => e.accountId.equals(acct)))
+        .write(const CycleEntriesCompanion(dirty: Value(true)));
+    await (_db.update(_db.cycleSettingsTable)..where((s) => s.id.equals(acct)))
+        .write(const CycleSettingsTableCompanion(dirty: Value(true)));
+  }
+
   /// free→premium migrasyonu: yerel ayar + girdileri sunucuya yollar.
   Future<void> migrateToCloud() async {
     final acct = _acct;
@@ -243,19 +254,42 @@ class CycleRepository {
     final dirty = await (_db.select(_db.cycleEntries)
           ..where((e) => e.dirty.equals(true) & e.accountId.equals(acct)))
         .get();
+    if (dirty.isEmpty) return;
+
+    // Silmeler (nadir) tek tek DELETE; oluştur/güncellemeler TEK toplu istek
+    // (/cycle/entries/bulk) — migrasyonda N kayıt için N istek yerine 1 istek.
+    final upserts = <CycleEntryRow>[];
     for (final r in dirty) {
-      try {
-        if (r.isDeleted) {
+      if (r.isDeleted) {
+        try {
           await _api.dio.delete('/cycle/entries/${r.id}');
           await (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(r.id)))
               .go();
-          continue;
-        }
-        await _api.dio.post('/cycle/entries', data: _toEntry(r).toJson());
-        await (_db.update(_db.cycleEntries)..where((e) => e.id.equals(r.id)))
-            .write(const CycleEntriesCompanion(dirty: Value(false)));
-      } catch (_) {}
+        } catch (_) {}
+      } else {
+        upserts.add(r);
+      }
     }
+    if (upserts.isEmpty) return;
+
+    try {
+      final resp = await _api.dio.post(
+        '/cycle/entries/bulk',
+        data: [for (final r in upserts) _toEntry(r).toJson()],
+      );
+      // Sunucunun onayladığı id'leri temizle (kısmî başarıda kalanlar dirty kalır).
+      final saved = (((resp.data as Map)['saved'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toSet();
+      await _db.transaction(() async {
+        for (final r in upserts) {
+          if (saved.contains(r.id)) {
+            await (_db.update(_db.cycleEntries)..where((e) => e.id.equals(r.id)))
+                .write(const CycleEntriesCompanion(dirty: Value(false)));
+          }
+        }
+      });
+    } catch (_) {}
   }
 
   static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);

@@ -18,6 +18,8 @@ class MigrationOverlay extends ConsumerWidget {
         'memories' => tr('Anılar ve fotoğraflar'),
         'mom' => tr('Anne takibi'),
         'cycle' => tr('Adet takvimi'),
+        'health' => tr('Sağlık (aşı, gelişim, diş)'),
+        'purge' => tr('Bulut yedeği siliniyor'),
         _ => key,
       };
 
@@ -26,6 +28,7 @@ class MigrationOverlay extends ConsumerWidget {
     final st = ref.watch(migrationControllerProvider);
     if (st.phase == MigrationPhase.idle) return const SizedBox.shrink();
     final done = st.phase == MigrationPhase.done;
+    final purge = st.kind == MigrationKind.purge;
 
     // Migrasyon sırasında geri tuşunu engelle (yarıda bırakılmasın).
     return PopScope(
@@ -45,9 +48,13 @@ class MigrationOverlay extends ConsumerWidget {
                     const Center(child: BrandEmblem()),
                     const SizedBox(height: 20),
                     Text(
-                      done
-                          ? tr('Yedekleme tamamlandı 🎉')
-                          : tr('Verilerin buluta yedekleniyor'),
+                      purge
+                          ? (done
+                              ? tr('Bulut yedeğin silindi 🗑️')
+                              : tr('Verilerin indiriliyor'))
+                          : (done
+                              ? tr('Yedekleme tamamlandı 🎉')
+                              : tr('Verilerin buluta yedekleniyor')),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontSize: 20,
@@ -56,11 +63,21 @@ class MigrationOverlay extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      done
-                          ? tr('Artık verilerin güvende — her cihazdan erişebilir, '
-                              'ailenle paylaşabilirsin.')
-                          : tr('Telefonundaki kayıtlar buluta taşınıyor. Lütfen '
-                              'uygulamayı kapatma; bu işlem yalnız bir kez yapılır.'),
+                      purge
+                          ? (done
+                              ? tr('Tüm verilerin telefonunda güvende. Buluttaki '
+                                  'yedeğin kalıcı olarak silindi.')
+                              : tr('Buluttaki tüm verilerin önce telefonuna '
+                                  'indiriliyor, ardından bulut yedeğin siliniyor. '
+                                  'Verilerin telefonunda kalır. Lütfen uygulamayı '
+                                  'kapatma.'))
+                          : (done
+                              ? tr('Artık verilerin güvende — her cihazdan erişebilir, '
+                                  'ailenle paylaşabilirsin.')
+                              : tr('Kayıtların buluta yedekleniyor ve cihazların '
+                                  'arasında eşitleniyor; verilerin telefonunda da '
+                                  'güvende kalır. Lütfen uygulamayı kapatma — bu ilk '
+                                  'yükleme yalnız bir kez yapılır.')),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontSize: 13,
@@ -107,7 +124,7 @@ class MigrationOverlay extends ConsumerWidget {
                         onPressed: () => ref
                             .read(migrationControllerProvider.notifier)
                             .dismiss(),
-                        child: Text(tr('Harika!'),
+                        child: Text(purge ? tr('Tamam') : tr('Harika!'),
                             style: const TextStyle(
                                 fontWeight: FontWeight.w900, fontSize: 15)),
                       ),

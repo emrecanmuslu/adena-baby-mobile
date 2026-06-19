@@ -23,6 +23,8 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.3.20" apply false
     // Firebase (FCM push) — google-services.json'u derlemeye gömer.
     id("com.google.gms.google-services") version "4.4.2" apply false
+    // Crashlytics — sembol/mapping yüklemesi ve NDK çökme raporu için.
+    id("com.google.firebase.crashlytics") version "3.0.3" apply false
 }
 
 include(":app")

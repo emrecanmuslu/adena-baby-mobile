@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/age.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/providers.dart';
@@ -20,6 +21,12 @@ Map<String, dynamic> buildGrowthReportPayload(
   final birth = baby.birthDate;
   final gender = baby.gender;
   final canPct = birth != null && gender != BabyGender.unknown;
+  // Grafik UI ile AYNI mantık: prematüre bebekte düzeltilmiş yaş (efektif doğum
+  // anı = doğum + erken doğum süresi). Term bebekte birth ile aynı.
+  final corrected = usesCorrectedAge(baby);
+  final effBirth = baby.isPremature && birth != null
+      ? birth.add(Duration(days: prematureEarlyDays(baby)))
+      : birth;
 
   final defs = [
     (key: 'wt', field: 'weight', name: tr('Kilo'), isW: true),
@@ -44,9 +51,9 @@ Map<String, dynamic> buildGrowthReportPayload(
 
     // Grafik noktaları (tercih biriminde, yaş ay).
     final points = <List<double>>[];
-    if (birth != null) {
+    if (effBirth != null) {
       for (final r in growth) {
-        final age = r.ts.difference(birth).inHours / 24 / 30.4375;
+        final age = r.ts.difference(effBirth).inHours / 24 / 30.4375;
         if (age < 0 || age > WhoGrowth.maxMonth) continue;
         points.add([
           double.parse(age.toStringAsFixed(2)),
@@ -76,8 +83,9 @@ Map<String, dynamic> buildGrowthReportPayload(
     }
 
     final latestCanon = (growth.last.data[m.field] as num).toDouble();
-    final latestAge =
-        birth != null ? growth.last.ts.difference(birth).inHours / 24 / 30.4375 : null;
+    final latestAge = effBirth != null
+        ? growth.last.ts.difference(effBirth).inHours / 24 / 30.4375
+        : null;
     final pct = (canPct && latestAge != null)
         ? WhoGrowth.percentile(m.key, gender, latestAge, latestCanon)
         : null;
@@ -149,7 +157,8 @@ Map<String, dynamic> buildGrowthReportPayload(
           : gender == BabyGender.female
               ? 'female'
               : 'unknown',
-      'age_label': _ageLabel(birth, now),
+      'age_label': corrected ? dualAgeLabel(baby, now: now) : _ageLabel(birth, now),
+      'corrected_age': corrected,
     },
     'generated_at': fmtDayMonthYear(now),
     'measures': measuresOut,

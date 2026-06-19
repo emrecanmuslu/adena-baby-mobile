@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../data/subscription_repository.dart';
 import '../features/auth/auth_controller.dart';
 import 'adena_icons.dart';
+import 'analytics_service.dart';
 import 'i18n.dart';
 import 'theme.dart';
 
@@ -24,6 +27,8 @@ Future<void> requirePremium(
     onAllowed();
     return;
   }
+  unawaited(
+      AnalyticsService.instance.log('premium_gate_hit', {'feature': feature}));
   final go = await showPremiumUpsell(context, feature: feature, desc: desc);
   if (go == true && context.mounted) context.push('/premium');
 }

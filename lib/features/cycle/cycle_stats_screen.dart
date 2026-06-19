@@ -39,7 +39,7 @@ class CycleStatsScreen extends ConsumerWidget {
             if (status.mode != CycleMode.active) {
               return _waitingState(status.mode);
             }
-            return _stats(context, status);
+            return _StatsView(status: status);
           },
         ),
       ),
@@ -71,11 +71,79 @@ class CycleStatsScreen extends ConsumerWidget {
         ),
       );
 
-  Widget _stats(BuildContext context, CycleStatus status) {
+}
+
+/// İstatistik gövdesi. Geçmiş döngü listesi çok uzun olabileceğinden ListView'i
+/// eager `children` yerine `ListView.builder` + pencereleme ile çiziyoruz: satırlar
+/// görünüm penceresine girdikçe lazy oluşturulur ve aşağı kaydırdıkça parça parça
+/// büyür (infinite scroll). Başlık (kartlar + trend + bölüm başlığı) tek öğe.
+class _StatsView extends StatefulWidget {
+  final CycleStatus status;
+  const _StatsView({required this.status});
+
+  @override
+  State<_StatsView> createState() => _StatsViewState();
+}
+
+class _StatsViewState extends State<_StatsView> {
+  static const _pageSize = 12;
+  final _scroll = ScrollController();
+  int _shown = _pageSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_maybeLoadMore);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _maybeLoadMore() {
+    if (!_scroll.hasClients) return;
+    final p = _scroll.position;
+    if (p.pixels >= p.maxScrollExtent - 240) {
+      final total = widget.status.spans.where((s) => s.length != null).length;
+      if (_shown < total) setState(() => _shown += _pageSize);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = widget.status;
     final completed = status.spans.where((s) => s.length != null).toList();
-    return ListView(
+    final rows = completed.reversed.toList(); // yeni → eski
+    final shown = rows.length < _shown ? rows.length : _shown;
+    return ListView.builder(
+      controller: _scroll,
       padding: EdgeInsets.fromLTRB(
           16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
+      // index 0 = başlık; sonrası geçmiş döngü satırları (lazy + pencereli).
+      itemCount: 1 + (completed.isEmpty ? 1 : shown),
+      itemBuilder: (context, i) {
+        if (i == 0) return _header(context, status, completed);
+        if (completed.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Text(tr('İlk döngün tamamlandığında burada listelenecek.'),
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.muted)),
+          );
+        }
+        return _spanRow(rows[i - 1]);
+      },
+    );
+  }
+
+  Widget _header(
+      BuildContext context, CycleStatus status, List<CycleSpan> completed) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
@@ -127,15 +195,6 @@ class CycleStatsScreen extends ConsumerWidget {
           _trendCard(context, completed, status.lowConfidence),
         ],
         adSec(tr('Geçmiş Döngüler'), info: CycleInfo.regularity),
-        if (completed.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            child: Text(tr('İlk döngün tamamlandığında burada listelenecek.'),
-                style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.muted)),
-          )
-        else
-          for (final s in completed.reversed) _spanRow(s),
       ],
     );
   }
@@ -221,7 +280,14 @@ class CycleStatsScreen extends ConsumerWidget {
 
   Widget _trendCard(
       BuildContext context, List<CycleSpan> completed, bool lowConf) {
-    final lens = completed.map((s) => s.length!).toList();
+    // Yalnız son 6 döngü: çok sayıda döngüde çubuklar okunamaz hale gelir ve eski
+    // bir outlier (ör. ilk adet ile ilk düzenli döngü arası uzun boşluk) ölçeği
+    // bozup yeni çubukları görünmez kılar. Düzenlilik kartıyla aynı pencere.
+    final shown = completed.length > 6
+        ? completed.sublist(completed.length - 6)
+        : completed;
+    final offset = completed.length - shown.length; // global döngü numarası için
+    final lens = shown.map((s) => s.length!).toList();
     final maxLen = lens.reduce((a, b) => a > b ? a : b);
     return Container(
       padding: const EdgeInsets.all(16),
@@ -242,7 +308,9 @@ class CycleStatsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           SizedBox(
-            height: 90,
+            // 60px çubuk + üst/alt etiket + boşluklar ~96px → 90'a sığmıyordu
+            // (RenderFlex bottom overflow). 108 ile güvenli pay bırakılır.
+            height: 108,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -275,7 +343,7 @@ class CycleStatsScreen extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(height: 5),
-                          Text(trp('Döngü {n}', {'n': i + 1}),
+                          Text(trp('Döngü {n}', {'n': offset + i + 1}),
                               style: TextStyle(
                                   fontSize: 9.5,
                                   fontWeight: FontWeight.w800,

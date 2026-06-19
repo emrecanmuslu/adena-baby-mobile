@@ -14,6 +14,11 @@ class Subscription {
   /// Sunucu-doğrulamalı premium (`is_premium`): tier premium + süre dolmamış.
   final bool isPremium;
 
+  /// Cloud verisinin sunucuda en son silindiği an (manuel "buluttan sil" ya da grace
+  /// sonu cron purge). null → hiç silinmedi. İstemci yeniden abonelikte SADECE bu damga
+  /// son tam yüklemesinden yeniyse tam yeniden-yükleme yapar (grace-içi gereksiz upload'ı önler).
+  final DateTime? cloudPurgedAt;
+
   const Subscription({
     required this.tier,
     this.platform,
@@ -22,6 +27,7 @@ class Subscription {
     this.expiresAt,
     this.willRenew = false,
     this.isPremium = false,
+    this.cloudPurgedAt,
   });
 
   /// Lifetime (tek-seferlik) premium: aktif ama yenileme/bitiş yok.
@@ -53,6 +59,9 @@ class Subscription {
       willRenew: json['will_renew'] as bool? ?? false,
       // Eski sunucu yanıtında is_premium yoksa tier'a düş.
       isPremium: json['is_premium'] as bool? ?? (tier == 'premium'),
+      cloudPurgedAt: json['cloud_purged_at'] != null
+          ? DateTime.tryParse(json['cloud_purged_at'] as String)
+          : null,
     );
   }
 }

@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/age.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import 'baby_controller.dart';
+import 'premature_section.dart';
 
 /// Doğum geçiş ekranı (design ScrBornFlow): bekleme → takip moduna geçişte
 /// doğum tarihi + prematürite onayı, sonra "Takibe başla".
@@ -20,10 +22,35 @@ class BornFlowScreen extends ConsumerStatefulWidget {
 
 class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
   DateTime _birth = DateTime.now();
+  int? _gestWeeks; // prematüre: doğumdaki gebelik haftası (null = değil)
+  int _gestDays = 0; // gebelik haftası üstüne gün (0..6)
+  bool _gestTouched = false; // kullanıcı prematüre alanını elle değiştirdi mi?
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // İlk açılışta (varsayılan doğum tarihi = bugün) TDT'den ön-doldur.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(_autoDerive);
+    });
+  }
 
   static String _iso(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Tahmini doğum tarihi (TDT) varsa, seçili doğum tarihinden gebelik yaşını
+  /// otomatik türetir (kullanıcı elle dokunmadıysa). Zamanında doğum → kapalı.
+  void _autoDerive() {
+    if (_gestTouched) return;
+    final baby = ref.read(activeBabyProvider);
+    final due = baby?.dueDate;
+    if (due == null) return; // doğrudan eklenen / TDT yok → elle aç
+    final g = gestationalAgeFromDue(_birth, due);
+    _gestWeeks = g?.weeks;
+    _gestDays = g?.days ?? 0;
+  }
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
@@ -34,7 +61,12 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
       lastDate: now,
       helpText: tr('Doğum tarihi'),
     );
-    if (d != null) setState(() => _birth = d);
+    if (d != null) {
+      setState(() {
+        _birth = d;
+        _autoDerive(); // doğum tarihi değişince prematüreyi yeniden türet
+      });
+    }
   }
 
   Future<void> _start() async {
@@ -45,6 +77,8 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
       await ref.read(babyControllerProvider.notifier).updateBaby(baby.id, {
         'status': 'born',
         'birth_date': _iso(_birth),
+        'gestational_age_weeks': _gestWeeks,
+        'gestational_age_days': _gestWeeks == null ? 0 : _gestDays,
       });
       if (!mounted) return;
       // Bu ekran zaten "Tebrikler!" tebrik ekranı — ayrıca toast göstermek gereksiz.
@@ -137,7 +171,20 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
+
+                  // Prematüre girişi — TDT'den otomatik ön-dolar, düzenlenebilir.
+                  PrematureSection(
+                    weeks: _gestWeeks,
+                    days: _gestDays,
+                    onChanged: (w, d) => setState(() {
+                      _gestWeeks = w;
+                      _gestDays = d;
+                      _gestTouched = true;
+                    }),
+                  ),
+
+                  const SizedBox(height: 4),
                   _saving
                       ? FilledButton(
                           onPressed: null,

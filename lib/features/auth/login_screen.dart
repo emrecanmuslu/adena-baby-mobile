@@ -116,6 +116,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             (v == null || v.length < 6) ? tr('En az 6 karakter') : null,
                       ),
                     ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: GestureDetector(
+                        onTap: loading
+                            ? null
+                            : () => context.push('/forgot-password'),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            tr('Şifremi unuttum?'),
+                            style: const TextStyle(
+                                fontSize: 12.5,
+                                color: AppColors.coralDark,
+                                fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     loading
                         ? FilledButton(

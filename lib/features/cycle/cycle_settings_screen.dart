@@ -59,9 +59,16 @@ class _BodyState extends ConsumerState<_Body> {
   void initState() {
     super.initState();
     final r = widget.settings.reminders;
+    // Değerler {on, time} map'i olmalı; ama eski/seed veri {key: bool} biçiminde
+    // olabilir → map'e normalize et (yoksa 'bool is not a subtype of Map' patlar).
     _reminders = r.isEmpty
         ? _defaultReminders()
-        : {for (final e in r.entries) e.key: Map<String, dynamic>.from(e.value as Map)};
+        : {
+            for (final e in r.entries)
+              e.key: e.value is Map
+                  ? Map<String, dynamic>.from(e.value as Map)
+                  : {'on': e.value == true},
+          };
     _fertilityWarn = widget.settings.showFertilityWarning;
   }
 

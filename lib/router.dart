@@ -8,6 +8,7 @@ import 'core/tour.dart';
 import 'data/local_session.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/consent_gate_screen.dart';
+import 'features/auth/forgot_password_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/babies/baby_controller.dart';
@@ -75,6 +76,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+      GoRoute(
+          path: '/forgot-password',
+          builder: (_, _) => const ForgotPasswordScreen()),
       GoRoute(
           path: '/consent-gate', builder: (_, _) => const ConsentGateScreen()),
       GoRoute(path: '/onboarding', builder: (_, _) => const BabySetupScreen()),
@@ -185,7 +189,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // giriş/kayıt → rıza (hesaba bağlı) → bebek → ana sayfa.
       final auth = ref.read(authControllerProvider);
       final loc = state.matchedLocation;
-      final onAuthPage = loc == '/login' || loc == '/register';
+      final onAuthPage = loc == '/login' ||
+          loc == '/register' ||
+          loc == '/forgot-password';
 
       // Oturum çözülürken splash'te bekle — auth/rıza sayfaları kendi UI'larını
       // yönetir.

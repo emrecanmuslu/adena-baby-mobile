@@ -6,7 +6,6 @@ import '../core/theme.dart';
 /// Gelişim / kilometre taşı kaydı (katalogdan üretilir). API §health/milestones.
 @immutable
 class Milestone {
-  final int id;
   final String key;
   final String category; // motor|social|language|cognitive
   final String title;
@@ -17,7 +16,6 @@ class Milestone {
   final DateTime? achievedDate;
 
   const Milestone({
-    required this.id,
     required this.key,
     required this.category,
     required this.title,
@@ -27,20 +25,6 @@ class Milestone {
     required this.achieved,
     this.achievedDate,
   });
-
-  factory Milestone.fromJson(Map<String, dynamic> json) => Milestone(
-        id: json['id'] as int,
-        key: json['key'] as String? ?? '',
-        category: json['category'] as String? ?? 'motor',
-        title: json['title'] as String? ?? '',
-        description: json['description'] as String? ?? '',
-        tip: json['tip'] as String? ?? '',
-        expectedMonth: (json['expected_month'] as num?)?.toInt() ?? 0,
-        achieved: json['achieved'] as bool? ?? false,
-        achievedDate: json['achieved_date'] != null
-            ? DateTime.tryParse(json['achieved_date'] as String)
-            : null,
-      );
 }
 
 /// Kategori görsel meta (renk + etiket). tr() taze değerlensin diye fonksiyon.

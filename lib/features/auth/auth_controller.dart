@@ -72,6 +72,26 @@ class AuthController extends AsyncNotifier<User?> {
     }
   }
 
+  /// Parola sıfırlama kodu ister (e-postaya gönderilir). Oturum durumunu
+  /// değiştirmez; hata UI'da yakalanır.
+  Future<void> requestPasswordReset(String email) =>
+      _repo.forgotPassword(email);
+
+  /// Kod + yeni şifreyle sıfırlar ve başarılıysa otomatik giriş yapar.
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(
+      () => _repo.resetPassword(
+          email: email, code: code, newPassword: newPassword),
+    );
+    _syncRevenueCat(state.value);
+    await _postLogin();
+  }
+
   /// Sosyal giriş (provider: 'google' | 'apple'). Kullanıcı sağlayıcı
   /// ekranını iptal ederse hata göstermeden çıkış durumunda kalır.
   Future<void> socialLogin(String provider) async {

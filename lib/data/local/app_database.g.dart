@@ -765,6 +765,29 @@ class $BabiesTable extends Babies with TableInfo<$BabiesTable, BabyRow> {
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _gestationalWeeksMeta = const VerificationMeta(
+    'gestationalWeeks',
+  );
+  @override
+  late final GeneratedColumn<int> gestationalWeeks = GeneratedColumn<int>(
+    'gestational_weeks',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _gestationalDaysMeta = const VerificationMeta(
+    'gestationalDays',
+  );
+  @override
+  late final GeneratedColumn<int> gestationalDays = GeneratedColumn<int>(
+    'gestational_days',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _myRoleMeta = const VerificationMeta('myRole');
   @override
   late final GeneratedColumn<String> myRole = GeneratedColumn<String>(
@@ -813,6 +836,8 @@ class $BabiesTable extends Babies with TableInfo<$BabiesTable, BabyRow> {
     birthDate,
     dueDate,
     lastMenstrualDate,
+    gestationalWeeks,
+    gestationalDays,
     myRole,
     memberCount,
     settings,
@@ -917,6 +942,24 @@ class $BabiesTable extends Babies with TableInfo<$BabiesTable, BabyRow> {
         ),
       );
     }
+    if (data.containsKey('gestational_weeks')) {
+      context.handle(
+        _gestationalWeeksMeta,
+        gestationalWeeks.isAcceptableOrUnknown(
+          data['gestational_weeks']!,
+          _gestationalWeeksMeta,
+        ),
+      );
+    }
+    if (data.containsKey('gestational_days')) {
+      context.handle(
+        _gestationalDaysMeta,
+        gestationalDays.isAcceptableOrUnknown(
+          data['gestational_days']!,
+          _gestationalDaysMeta,
+        ),
+      );
+    }
     if (data.containsKey('my_role')) {
       context.handle(
         _myRoleMeta,
@@ -999,6 +1042,14 @@ class $BabiesTable extends Babies with TableInfo<$BabiesTable, BabyRow> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_menstrual_date'],
       ),
+      gestationalWeeks: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}gestational_weeks'],
+      ),
+      gestationalDays: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}gestational_days'],
+      )!,
       myRole: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}my_role'],
@@ -1034,6 +1085,8 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
   final DateTime? birthDate;
   final DateTime? dueDate;
   final DateTime? lastMenstrualDate;
+  final int? gestationalWeeks;
+  final int gestationalDays;
   final String? myRole;
   final int memberCount;
   final String settings;
@@ -1051,6 +1104,8 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     this.birthDate,
     this.dueDate,
     this.lastMenstrualDate,
+    this.gestationalWeeks,
+    required this.gestationalDays,
     this.myRole,
     required this.memberCount,
     required this.settings,
@@ -1085,6 +1140,10 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     if (!nullToAbsent || lastMenstrualDate != null) {
       map['last_menstrual_date'] = Variable<DateTime>(lastMenstrualDate);
     }
+    if (!nullToAbsent || gestationalWeeks != null) {
+      map['gestational_weeks'] = Variable<int>(gestationalWeeks);
+    }
+    map['gestational_days'] = Variable<int>(gestationalDays);
     if (!nullToAbsent || myRole != null) {
       map['my_role'] = Variable<String>(myRole);
     }
@@ -1122,6 +1181,10 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
       lastMenstrualDate: lastMenstrualDate == null && nullToAbsent
           ? const Value.absent()
           : Value(lastMenstrualDate),
+      gestationalWeeks: gestationalWeeks == null && nullToAbsent
+          ? const Value.absent()
+          : Value(gestationalWeeks),
+      gestationalDays: Value(gestationalDays),
       myRole: myRole == null && nullToAbsent
           ? const Value.absent()
           : Value(myRole),
@@ -1151,6 +1214,8 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
       lastMenstrualDate: serializer.fromJson<DateTime?>(
         json['lastMenstrualDate'],
       ),
+      gestationalWeeks: serializer.fromJson<int?>(json['gestationalWeeks']),
+      gestationalDays: serializer.fromJson<int>(json['gestationalDays']),
       myRole: serializer.fromJson<String?>(json['myRole']),
       memberCount: serializer.fromJson<int>(json['memberCount']),
       settings: serializer.fromJson<String>(json['settings']),
@@ -1173,6 +1238,8 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
       'birthDate': serializer.toJson<DateTime?>(birthDate),
       'dueDate': serializer.toJson<DateTime?>(dueDate),
       'lastMenstrualDate': serializer.toJson<DateTime?>(lastMenstrualDate),
+      'gestationalWeeks': serializer.toJson<int?>(gestationalWeeks),
+      'gestationalDays': serializer.toJson<int>(gestationalDays),
       'myRole': serializer.toJson<String?>(myRole),
       'memberCount': serializer.toJson<int>(memberCount),
       'settings': serializer.toJson<String>(settings),
@@ -1193,6 +1260,8 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     Value<DateTime?> birthDate = const Value.absent(),
     Value<DateTime?> dueDate = const Value.absent(),
     Value<DateTime?> lastMenstrualDate = const Value.absent(),
+    Value<int?> gestationalWeeks = const Value.absent(),
+    int? gestationalDays,
     Value<String?> myRole = const Value.absent(),
     int? memberCount,
     String? settings,
@@ -1216,6 +1285,10 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     lastMenstrualDate: lastMenstrualDate.present
         ? lastMenstrualDate.value
         : this.lastMenstrualDate,
+    gestationalWeeks: gestationalWeeks.present
+        ? gestationalWeeks.value
+        : this.gestationalWeeks,
+    gestationalDays: gestationalDays ?? this.gestationalDays,
     myRole: myRole.present ? myRole.value : this.myRole,
     memberCount: memberCount ?? this.memberCount,
     settings: settings ?? this.settings,
@@ -1241,6 +1314,12 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
       lastMenstrualDate: data.lastMenstrualDate.present
           ? data.lastMenstrualDate.value
           : this.lastMenstrualDate,
+      gestationalWeeks: data.gestationalWeeks.present
+          ? data.gestationalWeeks.value
+          : this.gestationalWeeks,
+      gestationalDays: data.gestationalDays.present
+          ? data.gestationalDays.value
+          : this.gestationalDays,
       myRole: data.myRole.present ? data.myRole.value : this.myRole,
       memberCount: data.memberCount.present
           ? data.memberCount.value
@@ -1265,6 +1344,8 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
           ..write('birthDate: $birthDate, ')
           ..write('dueDate: $dueDate, ')
           ..write('lastMenstrualDate: $lastMenstrualDate, ')
+          ..write('gestationalWeeks: $gestationalWeeks, ')
+          ..write('gestationalDays: $gestationalDays, ')
           ..write('myRole: $myRole, ')
           ..write('memberCount: $memberCount, ')
           ..write('settings: $settings')
@@ -1287,6 +1368,8 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     birthDate,
     dueDate,
     lastMenstrualDate,
+    gestationalWeeks,
+    gestationalDays,
     myRole,
     memberCount,
     settings,
@@ -1308,6 +1391,8 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
           other.birthDate == this.birthDate &&
           other.dueDate == this.dueDate &&
           other.lastMenstrualDate == this.lastMenstrualDate &&
+          other.gestationalWeeks == this.gestationalWeeks &&
+          other.gestationalDays == this.gestationalDays &&
           other.myRole == this.myRole &&
           other.memberCount == this.memberCount &&
           other.settings == this.settings);
@@ -1327,6 +1412,8 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
   final Value<DateTime?> birthDate;
   final Value<DateTime?> dueDate;
   final Value<DateTime?> lastMenstrualDate;
+  final Value<int?> gestationalWeeks;
+  final Value<int> gestationalDays;
   final Value<String?> myRole;
   final Value<int> memberCount;
   final Value<String> settings;
@@ -1345,6 +1432,8 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     this.birthDate = const Value.absent(),
     this.dueDate = const Value.absent(),
     this.lastMenstrualDate = const Value.absent(),
+    this.gestationalWeeks = const Value.absent(),
+    this.gestationalDays = const Value.absent(),
     this.myRole = const Value.absent(),
     this.memberCount = const Value.absent(),
     this.settings = const Value.absent(),
@@ -1364,6 +1453,8 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     this.birthDate = const Value.absent(),
     this.dueDate = const Value.absent(),
     this.lastMenstrualDate = const Value.absent(),
+    this.gestationalWeeks = const Value.absent(),
+    this.gestationalDays = const Value.absent(),
     this.myRole = const Value.absent(),
     this.memberCount = const Value.absent(),
     this.settings = const Value.absent(),
@@ -1384,6 +1475,8 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     Expression<DateTime>? birthDate,
     Expression<DateTime>? dueDate,
     Expression<DateTime>? lastMenstrualDate,
+    Expression<int>? gestationalWeeks,
+    Expression<int>? gestationalDays,
     Expression<String>? myRole,
     Expression<int>? memberCount,
     Expression<String>? settings,
@@ -1403,6 +1496,8 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
       if (birthDate != null) 'birth_date': birthDate,
       if (dueDate != null) 'due_date': dueDate,
       if (lastMenstrualDate != null) 'last_menstrual_date': lastMenstrualDate,
+      if (gestationalWeeks != null) 'gestational_weeks': gestationalWeeks,
+      if (gestationalDays != null) 'gestational_days': gestationalDays,
       if (myRole != null) 'my_role': myRole,
       if (memberCount != null) 'member_count': memberCount,
       if (settings != null) 'settings': settings,
@@ -1424,6 +1519,8 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     Value<DateTime?>? birthDate,
     Value<DateTime?>? dueDate,
     Value<DateTime?>? lastMenstrualDate,
+    Value<int?>? gestationalWeeks,
+    Value<int>? gestationalDays,
     Value<String?>? myRole,
     Value<int>? memberCount,
     Value<String>? settings,
@@ -1443,6 +1540,8 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
       birthDate: birthDate ?? this.birthDate,
       dueDate: dueDate ?? this.dueDate,
       lastMenstrualDate: lastMenstrualDate ?? this.lastMenstrualDate,
+      gestationalWeeks: gestationalWeeks ?? this.gestationalWeeks,
+      gestationalDays: gestationalDays ?? this.gestationalDays,
       myRole: myRole ?? this.myRole,
       memberCount: memberCount ?? this.memberCount,
       settings: settings ?? this.settings,
@@ -1492,6 +1591,12 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     if (lastMenstrualDate.present) {
       map['last_menstrual_date'] = Variable<DateTime>(lastMenstrualDate.value);
     }
+    if (gestationalWeeks.present) {
+      map['gestational_weeks'] = Variable<int>(gestationalWeeks.value);
+    }
+    if (gestationalDays.present) {
+      map['gestational_days'] = Variable<int>(gestationalDays.value);
+    }
     if (myRole.present) {
       map['my_role'] = Variable<String>(myRole.value);
     }
@@ -1523,6 +1628,8 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
           ..write('birthDate: $birthDate, ')
           ..write('dueDate: $dueDate, ')
           ..write('lastMenstrualDate: $lastMenstrualDate, ')
+          ..write('gestationalWeeks: $gestationalWeeks, ')
+          ..write('gestationalDays: $gestationalDays, ')
           ..write('myRole: $myRole, ')
           ..write('memberCount: $memberCount, ')
           ..write('settings: $settings, ')
@@ -4689,6 +4796,769 @@ class SyncCursorsCompanion extends UpdateCompanion<SyncCursor> {
   }
 }
 
+class $HealthStatusesTable extends HealthStatuses
+    with TableInfo<$HealthStatusesTable, HealthStatusRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $HealthStatusesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _babyMeta = const VerificationMeta('baby');
+  @override
+  late final GeneratedColumn<String> baby = GeneratedColumn<String>(
+    'baby',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _itemKeyMeta = const VerificationMeta(
+    'itemKey',
+  );
+  @override
+  late final GeneratedColumn<String> itemKey = GeneratedColumn<String>(
+    'item_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _doneMeta = const VerificationMeta('done');
+  @override
+  late final GeneratedColumn<bool> done = GeneratedColumn<bool>(
+    'done',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("done" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _statusDateMeta = const VerificationMeta(
+    'statusDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> statusDate = GeneratedColumn<DateTime>(
+    'status_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [baby, kind, itemKey, done, statusDate];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'health_statuses';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<HealthStatusRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('baby')) {
+      context.handle(
+        _babyMeta,
+        baby.isAcceptableOrUnknown(data['baby']!, _babyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_babyMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('item_key')) {
+      context.handle(
+        _itemKeyMeta,
+        itemKey.isAcceptableOrUnknown(data['item_key']!, _itemKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemKeyMeta);
+    }
+    if (data.containsKey('done')) {
+      context.handle(
+        _doneMeta,
+        done.isAcceptableOrUnknown(data['done']!, _doneMeta),
+      );
+    }
+    if (data.containsKey('status_date')) {
+      context.handle(
+        _statusDateMeta,
+        statusDate.isAcceptableOrUnknown(data['status_date']!, _statusDateMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {baby, kind, itemKey};
+  @override
+  HealthStatusRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return HealthStatusRow(
+      baby: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}baby'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      itemKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_key'],
+      )!,
+      done: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}done'],
+      )!,
+      statusDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}status_date'],
+      ),
+    );
+  }
+
+  @override
+  $HealthStatusesTable createAlias(String alias) {
+    return $HealthStatusesTable(attachedDatabase, alias);
+  }
+}
+
+class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
+  final String baby;
+  final String kind;
+  final String itemKey;
+  final bool done;
+  final DateTime? statusDate;
+  const HealthStatusRow({
+    required this.baby,
+    required this.kind,
+    required this.itemKey,
+    required this.done,
+    this.statusDate,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['baby'] = Variable<String>(baby);
+    map['kind'] = Variable<String>(kind);
+    map['item_key'] = Variable<String>(itemKey);
+    map['done'] = Variable<bool>(done);
+    if (!nullToAbsent || statusDate != null) {
+      map['status_date'] = Variable<DateTime>(statusDate);
+    }
+    return map;
+  }
+
+  HealthStatusesCompanion toCompanion(bool nullToAbsent) {
+    return HealthStatusesCompanion(
+      baby: Value(baby),
+      kind: Value(kind),
+      itemKey: Value(itemKey),
+      done: Value(done),
+      statusDate: statusDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(statusDate),
+    );
+  }
+
+  factory HealthStatusRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return HealthStatusRow(
+      baby: serializer.fromJson<String>(json['baby']),
+      kind: serializer.fromJson<String>(json['kind']),
+      itemKey: serializer.fromJson<String>(json['itemKey']),
+      done: serializer.fromJson<bool>(json['done']),
+      statusDate: serializer.fromJson<DateTime?>(json['statusDate']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'baby': serializer.toJson<String>(baby),
+      'kind': serializer.toJson<String>(kind),
+      'itemKey': serializer.toJson<String>(itemKey),
+      'done': serializer.toJson<bool>(done),
+      'statusDate': serializer.toJson<DateTime?>(statusDate),
+    };
+  }
+
+  HealthStatusRow copyWith({
+    String? baby,
+    String? kind,
+    String? itemKey,
+    bool? done,
+    Value<DateTime?> statusDate = const Value.absent(),
+  }) => HealthStatusRow(
+    baby: baby ?? this.baby,
+    kind: kind ?? this.kind,
+    itemKey: itemKey ?? this.itemKey,
+    done: done ?? this.done,
+    statusDate: statusDate.present ? statusDate.value : this.statusDate,
+  );
+  HealthStatusRow copyWithCompanion(HealthStatusesCompanion data) {
+    return HealthStatusRow(
+      baby: data.baby.present ? data.baby.value : this.baby,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      itemKey: data.itemKey.present ? data.itemKey.value : this.itemKey,
+      done: data.done.present ? data.done.value : this.done,
+      statusDate: data.statusDate.present
+          ? data.statusDate.value
+          : this.statusDate,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HealthStatusRow(')
+          ..write('baby: $baby, ')
+          ..write('kind: $kind, ')
+          ..write('itemKey: $itemKey, ')
+          ..write('done: $done, ')
+          ..write('statusDate: $statusDate')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(baby, kind, itemKey, done, statusDate);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is HealthStatusRow &&
+          other.baby == this.baby &&
+          other.kind == this.kind &&
+          other.itemKey == this.itemKey &&
+          other.done == this.done &&
+          other.statusDate == this.statusDate);
+}
+
+class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
+  final Value<String> baby;
+  final Value<String> kind;
+  final Value<String> itemKey;
+  final Value<bool> done;
+  final Value<DateTime?> statusDate;
+  final Value<int> rowid;
+  const HealthStatusesCompanion({
+    this.baby = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.itemKey = const Value.absent(),
+    this.done = const Value.absent(),
+    this.statusDate = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  HealthStatusesCompanion.insert({
+    required String baby,
+    required String kind,
+    required String itemKey,
+    this.done = const Value.absent(),
+    this.statusDate = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : baby = Value(baby),
+       kind = Value(kind),
+       itemKey = Value(itemKey);
+  static Insertable<HealthStatusRow> custom({
+    Expression<String>? baby,
+    Expression<String>? kind,
+    Expression<String>? itemKey,
+    Expression<bool>? done,
+    Expression<DateTime>? statusDate,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (baby != null) 'baby': baby,
+      if (kind != null) 'kind': kind,
+      if (itemKey != null) 'item_key': itemKey,
+      if (done != null) 'done': done,
+      if (statusDate != null) 'status_date': statusDate,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  HealthStatusesCompanion copyWith({
+    Value<String>? baby,
+    Value<String>? kind,
+    Value<String>? itemKey,
+    Value<bool>? done,
+    Value<DateTime?>? statusDate,
+    Value<int>? rowid,
+  }) {
+    return HealthStatusesCompanion(
+      baby: baby ?? this.baby,
+      kind: kind ?? this.kind,
+      itemKey: itemKey ?? this.itemKey,
+      done: done ?? this.done,
+      statusDate: statusDate ?? this.statusDate,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (baby.present) {
+      map['baby'] = Variable<String>(baby.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (itemKey.present) {
+      map['item_key'] = Variable<String>(itemKey.value);
+    }
+    if (done.present) {
+      map['done'] = Variable<bool>(done.value);
+    }
+    if (statusDate.present) {
+      map['status_date'] = Variable<DateTime>(statusDate.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HealthStatusesCompanion(')
+          ..write('baby: $baby, ')
+          ..write('kind: $kind, ')
+          ..write('itemKey: $itemKey, ')
+          ..write('done: $done, ')
+          ..write('statusDate: $statusDate, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalRemindersTable extends LocalReminders
+    with TableInfo<$LocalRemindersTable, ReminderRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalRemindersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _localIdMeta = const VerificationMeta(
+    'localId',
+  );
+  @override
+  late final GeneratedColumn<int> localId = GeneratedColumn<int>(
+    'local_id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _babyMeta = const VerificationMeta('baby');
+  @override
+  late final GeneratedColumn<String> baby = GeneratedColumn<String>(
+    'baby',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('custom'),
+  );
+  static const VerificationMeta _scheduleJsonMeta = const VerificationMeta(
+    'scheduleJson',
+  );
+  @override
+  late final GeneratedColumn<String> scheduleJson = GeneratedColumn<String>(
+    'schedule_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _enabledMeta = const VerificationMeta(
+    'enabled',
+  );
+  @override
+  late final GeneratedColumn<bool> enabled = GeneratedColumn<bool>(
+    'enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    localId,
+    baby,
+    type,
+    scheduleJson,
+    enabled,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_reminders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ReminderRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('local_id')) {
+      context.handle(
+        _localIdMeta,
+        localId.isAcceptableOrUnknown(data['local_id']!, _localIdMeta),
+      );
+    }
+    if (data.containsKey('baby')) {
+      context.handle(
+        _babyMeta,
+        baby.isAcceptableOrUnknown(data['baby']!, _babyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_babyMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    }
+    if (data.containsKey('schedule_json')) {
+      context.handle(
+        _scheduleJsonMeta,
+        scheduleJson.isAcceptableOrUnknown(
+          data['schedule_json']!,
+          _scheduleJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('enabled')) {
+      context.handle(
+        _enabledMeta,
+        enabled.isAcceptableOrUnknown(data['enabled']!, _enabledMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {localId};
+  @override
+  ReminderRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ReminderRow(
+      localId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_id'],
+      )!,
+      baby: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}baby'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      scheduleJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}schedule_json'],
+      )!,
+      enabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}enabled'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      ),
+    );
+  }
+
+  @override
+  $LocalRemindersTable createAlias(String alias) {
+    return $LocalRemindersTable(attachedDatabase, alias);
+  }
+}
+
+class ReminderRow extends DataClass implements Insertable<ReminderRow> {
+  final int localId;
+  final String baby;
+  final String type;
+  final String scheduleJson;
+  final bool enabled;
+  final DateTime? createdAt;
+  const ReminderRow({
+    required this.localId,
+    required this.baby,
+    required this.type,
+    required this.scheduleJson,
+    required this.enabled,
+    this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['local_id'] = Variable<int>(localId);
+    map['baby'] = Variable<String>(baby);
+    map['type'] = Variable<String>(type);
+    map['schedule_json'] = Variable<String>(scheduleJson);
+    map['enabled'] = Variable<bool>(enabled);
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<DateTime>(createdAt);
+    }
+    return map;
+  }
+
+  LocalRemindersCompanion toCompanion(bool nullToAbsent) {
+    return LocalRemindersCompanion(
+      localId: Value(localId),
+      baby: Value(baby),
+      type: Value(type),
+      scheduleJson: Value(scheduleJson),
+      enabled: Value(enabled),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+    );
+  }
+
+  factory ReminderRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ReminderRow(
+      localId: serializer.fromJson<int>(json['localId']),
+      baby: serializer.fromJson<String>(json['baby']),
+      type: serializer.fromJson<String>(json['type']),
+      scheduleJson: serializer.fromJson<String>(json['scheduleJson']),
+      enabled: serializer.fromJson<bool>(json['enabled']),
+      createdAt: serializer.fromJson<DateTime?>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'localId': serializer.toJson<int>(localId),
+      'baby': serializer.toJson<String>(baby),
+      'type': serializer.toJson<String>(type),
+      'scheduleJson': serializer.toJson<String>(scheduleJson),
+      'enabled': serializer.toJson<bool>(enabled),
+      'createdAt': serializer.toJson<DateTime?>(createdAt),
+    };
+  }
+
+  ReminderRow copyWith({
+    int? localId,
+    String? baby,
+    String? type,
+    String? scheduleJson,
+    bool? enabled,
+    Value<DateTime?> createdAt = const Value.absent(),
+  }) => ReminderRow(
+    localId: localId ?? this.localId,
+    baby: baby ?? this.baby,
+    type: type ?? this.type,
+    scheduleJson: scheduleJson ?? this.scheduleJson,
+    enabled: enabled ?? this.enabled,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
+  );
+  ReminderRow copyWithCompanion(LocalRemindersCompanion data) {
+    return ReminderRow(
+      localId: data.localId.present ? data.localId.value : this.localId,
+      baby: data.baby.present ? data.baby.value : this.baby,
+      type: data.type.present ? data.type.value : this.type,
+      scheduleJson: data.scheduleJson.present
+          ? data.scheduleJson.value
+          : this.scheduleJson,
+      enabled: data.enabled.present ? data.enabled.value : this.enabled,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReminderRow(')
+          ..write('localId: $localId, ')
+          ..write('baby: $baby, ')
+          ..write('type: $type, ')
+          ..write('scheduleJson: $scheduleJson, ')
+          ..write('enabled: $enabled, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(localId, baby, type, scheduleJson, enabled, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ReminderRow &&
+          other.localId == this.localId &&
+          other.baby == this.baby &&
+          other.type == this.type &&
+          other.scheduleJson == this.scheduleJson &&
+          other.enabled == this.enabled &&
+          other.createdAt == this.createdAt);
+}
+
+class LocalRemindersCompanion extends UpdateCompanion<ReminderRow> {
+  final Value<int> localId;
+  final Value<String> baby;
+  final Value<String> type;
+  final Value<String> scheduleJson;
+  final Value<bool> enabled;
+  final Value<DateTime?> createdAt;
+  const LocalRemindersCompanion({
+    this.localId = const Value.absent(),
+    this.baby = const Value.absent(),
+    this.type = const Value.absent(),
+    this.scheduleJson = const Value.absent(),
+    this.enabled = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  LocalRemindersCompanion.insert({
+    this.localId = const Value.absent(),
+    required String baby,
+    this.type = const Value.absent(),
+    this.scheduleJson = const Value.absent(),
+    this.enabled = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : baby = Value(baby);
+  static Insertable<ReminderRow> custom({
+    Expression<int>? localId,
+    Expression<String>? baby,
+    Expression<String>? type,
+    Expression<String>? scheduleJson,
+    Expression<bool>? enabled,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (localId != null) 'local_id': localId,
+      if (baby != null) 'baby': baby,
+      if (type != null) 'type': type,
+      if (scheduleJson != null) 'schedule_json': scheduleJson,
+      if (enabled != null) 'enabled': enabled,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  LocalRemindersCompanion copyWith({
+    Value<int>? localId,
+    Value<String>? baby,
+    Value<String>? type,
+    Value<String>? scheduleJson,
+    Value<bool>? enabled,
+    Value<DateTime?>? createdAt,
+  }) {
+    return LocalRemindersCompanion(
+      localId: localId ?? this.localId,
+      baby: baby ?? this.baby,
+      type: type ?? this.type,
+      scheduleJson: scheduleJson ?? this.scheduleJson,
+      enabled: enabled ?? this.enabled,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (localId.present) {
+      map['local_id'] = Variable<int>(localId.value);
+    }
+    if (baby.present) {
+      map['baby'] = Variable<String>(baby.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (scheduleJson.present) {
+      map['schedule_json'] = Variable<String>(scheduleJson.value);
+    }
+    if (enabled.present) {
+      map['enabled'] = Variable<bool>(enabled.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalRemindersCompanion(')
+          ..write('localId: $localId, ')
+          ..write('baby: $baby, ')
+          ..write('type: $type, ')
+          ..write('scheduleJson: $scheduleJson, ')
+          ..write('enabled: $enabled, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4700,6 +5570,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $CycleSettingsTableTable(this);
   late final $CycleEntriesTable cycleEntries = $CycleEntriesTable(this);
   late final $SyncCursorsTable syncCursors = $SyncCursorsTable(this);
+  late final $HealthStatusesTable healthStatuses = $HealthStatusesTable(this);
+  late final $LocalRemindersTable localReminders = $LocalRemindersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4712,6 +5584,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     cycleSettingsTable,
     cycleEntries,
     syncCursors,
+    healthStatuses,
+    localReminders,
   ];
 }
 
@@ -5023,6 +5897,8 @@ typedef $$BabiesTableCreateCompanionBuilder =
       Value<DateTime?> birthDate,
       Value<DateTime?> dueDate,
       Value<DateTime?> lastMenstrualDate,
+      Value<int?> gestationalWeeks,
+      Value<int> gestationalDays,
       Value<String?> myRole,
       Value<int> memberCount,
       Value<String> settings,
@@ -5043,6 +5919,8 @@ typedef $$BabiesTableUpdateCompanionBuilder =
       Value<DateTime?> birthDate,
       Value<DateTime?> dueDate,
       Value<DateTime?> lastMenstrualDate,
+      Value<int?> gestationalWeeks,
+      Value<int> gestationalDays,
       Value<String?> myRole,
       Value<int> memberCount,
       Value<String> settings,
@@ -5120,6 +5998,16 @@ class $$BabiesTableFilterComposer
 
   ColumnFilters<DateTime> get lastMenstrualDate => $composableBuilder(
     column: $table.lastMenstrualDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get gestationalWeeks => $composableBuilder(
+    column: $table.gestationalWeeks,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get gestationalDays => $composableBuilder(
+    column: $table.gestationalDays,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5213,6 +6101,16 @@ class $$BabiesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get gestationalWeeks => $composableBuilder(
+    column: $table.gestationalWeeks,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get gestationalDays => $composableBuilder(
+    column: $table.gestationalDays,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get myRole => $composableBuilder(
     column: $table.myRole,
     builder: (column) => ColumnOrderings(column),
@@ -5283,6 +6181,16 @@ class $$BabiesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get gestationalWeeks => $composableBuilder(
+    column: $table.gestationalWeeks,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get gestationalDays => $composableBuilder(
+    column: $table.gestationalDays,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get myRole =>
       $composableBuilder(column: $table.myRole, builder: (column) => column);
 
@@ -5336,6 +6244,8 @@ class $$BabiesTableTableManager
                 Value<DateTime?> birthDate = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
                 Value<DateTime?> lastMenstrualDate = const Value.absent(),
+                Value<int?> gestationalWeeks = const Value.absent(),
+                Value<int> gestationalDays = const Value.absent(),
                 Value<String?> myRole = const Value.absent(),
                 Value<int> memberCount = const Value.absent(),
                 Value<String> settings = const Value.absent(),
@@ -5354,6 +6264,8 @@ class $$BabiesTableTableManager
                 birthDate: birthDate,
                 dueDate: dueDate,
                 lastMenstrualDate: lastMenstrualDate,
+                gestationalWeeks: gestationalWeeks,
+                gestationalDays: gestationalDays,
                 myRole: myRole,
                 memberCount: memberCount,
                 settings: settings,
@@ -5374,6 +6286,8 @@ class $$BabiesTableTableManager
                 Value<DateTime?> birthDate = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
                 Value<DateTime?> lastMenstrualDate = const Value.absent(),
+                Value<int?> gestationalWeeks = const Value.absent(),
+                Value<int> gestationalDays = const Value.absent(),
                 Value<String?> myRole = const Value.absent(),
                 Value<int> memberCount = const Value.absent(),
                 Value<String> settings = const Value.absent(),
@@ -5392,6 +6306,8 @@ class $$BabiesTableTableManager
                 birthDate: birthDate,
                 dueDate: dueDate,
                 lastMenstrualDate: lastMenstrualDate,
+                gestationalWeeks: gestationalWeeks,
+                gestationalDays: gestationalDays,
                 myRole: myRole,
                 memberCount: memberCount,
                 settings: settings,
@@ -6946,6 +7862,431 @@ typedef $$SyncCursorsTableProcessedTableManager =
       SyncCursor,
       PrefetchHooks Function()
     >;
+typedef $$HealthStatusesTableCreateCompanionBuilder =
+    HealthStatusesCompanion Function({
+      required String baby,
+      required String kind,
+      required String itemKey,
+      Value<bool> done,
+      Value<DateTime?> statusDate,
+      Value<int> rowid,
+    });
+typedef $$HealthStatusesTableUpdateCompanionBuilder =
+    HealthStatusesCompanion Function({
+      Value<String> baby,
+      Value<String> kind,
+      Value<String> itemKey,
+      Value<bool> done,
+      Value<DateTime?> statusDate,
+      Value<int> rowid,
+    });
+
+class $$HealthStatusesTableFilterComposer
+    extends Composer<_$AppDatabase, $HealthStatusesTable> {
+  $$HealthStatusesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get baby => $composableBuilder(
+    column: $table.baby,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get itemKey => $composableBuilder(
+    column: $table.itemKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get done => $composableBuilder(
+    column: $table.done,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get statusDate => $composableBuilder(
+    column: $table.statusDate,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$HealthStatusesTableOrderingComposer
+    extends Composer<_$AppDatabase, $HealthStatusesTable> {
+  $$HealthStatusesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get baby => $composableBuilder(
+    column: $table.baby,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get itemKey => $composableBuilder(
+    column: $table.itemKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get done => $composableBuilder(
+    column: $table.done,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get statusDate => $composableBuilder(
+    column: $table.statusDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$HealthStatusesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $HealthStatusesTable> {
+  $$HealthStatusesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get baby =>
+      $composableBuilder(column: $table.baby, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get itemKey =>
+      $composableBuilder(column: $table.itemKey, builder: (column) => column);
+
+  GeneratedColumn<bool> get done =>
+      $composableBuilder(column: $table.done, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get statusDate => $composableBuilder(
+    column: $table.statusDate,
+    builder: (column) => column,
+  );
+}
+
+class $$HealthStatusesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $HealthStatusesTable,
+          HealthStatusRow,
+          $$HealthStatusesTableFilterComposer,
+          $$HealthStatusesTableOrderingComposer,
+          $$HealthStatusesTableAnnotationComposer,
+          $$HealthStatusesTableCreateCompanionBuilder,
+          $$HealthStatusesTableUpdateCompanionBuilder,
+          (
+            HealthStatusRow,
+            BaseReferences<
+              _$AppDatabase,
+              $HealthStatusesTable,
+              HealthStatusRow
+            >,
+          ),
+          HealthStatusRow,
+          PrefetchHooks Function()
+        > {
+  $$HealthStatusesTableTableManager(
+    _$AppDatabase db,
+    $HealthStatusesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$HealthStatusesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$HealthStatusesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$HealthStatusesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> baby = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> itemKey = const Value.absent(),
+                Value<bool> done = const Value.absent(),
+                Value<DateTime?> statusDate = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => HealthStatusesCompanion(
+                baby: baby,
+                kind: kind,
+                itemKey: itemKey,
+                done: done,
+                statusDate: statusDate,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String baby,
+                required String kind,
+                required String itemKey,
+                Value<bool> done = const Value.absent(),
+                Value<DateTime?> statusDate = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => HealthStatusesCompanion.insert(
+                baby: baby,
+                kind: kind,
+                itemKey: itemKey,
+                done: done,
+                statusDate: statusDate,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$HealthStatusesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $HealthStatusesTable,
+      HealthStatusRow,
+      $$HealthStatusesTableFilterComposer,
+      $$HealthStatusesTableOrderingComposer,
+      $$HealthStatusesTableAnnotationComposer,
+      $$HealthStatusesTableCreateCompanionBuilder,
+      $$HealthStatusesTableUpdateCompanionBuilder,
+      (
+        HealthStatusRow,
+        BaseReferences<_$AppDatabase, $HealthStatusesTable, HealthStatusRow>,
+      ),
+      HealthStatusRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LocalRemindersTableCreateCompanionBuilder =
+    LocalRemindersCompanion Function({
+      Value<int> localId,
+      required String baby,
+      Value<String> type,
+      Value<String> scheduleJson,
+      Value<bool> enabled,
+      Value<DateTime?> createdAt,
+    });
+typedef $$LocalRemindersTableUpdateCompanionBuilder =
+    LocalRemindersCompanion Function({
+      Value<int> localId,
+      Value<String> baby,
+      Value<String> type,
+      Value<String> scheduleJson,
+      Value<bool> enabled,
+      Value<DateTime?> createdAt,
+    });
+
+class $$LocalRemindersTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalRemindersTable> {
+  $$LocalRemindersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get localId => $composableBuilder(
+    column: $table.localId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baby => $composableBuilder(
+    column: $table.baby,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scheduleJson => $composableBuilder(
+    column: $table.scheduleJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalRemindersTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalRemindersTable> {
+  $$LocalRemindersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get localId => $composableBuilder(
+    column: $table.localId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get baby => $composableBuilder(
+    column: $table.baby,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get scheduleJson => $composableBuilder(
+    column: $table.scheduleJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalRemindersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalRemindersTable> {
+  $$LocalRemindersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get localId =>
+      $composableBuilder(column: $table.localId, builder: (column) => column);
+
+  GeneratedColumn<String> get baby =>
+      $composableBuilder(column: $table.baby, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get scheduleJson => $composableBuilder(
+    column: $table.scheduleJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get enabled =>
+      $composableBuilder(column: $table.enabled, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$LocalRemindersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalRemindersTable,
+          ReminderRow,
+          $$LocalRemindersTableFilterComposer,
+          $$LocalRemindersTableOrderingComposer,
+          $$LocalRemindersTableAnnotationComposer,
+          $$LocalRemindersTableCreateCompanionBuilder,
+          $$LocalRemindersTableUpdateCompanionBuilder,
+          (
+            ReminderRow,
+            BaseReferences<_$AppDatabase, $LocalRemindersTable, ReminderRow>,
+          ),
+          ReminderRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalRemindersTableTableManager(
+    _$AppDatabase db,
+    $LocalRemindersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalRemindersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalRemindersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalRemindersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> localId = const Value.absent(),
+                Value<String> baby = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> scheduleJson = const Value.absent(),
+                Value<bool> enabled = const Value.absent(),
+                Value<DateTime?> createdAt = const Value.absent(),
+              }) => LocalRemindersCompanion(
+                localId: localId,
+                baby: baby,
+                type: type,
+                scheduleJson: scheduleJson,
+                enabled: enabled,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> localId = const Value.absent(),
+                required String baby,
+                Value<String> type = const Value.absent(),
+                Value<String> scheduleJson = const Value.absent(),
+                Value<bool> enabled = const Value.absent(),
+                Value<DateTime?> createdAt = const Value.absent(),
+              }) => LocalRemindersCompanion.insert(
+                localId: localId,
+                baby: baby,
+                type: type,
+                scheduleJson: scheduleJson,
+                enabled: enabled,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalRemindersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalRemindersTable,
+      ReminderRow,
+      $$LocalRemindersTableFilterComposer,
+      $$LocalRemindersTableOrderingComposer,
+      $$LocalRemindersTableAnnotationComposer,
+      $$LocalRemindersTableCreateCompanionBuilder,
+      $$LocalRemindersTableUpdateCompanionBuilder,
+      (
+        ReminderRow,
+        BaseReferences<_$AppDatabase, $LocalRemindersTable, ReminderRow>,
+      ),
+      ReminderRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6964,4 +8305,8 @@ class $AppDatabaseManager {
       $$CycleEntriesTableTableManager(_db, _db.cycleEntries);
   $$SyncCursorsTableTableManager get syncCursors =>
       $$SyncCursorsTableTableManager(_db, _db.syncCursors);
+  $$HealthStatusesTableTableManager get healthStatuses =>
+      $$HealthStatusesTableTableManager(_db, _db.healthStatuses);
+  $$LocalRemindersTableTableManager get localReminders =>
+      $$LocalRemindersTableTableManager(_db, _db.localReminders);
 }

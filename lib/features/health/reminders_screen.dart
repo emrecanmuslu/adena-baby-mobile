@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/analytics_service.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
@@ -592,6 +593,8 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
       await widget.ref
           .read(healthRepositoryProvider)
           .createReminder(widget.babyId, type: 'custom', schedule: _schedule());
+      await AnalyticsService.instance
+          .log('reminder_set', {'reminder_type': 'custom', 'repeat': _repeat});
       widget.ref.invalidate(remindersProvider(widget.babyId));
       if (mounted) {
         Navigator.pop(context);

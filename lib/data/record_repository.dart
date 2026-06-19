@@ -179,6 +179,13 @@ class RecordRepository {
 
   // ---- Sync (delta, son-yazan-kazanır) ----
 
+  /// Migrasyonda tam yükleme için bu bebeğin TÜM kayıtlarını dirty işaretle
+  /// (silinmiş/tombstone dahil → sync onları da taşır). Bkz. MigrationController.
+  Future<void> markAllDirty(String babyId) async {
+    await (_db.update(_db.records)..where((r) => r.baby.equals(babyId)))
+        .write(const RecordsCompanion(dirty: Value(true)));
+  }
+
   /// Bekleyen yerel değişiklikleri gönderir, sunucu değişikliklerini çeker.
   /// Hata atarsa (çevrimdışı vb.) çağıran yutar; yerel veri korunur.
   Future<void> sync(String babyId) async {

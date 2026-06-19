@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ad_banner.dart';
+import '../../core/analytics_service.dart';
 import '../../core/ad_markdown.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
@@ -20,6 +24,8 @@ class ArticleDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(articleProvider(slug));
     final cats = ref.watch(contentCategoriesProvider).asData?.value ?? const [];
+    unawaited(AnalyticsService.instance
+        .log('content_opened', {'content_type': 'article'}));
 
     return Scaffold(
       appBar: AppBar(
@@ -27,6 +33,7 @@ class ArticleDetailScreen extends ConsumerWidget {
         elevation: 0,
         title: Text(async.asData?.value.categoryName ?? tr('Rehber')),
       ),
+      bottomNavigationBar: const AdBanner(),
       body: async.when(
         loading: () => ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),

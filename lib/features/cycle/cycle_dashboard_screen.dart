@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/ad_banner.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
@@ -119,6 +120,7 @@ class _Dashboard extends ConsumerWidget {
           ),
         ],
       ),
+      bottomNavigationBar: const AdBanner(),
       body: RefreshIndicator(
         color: AppColors.rose,
         onRefresh: () async {

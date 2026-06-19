@@ -191,12 +191,30 @@ class AdInput extends StatelessWidget {
 }
 
 /// .ad-stepper — − [değer birim] + (değer aynı zamanda yazılabilir).
+/// Üst sınırı aşan sayısal girişi reddeder (eski değeri korur). AdStepper'da
+/// klavyeden `max`'tan büyük değer yazılmasını engeller.
+class _MaxValueFormatter extends TextInputFormatter {
+  final double max;
+  _MaxValueFormatter(this.max);
+
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) return newValue;
+    final v = double.tryParse(newValue.text.replaceAll(',', '.'));
+    if (v == null) return newValue; // rakam dışı zaten filtrelenmiş olur
+    return v > max ? oldValue : newValue;
+  }
+}
+
 class AdStepper extends StatefulWidget {
   final TextEditingController controller;
   final String unit;
   final double step;
   final int decimals;
   final Color? accent; // null → AppColors.ink (tema-duyarlı)
+  final double? min; // alt sınır (null → 0)
+  final double? max; // üst sınır (null → sınırsız). +/- ve klavye girişini kısıtlar.
   const AdStepper({
     super.key,
     required this.controller,
@@ -204,6 +222,8 @@ class AdStepper extends StatefulWidget {
     this.step = 1,
     this.decimals = 0,
     this.accent,
+    this.min,
+    this.max,
   });
 
   @override
@@ -211,14 +231,50 @@ class AdStepper extends StatefulWidget {
 }
 
 class _AdStepperState extends State<AdStepper> {
+  late final FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus = FocusNode();
+    // Klavye girişi alt sınırın altında kalabilir (kullanıcı yazarken); odak
+    // kaybında [min]'e çek (üst sınır zaten formatter ile engellenir).
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _clampToBounds();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  double get _lo => widget.min ?? 0;
+  double? get _hi => widget.max;
+
+  void _clampToBounds() {
+    final cur = double.tryParse(widget.controller.text.replaceAll(',', '.'));
+    if (cur == null) return; // boş bırakıldıysa dokunma
+    var v = cur;
+    if (v < _lo) v = _lo;
+    if (_hi != null && v > _hi!) v = _hi!;
+    final text = _fmt(v);
+    if (text != widget.controller.text) {
+      widget.controller.text = text;
+      widget.controller.selection = TextSelection.collapsed(offset: text.length);
+    }
+  }
+
   String _fmt(double v) =>
       widget.decimals == 0 ? v.toStringAsFixed(0) : _trim(v.toStringAsFixed(widget.decimals));
   String _trim(String s) => s.contains('.') ? s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '') : s;
 
   void _bump(int dir) {
-    final cur = double.tryParse(widget.controller.text.replaceAll(',', '.')) ?? 0;
+    final cur = double.tryParse(widget.controller.text.replaceAll(',', '.')) ?? _lo;
     var v = cur + dir * widget.step;
-    if (v < 0) v = 0;
+    if (v < _lo) v = _lo;
+    if (_hi != null && v > _hi!) v = _hi!;
     final text = _fmt(v);
     widget.controller.text = text;
     widget.controller.selection = TextSelection.collapsed(offset: text.length);
@@ -247,12 +303,19 @@ class _AdStepperState extends State<AdStepper> {
                     child: IntrinsicWidth(
                       child: TextField(
                         controller: widget.controller,
+                        focusNode: _focus,
                         textAlign: TextAlign.center,
                         keyboardType:
                             TextInputType.numberWithOptions(decimal: widget.decimals > 0),
-                        inputFormatters: widget.decimals > 0
-                            ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))]
-                            : [FilteringTextInputFormatter.digitsOnly],
+                        inputFormatters: [
+                          if (widget.decimals > 0)
+                            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
+                          else
+                            FilteringTextInputFormatter.digitsOnly,
+                          // Üst sınırı aşan girişi anında reddet (kafasına göre
+                          // değer girilemesin); alt sınır odak kaybında düzeltilir.
+                          if (_hi != null) _MaxValueFormatter(_hi!),
+                        ],
                         style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w900,
