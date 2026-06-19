@@ -12,7 +12,28 @@
           "package_name": "com.adenababy.adena_baby"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "160566700344-32k9birq232n32uh94kagjhjheeu9esl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.adenababy.adena_baby",
+            "certificate_hash": "5a767f64b9c405492d59eb81f9d5509350527b5d"
+          }
+        },
+        {
+          "client_id": "160566700344-4jganfe4cg5gahuhthhdta1ublrc3fto.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.adenababy.adena_baby",
+            "certificate_hash": "5a18f02cb480b979805a9f600db82e535f687299"
+          }
+        },
+        {
+          "client_id": "160566700344-8ltcmhgs0jb0gplg8mlkotba52f4mr2g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA_2G8xBQ5Aidwk_0WO2B9D7qG7gVWbiDQ"
@@ -20,7 +41,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "160566700344-8ltcmhgs0jb0gplg8mlkotba52f4mr2g.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "160566700344-3tvv3uo0up3vu69u4jv9sknshki36v02.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.adenababy.adenaBaby"
+              }
+            }
+          ]
         }
       }
     }

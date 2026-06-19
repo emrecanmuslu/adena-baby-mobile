@@ -1,0 +1,88 @@
+name: Android release (Play)
+
+# AAB build eder, upload key ile imzalar ve Google Play'e yükler.
+# Tetik: elle (Run workflow) veya `v*` tag push (örn. git tag v1.0.1 && git push --tags).
+# versionCode = github.run_number + 100 (monoton artar; elle yüklenenlerin üstünde).
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'API taban adresi'
+        required: true
+        default: 'https://api.adenababy.com/api/v1'
+      track:
+        description: 'Play track (internal | alpha | beta | production)'
+        required: true
+        default: 'internal'
+  push:
+    tags: ['v*']
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Java kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Flutter kur
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.1'
+
+      - name: Bağımlılıklar
+        run: flutter pub get
+
+      - name: Codegen (drift)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Keystore + key.properties yaz
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          EOF
+
+      - name: versionCode hesapla
+        id: vc
+        run: echo "code=$(( ${{ github.run_number }} + 100 ))" >> "$GITHUB_OUTPUT"
+
+      - name: AAB derle
+        run: >
+          flutter build appbundle --release
+          --dart-define-from-file=dart_defines.json
+          --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://api.adenababy.com/api/v1' }}
+          --build-number=${{ steps.vc.outputs.code }}
+
+      - name: Play'e yükle
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.adenababy.adena_baby
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: ${{ github.event.inputs.track || 'internal' }}
+          status: completed
+
+      - name: AAB'yi artifact olarak da sakla
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error

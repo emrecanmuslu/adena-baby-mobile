@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
+import '../../core/app_version_footer.dart';
 import '../../core/i18n.dart';
 import '../../core/premium_gate.dart';
 import '../../core/theme.dart';
@@ -199,10 +200,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           const SizedBox(height: 8),
-          Center(
-            child: Text(tr('Adena Baby · sürüm 1.0.0'),
-                style: TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
-          ),
+          const Center(child: AppVersionFooter()),
         ],
       ),
     );
