@@ -94,6 +94,7 @@ jobs:
       - name: Archive (cloud imzalı)
         run: >
           xcodebuild
+          -quiet
           -workspace ios/Runner.xcworkspace
           -scheme Runner
           -configuration Release
@@ -111,6 +112,7 @@ jobs:
       - name: Export + TestFlight'a yükle
         run: >
           xcodebuild
+          -quiet
           -exportArchive
           -archivePath "$RUNNER_TEMP/Runner.xcarchive"
           -exportPath "$RUNNER_TEMP/ipa"
