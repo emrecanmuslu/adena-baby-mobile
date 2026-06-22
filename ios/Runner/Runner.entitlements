@@ -12,5 +12,10 @@
 	<array>
 		<string>group.com.adenababy.adenaBaby</string>
 	</array>
+	<!-- Apple ile Giriş (App ID'de capability açık; sign_in_with_apple plugin). -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 </dict>
 </plist>

@@ -30,6 +30,14 @@
 	     "Missing Compliance" sorusunu atlatır, build anında test edilebilir. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Google Mobile Ads SDK iOS'ta bu anahtar OLMADAN açılışta çökertir.
+	     Şimdilik Google TEST app id'si — gerçek iOS AdMob app id alınınca değiştir
+	     (bkz hafıza: entegrasyon-bekleyen-tokenlar / reklam-sistemi). -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
+	<!-- AdMob/UMP izleme izni istediğinde bu açıklama yoksa iOS uygulamayı öldürür. -->
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Sana daha uygun reklamlar gösterebilmek için kullanılır.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Anılara fotoğraf eklemek için kamerayı kullanır.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
