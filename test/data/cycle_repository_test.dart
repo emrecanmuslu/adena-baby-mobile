@@ -95,6 +95,29 @@ void main() {
       expect(row.breastfeeding, 'exclusive');
     });
 
+    test('tahmin ayarları (döngü/adet/luteal) yerelde KALICI olur (regresyon)',
+        () async {
+      // Daha önce DB kolonu yoktu → değer yazılıp okunduğunda kayboluyordu (28'e
+      // dönüyordu). Artık tur-gidiş-dönüş korunmalı.
+      await localRepo().patchSettings({
+        'expected_cycle_length': 30,
+        'period_length': 6,
+        'luteal_phase_length': 12,
+      });
+      final reread = await localRepo().getSettings();
+      expect(reread.expectedCycleLength, 30);
+      expect(reread.periodLength, 6);
+      expect(reread.lutealPhaseLength, 12);
+
+      // Satır da doğru kolonlara yazılmış olmalı.
+      final row = await (db.select(db.cycleSettingsTable)
+            ..where((r) => r.id.equals(acct)))
+          .getSingle();
+      expect(row.expectedCycleLength, 30);
+      expect(row.periodLength, 6);
+      expect(row.lutealPhaseLength, 12);
+    });
+
     test('cloud açık: PATCH /cycle/settings gönderir, dirty temizlenir',
         () async {
       // getSettings cloud açıkken /cycle/settings GET de yapar → stub'la

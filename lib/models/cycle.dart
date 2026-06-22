@@ -56,6 +56,12 @@ class CycleSettings {
   // Opsiyonel manuel "beklenen döngü uzunluğu" (gün). Henüz ölçülmüş döngü yokken
   // (ilk döngü) varsayılan 28 yerine bunu kullanır → ilk tahmini kişiselleştirir.
   final int? expectedCycleLength;
+  // Opsiyonel manuel adet (kanama) süresi (gün). Ölçülmüş kayıt yokken varsayılan
+  // 5 yerine kullanılır → tahmini adet aralığını kişiselleştirir.
+  final int? periodLength;
+  // Opsiyonel luteal faz uzunluğu (gün). Ovülasyon = sonraki adet − luteal.
+  // Varsayılan 14; tıbben 10–16 arası. Ölçülemez, hep bu değer kullanılır.
+  final int? lutealPhaseLength;
 
   const CycleSettings({
     this.babyId,
@@ -66,6 +72,8 @@ class CycleSettings {
     this.showFertilityWarning = true,
     this.enabled = true,
     this.expectedCycleLength,
+    this.periodLength,
+    this.lutealPhaseLength,
   });
 
   /// İlk gerçek adet kaydedilmiş mi → döngü tahmini yapılabilir mi?
@@ -80,6 +88,8 @@ class CycleSettings {
         showFertilityWarning: j['show_fertility_warning'] as bool? ?? true,
         enabled: j['enabled'] as bool? ?? true,
         expectedCycleLength: (j['expected_cycle_length'] as num?)?.toInt(),
+        periodLength: (j['period_length'] as num?)?.toInt(),
+        lutealPhaseLength: (j['luteal_phase_length'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toPatchJson() => {
@@ -91,6 +101,8 @@ class CycleSettings {
         'show_fertility_warning': showFertilityWarning,
         'enabled': enabled,
         'expected_cycle_length': expectedCycleLength,
+        'period_length': periodLength,
+        'luteal_phase_length': lutealPhaseLength,
       };
 
   CycleSettings copyWith({
@@ -102,6 +114,8 @@ class CycleSettings {
     bool? showFertilityWarning,
     bool? enabled,
     Object? expectedCycleLength = _sentinel,
+    Object? periodLength = _sentinel,
+    Object? lutealPhaseLength = _sentinel,
   }) =>
       CycleSettings(
         babyId: babyId ?? this.babyId,
@@ -116,6 +130,12 @@ class CycleSettings {
         expectedCycleLength: expectedCycleLength == _sentinel
             ? this.expectedCycleLength
             : expectedCycleLength as int?,
+        periodLength: periodLength == _sentinel
+            ? this.periodLength
+            : periodLength as int?,
+        lutealPhaseLength: lutealPhaseLength == _sentinel
+            ? this.lutealPhaseLength
+            : lutealPhaseLength as int?,
       );
 
   static const _sentinel = Object();

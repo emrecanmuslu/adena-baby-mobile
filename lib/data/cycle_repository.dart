@@ -62,6 +62,9 @@ class CycleRepository {
       }(),
       showFertilityWarning: row.showFertilityWarning,
       enabled: row.enabled,
+      expectedCycleLength: row.expectedCycleLength,
+      periodLength: row.periodLength,
+      lutealPhaseLength: row.lutealPhaseLength,
     );
   }
 
@@ -92,6 +95,9 @@ class CycleRepository {
             reminders: Value(jsonEncode(s.reminders)),
             showFertilityWarning: Value(s.showFertilityWarning),
             enabled: Value(s.enabled),
+            expectedCycleLength: Value(s.expectedCycleLength),
+            periodLength: Value(s.periodLength),
+            lutealPhaseLength: Value(s.lutealPhaseLength),
             clientUpdatedAt: Value(DateTime.now().toUtc()),
             dirty: Value(dirty),
           ),

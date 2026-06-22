@@ -55,12 +55,15 @@ class _BodyState extends ConsumerState<_Body> {
   late Map<String, dynamic> _reminders;
   late bool _fertilityWarn;
   late int _cycleLen; // beklenen döngü uzunluğu (gün); ölçüm yokken kullanılır
-  static const _keep = Object(); // _persist: expectedCycleLength'i değiştirme
+  late int _periodLen; // adet (kanama) süresi (gün); ölçüm yokken kullanılır
+  late int _lutealLen; // luteal faz uzunluğu (gün); ovülasyon konumunu belirler
 
   @override
   void initState() {
     super.initState();
     _cycleLen = widget.settings.expectedCycleLength ?? 28;
+    _periodLen = widget.settings.periodLength ?? 5;
+    _lutealLen = widget.settings.lutealPhaseLength ?? 14;
     final r = widget.settings.reminders;
     // Değerler {on, time} map'i olmalı; ama eski/seed veri {key: bool} biçiminde
     // olabilir → map'e normalize et (yoksa 'bool is not a subtype of Map' patlar).
@@ -77,20 +80,14 @@ class _BodyState extends ConsumerState<_Body> {
 
   bool _on(String k) => _reminders[k]?['on'] == true;
 
-  Future<void> _persist(
-      {Map<String, dynamic>? reminders,
-      bool? fertilityWarn,
-      Object? expectedCycleLength = _keep}) async {
-    final next = expectedCycleLength == _keep
-        ? widget.settings.copyWith(
-            reminders: reminders ?? _reminders,
-            showFertilityWarning: fertilityWarn ?? _fertilityWarn,
-          )
-        : widget.settings.copyWith(
-            reminders: reminders ?? _reminders,
-            showFertilityWarning: fertilityWarn ?? _fertilityWarn,
-            expectedCycleLength: expectedCycleLength as int?,
-          );
+  Future<void> _persist() async {
+    final next = widget.settings.copyWith(
+      reminders: _reminders,
+      showFertilityWarning: _fertilityWarn,
+      expectedCycleLength: _cycleLen,
+      periodLength: _periodLen,
+      lutealPhaseLength: _lutealLen,
+    );
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
       ref.invalidate(cycleSettingsProvider);
@@ -161,18 +158,55 @@ class _BodyState extends ConsumerState<_Body> {
                   activeThumbColor: AppColors.rose,
                   onChanged: (v) {
                     setState(() => _fertilityWarn = v);
-                    _persist(fertilityWarn: v);
+                    _persist();
                   },
                 ),
               ],
             ),
           ),
         ]),
-        adSec(tr('Beklenen döngü uzunluğu'),
-            info: tr('Yeterli döngü kaydı birikene kadar (ilk döngüler) tahminler '
-                'bu değere göre yapılır. Birkaç döngü sonra sistem ortalamayı '
-                'kendi öğrenir ve bu ayarı kullanmaz. Bilmiyorsan 28 günde bırak.')),
-        _card([_cycleLenRow()]),
+        adSec(tr('Tahmin ayarları'),
+            info: tr('Tahminler bu değerlere göre yapılır. Yeterli kayıt birikince '
+                'sistem döngü ve adet süresini kendi öğrenir; luteal faz ise '
+                'ovülasyon gününü belirler. Emin değilsen varsayılanlarda bırak.')),
+        _card([
+          _lenRow(
+            tr('Ortalama döngü uzunluğu'),
+            _cycleLen,
+            21,
+            40,
+            (v) {
+              setState(() => _cycleLen = v);
+              _persist();
+            },
+          ),
+          Divider(height: 1, color: AppColors.line),
+          _lenRow(
+            tr('Adet (kanama) süresi'),
+            _periodLen,
+            2,
+            10,
+            (v) {
+              setState(() => _periodLen = v);
+              _persist();
+            },
+            info: tr('Adet kanamasının kaç gün sürdüğü. Tahmini adet aralığını '
+                'belirler. Tipik 4–7 gün.'),
+          ),
+          Divider(height: 1, color: AppColors.line),
+          _lenRow(
+            tr('Luteal faz uzunluğu'),
+            _lutealLen,
+            10,
+            16,
+            (v) {
+              setState(() => _lutealLen = v);
+              _persist();
+            },
+            info: tr('Ovülasyon ile sonraki adet arasındaki süre. Ovülasyon günü '
+                'buna göre hesaplanır (sonraki adet − luteal). Çoğu kişide ~14 gün.'),
+          ),
+        ]),
         adSec(tr('Emzirme Durumu')),
         AdMenuItem(
           icon: 'heart',
@@ -226,13 +260,20 @@ class _BodyState extends ConsumerState<_Body> {
     );
   }
 
-  /// Beklenen döngü uzunluğu satırı — − [N gün] + (21–40). Değişince kaydeder.
-  Widget _cycleLenRow() {
+  /// Tahmin ayarı satırı — etiket + opsiyonel bilgi rozeti + − [N gün] + (min–max).
+  /// Değişince [onSet] çağrılır (state güncelle + kaydet).
+  Widget _lenRow(
+    String label,
+    int value,
+    int min,
+    int max,
+    void Function(int) onSet, {
+    String? info,
+  }) {
     void set(int v) {
-      final clamped = v.clamp(21, 40);
-      if (clamped == _cycleLen) return;
-      setState(() => _cycleLen = clamped);
-      _persist(expectedCycleLength: clamped);
+      final clamped = v.clamp(min, max);
+      if (clamped == value) return;
+      onSet(clamped);
     }
 
     return Padding(
@@ -240,17 +281,28 @@ class _BodyState extends ConsumerState<_Body> {
       child: Row(
         children: [
           Expanded(
-            child: Text(tr('Ortalama döngü uzunluğu'),
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(label,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w800)),
+                ),
+                if (info != null) ...[
+                  const SizedBox(width: 5),
+                  AdInfoDot(title: label, body: info),
+                ],
+              ],
+            ),
           ),
-          _stepBtn('−', _cycleLen > 21 ? () => set(_cycleLen - 1) : null),
+          _stepBtn('−', value > min ? () => set(value - 1) : null),
           SizedBox(
             width: 64,
-            child: Text(trp('{n} gün', {'n': _cycleLen}),
+            child: Text(trp('{n} gün', {'n': value}),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
           ),
-          _stepBtn('+', _cycleLen < 40 ? () => set(_cycleLen + 1) : null),
+          _stepBtn('+', value < max ? () => set(value + 1) : null),
         ],
       ),
     );

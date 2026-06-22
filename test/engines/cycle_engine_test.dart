@@ -292,6 +292,58 @@ void main() {
     });
   });
 
+  group('manuel adet (kanama) süresi', () {
+    test('ölçülmüş adet günü yokken periodLength kullanılır', () {
+      // firstPeriodDate var ama hiç flow kaydı yok → pdays boş → manuel süre.
+      final settings = CycleSettings(
+          firstPeriodDate: DateTime(2025, 1, 1), periodLength: 7);
+      final s = computeStatus(settings, const [], today: DateTime(2025, 1, 3));
+      expect(s.avgPeriodDays, 7);
+      // dayInCycle 3 <= 7 → hâlâ menstrual faz.
+      expect(s.phase, CyclePhase.menstrual);
+    });
+
+    test('geçersiz (2–10 dışı) periodLength → 5 varsayılan', () {
+      final settings = CycleSettings(
+          firstPeriodDate: DateTime(2025, 1, 1), periodLength: 20);
+      final s = computeStatus(settings, const [], today: DateTime(2025, 1, 3));
+      expect(s.avgPeriodDays, 5);
+    });
+
+    test('ölçülmüş adet günü varsa manuel süre YOK sayılır', () {
+      final settings = CycleSettings(
+          firstPeriodDate: DateTime(2025, 1, 1), periodLength: 9);
+      final s = computeStatus(
+          settings, _periodRun('a', DateTime(2025, 1, 1), 4),
+          today: DateTime(2025, 1, 10));
+      expect(s.avgPeriodDays, 4); // ölçülen (4 gün) kazanır
+    });
+  });
+
+  group('manuel luteal faz uzunluğu', () {
+    test('lutealPhaseLength ovülasyon + fertil pencereyi kaydırır', () {
+      // 28 günlük döngü, 1 Oca; luteal 12 → ovülasyon = 29 Oca − 12 = 17 Oca.
+      final settings = CycleSettings(
+          firstPeriodDate: DateTime(2025, 1, 1), lutealPhaseLength: 12);
+      final s = computeStatus(
+          settings, _periodRun('a', DateTime(2025, 1, 1), 4),
+          today: DateTime(2025, 1, 3));
+      expect(s.nextPeriod, DateTime(2025, 1, 29));
+      expect(s.ovulationDay, DateTime(2025, 1, 17));
+      expect(s.fertileStart, DateTime(2025, 1, 12)); // ovülasyon − 5
+      expect(s.fertileEnd, DateTime(2025, 1, 17));
+    });
+
+    test('geçersiz (10–16 dışı) lutealPhaseLength → 14 varsayılan', () {
+      final settings = CycleSettings(
+          firstPeriodDate: DateTime(2025, 1, 1), lutealPhaseLength: 20);
+      final s = computeStatus(
+          settings, _periodRun('a', DateTime(2025, 1, 1), 4),
+          today: DateTime(2025, 1, 3));
+      expect(s.ovulationDay, DateTime(2025, 1, 15)); // 29 − 14
+    });
+  });
+
   group('yaklaşan doğurganlık penceresi (#11)', () {
     test('luteal fazda (pencere geçmiş) → sonraki döngünün penceresi', () {
       // 28 günlük döngü: 1 Oca başlangıç → ovülasyon ~15 Oca, pencere 10–15 Oca.

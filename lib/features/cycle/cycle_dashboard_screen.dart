@@ -487,11 +487,15 @@ class _Dashboard extends ConsumerWidget {
         ),
       ),
       _saveBtn(tr('Bugünü kaydet'), AppColors.rose, () => _record(context, ref)),
+      _sec(tr('Döngü Haritası'), info: CycleInfo.estimate),
+      _cycleTimelineBar(context),
       if (status.upcomingFertileStart != null) ...[
         _sec(tr('Doğurganlık Penceresi'),
             link: tr('Takvim'), onLink: () => context.push('/cycle/calendar')),
         _fertileCard(),
       ],
+      _sec(tr('Bu Fazda Kendine İyi Bak')),
+      _selfCareCard(context),
       _sec(tr('Bugünkü Belirtiler')),
       _symptomsSummary(context, ref, t),
       const SizedBox(height: 12),
@@ -510,6 +514,178 @@ class _Dashboard extends ConsumerWidget {
       _learnCard(context),
     ];
   }
+
+  /// Mevcut döngünün tek bakışta görünümü: adet → fertil → ovülasyon → bugün.
+  /// (Period Calendar'ın döngü barına benzer; tahmine dayalı.)
+  Widget _cycleTimelineBar(BuildContext context) {
+    final np = status.nextPeriod;
+    final ov = status.ovulationDay;
+    final fs = status.fertileStart;
+    final total = status.avgCycleLength;
+    if (np == null || ov == null || fs == null || total <= 0) {
+      return const SizedBox.shrink();
+    }
+    final cycleStart = _dOnly(np).subtract(Duration(days: total)); // = son başlangıç
+    int dayIdx(DateTime d) => _dOnly(d).difference(cycleStart).inDays;
+    double frac(num n) => (n / total).clamp(0.0, 1.0).toDouble();
+    final periodW = frac(status.avgPeriodDays);
+    final fertL = frac(dayIdx(fs));
+    final fertW = frac(dayIdx(ov) + 1) - fertL;
+    final ovL = frac(dayIdx(ov));
+    final todayL = frac(status.dayInCycle - 1);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: AppColors.softShadow),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(builder: (ctx, c) {
+            final w = c.maxWidth;
+            return SizedBox(
+              height: 20,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Zemin (track)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                          color: AppColors.line2,
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  // Adet bölümü
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: (w * periodW).clamp(0.0, w),
+                    child: Container(
+                      decoration: BoxDecoration(
+                          color: AppColors.rose,
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  // Doğurganlık penceresi
+                  Positioned(
+                    left: (w * fertL).clamp(0.0, w),
+                    top: 0,
+                    bottom: 0,
+                    width: (w * fertW).clamp(0.0, w),
+                    child: Container(
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFCFC4F2),
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  // Ovülasyon işareti
+                  Positioned(
+                    left: (w * ovL - 6).clamp(0.0, w - 12),
+                    top: 4,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: const BoxDecoration(
+                          color: Color(0xFF9B8CE8), shape: BoxShape.circle),
+                    ),
+                  ),
+                  // Bugün imleci
+                  Positioned(
+                    left: (w * todayL).clamp(0.0, w - 3),
+                    top: -3,
+                    bottom: -3,
+                    child: Container(width: 3, color: AppColors.ink),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 14,
+            runSpacing: 6,
+            children: [
+              _barLegend(AppColors.rose, tr('Adet')),
+              _barLegend(const Color(0xFFCFC4F2), tr('Doğurganlık')),
+              _barLegend(const Color(0xFF9B8CE8), tr('Ovülasyon')),
+              _barLegend(AppColors.ink, tr('Bugün')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _barLegend(Color c, String label) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                  color: c, borderRadius: BorderRadius.circular(3))),
+          const SizedBox(width: 5),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.muted)),
+        ],
+      );
+
+  /// Faza göre kısa öz-bakım ipuçları kartı (nazik hatırlatma, tıbbi tavsiye değil).
+  Widget _selfCareCard(BuildContext context) {
+    final sc = phaseSelfCare(status.phase);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: AppColors.softShadow),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(sc.emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Text(sc.title,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final tip in sc.tips)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text('💛', style: const TextStyle(fontSize: 12)),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(tip,
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            height: 1.5,
+                            color: AppColors.ink2)),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  DateTime _dOnly(DateTime x) => DateTime(x.year, x.month, x.day);
 
   Widget _fertileCard() => Container(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),

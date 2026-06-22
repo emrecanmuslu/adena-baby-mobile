@@ -46,15 +46,65 @@ String phaseLabel(CyclePhase p) => switch (p) {
       CyclePhase.luteal => tr('Luteal Faz'),
     };
 
+// ── Faza göre öz-bakım ipuçları (doğum sonrası bağlamına duyarlı, kısa) ──────
+/// Aktif döngü panosundaki "Bu fazda kendine iyi bak" kartı için. Tıbbi tavsiye
+/// değil, nazik öz-bakım hatırlatmaları.
+({String emoji, String title, List<String> tips}) phaseSelfCare(CyclePhase p) =>
+    switch (p) {
+      CyclePhase.menstrual => (
+          emoji: '🩸',
+          title: tr('Adet günleri'),
+          tips: [
+            tr('Sıcak su torbası ve hafif esneme kramplara iyi gelir.'),
+            tr('Demir açısından zengin besinler + bol su.'),
+            tr('Dinlenmeye öncelik ver; bebeğin uyuduğunda sen de uzan.'),
+          ],
+        ),
+      CyclePhase.follicular => (
+          emoji: '🌱',
+          title: tr('Folliküler faz'),
+          tips: [
+            tr('Enerjin yükselir — kısa bir yürüyüş iyi gelir.'),
+            tr('Protein ve sebze ağırlıklı beslen.'),
+            tr('Yeni rutinler kurmak için iyi bir dönem.'),
+          ],
+        ),
+      CyclePhase.ovulation => (
+          emoji: '🌿',
+          title: tr('Ovülasyon dönemi'),
+          tips: [
+            tr('Doğurganlık penceresindesin — gebelik planın varsa not al.'),
+            tr('Bol su iç, hafif tempolu hareket et.'),
+          ],
+        ),
+      CyclePhase.luteal => (
+          emoji: '🌙',
+          title: tr('Luteal faz'),
+          tips: [
+            tr('Adet öncesi gerginlik olabilir — kendine şefkatli ol.'),
+            tr('Şeker yerine kompleks karbonhidrat tercih et.'),
+            tr('Uyku düzenine ve nefes egzersizlerine özen göster.'),
+          ],
+        ),
+    };
+
 // ── Belirti kataloğu (BBT/servikal mukus bilinçli olarak çıkarıldı) ─────────
+// Anahtarlar entry.symptoms JSON listesinde saklanır → yeni eklemeler geriye
+// dönük uyumludur (şema değişikliği yok).
 const List<(String, String)> cycleSymptoms = [
   ('cramp', 'Kramp / ağrı'),
   ('headache', 'Baş ağrısı'),
+  ('backache', 'Bel ağrısı'),
   ('bloating', 'Şişkinlik'),
   ('tender', 'Göğüs hassasiyeti'),
   ('acne', 'Akne'),
   ('appetite', 'İştah değişimi'),
+  ('nausea', 'Bulantı'),
+  ('constipation', 'Kabızlık'),
   ('fatigue', 'Yorgunluk'),
+  ('insomnia', 'Uykusuzluk'),
+  ('dizziness', 'Baş dönmesi'),
+  ('hotflash', 'Ateş basması'),
   ('libido', 'Libido değişimi'),
   ('discharge', 'Akıntı'),
 ];

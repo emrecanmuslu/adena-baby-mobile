@@ -179,8 +179,21 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       default:
         break;
     }
+    final cd = _cycleDayNum(d, status);
+    final faint = fg == Colors.white ? Colors.white70 : AppColors.muted2;
     return GestureDetector(
-      onTap: () => setState(() => _selected = d),
+      // İlk dokunuş günü seçer; seçili güne tekrar dokunmak kayıt sheet'ini açar
+      // (Period Calendar'daki gibi hızlı giriş).
+      onTap: () {
+        if (sel) {
+          showCycleEntrySheet(context, ref,
+              date: d,
+              existing: entry,
+              lochiaMode: status.mode != CycleMode.active);
+        } else {
+          setState(() => _selected = d);
+        }
+      },
       child: Container(
         decoration: BoxDecoration(
           color: bg,
@@ -193,24 +206,41 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
           boxShadow:
               isToday ? [BoxShadow(color: AppColors.rose.withValues(alpha: 0.35), blurRadius: 8)] : null,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            Text('${d.day}',
-                style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: kind == null ? FontWeight.w700 : FontWeight.w900,
-                    color: fg)),
-            if (hasDot)
-              Container(
-                  margin: const EdgeInsets.only(top: 2),
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: fg == Colors.white
-                          ? Colors.white70
-                          : AppColors.roseD)),
+            if (cd != null)
+              Positioned(
+                top: 2,
+                right: 4,
+                child: Text('$cd',
+                    style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                        color: faint)),
+              ),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('${d.day}',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight:
+                              kind == null ? FontWeight.w700 : FontWeight.w900,
+                          color: fg)),
+                  if (hasDot)
+                    Container(
+                        margin: const EdgeInsets.only(top: 2),
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: fg == Colors.white
+                                ? Colors.white70
+                                : AppColors.roseD)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -241,6 +271,35 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
   }
 
   DateTime _dOnly(DateTime x) => DateTime(x.year, x.month, x.day);
+
+  /// Bir günün döngü-günü numarası (Period Calendar tarzı küçük köşe rozeti).
+  /// Geçmiş döngülerde gerçek başlangıçtan, son döngüde/gelecekte ortalama
+  /// uzunlukla ileri projeksiyondan hesaplanır. Yalnız aktif modda.
+  int? _cycleDayNum(DateTime d, CycleStatus status) {
+    if (status.mode != CycleMode.active || status.spans.isEmpty) return null;
+    final dd = _dOnly(d);
+    final firstStart = _dOnly(status.spans.first.start);
+    if (dd.isBefore(firstStart)) return null;
+    for (var i = status.spans.length - 1; i >= 0; i--) {
+      final start = _dOnly(status.spans[i].start);
+      if (dd.isBefore(start)) continue;
+      final nextStart =
+          i + 1 < status.spans.length ? _dOnly(status.spans[i + 1].start) : null;
+      if (nextStart != null) {
+        if (!dd.isBefore(nextStart)) continue; // sonraki döngüye ait
+        return dd.difference(start).inDays + 1;
+      }
+      // Son gerçek döngü: bugüne/geleceğe ortalama uzunlukla projekte et.
+      final avg = status.avgCycleLength;
+      var s = start;
+      while (avg > 0 && dd.difference(s).inDays >= avg) {
+        s = s.add(Duration(days: avg));
+      }
+      final n = dd.difference(s).inDays + 1;
+      return (n >= 1 && n <= avg + 4) ? n : null;
+    }
+    return null;
+  }
 
   Widget _legend() {
     final items = [

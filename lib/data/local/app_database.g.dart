@@ -3269,6 +3269,38 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _expectedCycleLengthMeta =
+      const VerificationMeta('expectedCycleLength');
+  @override
+  late final GeneratedColumn<int> expectedCycleLength = GeneratedColumn<int>(
+    'expected_cycle_length',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _periodLengthMeta = const VerificationMeta(
+    'periodLength',
+  );
+  @override
+  late final GeneratedColumn<int> periodLength = GeneratedColumn<int>(
+    'period_length',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lutealPhaseLengthMeta = const VerificationMeta(
+    'lutealPhaseLength',
+  );
+  @override
+  late final GeneratedColumn<int> lutealPhaseLength = GeneratedColumn<int>(
+    'luteal_phase_length',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -3283,6 +3315,9 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     reminders,
     showFertilityWarning,
     enabled,
+    expectedCycleLength,
+    periodLength,
+    lutealPhaseLength,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3380,6 +3415,33 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         enabled.isAcceptableOrUnknown(data['enabled']!, _enabledMeta),
       );
     }
+    if (data.containsKey('expected_cycle_length')) {
+      context.handle(
+        _expectedCycleLengthMeta,
+        expectedCycleLength.isAcceptableOrUnknown(
+          data['expected_cycle_length']!,
+          _expectedCycleLengthMeta,
+        ),
+      );
+    }
+    if (data.containsKey('period_length')) {
+      context.handle(
+        _periodLengthMeta,
+        periodLength.isAcceptableOrUnknown(
+          data['period_length']!,
+          _periodLengthMeta,
+        ),
+      );
+    }
+    if (data.containsKey('luteal_phase_length')) {
+      context.handle(
+        _lutealPhaseLengthMeta,
+        lutealPhaseLength.isAcceptableOrUnknown(
+          data['luteal_phase_length']!,
+          _lutealPhaseLengthMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3437,6 +3499,18 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         DriftSqlType.bool,
         data['${effectivePrefix}enabled'],
       )!,
+      expectedCycleLength: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}expected_cycle_length'],
+      ),
+      periodLength: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}period_length'],
+      ),
+      lutealPhaseLength: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}luteal_phase_length'],
+      ),
     );
   }
 
@@ -3460,6 +3534,9 @@ class CycleSettingsRow extends DataClass
   final String reminders;
   final bool showFertilityWarning;
   final bool enabled;
+  final int? expectedCycleLength;
+  final int? periodLength;
+  final int? lutealPhaseLength;
   const CycleSettingsRow({
     required this.isDeleted,
     this.clientUpdatedAt,
@@ -3473,6 +3550,9 @@ class CycleSettingsRow extends DataClass
     required this.reminders,
     required this.showFertilityWarning,
     required this.enabled,
+    this.expectedCycleLength,
+    this.periodLength,
+    this.lutealPhaseLength,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3501,6 +3581,15 @@ class CycleSettingsRow extends DataClass
     map['reminders'] = Variable<String>(reminders);
     map['show_fertility_warning'] = Variable<bool>(showFertilityWarning);
     map['enabled'] = Variable<bool>(enabled);
+    if (!nullToAbsent || expectedCycleLength != null) {
+      map['expected_cycle_length'] = Variable<int>(expectedCycleLength);
+    }
+    if (!nullToAbsent || periodLength != null) {
+      map['period_length'] = Variable<int>(periodLength);
+    }
+    if (!nullToAbsent || lutealPhaseLength != null) {
+      map['luteal_phase_length'] = Variable<int>(lutealPhaseLength);
+    }
     return map;
   }
 
@@ -3528,6 +3617,15 @@ class CycleSettingsRow extends DataClass
       reminders: Value(reminders),
       showFertilityWarning: Value(showFertilityWarning),
       enabled: Value(enabled),
+      expectedCycleLength: expectedCycleLength == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expectedCycleLength),
+      periodLength: periodLength == null && nullToAbsent
+          ? const Value.absent()
+          : Value(periodLength),
+      lutealPhaseLength: lutealPhaseLength == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lutealPhaseLength),
     );
   }
 
@@ -3551,6 +3649,11 @@ class CycleSettingsRow extends DataClass
         json['showFertilityWarning'],
       ),
       enabled: serializer.fromJson<bool>(json['enabled']),
+      expectedCycleLength: serializer.fromJson<int?>(
+        json['expectedCycleLength'],
+      ),
+      periodLength: serializer.fromJson<int?>(json['periodLength']),
+      lutealPhaseLength: serializer.fromJson<int?>(json['lutealPhaseLength']),
     );
   }
   @override
@@ -3569,6 +3672,9 @@ class CycleSettingsRow extends DataClass
       'reminders': serializer.toJson<String>(reminders),
       'showFertilityWarning': serializer.toJson<bool>(showFertilityWarning),
       'enabled': serializer.toJson<bool>(enabled),
+      'expectedCycleLength': serializer.toJson<int?>(expectedCycleLength),
+      'periodLength': serializer.toJson<int?>(periodLength),
+      'lutealPhaseLength': serializer.toJson<int?>(lutealPhaseLength),
     };
   }
 
@@ -3585,6 +3691,9 @@ class CycleSettingsRow extends DataClass
     String? reminders,
     bool? showFertilityWarning,
     bool? enabled,
+    Value<int?> expectedCycleLength = const Value.absent(),
+    Value<int?> periodLength = const Value.absent(),
+    Value<int?> lutealPhaseLength = const Value.absent(),
   }) => CycleSettingsRow(
     isDeleted: isDeleted ?? this.isDeleted,
     clientUpdatedAt: clientUpdatedAt.present
@@ -3606,6 +3715,13 @@ class CycleSettingsRow extends DataClass
     reminders: reminders ?? this.reminders,
     showFertilityWarning: showFertilityWarning ?? this.showFertilityWarning,
     enabled: enabled ?? this.enabled,
+    expectedCycleLength: expectedCycleLength.present
+        ? expectedCycleLength.value
+        : this.expectedCycleLength,
+    periodLength: periodLength.present ? periodLength.value : this.periodLength,
+    lutealPhaseLength: lutealPhaseLength.present
+        ? lutealPhaseLength.value
+        : this.lutealPhaseLength,
   );
   CycleSettingsRow copyWithCompanion(CycleSettingsTableCompanion data) {
     return CycleSettingsRow(
@@ -3631,6 +3747,15 @@ class CycleSettingsRow extends DataClass
           ? data.showFertilityWarning.value
           : this.showFertilityWarning,
       enabled: data.enabled.present ? data.enabled.value : this.enabled,
+      expectedCycleLength: data.expectedCycleLength.present
+          ? data.expectedCycleLength.value
+          : this.expectedCycleLength,
+      periodLength: data.periodLength.present
+          ? data.periodLength.value
+          : this.periodLength,
+      lutealPhaseLength: data.lutealPhaseLength.present
+          ? data.lutealPhaseLength.value
+          : this.lutealPhaseLength,
     );
   }
 
@@ -3648,7 +3773,10 @@ class CycleSettingsRow extends DataClass
           ..write('firstPeriodDate: $firstPeriodDate, ')
           ..write('reminders: $reminders, ')
           ..write('showFertilityWarning: $showFertilityWarning, ')
-          ..write('enabled: $enabled')
+          ..write('enabled: $enabled, ')
+          ..write('expectedCycleLength: $expectedCycleLength, ')
+          ..write('periodLength: $periodLength, ')
+          ..write('lutealPhaseLength: $lutealPhaseLength')
           ..write(')'))
         .toString();
   }
@@ -3667,6 +3795,9 @@ class CycleSettingsRow extends DataClass
     reminders,
     showFertilityWarning,
     enabled,
+    expectedCycleLength,
+    periodLength,
+    lutealPhaseLength,
   );
   @override
   bool operator ==(Object other) =>
@@ -3683,7 +3814,10 @@ class CycleSettingsRow extends DataClass
           other.firstPeriodDate == this.firstPeriodDate &&
           other.reminders == this.reminders &&
           other.showFertilityWarning == this.showFertilityWarning &&
-          other.enabled == this.enabled);
+          other.enabled == this.enabled &&
+          other.expectedCycleLength == this.expectedCycleLength &&
+          other.periodLength == this.periodLength &&
+          other.lutealPhaseLength == this.lutealPhaseLength);
 }
 
 class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
@@ -3699,6 +3833,9 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
   final Value<String> reminders;
   final Value<bool> showFertilityWarning;
   final Value<bool> enabled;
+  final Value<int?> expectedCycleLength;
+  final Value<int?> periodLength;
+  final Value<int?> lutealPhaseLength;
   final Value<int> rowid;
   const CycleSettingsTableCompanion({
     this.isDeleted = const Value.absent(),
@@ -3713,6 +3850,9 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.reminders = const Value.absent(),
     this.showFertilityWarning = const Value.absent(),
     this.enabled = const Value.absent(),
+    this.expectedCycleLength = const Value.absent(),
+    this.periodLength = const Value.absent(),
+    this.lutealPhaseLength = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CycleSettingsTableCompanion.insert({
@@ -3728,6 +3868,9 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.reminders = const Value.absent(),
     this.showFertilityWarning = const Value.absent(),
     this.enabled = const Value.absent(),
+    this.expectedCycleLength = const Value.absent(),
+    this.periodLength = const Value.absent(),
+    this.lutealPhaseLength = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   static Insertable<CycleSettingsRow> custom({
@@ -3743,6 +3886,9 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Expression<String>? reminders,
     Expression<bool>? showFertilityWarning,
     Expression<bool>? enabled,
+    Expression<int>? expectedCycleLength,
+    Expression<int>? periodLength,
+    Expression<int>? lutealPhaseLength,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3759,6 +3905,10 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
       if (showFertilityWarning != null)
         'show_fertility_warning': showFertilityWarning,
       if (enabled != null) 'enabled': enabled,
+      if (expectedCycleLength != null)
+        'expected_cycle_length': expectedCycleLength,
+      if (periodLength != null) 'period_length': periodLength,
+      if (lutealPhaseLength != null) 'luteal_phase_length': lutealPhaseLength,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3776,6 +3926,9 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Value<String>? reminders,
     Value<bool>? showFertilityWarning,
     Value<bool>? enabled,
+    Value<int?>? expectedCycleLength,
+    Value<int?>? periodLength,
+    Value<int?>? lutealPhaseLength,
     Value<int>? rowid,
   }) {
     return CycleSettingsTableCompanion(
@@ -3791,6 +3944,9 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
       reminders: reminders ?? this.reminders,
       showFertilityWarning: showFertilityWarning ?? this.showFertilityWarning,
       enabled: enabled ?? this.enabled,
+      expectedCycleLength: expectedCycleLength ?? this.expectedCycleLength,
+      periodLength: periodLength ?? this.periodLength,
+      lutealPhaseLength: lutealPhaseLength ?? this.lutealPhaseLength,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3836,6 +3992,15 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     if (enabled.present) {
       map['enabled'] = Variable<bool>(enabled.value);
     }
+    if (expectedCycleLength.present) {
+      map['expected_cycle_length'] = Variable<int>(expectedCycleLength.value);
+    }
+    if (periodLength.present) {
+      map['period_length'] = Variable<int>(periodLength.value);
+    }
+    if (lutealPhaseLength.present) {
+      map['luteal_phase_length'] = Variable<int>(lutealPhaseLength.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3857,6 +4022,9 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
           ..write('reminders: $reminders, ')
           ..write('showFertilityWarning: $showFertilityWarning, ')
           ..write('enabled: $enabled, ')
+          ..write('expectedCycleLength: $expectedCycleLength, ')
+          ..write('periodLength: $periodLength, ')
+          ..write('lutealPhaseLength: $lutealPhaseLength, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7038,6 +7206,9 @@ typedef $$CycleSettingsTableTableCreateCompanionBuilder =
       Value<String> reminders,
       Value<bool> showFertilityWarning,
       Value<bool> enabled,
+      Value<int?> expectedCycleLength,
+      Value<int?> periodLength,
+      Value<int?> lutealPhaseLength,
       Value<int> rowid,
     });
 typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
@@ -7054,6 +7225,9 @@ typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
       Value<String> reminders,
       Value<bool> showFertilityWarning,
       Value<bool> enabled,
+      Value<int?> expectedCycleLength,
+      Value<int?> periodLength,
+      Value<int?> lutealPhaseLength,
       Value<int> rowid,
     });
 
@@ -7123,6 +7297,21 @@ class $$CycleSettingsTableTableFilterComposer
 
   ColumnFilters<bool> get enabled => $composableBuilder(
     column: $table.enabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get expectedCycleLength => $composableBuilder(
+    column: $table.expectedCycleLength,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get periodLength => $composableBuilder(
+    column: $table.periodLength,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lutealPhaseLength => $composableBuilder(
+    column: $table.lutealPhaseLength,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7195,6 +7384,21 @@ class $$CycleSettingsTableTableOrderingComposer
     column: $table.enabled,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get expectedCycleLength => $composableBuilder(
+    column: $table.expectedCycleLength,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get periodLength => $composableBuilder(
+    column: $table.periodLength,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lutealPhaseLength => $composableBuilder(
+    column: $table.lutealPhaseLength,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CycleSettingsTableTableAnnotationComposer
@@ -7251,6 +7455,21 @@ class $$CycleSettingsTableTableAnnotationComposer
 
   GeneratedColumn<bool> get enabled =>
       $composableBuilder(column: $table.enabled, builder: (column) => column);
+
+  GeneratedColumn<int> get expectedCycleLength => $composableBuilder(
+    column: $table.expectedCycleLength,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get periodLength => $composableBuilder(
+    column: $table.periodLength,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get lutealPhaseLength => $composableBuilder(
+    column: $table.lutealPhaseLength,
+    builder: (column) => column,
+  );
 }
 
 class $$CycleSettingsTableTableTableManager
@@ -7305,6 +7524,9 @@ class $$CycleSettingsTableTableTableManager
                 Value<String> reminders = const Value.absent(),
                 Value<bool> showFertilityWarning = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
+                Value<int?> expectedCycleLength = const Value.absent(),
+                Value<int?> periodLength = const Value.absent(),
+                Value<int?> lutealPhaseLength = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion(
                 isDeleted: isDeleted,
@@ -7319,6 +7541,9 @@ class $$CycleSettingsTableTableTableManager
                 reminders: reminders,
                 showFertilityWarning: showFertilityWarning,
                 enabled: enabled,
+                expectedCycleLength: expectedCycleLength,
+                periodLength: periodLength,
+                lutealPhaseLength: lutealPhaseLength,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7335,6 +7560,9 @@ class $$CycleSettingsTableTableTableManager
                 Value<String> reminders = const Value.absent(),
                 Value<bool> showFertilityWarning = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
+                Value<int?> expectedCycleLength = const Value.absent(),
+                Value<int?> periodLength = const Value.absent(),
+                Value<int?> lutealPhaseLength = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion.insert(
                 isDeleted: isDeleted,
@@ -7349,6 +7577,9 @@ class $$CycleSettingsTableTableTableManager
                 reminders: reminders,
                 showFertilityWarning: showFertilityWarning,
                 enabled: enabled,
+                expectedCycleLength: expectedCycleLength,
+                periodLength: periodLength,
+                lutealPhaseLength: lutealPhaseLength,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

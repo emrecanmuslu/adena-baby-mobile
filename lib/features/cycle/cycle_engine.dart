@@ -163,22 +163,33 @@ CycleStatus computeStatus(
       ? (manualValid ? manualLen : 28)
       : (lengths.reduce((a, b) => a + b) / lengths.length).round();
   final pdays = spans.where((s) => s.periodDays > 0).map((s) => s.periodDays).toList();
-  final avgPeriod =
-      pdays.isEmpty ? 5 : (pdays.reduce((a, b) => a + b) / pdays.length).round();
+  // Ölçülmüş adet günü yoksa kullanıcının girdiği süreyi kullan (2–10), yoksa 5.
+  final manualPeriod = settings.periodLength;
+  final manualPeriodValid =
+      manualPeriod != null && manualPeriod >= 2 && manualPeriod <= 10;
+  final avgPeriod = pdays.isEmpty
+      ? (manualPeriodValid ? manualPeriod : 5)
+      : (pdays.reduce((a, b) => a + b) / pdays.length).round();
+  // Luteal faz uzunluğu (gün) — ovülasyon konumunu belirler. Kullanıcı ayarı 10–16
+  // arası geçerli, yoksa tıbbi varsayılan 14.
+  final lutealRaw = settings.lutealPhaseLength;
+  final luteal = (lutealRaw != null && lutealRaw >= 10 && lutealRaw <= 16)
+      ? lutealRaw
+      : 14;
 
   final lastStart = starts.last;
   final dayInCycle = _diffDays(now, lastStart) + 1;
   final nextPeriod = lastStart.add(Duration(days: avgLen));
   final daysToNext = _diffDays(nextPeriod, now);
-  // Ovülasyon ≈ sonraki adetten ~14 gün önce; doğurganlık penceresi -5 gün.
-  final ovulation = nextPeriod.subtract(const Duration(days: 14));
+  // Ovülasyon ≈ sonraki adetten luteal faz kadar önce; doğurganlık penceresi -5 gün.
+  final ovulation = nextPeriod.subtract(Duration(days: luteal));
   final fertileStart = ovulation.subtract(const Duration(days: 5));
   // Yaklaşan pencere: mevcut döngününki (fertileStart..ovulation) bugünü geçtiyse
   // sonraki döngünün penceresine kay → pano "geçmiş" pencere göstermez, doğurganlık
   // hatırlatıcısı doğru kurulur. (Mevcut fertileStart/End calendar için korunur.)
   final windowPassed = ovulation.isBefore(now);
   final nextCyclePeriod = nextPeriod.add(Duration(days: avgLen));
-  final nextOvulation = nextCyclePeriod.subtract(const Duration(days: 14));
+  final nextOvulation = nextCyclePeriod.subtract(Duration(days: luteal));
   final upcomingOvulation = windowPassed ? nextOvulation : ovulation;
   final upcomingFertileStart = upcomingOvulation.subtract(const Duration(days: 5));
 

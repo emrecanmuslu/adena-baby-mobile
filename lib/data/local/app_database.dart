@@ -104,6 +104,10 @@ class CycleSettingsTable extends Table with _SyncCols {
   BoolColumn get showFertilityWarning =>
       boolean().withDefault(const Constant(true))();
   BoolColumn get enabled => boolean().withDefault(const Constant(true))();
+  // Tahmin ayarları (manuel/opsiyonel). Ölçülmüş veri yokken tahmine beslenir.
+  IntColumn get expectedCycleLength => integer().nullable()();
+  IntColumn get periodLength => integer().nullable()();
+  IntColumn get lutealPhaseLength => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -179,7 +183,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -220,6 +224,15 @@ class AppDatabase extends _$AppDatabase {
             // Sağlık local-first: aşı/gelişim/diş durumu + hatırlatıcılar yerelde.
             await m.createTable(healthStatuses);
             await m.createTable(localReminders);
+          }
+          if (from < 8) {
+            // Adet tahmin ayarları: döngü uzunluğu artık yerelde de saklanır
+            // (eskiden kolon yoktu → değişiklik kaydolmuyordu) + adet/luteal süresi.
+            await m.addColumn(
+                cycleSettingsTable, cycleSettingsTable.expectedCycleLength);
+            await m.addColumn(cycleSettingsTable, cycleSettingsTable.periodLength);
+            await m.addColumn(
+                cycleSettingsTable, cycleSettingsTable.lutealPhaseLength);
           }
         },
       );
