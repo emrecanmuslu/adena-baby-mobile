@@ -71,12 +71,16 @@ jobs:
         run: pod install
 
       # App Store Connect API key'i diske yaz (xcodebuild cloud imzalamada kullanır).
+      # xcodebuild'in cloud imzalama (provisioning) servisi API key'i SADECE
+      # geleneksel konumda + AuthKey_<KeyID>.p8 adıyla bulur; -authenticationKeyPath
+      # bu servis için yetmez. Bu yüzden ~/.appstoreconnect/private_keys/ altına yaz.
       - name: API key yaz
         env:
           KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
         run: |
-          mkdir -p "$RUNNER_TEMP/private_keys"
-          echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/private_keys/AuthKey.p8"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$KEY_B64" | base64 -d > "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
 
       # Cloud imzalı archive: -allowProvisioningUpdates + API key ile sertifika
       # ve profiller (Runner + FeedWidgetExtension) otomatik oluşturulur.
@@ -92,7 +96,7 @@ jobs:
           -archivePath "$RUNNER_TEMP/Runner.xcarchive"
           -destination 'generic/platform=iOS'
           -allowProvisioningUpdates
-          -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey.p8"
+          -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
           -authenticationKeyID "$KEY_ID"
           -authenticationKeyIssuerID "$ISSUER_ID"
           DEVELOPMENT_TEAM="$TEAM_ID"
@@ -111,7 +115,7 @@ jobs:
           -exportPath "$RUNNER_TEMP/ipa"
           -exportOptionsPlist ios/ExportOptions.plist
           -allowProvisioningUpdates
-          -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey.p8"
+          -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
           -authenticationKeyID "$KEY_ID"
           -authenticationKeyIssuerID "$ISSUER_ID"
 
