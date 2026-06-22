@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Yalnız standart HTTPS/TLS şifreleme → ihracat muafiyeti; TestFlight'ta
+	     "Missing Compliance" sorusunu atlatır, build anında test edilebilir. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Anılara fotoğraf eklemek için kamerayı kullanır.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
