@@ -13,7 +13,7 @@ import SwiftUI
 //
 // @main, FeedWidgetBundle.swift'te tanımlı; bu dosya yalnız widget'ı sağlar.
 
-private let appGroupId = "group.com.adenababy.adena_baby"
+private let appGroupId = "group.com.adenababy.adenaBaby"
 
 // Tasarım mercan rengi #FF8A7A.
 private let coral = Color(red: 1.0, green: 138.0 / 255.0, blue: 122.0 / 255.0)

@@ -58,7 +58,11 @@
 	<array>
 		<string>fetch</string>
 		<string>processing</string>
+		<string>remote-notification</string>
 	</array>
+	<!-- Emzirme/uyku süren sayacı için Live Activity (ActivityKit). -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.adenababy.bgSync</string>

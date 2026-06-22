@@ -16,7 +16,8 @@ import 'i18n.dart';
 /// kalsın); `locale` de yazılır ki TR/EN doğru gösterilsin.
 class WidgetService {
   // iOS App Group — Xcode'da Widget Extension + ana uygulamada aynı grup tanımlı olmalı.
-  static const _appGroupId = 'group.com.adenababy.adena_baby';
+  // NOT: Apple App Group id'lerinde alt çizgi (_) YASAK → bundle ile aynı camelCase.
+  static const _appGroupId = 'group.com.adenababy.adenaBaby';
   static const _qualifiedAndroidName = 'com.adenababy.adena_baby.FeedWidgetProvider';
 
   static bool _inited = false;

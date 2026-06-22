@@ -1,23 +1,32 @@
-name: iOS build (imzasız ipa)
+name: iOS release (TestFlight)
 
-# Sideloadly ile yan-yükleme için imzasız .ipa üretir.
-# Actions sekmesi → "Run workflow" → (varsayılan cloud adresi hazır) → bitince artifact'ı indir.
+# App Store Connect API key ile CLOUD (otomatik) imzalı .ipa üretir ve
+# doğrudan TestFlight'a yükler. Mac GEREKMEZ (macos-15 runner derler+imzalar).
+#
+# Gerekli GitHub Secrets:
+#   APP_STORE_CONNECT_API_KEY_ID      — API anahtarının Key ID'si
+#   APP_STORE_CONNECT_API_ISSUER_ID   — App Store Connect Issuer ID (UUID)
+#   APP_STORE_CONNECT_API_KEY_BASE64  — AuthKey_*.p8 dosyasının base64'ü (tek satır)
+#
+# Tetik: elle (Run workflow) veya `ios-v*` tag push (örn. git tag ios-v1.2.0).
 on:
   workflow_dispatch:
     inputs:
       api_base_url:
-        description: 'API taban adresi (test sunucusu)'
+        description: 'API taban adresi'
         required: true
         default: 'https://api.adenababy.com/api/v1'
+  push:
+    tags: ['ios-v*']
 
-# Tüm JS aksiyonlarını Node 24'te çalıştır (checkout/upload-artifact Node 20 uyarısını susturur).
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  TEAM_ID: '76279KR37M'
 
 jobs:
   build-ios:
-    # Firebase SDK Swift 6 'sending' anahtar kelimesini kullanır → Xcode 16+ (Swift 6)
-    # şart. macos-14 = Xcode 15.4 (Swift 5) → derleme hatası. macos-15 = Xcode 16.
+    # Firebase SDK Swift 6 'sending' anahtar kelimesi → Xcode 16+ (Swift 6) şart.
+    # macos-15 = Xcode 16.
     runs-on: macos-15
     steps:
       - name: Checkout
@@ -32,9 +41,8 @@ jobs:
       - name: Sürüm
         run: flutter --version
 
-      # Firebase SPM manifest'leri CI'da bozuk (SourcePackages rsync / firebase_sdk_version.rb
-      # fileNotFound). Proje CocoaPods'a döndürüldü (pbxproj'tan SPM ref'leri çıkarıldı),
-      # SPM'i kapalı tut ki yeniden migrate etmesin. pub get'ten ÖNCE çalışmalı.
+      # Firebase SPM manifest'leri CI'da bozuk → CocoaPods kullan, SPM kapalı kalsın.
+      # pub get'ten ÖNCE çalışmalı.
       - name: SPM kapat (CocoaPods kullan)
         run: flutter config --no-enable-swift-package-manager
 
@@ -44,21 +52,73 @@ jobs:
       - name: Codegen (drift)
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: iOS derle (imzasız)
+      # TestFlight build numarası benzersiz + monoton artmalı.
+      - name: Build numarası hesapla
+        id: vc
+        run: echo "code=$(( ${{ github.run_number }} + 100 ))" >> "$GITHUB_OUTPUT"
+
+      # Xcode projesini + Pods'u hazırla (derleme archive adımında olur).
+      # dart-define'lar Generated.xcconfig'e yazılır; archive bunları kullanır.
+      - name: iOS yapılandırması (config-only)
         run: >
-          flutter build ios --release --no-codesign
-          --dart-define=API_BASE_URL=${{ inputs.api_base_url }}
+          flutter build ios --release --config-only
+          --dart-define-from-file=dart_defines.json
+          --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://api.adenababy.com/api/v1' }}
+          --build-number=${{ steps.vc.outputs.code }}
 
-      - name: .ipa paketle
+      - name: CocoaPods kur
+        working-directory: ios
+        run: pod install
+
+      # App Store Connect API key'i diske yaz (xcodebuild cloud imzalamada kullanır).
+      - name: API key yaz
+        env:
+          KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
         run: |
-          cd build/ios/iphoneos
-          mkdir -p Payload
-          cp -R Runner.app Payload/Runner.app
-          zip -qq -r AdenaBaby.ipa Payload
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/private_keys/AuthKey.p8"
 
-      - name: Artifact yükle
+      # Cloud imzalı archive: -allowProvisioningUpdates + API key ile sertifika
+      # ve profiller (Runner + FeedWidgetExtension) otomatik oluşturulur.
+      - name: Archive (cloud imzalı)
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: >
+          xcodebuild
+          -workspace ios/Runner.xcworkspace
+          -scheme Runner
+          -configuration Release
+          -archivePath "$RUNNER_TEMP/Runner.xcarchive"
+          -destination 'generic/platform=iOS'
+          -allowProvisioningUpdates
+          -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey.p8"
+          -authenticationKeyID "$KEY_ID"
+          -authenticationKeyIssuerID "$ISSUER_ID"
+          DEVELOPMENT_TEAM="$TEAM_ID"
+          CODE_SIGN_STYLE=Automatic
+          archive
+
+      # Export + TestFlight yükleme (ExportOptions.plist destination=upload).
+      - name: Export + TestFlight'a yükle
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: >
+          xcodebuild
+          -exportArchive
+          -archivePath "$RUNNER_TEMP/Runner.xcarchive"
+          -exportPath "$RUNNER_TEMP/ipa"
+          -exportOptionsPlist ios/ExportOptions.plist
+          -allowProvisioningUpdates
+          -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey.p8"
+          -authenticationKeyID "$KEY_ID"
+          -authenticationKeyIssuerID "$ISSUER_ID"
+
+      - name: IPA'yı artifact olarak sakla
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: AdenaBaby-ipa
-          path: build/ios/iphoneos/AdenaBaby.ipa
-          if-no-files-found: error
+          path: ${{ runner.temp }}/ipa/*.ipa
+          if-no-files-found: warn

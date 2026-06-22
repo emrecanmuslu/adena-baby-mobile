@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- TestFlight/App Store dağıtımı production APNs ortamı kullanır. Tek build
+	     hattımız CI → TestFlight olduğu için production. (Yerel debug/sideload
+	     bırakıldı; gerekirse development'a çevrilir.) -->
+	<key>aps-environment</key>
+	<string>production</string>
+	<!-- Widget + Live Activity ile ana uygulama arası paylaşımlı depolama. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.adenababy.adenaBaby</string>
+	</array>
+</dict>
+</plist>
