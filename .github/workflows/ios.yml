@@ -70,24 +70,28 @@ jobs:
         working-directory: ios
         run: pod install
 
-      # App Store Connect API key'i diske yaz (xcodebuild cloud imzalamada kullanır).
-      # xcodebuild'in cloud imzalama (provisioning) servisi API key'i SADECE
-      # geleneksel konumda + AuthKey_<KeyID>.p8 adıyla bulur; -authenticationKeyPath
-      # bu servis için yetmez. Bu yüzden ~/.appstoreconnect/private_keys/ altına yaz.
+      # Secret'larda sonda kalmış whitespace/newline 401'e yol açar
+      # (-authenticationKeyID "5N8...\n" geçersiz). Trimleyip env'e yaz.
+      - name: API key kimliklerini temizle
+        env:
+          RAW_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          RAW_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: |
+          echo "ASC_KEY_ID=$(printf '%s' "$RAW_KEY_ID" | tr -d '[:space:]')" >> "$GITHUB_ENV"
+          echo "ASC_ISSUER_ID=$(printf '%s' "$RAW_ISSUER_ID" | tr -d '[:space:]')" >> "$GITHUB_ENV"
+
+      # API key'i geleneksel konuma + AuthKey_<KeyID>.p8 adıyla yaz
+      # (xcodebuild cloud imzalama servisi anahtarı yalnız orada arar).
       - name: API key yaz
         env:
           KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
-          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
         run: |
           mkdir -p "$HOME/.appstoreconnect/private_keys"
-          echo "$KEY_B64" | base64 -d > "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+          echo "$KEY_B64" | base64 -d > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
 
       # Cloud imzalı archive: -allowProvisioningUpdates + API key ile sertifika
       # ve profiller (Runner + FeedWidgetExtension) otomatik oluşturulur.
       - name: Archive (cloud imzalı)
-        env:
-          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
         run: >
           xcodebuild
           -workspace ios/Runner.xcworkspace
@@ -96,18 +100,15 @@ jobs:
           -archivePath "$RUNNER_TEMP/Runner.xcarchive"
           -destination 'generic/platform=iOS'
           -allowProvisioningUpdates
-          -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
-          -authenticationKeyID "$KEY_ID"
-          -authenticationKeyIssuerID "$ISSUER_ID"
+          -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          -authenticationKeyID "$ASC_KEY_ID"
+          -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           DEVELOPMENT_TEAM="$TEAM_ID"
           CODE_SIGN_STYLE=Automatic
           archive
 
       # Export + TestFlight yükleme (ExportOptions.plist destination=upload).
       - name: Export + TestFlight'a yükle
-        env:
-          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
         run: >
           xcodebuild
           -exportArchive
@@ -115,9 +116,9 @@ jobs:
           -exportPath "$RUNNER_TEMP/ipa"
           -exportOptionsPlist ios/ExportOptions.plist
           -allowProvisioningUpdates
-          -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
-          -authenticationKeyID "$KEY_ID"
-          -authenticationKeyIssuerID "$ISSUER_ID"
+          -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          -authenticationKeyID "$ASC_KEY_ID"
+          -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
       - name: IPA'yı artifact olarak sakla
         if: always()
