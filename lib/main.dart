@@ -13,6 +13,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'core/ad_service.dart';
 import 'core/analytics_service.dart';
 import 'core/api_client.dart';
+import 'core/background_sync.dart';
 import 'core/i18n.dart';
 import 'core/locale_util.dart';
 import 'core/token_storage.dart';
@@ -68,6 +69,10 @@ Future<void> main() async {
   unawaited(RevenueCatService.instance.configure());
   // Reklam ilk-gün penceresi için kurulum zamanını sakla.
   unawaited(AdService.instance.init());
+  // Arka plan sync (uygulama kapalıyken paylaşımlı bebek fallback'i): push düşmese
+  // de ~30 dk'da bir paylaşımlı bebekleri çek. Android=WorkManager, iOS=BGTaskScheduler
+  // (fırsatçı). Kayıt idempotent. OEM (Xiaomi) pil kısıtı throttle edebilir.
+  unawaited(registerBackgroundSync());
   // Analytics: consent-gated; rıza yoksa/ debug'da sessiz no-op (varsayılan kapalı).
   unawaited(AnalyticsService.instance.init());
   // Beslenme formu son-değer cache'ini belleğe al (form senkron okusun).

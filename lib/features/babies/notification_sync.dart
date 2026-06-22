@@ -43,19 +43,23 @@ class _WidgetSync extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final baby = ref.watch(activeBabyProvider);
-    if (baby == null || baby.isExpecting) return const SizedBox.shrink();
-    final recs =
-        ref.watch(recentRecordsProvider(baby.id)).asData?.value ?? const [];
-    DateTime? last;
-    for (final r in recs) {
-      if (r.type == RecordType.feed && !r.isOngoingBreast) {
-        if (last == null || r.ts.isAfter(last)) last = r.ts;
-      }
+    // Çok-bebek: her widget kendi bebeğini gösterebildiği için TÜM (doğmuş)
+    // bebeklerin sonraki-beslenme verisini yaz. Sonraki beslenme = hatırlatıcı
+    // açıksa onun aralığı, değilse varsayılan (ana sayfa kartıyla aynı mantık).
+    final babies = ref.watch(babyControllerProvider).asData?.value ?? const [];
+    final born = babies.where((b) => !b.isExpecting).toList();
+    if (born.isEmpty) return const SizedBox.shrink();
+    final widgetBabies = <WidgetBaby>[];
+    for (final b in born) {
+      final recs = ref.watch(recentRecordsProvider(b.id)).asData?.value ?? const [];
+      final cfg = ref.watch(feedReminderProvider(b.id));
+      final next =
+          nextFeedEstimate(cfg.enabled ? cfg : const FeedReminderConfig(), recs);
+      widgetBabies.add(WidgetBaby(id: b.id, name: b.name, nextFeed: next));
     }
-    // build içinde yan-etki: bu ekran zaten görünmez senkron katmanı
-    // (_BabyNotifSync de NotificationService'i build'de çağırıyor).
-    WidgetService.updateLastFeed(babyName: baby.name, lastFeed: last);
+    final activeId = ref.watch(activeBabyProvider)?.id ?? born.first.id;
+    // build içinde yan-etki: bu ekran zaten görünmez senkron katmanı.
+    WidgetService.publishAll(widgetBabies, activeId);
     return const SizedBox.shrink();
   }
 }

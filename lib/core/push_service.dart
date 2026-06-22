@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../data/activity_notif_cache.dart';
 import '../data/feed_reminder_cache.dart';
+import '../models/feed_reminder.dart';
 import 'api_client.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
@@ -39,7 +40,20 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   //    beslenmede (widget süren emzirmeyi "son beslenme" saymaz).
   final lastFeed = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
   if (data['widget_update'] == 'feed') {
-    await WidgetService.updateLastFeed(babyName: title, lastFeed: lastFeed);
+    // Widget artık SONRAKİ beslenmeyi gösterir → son beslenme + aralıktan hesapla.
+    // Aralık: bebeğin hatırlatıcı snapshot'ı (FeedReminderCache), yoksa varsayılan 120 dk.
+    // Çok-bebek: bu bebeğin verisini per-baby anahtarına yaz (o bebeği seçen widget tazelenir).
+    final babyId = data['baby_id'];
+    if (babyId is String && babyId.isNotEmpty) {
+      DateTime? next;
+      if (lastFeed != null) {
+        var interval = const FeedReminderConfig().intervalMin; // 120
+        final snap = await FeedReminderCache().read(babyId);
+        if (snap != null) interval = snap.intervalMin;
+        next = lastFeed.add(Duration(minutes: interval));
+      }
+      await WidgetService.publishOne(babyId: babyId, babyName: title, nextFeed: next);
+    }
   }
   // Hatırlatıcı yeniden planlaması aile-etkinlik bildirimi tercihinden BAĞIMSIZ:
   // beslenme hatırlatıcısı ayrı bir özelliktir, kullanıcı aktivite bildirimini

@@ -61,7 +61,7 @@
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
             android:exported="false" />
 
-        <!-- Ana ekran widget'ı: "son beslenme" -->
+        <!-- Ana ekran widget'ı: "sonraki beslenme" -->
         <receiver
             android:name=".FeedWidgetProvider"
             android:exported="true">
@@ -72,6 +72,15 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/feed_widget_info" />
         </receiver>
+        <!-- Widget yapılandırma ekranı: birden çok bebekte hangisi gösterilsin -->
+        <activity
+            android:name=".FeedWidgetConfigActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.Dialog">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
