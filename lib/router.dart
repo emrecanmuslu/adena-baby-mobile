@@ -37,6 +37,7 @@ import 'features/development/teeth_screen.dart';
 import 'features/memories/memories_screen.dart';
 import 'features/onboarding/baby_setup_screen.dart';
 import 'features/settings/appearance_screen.dart';
+import 'features/settings/feedback_screen.dart';
 import 'features/settings/premium_screen.dart';
 import 'features/settings/privacy_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -116,6 +117,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               const TourMount(tourKey: 'reminders', child: RemindersScreen())),
       GoRoute(path: '/appearance', builder: (_, _) => const AppearanceScreen()),
       GoRoute(path: '/privacy', builder: (_, _) => const PrivacyScreen()),
+      GoRoute(path: '/feedback', builder: (_, _) => const FeedbackScreen()),
       GoRoute(
           path: '/premium',
           builder: (_, _) =>

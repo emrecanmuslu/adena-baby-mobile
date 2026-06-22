@@ -12,7 +12,7 @@ import '../babies/family_settings.dart';
 import '../babies/members_screen.dart';
 import 'delete_record_sheet.dart';
 import 'record_controller.dart';
-import 'record_form.dart';
+import 'record_detail_sheet.dart';
 import 'record_ui.dart';
 
 /// Günlük akış — yerel kayıtları güne göre gruplanmış liste hâlinde gösterir,
@@ -288,8 +288,7 @@ class _RecordTile extends ConsumerWidget {
         return false; // silme sheet'te yönetilir; provider tazelenince satır gider
       },
       child: GestureDetector(
-        onTap: () => showRecordForm(context, ref, record.baby, record.type,
-            existing: record),
+        onTap: () => showRecordDetailSheet(context, ref, record),
         child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),

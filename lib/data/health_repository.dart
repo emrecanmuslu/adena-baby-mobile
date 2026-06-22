@@ -98,6 +98,7 @@ class HealthRepository {
         dueDate: _addMonths(birth, v.months),
         done: s?.done ?? false,
         doneDate: s?.date,
+        optional: v.optional,
       );
     }).toList();
   }

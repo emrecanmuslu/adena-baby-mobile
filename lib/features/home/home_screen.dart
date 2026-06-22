@@ -940,6 +940,17 @@ class _MilestoneSection extends ConsumerWidget {
     var relevant =
         age == null ? pending : pending.where((m) => m.expectedMonth <= age + 2).toList();
     if (relevant.isEmpty) relevant = pending;
+    // Yaşa EN YAKIN olanları öne al (yoksa liste en erken/1.ay taşlarıyla dolar →
+    // 6 aylık bebekte 1. ay gösterilmesin). Eşit uzaklıkta önce geçmiş/şimdiki ay.
+    if (age != null) {
+      relevant.sort((a, b) {
+        final da = (a.expectedMonth - age).abs();
+        final db = (b.expectedMonth - age).abs();
+        return da != db
+            ? da.compareTo(db)
+            : a.expectedMonth.compareTo(b.expectedMonth);
+      });
+    }
     final shown = relevant.take(3).toList();
 
     return Column(
@@ -1106,7 +1117,13 @@ class _PredictSectionState extends ConsumerState<_PredictSection>
   /// "120 dk" yerine insan-dostu süre: "2 saat" / "1 saat 50 dakika" / "50 dakika".
   String _humanDur(int totalMin) {
     final m = totalMin.abs();
-    final h = m ~/ 60, mm = m % 60;
+    final d = m ~/ 1440;
+    final h = (m % 1440) ~/ 60;
+    final mm = m % 60;
+    // Uzun süreler "334 saat" yerine "13 gün 22 saat" gibi okunur.
+    if (d > 0) {
+      return h > 0 ? trp('{d} gün {h} saat', {'d': d, 'h': h}) : trp('{d} gün', {'d': d});
+    }
     if (h == 0) return trp('{m} dakika', {'m': mm});
     if (mm == 0) return trp('{h} saat', {'h': h});
     return trp('{h} saat {m} dakika', {'h': h, 'm': mm});

@@ -76,10 +76,15 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   }
 
   Future<void> _save() async {
-    final name = _name.text.trim();
+    var name = _name.text.trim();
     if (name.isEmpty) {
-      _snack(tr('Bebeğin adını gir'));
-      return;
+      // Doğmuş bebekte ad zorunlu; bekleme modunda ad henüz bilinmeyebilir
+      // ("İsim (varsa)") → varsayılanla devam et.
+      if (_status == BabyStatus.born) {
+        _snack(tr('Bebeğin adını gir'));
+        return;
+      }
+      name = tr('Bebeğim');
     }
     if (_date == null) {
       _snack(_status == BabyStatus.born

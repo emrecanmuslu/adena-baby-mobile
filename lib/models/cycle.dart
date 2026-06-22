@@ -53,6 +53,9 @@ class CycleSettings {
   final Map<String, dynamic> reminders; // period/fertile/pms/log → {on, time}
   final bool showFertilityWarning;
   final bool enabled;
+  // Opsiyonel manuel "beklenen döngü uzunluğu" (gün). Henüz ölçülmüş döngü yokken
+  // (ilk döngü) varsayılan 28 yerine bunu kullanır → ilk tahmini kişiselleştirir.
+  final int? expectedCycleLength;
 
   const CycleSettings({
     this.babyId,
@@ -62,6 +65,7 @@ class CycleSettings {
     this.reminders = const {},
     this.showFertilityWarning = true,
     this.enabled = true,
+    this.expectedCycleLength,
   });
 
   /// İlk gerçek adet kaydedilmiş mi → döngü tahmini yapılabilir mi?
@@ -75,6 +79,7 @@ class CycleSettings {
         reminders: (j['reminders'] as Map?)?.cast<String, dynamic>() ?? const {},
         showFertilityWarning: j['show_fertility_warning'] as bool? ?? true,
         enabled: j['enabled'] as bool? ?? true,
+        expectedCycleLength: (j['expected_cycle_length'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toPatchJson() => {
@@ -85,6 +90,7 @@ class CycleSettings {
         'reminders': reminders,
         'show_fertility_warning': showFertilityWarning,
         'enabled': enabled,
+        'expected_cycle_length': expectedCycleLength,
       };
 
   CycleSettings copyWith({
@@ -95,6 +101,7 @@ class CycleSettings {
     Map<String, dynamic>? reminders,
     bool? showFertilityWarning,
     bool? enabled,
+    Object? expectedCycleLength = _sentinel,
   }) =>
       CycleSettings(
         babyId: babyId ?? this.babyId,
@@ -106,6 +113,9 @@ class CycleSettings {
         reminders: reminders ?? this.reminders,
         showFertilityWarning: showFertilityWarning ?? this.showFertilityWarning,
         enabled: enabled ?? this.enabled,
+        expectedCycleLength: expectedCycleLength == _sentinel
+            ? this.expectedCycleLength
+            : expectedCycleLength as int?,
       );
 
   static const _sentinel = Object();

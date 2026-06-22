@@ -181,6 +181,15 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
 
+          AdMenuItem(
+            icon: 'comment',
+            color: AppColors.growth,
+            bg: AppColors.growthBg,
+            title: tr('Geri Bildirim'),
+            meta: tr('Özellik iste · sorun bildir'),
+            onTap: () => context.push('/feedback'),
+          ),
+
           adSec(tr('Hesap')),
           AdMenuItem(
             icon: 'shield',

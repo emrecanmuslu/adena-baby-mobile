@@ -81,6 +81,23 @@ void main() {
       final v = VaccineCatalogItem.fromJson({'name': 'Hepatit B', 'months': 0});
       expect(v.key, 'Hepatit B');
       expect(v.months, 0);
+      expect(v.optional, isFalse); // bayrak yoksa zorunlu
+    });
+
+    test('VaccineCatalogItem.fromJson optional bayrağı okunur', () {
+      final v = VaccineCatalogItem.fromJson(
+          {'name': 'Rotavirüs (ücretli)', 'months': 2, 'optional': true});
+      expect(v.optional, isTrue);
+    });
+
+    test('isOverdue: isteğe bağlı aşı geçmiş olsa bile false', () {
+      final v = Vaccine(
+          key: 'x',
+          name: 'x',
+          dueDate: DateTime(2000, 1, 1),
+          done: false,
+          optional: true);
+      expect(v.isOverdue, isFalse);
     });
 
     test('isOverdue: yapılmadı + geçmiş tarih → true', () {

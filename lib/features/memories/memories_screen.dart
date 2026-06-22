@@ -310,26 +310,89 @@ class _PhotoPlaceholder extends StatelessWidget {
   }
 }
 
-/// Boş durum — ilk anıyı eklemeye davet.
+/// Boş durum — ilk anıyı eklemeye davet (sıcak, davetkâr tasarım).
 class _Empty extends StatelessWidget {
   const _Empty();
+
+  // Ne tür "ilk"ler eklenebileceğini gösteren önizleme çipleri.
+  static const _firsts = [
+    ('😊', 'İlk gülümseme'),
+    ('🦷', 'İlk diş'),
+    ('👣', 'İlk adım'),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('📸', style: TextStyle(fontSize: 56)),
-            const SizedBox(height: 12),
-            Text(tr('Henüz anı yok'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
+            // Yumuşak gradyan kapsül içinde kamera — görsel odak.
+            Container(
+              width: 124,
+              height: 124,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.peachLight, AppColors.peach],
+                ),
+                boxShadow: AppColors.smallShadow,
+              ),
+              child: const Center(
+                child: Text('📸', style: TextStyle(fontSize: 54)),
+              ),
+            ),
+            const SizedBox(height: 22),
+            Text(tr('İlk anını ekle'),
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink)),
+            const SizedBox(height: 8),
             Text(
-              tr('İlk gülümseme, ilk diş, ilk adım… özel anları fotoğrafla sakla.'),
+              tr('Büyürken kaçırmak istemeyeceğin anları burada sakla — '
+                  'bir fotoğraf çek, etiketle, yıllar sonra yeniden yaşa.'),
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w600,
+                  height: 1.45),
+            ),
+            const SizedBox(height: 22),
+            // "İlk"ler önizleme çipleri.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                for (final (emoji, label) in _firsts)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: AppColors.peachLight,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text('$emoji  ${tr(label)}',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.coralDd)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              tr('Başlamak için sağ alttaki + düğmesine dokun'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted2),
             ),
           ],
         ),
@@ -394,7 +457,28 @@ void _showMemoryDetail(BuildContext context, WidgetRef ref, String babyId,
                   color: AppColors.fever,
                   ghost: true,
                   onTap: () async {
-                    Navigator.pop(sheetCtx);
+                    // Anılar (fotoğraflar) geri alınamaz → silmeden önce onay.
+                    final ok = await showDialog<bool>(
+                      context: sheetCtx,
+                      builder: (dctx) => AlertDialog(
+                        title: Text(tr('Anıyı sil')),
+                        content: Text(tr(
+                            'Bu anı ve fotoğrafı kalıcı olarak silinecek. Bu geri alınamaz.')),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(dctx, false),
+                              child: Text(tr('Vazgeç'))),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.fever),
+                            onPressed: () => Navigator.pop(dctx, true),
+                            child: Text(tr('Sil')),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
                     try {
                       await ref.read(memoryRepositoryProvider).delete(babyId, m.id);
                       ref.invalidate(memoriesProvider(babyId));

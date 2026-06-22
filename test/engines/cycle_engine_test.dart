@@ -262,6 +262,62 @@ void main() {
     });
   });
 
+  group('manuel beklenen döngü uzunluğu (#12)', () {
+    test('ölçülmüş döngü yokken expectedCycleLength kullanılır', () {
+      final settings = CycleSettings(
+          firstPeriodDate: DateTime(2025, 1, 1), expectedCycleLength: 32);
+      final status = computeStatus(settings, _periodRun('a', DateTime(2025, 1, 1), 4),
+          today: DateTime(2025, 1, 10));
+      expect(status.avgCycleLength, 32);
+      expect(status.nextPeriod, DateTime(2025, 2, 2)); // 1 Oca + 32 gün
+    });
+
+    test('geçersiz (21–40 dışı) expectedCycleLength → 28 varsayılan', () {
+      final settings = CycleSettings(
+          firstPeriodDate: DateTime(2025, 1, 1), expectedCycleLength: 90);
+      final status = computeStatus(settings, _periodRun('a', DateTime(2025, 1, 1), 4),
+          today: DateTime(2025, 1, 10));
+      expect(status.avgCycleLength, 28);
+    });
+
+    test('ölçülmüş döngü varsa manuel değer YOK sayılır', () {
+      final settings = CycleSettings(
+          firstPeriodDate: DateTime(2025, 1, 1), expectedCycleLength: 35);
+      final entries = [
+        ..._periodRun('a', DateTime(2025, 1, 1), 4),
+        ..._periodRun('b', DateTime(2025, 1, 29), 4), // 28 günlük ölçülmüş döngü
+      ];
+      final status = computeStatus(settings, entries, today: DateTime(2025, 2, 1));
+      expect(status.avgCycleLength, 28); // ölçülen kazanır
+    });
+  });
+
+  group('yaklaşan doğurganlık penceresi (#11)', () {
+    test('luteal fazda (pencere geçmiş) → sonraki döngünün penceresi', () {
+      // 28 günlük döngü: 1 Oca başlangıç → ovülasyon ~15 Oca, pencere 10–15 Oca.
+      // 20 Oca'da pencere geçmiş → yaklaşan = sonraki döngününki (Şubat).
+      final settings = CycleSettings(firstPeriodDate: DateTime(2025, 1, 1));
+      final status = computeStatus(
+          settings, _periodRun('a', DateTime(2025, 1, 1), 4),
+          today: DateTime(2025, 1, 20));
+      expect(status.fertileWindowIsNextCycle, isTrue);
+      // Mevcut pencere (calendar) geçmişte kalır.
+      expect(status.fertileEnd!.isBefore(DateTime(2025, 1, 20)), isTrue);
+      // Yaklaşan pencere bugünden sonra.
+      expect(status.upcomingFertileEnd!.isAfter(DateTime(2025, 1, 20)), isTrue);
+    });
+
+    test('foliküler fazda (pencere gelecekte) → mevcut döngünün penceresi', () {
+      final settings = CycleSettings(firstPeriodDate: DateTime(2025, 1, 1));
+      final status = computeStatus(
+          settings, _periodRun('a', DateTime(2025, 1, 1), 4),
+          today: DateTime(2025, 1, 8));
+      expect(status.fertileWindowIsNextCycle, isFalse);
+      expect(status.upcomingFertileStart, status.fertileStart);
+      expect(status.upcomingFertileEnd, status.fertileEnd);
+    });
+  });
+
   group('CycleEntry.isPeriod', () {
     test('medium/heavy/light adettir', () {
       for (final f in [FlowLevel.light, FlowLevel.medium, FlowLevel.heavy]) {

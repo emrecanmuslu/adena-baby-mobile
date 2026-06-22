@@ -63,9 +63,10 @@ String trSymptom(String key) => switch (key) {
 /// Belirti için kısa, özgün bakım + "ne zaman doktora" rehberi. Genel
 /// bilgilendirmedir; tıbbi tanı yerine geçmez. Endişe varsa daima doktora danış.
 String trSymptomInfo(String key) => switch (key) {
-      'cough' => tr('Odayı nemli tut, bol sıvı ver, başını hafif yükselt. '
-          '3 aydan küçükse, nefes alırken hırıltı/çekilme varsa, morarma ya da '
-          'yüksek ateş eşlik ediyorsa vakit kaybetmeden doktora başvur.'),
+      'cough' => tr('Odayı nemli tut, bol sıvı ver; uyanıkken kucakta dik '
+          'tutmak rahatlatabilir (uyurken yatağı düz tut). 3 aydan küçükse, '
+          'nefes alırken hırıltı/çekilme varsa, morarma ya da yüksek ateş '
+          'eşlik ediyorsa vakit kaybetmeden doktora başvur.'),
       'runny_nose' => tr('Burnu tuzlu su (serum fizyolojik) ile nemlendirip '
           'aspiratörle nazikçe temizle, bol sıvı ver. Akıntı sarı-yeşil ve 10 '
           'günden uzun sürüyorsa veya ateş eklenirse doktora danış.'),

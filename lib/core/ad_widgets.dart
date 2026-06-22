@@ -320,9 +320,19 @@ class _AdStepperState extends State<AdStepper> {
                             fontSize: 24,
                             fontWeight: FontWeight.w900,
                             color: widget.accent ?? AppColors.ink),
-                        decoration: const InputDecoration(
+                        // Düzenlenebilir olduğunu belli eden ince alt çizgi —
+                        // kullanıcı +/− yerine sayıya dokunup doğrudan yazabilir
+                        // (büyük değerlerde, ör. anne kilosu, keşfedilebilirlik).
+                        decoration: InputDecoration(
                           isCollapsed: true,
-                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.only(bottom: 3),
+                          enabledBorder: UnderlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: AppColors.muted2, width: 1.2)),
+                          focusedBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: widget.accent ?? AppColors.coralDark,
+                                  width: 1.6)),
                           hintText: '0',
                         ),
                       ),

@@ -1,5 +1,8 @@
+import 'dart:io' show Platform;
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/api_client.dart';
 import '../core/providers.dart';
@@ -128,6 +131,31 @@ class AuthRepository {
   Future<Map<String, dynamic>> exportData() async {
     final resp = await _dio.get('/auth/me/export');
     return resp.data as Map<String, dynamic>;
+  }
+
+  /// Kullanıcı geri bildirimi gönderir (POST /auth/feedback).
+  /// [category] = feature | bug | other. Platform ve sürüm otomatik eklenir.
+  Future<void> submitFeedback({
+    required String category,
+    required String message,
+  }) async {
+    var platform = '';
+    if (Platform.isAndroid) {
+      platform = 'android';
+    } else if (Platform.isIOS) {
+      platform = 'ios';
+    }
+    var version = '';
+    try {
+      final info = await PackageInfo.fromPlatform();
+      version = '${info.version}+${info.buildNumber}';
+    } catch (_) {}
+    await _dio.post('/auth/feedback', data: {
+      'category': category,
+      'message': message,
+      'platform': platform,
+      'app_version': version,
+    });
   }
 
   Future<void> logout() async {

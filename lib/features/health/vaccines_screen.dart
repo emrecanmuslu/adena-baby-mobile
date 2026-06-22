@@ -37,9 +37,11 @@ class VaccinesScreen extends ConsumerWidget {
             return const _Empty();
           }
           final done = vaccines.where((v) => v.done).length;
-          // Sıralı + ilk bekleyen aşı vurgulanır (design 'due').
+          // Sıralı + ilk bekleyen aşı vurgulanır (design 'due'). İsteğe bağlı
+          // aşılar "yaklaşan" sayılmaz → vurgu zorunlu aşılara gider.
           final sorted = [...vaccines]..sort((a, b) => a.dueDate.compareTo(b.dueDate));
-          final firstPending = sorted.where((v) => !v.done).firstOrNull;
+          final firstPending =
+              sorted.where((v) => !v.done && !v.optional).firstOrNull;
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             children: [
@@ -125,18 +127,25 @@ class _VacRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final v = vaccine;
-    // Durum: done · due (yaklaşan/gecikmiş) · future.
-    final state = v.done ? 'done' : ((highlighted || v.isOverdue) ? 'due' : 'future');
+    // Durum: done · due (yaklaşan/gecikmiş) · optional (isteğe bağlı) · future.
+    final state = v.done
+        ? 'done'
+        : v.optional
+            ? 'optional'
+            : ((highlighted || v.isOverdue) ? 'due' : 'future');
     final (Color mbg, Color mfg, String icon) = switch (state) {
       'done' => (AppColors.growth, Colors.white, 'check'),
       'due' => (AppColors.coral, Colors.white, 'syringe'),
+      'optional' => (AppColors.line, AppColors.muted, 'syringe'),
       _ => (AppColors.line, AppColors.muted, 'clock'),
     };
     final dateText = v.done && v.doneDate != null
         ? trp('Yapıldı · {d}', {'d': fmtDayMonYear(v.doneDate!)})
-        : (v.isOverdue
-            ? trp('Gecikti · {d}', {'d': fmtDayMonYear(v.dueDate)})
-            : trp('Planlanan · {d}', {'d': fmtDayMonYear(v.dueDate)}));
+        : v.optional
+            ? trp('İsteğe bağlı · {d}', {'d': fmtDayMonYear(v.dueDate)})
+            : (v.isOverdue
+                ? trp('Gecikti · {d}', {'d': fmtDayMonYear(v.dueDate)})
+                : trp('Planlanan · {d}', {'d': fmtDayMonYear(v.dueDate)}));
 
     return IntrinsicHeight(
       child: Row(
@@ -198,6 +207,17 @@ class _VacRow extends ConsumerWidget {
                               fontSize: 9.5,
                               fontWeight: FontWeight.w900,
                               color: AppColors.coralDd)),
+                    )
+                  else if (state == 'optional')
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      decoration: BoxDecoration(
+                          color: fieldBg(context), borderRadius: BorderRadius.circular(999)),
+                      child: Text(tr('İsteğe bağlı'),
+                          style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.muted)),
                     ),
                 ],
               ),
@@ -214,10 +234,23 @@ class _VacRow extends ConsumerWidget {
       showAdToast(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
       return;
     }
+    DateTime? date;
+    if (done) {
+      // Yapıldı işaretlenirken yapılış tarihini seç — geçmiş aşılar "bugün"
+      // olarak kaydedilmesin. Gelecek tarih seçilemez (henüz yapılmadı).
+      date = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime(2000),
+        lastDate: DateTime.now(),
+        helpText: tr('Aşı yapılış tarihi'),
+      );
+      if (date == null) return; // iptal → işaretleme yapılmaz
+    }
     try {
       await ref
           .read(healthRepositoryProvider)
-          .setVaccineDone(babyId, vaccine.key, done: done);
+          .setVaccineDone(babyId, vaccine.key, done: done, date: date);
       ref.invalidate(vaccinesProvider(babyId));
     } catch (e) {
       if (context.mounted) showAdError(context, apiErrorText(e));

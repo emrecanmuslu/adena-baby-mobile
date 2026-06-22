@@ -472,7 +472,10 @@ class _Dashboard extends ConsumerWidget {
                         tr('Sonraki adet'),
                         status.daysToNextPeriod == null
                             ? '—'
-                            : trp('~{n} gün', {'n': status.daysToNextPeriod}),
+                            : (status.daysToNextPeriod! < 0
+                                ? trp('≈{n} gün gecikti',
+                                    {'n': -status.daysToNextPeriod!})
+                                : trp('~{n} gün', {'n': status.daysToNextPeriod})),
                         AppColors.roseD)),
                 const SizedBox(width: 8),
                 Expanded(
@@ -484,7 +487,7 @@ class _Dashboard extends ConsumerWidget {
         ),
       ),
       _saveBtn(tr('Bugünü kaydet'), AppColors.rose, () => _record(context, ref)),
-      if (status.fertileStart != null) ...[
+      if (status.upcomingFertileStart != null) ...[
         _sec(tr('Doğurganlık Penceresi'),
             link: tr('Takvim'), onLink: () => context.push('/cycle/calendar')),
         _fertileCard(),
@@ -537,10 +540,15 @@ class _Dashboard extends ConsumerWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                      trp('Tahmini {a} – {b}', {
-                        'a': fmtDayMonth(status.fertileStart!),
-                        'b': fmtDayMonth(status.fertileEnd!)
-                      }),
+                      status.fertileWindowIsNextCycle
+                          ? trp('Sonraki döngü · {a} – {b}', {
+                              'a': fmtDayMonth(status.upcomingFertileStart!),
+                              'b': fmtDayMonth(status.upcomingFertileEnd!)
+                            })
+                          : trp('Tahmini {a} – {b}', {
+                              'a': fmtDayMonth(status.upcomingFertileStart!),
+                              'b': fmtDayMonth(status.upcomingFertileEnd!)
+                            }),
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,

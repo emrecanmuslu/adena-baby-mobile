@@ -178,6 +178,9 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   void _onForeground() {
     _pollActivity();
     ref.read(babyControllerProvider.notifier).refresh();
+    // Bildirim izni sistem ayarlarından sonradan açıldıysa, devam eden uyku/
+    // emzirme sayacının bildirimini yeniden post et (reaktif sync tetiklenmez).
+    repostActiveTimers(ref);
     // App-Open reklamı: ilk çağrı (cold start) yalnız ön-yükler; sonraki
     // resume'larda limitler uygunsa gösterir (premium muaf). Hiç bebek yokken
     // (giriş/onboarding) gösterilmez — reklam ancak bebek eklendikten sonra.

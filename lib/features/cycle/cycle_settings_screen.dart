@@ -54,10 +54,13 @@ class _Body extends ConsumerStatefulWidget {
 class _BodyState extends ConsumerState<_Body> {
   late Map<String, dynamic> _reminders;
   late bool _fertilityWarn;
+  late int _cycleLen; // beklenen döngü uzunluğu (gün); ölçüm yokken kullanılır
+  static const _keep = Object(); // _persist: expectedCycleLength'i değiştirme
 
   @override
   void initState() {
     super.initState();
+    _cycleLen = widget.settings.expectedCycleLength ?? 28;
     final r = widget.settings.reminders;
     // Değerler {on, time} map'i olmalı; ama eski/seed veri {key: bool} biçiminde
     // olabilir → map'e normalize et (yoksa 'bool is not a subtype of Map' patlar).
@@ -74,11 +77,20 @@ class _BodyState extends ConsumerState<_Body> {
 
   bool _on(String k) => _reminders[k]?['on'] == true;
 
-  Future<void> _persist({Map<String, dynamic>? reminders, bool? fertilityWarn}) async {
-    final next = widget.settings.copyWith(
-      reminders: reminders ?? _reminders,
-      showFertilityWarning: fertilityWarn ?? _fertilityWarn,
-    );
+  Future<void> _persist(
+      {Map<String, dynamic>? reminders,
+      bool? fertilityWarn,
+      Object? expectedCycleLength = _keep}) async {
+    final next = expectedCycleLength == _keep
+        ? widget.settings.copyWith(
+            reminders: reminders ?? _reminders,
+            showFertilityWarning: fertilityWarn ?? _fertilityWarn,
+          )
+        : widget.settings.copyWith(
+            reminders: reminders ?? _reminders,
+            showFertilityWarning: fertilityWarn ?? _fertilityWarn,
+            expectedCycleLength: expectedCycleLength as int?,
+          );
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
       ref.invalidate(cycleSettingsProvider);
@@ -88,7 +100,9 @@ class _BodyState extends ConsumerState<_Body> {
       await NotificationService.instance.syncCycle(
         reminders: next.reminders,
         nextPeriod: status.nextPeriod,
-        fertileStart: status.fertileStart,
+        // Yaklaşan pencere → mevcut döngününki geçmişse hatırlatıcı sonraki
+        // döngünün penceresine kurulur (eskiden geçmiş tarih → hiç kurulmuyordu).
+        fertileStart: status.upcomingFertileStart,
       );
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
@@ -154,6 +168,11 @@ class _BodyState extends ConsumerState<_Body> {
             ),
           ),
         ]),
+        adSec(tr('Beklenen döngü uzunluğu'),
+            info: tr('Yeterli döngü kaydı birikene kadar (ilk döngüler) tahminler '
+                'bu değere göre yapılır. Birkaç döngü sonra sistem ortalamayı '
+                'kendi öğrenir ve bu ayarı kullanmaz. Bilmiyorsan 28 günde bırak.')),
+        _card([_cycleLenRow()]),
         adSec(tr('Emzirme Durumu')),
         AdMenuItem(
           icon: 'heart',
@@ -206,6 +225,56 @@ class _BodyState extends ConsumerState<_Body> {
       ],
     );
   }
+
+  /// Beklenen döngü uzunluğu satırı — − [N gün] + (21–40). Değişince kaydeder.
+  Widget _cycleLenRow() {
+    void set(int v) {
+      final clamped = v.clamp(21, 40);
+      if (clamped == _cycleLen) return;
+      setState(() => _cycleLen = clamped);
+      _persist(expectedCycleLength: clamped);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(tr('Ortalama döngü uzunluğu'),
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          ),
+          _stepBtn('−', _cycleLen > 21 ? () => set(_cycleLen - 1) : null),
+          SizedBox(
+            width: 64,
+            child: Text(trp('{n} gün', {'n': _cycleLen}),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+          ),
+          _stepBtn('+', _cycleLen < 40 ? () => set(_cycleLen + 1) : null),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepBtn(String label, VoidCallback? onTap) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: AppColors.smallShadow,
+          ),
+          alignment: Alignment.center,
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: onTap == null ? AppColors.muted2 : AppColors.coralDark)),
+        ),
+      );
 
   Widget _card(List<Widget> children) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),

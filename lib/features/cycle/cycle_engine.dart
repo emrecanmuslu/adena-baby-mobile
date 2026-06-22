@@ -47,8 +47,12 @@ class CycleStatus {
   final DateTime? nextPeriod;
   final int? daysToNextPeriod;
   final DateTime? ovulationDay;
-  final DateTime? fertileStart;
+  final DateTime? fertileStart; // MEVCUT döngünün penceresi (takvim işaretlemesi)
   final DateTime? fertileEnd;
+  // YAKLAŞAN pencere: mevcut döngününki geçmişse sonraki döngününki (pano/hatırlatıcı).
+  final DateTime? upcomingFertileStart;
+  final DateTime? upcomingFertileEnd;
+  final bool fertileWindowIsNextCycle; // yaklaşan pencere sonraki döngüye mi ait
   final bool lowConfidence; // <3 döngü → "tahmini/değişebilir"
   final List<CycleSpan> spans; // yeni→eski değil; eski→yeni
 
@@ -66,6 +70,9 @@ class CycleStatus {
     this.ovulationDay,
     this.fertileStart,
     this.fertileEnd,
+    this.upcomingFertileStart,
+    this.upcomingFertileEnd,
+    this.fertileWindowIsNextCycle = false,
     this.lowConfidence = true,
     this.spans = const [],
   });
@@ -148,8 +155,12 @@ CycleStatus computeStatus(
 
   // Ortalamalar.
   final lengths = spans.where((s) => s.length != null).map((s) => s.length!).toList();
+  // Ölçülmüş döngü yoksa (ilk döngü) kullanıcının girdiği beklenen uzunluğu kullan
+  // (yoksa 21–40 dışı değerleri yok say → 28 varsayılan).
+  final manualLen = settings.expectedCycleLength;
+  final manualValid = manualLen != null && manualLen >= 21 && manualLen <= 40;
   final avgLen = lengths.isEmpty
-      ? 28
+      ? (manualValid ? manualLen : 28)
       : (lengths.reduce((a, b) => a + b) / lengths.length).round();
   final pdays = spans.where((s) => s.periodDays > 0).map((s) => s.periodDays).toList();
   final avgPeriod =
@@ -162,6 +173,14 @@ CycleStatus computeStatus(
   // Ovülasyon ≈ sonraki adetten ~14 gün önce; doğurganlık penceresi -5 gün.
   final ovulation = nextPeriod.subtract(const Duration(days: 14));
   final fertileStart = ovulation.subtract(const Duration(days: 5));
+  // Yaklaşan pencere: mevcut döngününki (fertileStart..ovulation) bugünü geçtiyse
+  // sonraki döngünün penceresine kay → pano "geçmiş" pencere göstermez, doğurganlık
+  // hatırlatıcısı doğru kurulur. (Mevcut fertileStart/End calendar için korunur.)
+  final windowPassed = ovulation.isBefore(now);
+  final nextCyclePeriod = nextPeriod.add(Duration(days: avgLen));
+  final nextOvulation = nextCyclePeriod.subtract(const Duration(days: 14));
+  final upcomingOvulation = windowPassed ? nextOvulation : ovulation;
+  final upcomingFertileStart = upcomingOvulation.subtract(const Duration(days: 5));
 
   // Faz.
   CyclePhase phase;
@@ -187,6 +206,9 @@ CycleStatus computeStatus(
     ovulationDay: ovulation,
     fertileStart: fertileStart,
     fertileEnd: ovulation,
+    upcomingFertileStart: upcomingFertileStart,
+    upcomingFertileEnd: upcomingOvulation,
+    fertileWindowIsNextCycle: windowPassed,
     lowConfidence: lengths.length < 3,
     spans: spans,
   );

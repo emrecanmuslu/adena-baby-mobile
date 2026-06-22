@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -45,13 +46,25 @@ Future<void> exportUserData(BuildContext context, WidgetRef ref) async {
     final file = File('${dir.path}/adena-veri-$stamp.json');
     await file.writeAsString(jsonStr);
 
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path, mimeType: 'application/json')],
-        subject: tr('Adena Baby verilerim'),
-        text: trp('Adena Baby dışa aktarılan verim ({stamp}).', {'stamp': stamp}),
-      ),
-    );
+    // Paylaşım sayfası bazı ortamlarda (ör. paylaşım hedefi olmayan cihaz/
+    // emülatör) hiç dönmeyebilir; timeout ile spinner'ın sonsuz takılmasını
+    // önle. İptal/dismiss hata değildir — sessiz geç.
+    await SharePlus.instance
+        .share(
+          ShareParams(
+            files: [XFile(file.path, mimeType: 'application/json')],
+            subject: tr('Adena Baby verilerim'),
+            text: trp('Adena Baby dışa aktarılan verim ({stamp}).', {'stamp': stamp}),
+          ),
+        )
+        .timeout(const Duration(seconds: 60), onTimeout: () {
+      // Dosya hazır ve diske yazıldı; yalnızca paylaşım sayfası açılamadı.
+      throw TimeoutException('share');
+    });
+  } on TimeoutException {
+    if (context.mounted) {
+      showAdToast(context, tr('Paylaşım açılamadı — dosya cihaza kaydedildi.'));
+    }
   } catch (_) {
     if (context.mounted) showAdToast(context, tr('Dışa aktarılamadı'));
   }

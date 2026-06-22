@@ -15,11 +15,16 @@ class VaccineCatalogItem {
   final String key;
   final int months;
   final String name;
-  const VaccineCatalogItem(this.key, this.months, this.name);
+
+  /// İsteğe bağlı / ücretli aşı (ulusal takvimde yok). YAPISAL bayrak — UI bunu
+  /// "Gecikti" yerine nötr "İsteğe bağlı" gösterir, gecikme/yaklaşan saymaz.
+  final bool optional;
+  const VaccineCatalogItem(this.key, this.months, this.name, {this.optional = false});
   factory VaccineCatalogItem.fromJson(Map<String, dynamic> j) => VaccineCatalogItem(
         j['key'] as String? ?? j['name'] as String? ?? '',
         (j['months'] as num?)?.toInt() ?? 0,
         j['name'] as String? ?? '',
+        optional: j['optional'] == true,
       );
 }
 

@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
@@ -31,11 +32,19 @@ class AdService {
   static const int _minRecords = 3;
   static const Duration _minGap = Duration(minutes: 3);
   static const Duration _graceWindow = Duration(hours: 24); // ilk gün reklamsız
+  // Günlük interstitial üst sınırı — eşikler (3 kayıt/3 dk) aşılsa bile bir günde
+  // bundan fazla geçiş reklamı gösterilmez (gün boyu kayıt → tavan korur).
+  static const int _maxInterstitialPerDay = 4;
   // App-Open: uygulama öne gelince en fazla bu sıklıkta + reklam 4 saat geçerli.
   static const Duration _appOpenMinGap = Duration(hours: 4);
   static const Duration _appOpenTtl = Duration(hours: 4);
   static const _storage = FlutterSecureStorage();
   static const _kFirstLaunch = 'ad_first_launch';
+  // Kalıcı durum (restart by-pass'ı kapatır): son gösterim + günlük sayaç.
+  static const _kLastShown = 'ad_last_shown';
+  static const _kDayKey = 'ad_day_key';
+  static const _kDayCount = 'ad_day_count';
+  static const _kAppOpenLast = 'ad_appopen_last';
 
   // Google resmî test birim id'leri (debug'da kullanılır).
   static const _testAndroidUnit = 'ca-app-pub-3940256099942544/1033173712';
@@ -46,6 +55,8 @@ class AdService {
   int _recordsSinceAd = 0;
   DateTime? _lastShown;
   DateTime? _firstLaunch;
+  String? _dayKey; // bugünün anahtarı (yyyy-mm-dd) — sayaç bu güne ait
+  int _todayCount = 0; // bugün gösterilen interstitial sayısı
 
   InterstitialAd? _ad;
   bool _loading = false;
@@ -71,10 +82,44 @@ class AdService {
         await _storage.write(
             key: _kFirstLaunch, value: _firstLaunch!.toIso8601String());
       }
+      // Kalıcı reklam durumunu geri yükle (restart sonrası limitler korunsun).
+      _lastShown = DateTime.tryParse(await _storage.read(key: _kLastShown) ?? '');
+      _lastAppOpenShown =
+          DateTime.tryParse(await _storage.read(key: _kAppOpenLast) ?? '');
+      _dayKey = await _storage.read(key: _kDayKey);
+      _todayCount = int.tryParse(await _storage.read(key: _kDayCount) ?? '') ?? 0;
     } catch (_) {}
     try {
       await MobileAds.instance.initialize();
       _preload();
+    } catch (_) {}
+  }
+
+  /// Gün anahtarı (yerel yyyy-mm-dd) — günlük sayaç bu güne aittir.
+  static String _dateKey(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Gün değiştiyse günlük interstitial sayacını sıfırla (bellekte).
+  void _rolloverIfNeeded(DateTime now) {
+    final key = _dateKey(now);
+    if (_dayKey != key) {
+      _dayKey = key;
+      _todayCount = 0;
+    }
+  }
+
+  Future<void> _persistInterstitialState() async {
+    try {
+      await _storage.write(key: _kLastShown, value: _lastShown!.toIso8601String());
+      await _storage.write(key: _kDayKey, value: _dayKey ?? '');
+      await _storage.write(key: _kDayCount, value: _todayCount.toString());
+    } catch (_) {}
+  }
+
+  Future<void> _persistAppOpenState() async {
+    try {
+      await _storage.write(
+          key: _kAppOpenLast, value: _lastAppOpenShown!.toIso8601String());
     } catch (_) {}
   }
 
@@ -138,6 +183,9 @@ class AdService {
     if (_recordsSinceAd < _minRecords) return false;
     final last = _lastShown;
     if (last != null && DateTime.now().difference(last) < _minGap) return false;
+    // Günlük tavan: gün değiştiyse sayaç sıfırlanır, tavana ulaşıldıysa gösterme.
+    _rolloverIfNeeded(DateTime.now());
+    if (_todayCount >= _maxInterstitialPerDay) return false;
     return true;
   }
 
@@ -151,7 +199,11 @@ class AdService {
     }
     _ad = null;
     _recordsSinceAd = 0;
-    _lastShown = DateTime.now();
+    final now = DateTime.now();
+    _lastShown = now;
+    _rolloverIfNeeded(now);
+    _todayCount++;
+    unawaited(_persistInterstitialState());
     _showingAd = true;
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
@@ -262,6 +314,7 @@ class AdService {
     _appOpenLoadedAt = null;
     _showingAd = true;
     _lastAppOpenShown = DateTime.now();
+    unawaited(_persistAppOpenState());
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         _showingAd = false;
