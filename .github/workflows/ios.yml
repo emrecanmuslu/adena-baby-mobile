@@ -61,10 +61,13 @@ jobs:
       - name: Codegen (drift)
         run: dart run build_runner build --delete-conflicting-outputs
 
-      # TestFlight build numarası benzersiz + monoton artmalı.
-      - name: Build numarası hesapla
+      # TestFlight build numarası benzersiz + monoton artmalı; sürüm adı pubspec'ten.
+      - name: Build numarası + sürüm adı
         id: vc
-        run: echo "code=$(( ${{ github.run_number }} + 100 ))" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "code=$(( ${{ github.run_number }} + 100 ))" >> "$GITHUB_OUTPUT"
+          NAME=$(grep '^version:' pubspec.yaml | sed -E 's/version: *([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
       # Xcode projesini + Pods'u hazırla (derleme archive adımında olur).
       # dart-define'lar Generated.xcconfig'e yazılır; archive bunları kullanır.
@@ -115,6 +118,8 @@ jobs:
           -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           DEVELOPMENT_TEAM="$TEAM_ID"
           CODE_SIGN_STYLE=Automatic
+          MARKETING_VERSION=${{ steps.vc.outputs.name }}
+          CURRENT_PROJECT_VERSION=${{ steps.vc.outputs.code }}
           archive
 
       # Export + TestFlight yükleme (ExportOptions.plist destination=upload).
