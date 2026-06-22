@@ -77,7 +77,8 @@ private func durText(_ secs: Int, _ en: Bool) -> String {
     return en ? "\(mins)m" : "\(mins) dk"
 }
 
-struct FeedWidgetEntryView: View {
+/// Ana ekran widget'ı (systemSmall/Medium) görünümü.
+struct FeedHomeView: View {
     var entry: FeedEntry
 
     var body: some View {
@@ -115,8 +116,81 @@ struct FeedWidgetEntryView: View {
     }
 }
 
+/// Kilit ekranı (saat altı) accessory widget'ları — iOS 16+. Tek renkli/tint
+/// render edilir, color'a güvenmeyiz. Kısa "sonraki beslenme" bilgisi.
+@available(iOS 16.0, *)
+struct FeedAccessoryView: View {
+    var entry: FeedEntry
+    var family: WidgetFamily
+
+    private var shortLabel: String {
+        guard let feed = entry.nextFeed else {
+            return entry.en ? "no feed" : "kayıt yok"
+        }
+        return countdownLabel(feed, entry.en)
+    }
+
+    var body: some View {
+        switch family {
+        case .accessoryInline:
+            // Saatin hemen altında tek satır (ikon + metin).
+            Label(shortLabel, systemImage: "drop.fill")
+        case .accessoryCircular:
+            ZStack {
+                AccessoryWidgetBackground()
+                VStack(spacing: 0) {
+                    Image(systemName: "drop.fill").font(.caption2)
+                    Text(shortLabel)
+                        .font(.system(size: 11, weight: .semibold))
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                }
+            }
+        default: // .accessoryRectangular
+            VStack(alignment: .leading, spacing: 2) {
+                Label(entry.babyName, systemImage: "drop.fill")
+                    .font(.caption2).fontWeight(.semibold)
+                    .lineLimit(1)
+                Text(entry.en ? "Next feed" : "Sonraki beslenme")
+                    .font(.caption2).foregroundStyle(.secondary)
+                Text(shortLabel)
+                    .font(.headline).fontWeight(.bold)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+struct FeedWidgetEntryView: View {
+    @Environment(\.widgetFamily) private var family
+    var entry: FeedEntry
+
+    var body: some View {
+        if #available(iOS 16.0, *) {
+            switch family {
+            case .accessoryInline, .accessoryCircular, .accessoryRectangular:
+                FeedAccessoryView(entry: entry, family: family)
+            default:
+                FeedHomeView(entry: entry)
+            }
+        } else {
+            FeedHomeView(entry: entry)
+        }
+    }
+}
+
 struct FeedWidget: Widget {
     let kind = "FeedWidget"
+
+    // iOS 16+ kilit ekranı accessory aileleri eklenir; eski sürümlerde yalnız ana ekran.
+    private static var families: [WidgetFamily] {
+        var f: [WidgetFamily] = [.systemSmall, .systemMedium]
+        if #available(iOS 16.0, *) {
+            f += [.accessoryRectangular, .accessoryInline, .accessoryCircular]
+        }
+        return f
+    }
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: FeedProvider()) { entry in
@@ -130,6 +204,6 @@ struct FeedWidget: Widget {
         }
         .configurationDisplayName("Sonraki Beslenme")
         .description("Aktif bebeğin tahmini sonraki beslenmesini gösterir.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies(Self.families)
     }
 }
