@@ -25,12 +25,21 @@ env:
 
 jobs:
   build-ios:
-    # Firebase SDK Swift 6 'sending' anahtar kelimesi → Xcode 16+ (Swift 6) şart.
-    # macos-15 = Xcode 16.
-    runs-on: macos-15
+    # Apple App Store Connect ARTIK iOS 26 SDK (Xcode 26+) ZORUNLU tutuyor;
+    # macos-15 (Xcode 16, iOS 18.5 SDK) yüklemede "SDK version issue" verir.
+    # macos-26 = Xcode 26 (iOS 26 SDK). (Firebase Swift 6 zaten Xcode 16+ ister.)
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      # Varsayılan Xcode 26 değilse, kurulu en yüksek Xcode'u seç (iOS 26 SDK için).
+      - name: Xcode 26 seç
+        run: |
+          ls /Applications | grep -i '^Xcode' || true
+          LATEST=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$LATEST" ]; then sudo xcode-select -s "$LATEST/Contents/Developer"; fi
+          xcodebuild -version
 
       - name: Flutter kur
         uses: subosito/flutter-action@v2
