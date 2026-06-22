@@ -30,14 +30,33 @@
 	     "Missing Compliance" sorusunu atlatır, build anında test edilebilir. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<!-- Google Mobile Ads SDK iOS'ta bu anahtar OLMADAN açılışta çökertir.
-	     Şimdilik Google TEST app id'si — gerçek iOS AdMob app id alınınca değiştir
-	     (bkz hafıza: entegrasyon-bekleyen-tokenlar / reklam-sistemi). -->
+	<!-- Gerçek iOS AdMob app id (Google Mobile Ads SDK bu anahtar olmadan çökertir). -->
 	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-3940256099942544~1458002511</string>
+	<string>ca-app-pub-2269501677957979~5658465446</string>
+	<!-- iOS 14+ reklam atıfı (SKAdNetwork) — AdMob/Google ağı. -->
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>cstr6suwn9.skadnetwork</string>
+		</dict>
+	</array>
 	<!-- AdMob/UMP izleme izni istediğinde bu açıklama yoksa iOS uygulamayı öldürür. -->
 	<key>NSUserTrackingUsageDescription</key>
 	<string>Sana daha uygun reklamlar gösterebilmek için kullanılır.</string>
+	<!-- Google ile Giriş iOS redirect'i: GOOGLE_IOS_CLIENT_ID'nin ters (reversed)
+	     biçimi URL scheme olmalı, yoksa iOS'ta giriş akışı geri dönemez. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.160566700344-3tvv3uo0up3vu69u4jv9sknshki36v02</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Anılara fotoğraf eklemek için kamerayı kullanır.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

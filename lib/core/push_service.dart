@@ -170,6 +170,16 @@ class PushService {
   Future<void> registerToken(ApiClient api) async {
     try {
       await FirebaseMessaging.instance.requestPermission();
+      // iOS: FCM token YALNIZCA APNs token hazır olunca gelir; aksi halde
+      // getToken() null döner ve cihaz hiç kaydolmaz. APNs token asenkron
+      // (registerForRemoteNotifications sonrası) → birkaç saniye bekle/yeniden dene.
+      if (Platform.isIOS) {
+        var apns = await FirebaseMessaging.instance.getAPNSToken();
+        for (var i = 0; i < 10 && apns == null; i++) {
+          await Future.delayed(const Duration(seconds: 1));
+          apns = await FirebaseMessaging.instance.getAPNSToken();
+        }
+      }
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null || token == _lastRegistered) return;
       await _post(api, token);
