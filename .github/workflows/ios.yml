@@ -61,7 +61,7 @@ jobs:
       # dart-define'lar Generated.xcconfig'e yazılır; archive bunları kullanır.
       - name: iOS yapılandırması (config-only)
         run: >
-          flutter build ios --release --config-only
+          flutter build ios --release --config-only --no-codesign
           --dart-define-from-file=dart_defines.json
           --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://api.adenababy.com/api/v1' }}
           --build-number=${{ steps.vc.outputs.code }}
