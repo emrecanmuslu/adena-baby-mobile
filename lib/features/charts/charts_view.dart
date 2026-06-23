@@ -77,7 +77,7 @@ class _ChartsViewState extends ConsumerState<ChartsView> {
     final records = async.asData?.value ?? const <Record>[];
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, 14, 16, 92 + MediaQuery.of(context).padding.bottom),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
       children: [
         _Segmented(
           labels: [for (final m in _measures) m.seg],

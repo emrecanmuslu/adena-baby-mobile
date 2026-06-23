@@ -124,9 +124,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: appBar,
-      // Yüzer menü gerçekten yüzsün: içerik menünün arkasından aksın (kenar şerit
-      // yok). Sekmelerin alt boşluğu (96) içeriği menünün arkasında bırakmaz.
-      extendBody: true,
+      // extendBody KAPALI: içerik alt menünün ALTINA taşmaz. Aksi halde menü
+      // altındaki home-indicator şeridi kaydırılabilir gövde oluyor ve oradan
+      // yukarı kaydırınca (uygulamayı küçültme jesti) ekran kayıyordu. Hap yine
+      // yüzer görünür (kendi SafeArea+padding'i var); içerik üstünde durur.
+      extendBody: false,
       // Lazy: yalnız aktif sekme kurulur (çok veride diğer sekmeler boşuna yüklenmesin).
       // Her sekmeye ayrı Key: aksi halde aynı ağaç pozisyonundaki TourMount
       // State'i sekmeler arası yeniden kullanılır ve timeline/charts turu hiç açılmaz.
@@ -669,7 +671,7 @@ class _HomeTab extends ConsumerWidget {
       child: ListView(
         controller: scrollController,
         // Alt: yüzer menü (≈76) + cihaz güvenli alanı + boşluk; içerik menü altında kalmasın.
-        padding: EdgeInsets.fromLTRB(16, 2, 16, 92 + MediaQuery.of(context).padding.bottom),
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 20),
         children: [
           // Local-first: free kullanıcıya "verin yalnız bu telefonda" yedek uyarısı.
           const BackupNagBanner(),
