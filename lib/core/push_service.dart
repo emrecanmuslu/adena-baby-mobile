@@ -158,6 +158,7 @@ class PushService {
 
   bool _foregroundReady = false;
   String? _lastRegistered;
+  bool _refreshSubscribed = false;
 
   /// Ön plan mesaj dinleyicisini kur (oturum gerektirmez). main() içinde bir kez.
   void startForeground() {
@@ -168,29 +169,37 @@ class PushService {
 
   /// FCM token'ını al ve sunucuya kaydet (oturum açıkken çağır). İzin de ister.
   Future<void> registerToken(ApiClient api) async {
+    // KRİTİK: onTokenRefresh'i KOŞULSUZ + EN BAŞTA kur. iOS'ta ilk anda
+    // getToken() null dönebilir/atabilir (APNs token henüz gelmemiş); token
+    // saniyeler sonra hazır olunca BU dinleyici yakalar ve kaydeder. Önceden
+    // dinleyici yalnız getToken başarısından SONRA kuruluyordu → null olunca
+    // hiç kurulmuyor, sonradan gelen token kaçıyordu (iOS cihaz kaydolmuyordu).
+    if (!_refreshSubscribed) {
+      _refreshSubscribed = true;
+      FirebaseMessaging.instance.onTokenRefresh.listen((t) {
+        if (t == _lastRegistered) return;
+        _lastRegistered = t;
+        _post(api, t);
+      });
+    }
     try {
       await FirebaseMessaging.instance.requestPermission();
-      // iOS: FCM token YALNIZCA APNs token hazır olunca gelir; aksi halde
-      // getToken() null döner ve cihaz hiç kaydolmaz. APNs token asenkron
-      // (registerForRemoteNotifications sonrası) → birkaç saniye bekle/yeniden dene.
+      // iOS: FCM token ancak APNs token hazır olunca gelir; biraz bekle.
+      // Gelmezse de yukarıdaki onTokenRefresh sonradan yakalar.
       if (Platform.isIOS) {
         var apns = await FirebaseMessaging.instance.getAPNSToken();
-        for (var i = 0; i < 10 && apns == null; i++) {
+        for (var i = 0; i < 15 && apns == null; i++) {
           await Future.delayed(const Duration(seconds: 1));
           apns = await FirebaseMessaging.instance.getAPNSToken();
         }
       }
       final token = await FirebaseMessaging.instance.getToken();
-      if (token == null || token == _lastRegistered) return;
-      await _post(api, token);
-      _lastRegistered = token;
-      // Token yenilenince tekrar kaydet.
-      FirebaseMessaging.instance.onTokenRefresh.listen((t) {
-        _lastRegistered = t;
-        _post(api, t);
-      });
+      if (token != null && token != _lastRegistered) {
+        _lastRegistered = token;
+        await _post(api, token);
+      }
     } catch (_) {
-      // İzin reddi / ağ hatası → sessiz; push olmadan uygulama çalışır.
+      // İzin reddi / ağ / APNs hatası → sessiz; onTokenRefresh backstop kalır.
     }
   }
 
