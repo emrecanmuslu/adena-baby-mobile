@@ -56,25 +56,17 @@ struct FeedProvider: TimelineProvider {
     }
 }
 
-/// Tahmini sonraki beslenmeye kalan/geçen süreyi kısa biçimde verir (TR/EN).
-private func countdownLabel(_ date: Date, _ en: Bool) -> String {
-    let diff = Int(date.timeIntervalSince(Date()))
-    if diff >= 0 && diff < 60 { return en ? "now" : "şimdi" }
-    let late = diff < 0
-    let dur = durText(abs(diff), en)
-    if late { return en ? "\(dur) overdue" : "\(dur) gecikti" }
-    return en ? "in \(dur)" : "\(dur) kaldı"
+/// CANLI sayan geri sayım metni: Text(_:style:.timer) her saniye kendi günceller
+/// (timeline yenilemesine bağlı DEĞİL) → widget "geri kalmış" görünmez. Gelecekte
+/// aşağı, geçmişte (gecikme) yukarı sayar. Format HH:MM:SS (dil-bağımsız).
+private func liveTimer(_ feed: Date) -> Text {
+    Text(feed, style: .timer)
 }
 
-private func durText(_ secs: Int, _ en: Bool) -> String {
-    let totalMin = secs / 60
-    let days = totalMin / 1440
-    let hours = (totalMin % 1440) / 60
-    let mins = totalMin % 60
-    if days > 0 { return en ? "\(days)d \(hours)h" : "\(days) gün \(hours) sa" }
-    if hours > 0 && mins > 0 { return en ? "\(hours)h \(mins)m" : "\(hours) sa \(mins) dk" }
-    if hours > 0 { return en ? "\(hours)h" : "\(hours) sa" }
-    return en ? "\(mins)m" : "\(mins) dk"
+/// Hedef geçmişte mi (gecikmiş mi) — etiket için (entry.date = timeline anı).
+private func isOverdue(_ entry: FeedEntry) -> Bool {
+    guard let f = entry.nextFeed else { return false }
+    return f < entry.date
 }
 
 /// Ana ekran widget'ı (systemSmall/Medium) görünümü.
@@ -94,13 +86,15 @@ struct FeedHomeView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            Text(entry.en ? "Next feed" : "Sonraki beslenme")
+            Text(isOverdue(entry) ? (entry.en ? "Overdue" : "Gecikti")
+                                  : (entry.en ? "Next feed" : "Sonraki beslenme"))
                 .font(.caption2)
                 .foregroundColor(.secondary)
             if let feed = entry.nextFeed {
-                Text(countdownLabel(feed, entry.en))
+                liveTimer(feed)
                     .font(.headline)
                     .fontWeight(.bold)
+                    .monospacedDigit()
                     .foregroundColor(coral)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -123,27 +117,27 @@ struct FeedAccessoryView: View {
     var entry: FeedEntry
     var family: WidgetFamily
 
-    private var shortLabel: String {
-        guard let feed = entry.nextFeed else {
-            return entry.en ? "no feed" : "kayıt yok"
-        }
-        return countdownLabel(feed, entry.en)
-    }
-
     var body: some View {
         switch family {
         case .accessoryInline:
-            // Saatin hemen altında tek satır (ikon + metin).
-            Label(shortLabel, systemImage: "drop.fill")
+            // Saatin hemen altında tek satır (ikon + CANLI sayaç).
+            if let feed = entry.nextFeed {
+                Label { liveTimer(feed) } icon: { Image(systemName: "drop.fill") }
+            } else {
+                Label(entry.en ? "no feed" : "kayıt yok", systemImage: "drop.fill")
+            }
         case .accessoryCircular:
             ZStack {
                 AccessoryWidgetBackground()
                 VStack(spacing: 0) {
                     Image(systemName: "drop.fill").font(.caption2)
-                    Text(shortLabel)
-                        .font(.system(size: 11, weight: .semibold))
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
+                    if let feed = entry.nextFeed {
+                        liveTimer(feed)
+                            .font(.system(size: 11, weight: .semibold))
+                            .monospacedDigit().minimumScaleFactor(0.5).lineLimit(1)
+                    } else {
+                        Text("—").font(.caption2)
+                    }
                 }
             }
         default: // .accessoryRectangular
@@ -151,11 +145,17 @@ struct FeedAccessoryView: View {
                 Label(entry.babyName, systemImage: "drop.fill")
                     .font(.caption2).fontWeight(.semibold)
                     .lineLimit(1)
-                Text(entry.en ? "Next feed" : "Sonraki beslenme")
+                Text(isOverdue(entry) ? (entry.en ? "Overdue" : "Gecikti")
+                                      : (entry.en ? "Next feed" : "Sonraki beslenme"))
                     .font(.caption2).foregroundStyle(.secondary)
-                Text(shortLabel)
-                    .font(.headline).fontWeight(.bold)
-                    .lineLimit(1).minimumScaleFactor(0.6)
+                if let feed = entry.nextFeed {
+                    liveTimer(feed)
+                        .font(.headline).fontWeight(.bold).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                } else {
+                    Text(entry.en ? "Awaiting feed" : "Beslenme bekleniyor")
+                        .font(.subheadline).fontWeight(.semibold)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
