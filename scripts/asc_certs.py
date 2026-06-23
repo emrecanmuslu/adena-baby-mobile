@@ -49,11 +49,24 @@ def _headers() -> dict:
     return {"Authorization": f"Bearer {_token()}", "Content-Type": "application/json"}
 
 
+def _get(url):
+    """ASC API GET — geçici ağ hatalarına karşı 3 deneme, uzun timeout."""
+    last = None
+    for attempt in range(3):
+        try:
+            r = requests.get(url, headers=_headers(), timeout=60)
+            r.raise_for_status()
+            return r
+        except Exception as e:  # noqa: BLE001
+            last = e
+            time.sleep(3 * (attempt + 1))
+    raise last
+
+
 def list_certs() -> list:
     certs, url = [], f"{API}/certificates?limit=200"
     while url:
-        r = requests.get(url, headers=_headers(), timeout=30)
-        r.raise_for_status()
+        r = _get(url)
         body = r.json()
         certs.extend(body.get("data", []))
         url = body.get("links", {}).get("next")
@@ -77,7 +90,7 @@ def main():
             targets = [c for c in certs if c["attributes"].get("certificateType") in DIST_TYPES]
         print(f"\nRevoke edilecek sertifika: {len(targets)}")
         for c in targets:
-            r = requests.delete(f"{API}/certificates/{c['id']}", headers=_headers(), timeout=30)
+            r = requests.delete(f"{API}/certificates/{c['id']}", headers=_headers(), timeout=60)
             ok = r.status_code in (204, 200)
             print(f"  {'OK ' if ok else 'FAIL('+str(r.status_code)+') '}{c['id']} {c['attributes'].get('displayName')}")
         print("Tamam.")
