@@ -20,11 +20,15 @@ class NotificationService: UNNotificationServiceExtension {
     withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
   ) {
     self.contentHandler = contentHandler
-    self.bestAttempt = request.content.mutableCopy() as? UNMutableNotificationContent
-    updateWidget(request.content.userInfo)
-    // Bildirimi olduğu gibi teslim et (içeriği değiştirmiyoruz; yalnız yan etki
-    // olarak App Group + widget'ı güncelledik).
-    contentHandler(bestAttempt ?? request.content)
+    let mutable = request.content.mutableCopy() as? UNMutableNotificationContent
+    self.bestAttempt = mutable
+    let diag = updateWidget(request.content.userInfo)
+    // ⚠️ GEÇİCİ TEŞHİS: NSE çalıştı mı + ne yaptı, bildirim gövdesinde görünsün
+    // (force-quit'te uygulama AÇMADAN teşhis). Tespit edilince KALDIRILACAK.
+    if let c = mutable {
+      c.body = c.body + "  ⚙️[\(diag)]"
+    }
+    contentHandler(mutable ?? request.content)
   }
 
   override func serviceExtensionTimeWillExpire() {
@@ -35,32 +39,40 @@ class NotificationService: UNNotificationServiceExtension {
 
   /// Beslenme push'u ise (widget_update=feed) App Group'a sonraki-beslenme verisini
   /// yaz ve widget'ı yenile. FCM özel `data` anahtarları userInfo'da üst seviyededir.
-  private func updateWidget(_ info: [AnyHashable: Any]) {
-    guard (info["widget_update"] as? String) == "feed",
-          let babyId = info["baby_id"] as? String, !babyId.isEmpty,
-          let defaults = UserDefaults(suiteName: appGroupId) else { return }
+  /// Dönüş = teşhis dizesi (bildirim gövdesine eklenir). Beslenme push'u ise
+  /// App Group'a yazar + widget'ı yeniler.
+  private func updateWidget(_ info: [AnyHashable: Any]) -> String {
+    guard let defaults = UserDefaults(suiteName: appGroupId) else { return "noGroup" }
+    let wu = info["widget_update"] as? String
+    guard wu == "feed" else { return "wu=\(wu ?? "nil")" }
+    guard let babyId = info["baby_id"] as? String, !babyId.isEmpty else { return "noBabyId" }
 
-    // Ad = bebek adı. Backend artık data'da `baby_name` gönderir (en güvenilir).
-    // Yedekler: alert başlığı (görünür push'ta = bebek adı), App Group'taki önceki
-    // ad, son çare varsayılan.
+    // Ad = bebek adı. Backend data'da `baby_name` gönderir; yedek alert başlığı / önceki.
     let apsTitle = ((info["aps"] as? [AnyHashable: Any])?["alert"]
       as? [AnyHashable: Any])?["title"] as? String
     let name = (info["baby_name"] as? String) ?? apsTitle
       ?? defaults.string(forKey: "name_\(babyId)") ?? "Bebek"
     defaults.set(name, forKey: "name_\(babyId)")
 
+    let active = defaults.string(forKey: "active_id") ?? "nil"
+    let matched = (active == babyId)
+    var nx = "nil"
     if let nextMs = nextFeedMs(info, babyId: babyId, defaults: defaults) {
       defaults.set(String(nextMs), forKey: "next_\(babyId)")
-      // Seçimsiz (aktif) widget fallback anahtarları: bu bebek aktifse onu da güncelle.
-      if defaults.string(forKey: "active_id") == babyId {
+      if matched {
         defaults.set(name, forKey: "baby_name")
         defaults.set(String(nextMs), forKey: "next_feed_ms")
       }
+      nx = "\(nextMs)"
     }
 
     if #available(iOS 14.0, *) {
       WidgetCenter.shared.reloadTimelines(ofKind: "FeedWidget")
     }
+    let lf = (info["last_feed_ts"] as? String) != nil
+    // Yaz-okuma teyidi: az önce yazdığımız next_<babyId> geri okunabiliyor mu?
+    let readback = defaults.string(forKey: "next_\(babyId)") != nil
+    return "ok m=\(matched) wr=\(readback) nx=\(nx != "nil") lf=\(lf) a=\(active.prefix(4)) b=\(babyId.prefix(4))"
   }
 
   /// next = last_feed_ts + interval(dk). interval App Group'tan okunur (Dart yazar);
