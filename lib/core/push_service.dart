@@ -186,17 +186,36 @@ class PushService {
       await FirebaseMessaging.instance.requestPermission();
       // iOS: FCM token ancak APNs token hazır olunca gelir; biraz bekle.
       // Gelmezse de yukarıdaki onTokenRefresh sonradan yakalar.
+      String? apns;
       if (Platform.isIOS) {
-        var apns = await FirebaseMessaging.instance.getAPNSToken();
+        apns = await FirebaseMessaging.instance.getAPNSToken();
         for (var i = 0; i < 15 && apns == null; i++) {
           await Future.delayed(const Duration(seconds: 1));
           apns = await FirebaseMessaging.instance.getAPNSToken();
         }
       }
-      final token = await FirebaseMessaging.instance.getToken();
+      String fcmInfo = 'null';
+      String? token;
+      try {
+        token = await FirebaseMessaging.instance.getToken();
+        fcmInfo = token == null ? 'null' : 'ok';
+      } catch (e) {
+        fcmInfo = 'err:$e';
+      }
       if (token != null && token != _lastRegistered) {
         _lastRegistered = token;
         await _post(api, token);
+      } else if (Platform.isIOS) {
+        // GEÇİCİ TEŞHİS: token alınamadı → durumu backend'e DIAG kaydı yaz
+        // (apns/fcm/izin neyin null olduğu admin'de/DB'de görünür). Sonra kaldırılacak.
+        try {
+          final s = await FirebaseMessaging.instance.getNotificationSettings();
+          var diag = 'DIAG auth=${s.authorizationStatus} '
+              'apns=${apns == null ? "null" : "ok(${apns.length})"} fcm=$fcmInfo';
+          if (diag.length > 240) diag = diag.substring(0, 240);
+          await api.dio.post('/me/devices',
+              data: {'push_token': diag, 'platform': 'iosdiag'});
+        } catch (_) {}
       }
     } catch (_) {
       // İzin reddi / ağ / APNs hatası → sessiz; onTokenRefresh backstop kalır.
