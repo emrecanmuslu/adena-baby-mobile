@@ -186,6 +186,11 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // Bildirim izni sistem ayarlarından sonradan açıldıysa, devam eden uyku/
     // emzirme sayacının bildirimini yeniden post et (reaktif sync tetiklenmez).
     repostActiveTimers(ref);
+    // FCM token iOS'ta ilk açılışta geç gelmiş olabilir → oturum varsa cihaz
+    // kaydını yeniden dene (token artık hazırsa /me/devices'a düşer). Güvence.
+    if (ref.read(authControllerProvider).asData?.value != null) {
+      PushService.instance.registerToken(ref.read(apiClientProvider));
+    }
     // App-Open reklamı: ilk çağrı (cold start) yalnız ön-yükler; sonraki
     // resume'larda limitler uygunsa gösterir (premium muaf). Hiç bebek yokken
     // (giriş/onboarding) gösterilmez — reklam ancak bebek eklendikten sonra.
