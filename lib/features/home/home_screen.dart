@@ -124,11 +124,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: appBar,
-      // extendBody KAPALI: içerik alt menünün ALTINA taşmaz. Aksi halde menü
-      // altındaki home-indicator şeridi kaydırılabilir gövde oluyor ve oradan
-      // yukarı kaydırınca (uygulamayı küçültme jesti) ekran kayıyordu. Hap yine
-      // yüzer görünür (kendi SafeArea+padding'i var); içerik üstünde durur.
-      extendBody: false,
+      // Yüzer menü: içerik menünün arkasından akar (şeffaf, kenar şerit yok).
+      // Menü alanı aşağıda HitTestBehavior.opaque ile pointer YUTAR → arkasındaki
+      // gövde o şeritte kaydırılamaz (küçültme jesti çalışır) ama görsel şeffaf kalır.
+      extendBody: true,
       // Lazy: yalnız aktif sekme kurulur (çok veride diğer sekmeler boşuna yüklenmesin).
       // Her sekmeye ayrı Key: aksi halde aynı ağaç pozisyonundaki TourMount
       // State'i sekmeler arası yeniden kullanılır ve timeline/charts turu hiç açılmaz.
@@ -147,10 +146,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: _HomeTab(babyId: baby.id, scrollController: _homeScroll)),
       },
       // V2 · Yüzen ada — kenarlardan kopuk hap; ikon-odaklı, FAB satır içinde.
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+      bottomNavigationBar: GestureDetector(
+        // Tüm menü alanı (hap + çevresindeki şeffaf padding + alt home-indicator
+        // şeridi) pointer'ları YUTAR ama hiçbir şey boyamaz → görsel şeffaf, içerik
+        // arkasından akar; o alanda kaydırma gövdeyi kaydırmaz, küçültme jesti çalışır.
+        // Hap içindeki butonlar (InkWell/FAB) çocuk olduğu için normal tıklanır.
+        behavior: HitTestBehavior.opaque,
+        onTap: () {},
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
           child: Container(
             height: 62,
             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -174,6 +180,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 _navDiscover(context),
               ],
             ),
+          ),
           ),
         ),
       ),
@@ -671,7 +678,7 @@ class _HomeTab extends ConsumerWidget {
       child: ListView(
         controller: scrollController,
         // Alt: yüzer menü (≈76) + cihaz güvenli alanı + boşluk; içerik menü altında kalmasın.
-        padding: const EdgeInsets.fromLTRB(16, 2, 16, 20),
+        padding: EdgeInsets.fromLTRB(16, 2, 16, 92 + MediaQuery.of(context).padding.bottom),
         children: [
           // Local-first: free kullanıcıya "verin yalnız bu telefonda" yedek uyarısı.
           const BackupNagBanner(),

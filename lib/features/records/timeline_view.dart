@@ -93,7 +93,7 @@ class _TimelineViewState extends ConsumerState<TimelineView> {
       );
     }
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+      padding: EdgeInsets.fromLTRB(16, 4, 16, 92 + MediaQuery.of(context).padding.bottom),
       itemCount: records.length,
       itemBuilder: (_, i) => _RecordTile(record: records[i]),
     );
