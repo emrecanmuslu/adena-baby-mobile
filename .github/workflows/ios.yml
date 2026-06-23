@@ -135,6 +135,17 @@ jobs:
           CURRENT_PROJECT_VERSION=${{ steps.vc.outputs.code }}
           archive
 
+      # TEŞHİS: imzalı uygulamada aps-environment (push) entitlement'ı + provisioning
+      # profili gerçekten var mı? (APNs token gelmiyor → bu eksikse imza sorunu.)
+      - name: Entitlements teşhis
+        run: |
+          APP="$RUNNER_TEMP/Runner.xcarchive/Products/Applications/Runner.app"
+          echo "=== App imzalı entitlements ==="
+          codesign -d --entitlements :- "$APP" 2>/dev/null || true
+          echo "=== Provisioning profile entitlements ==="
+          security cms -D -i "$APP/embedded.mobileprovision" 2>/dev/null > /tmp/pp.plist || true
+          /usr/libexec/PlistBuddy -c "Print :Entitlements" /tmp/pp.plist 2>/dev/null || plutil -p /tmp/pp.plist 2>/dev/null | grep -iE "aps|application-groups|Name|environment" || true
+
       # Export + TestFlight yükleme (ExportOptions.plist destination=upload).
       - name: Export + TestFlight'a yükle
         run: >
