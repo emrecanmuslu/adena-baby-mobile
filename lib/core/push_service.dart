@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../data/activity_notif_cache.dart';
 import '../data/feed_reminder_cache.dart';
+import '../data/slot_registry.dart';
 import '../models/feed_reminder.dart';
 import 'api_client.dart';
 import 'notification_service.dart';
@@ -68,17 +69,23 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   // sync_nudge = sessiz (güncelleme/silme). Bildirim yok; ön planda sync'i main.dart
   // tetikler. Burada yalnız biten süren-sayaç bildirimini iptal ederiz — alıcı ARKA
   // PLANDA olsa bile (drift'e yazamasa da) cihazdaki "uyku/emzirme sürüyor"
-  // bildirimi düşsün. Slot = baby_id'den, Baby.notifSlot ile AYNI formül.
+  // bildirimi düşsün. Slot = SlotRegistry (Baby.notifSlot ile AYNI kaynak).
   if (type == 'sync_nudge') {
     final cancel = (data['cancel'] as String?) ?? '';
     final babyId = (data['baby_id'] as String?) ?? '';
     if (cancel.isNotEmpty && babyId.isNotEmpty) {
-      final slot = babyId.hashCode.abs() % 1000;
-      if (cancel.contains('sleep')) {
-        await NotificationService.instance.cancelTimer(NotificationService.sleepIdFor(slot));
-      }
-      if (cancel.contains('breast')) {
-        await NotificationService.instance.cancelTimer(NotificationService.breastIdFor(slot));
+      // Slot = SlotRegistry (Baby.notifSlot ile AYNI kaynak). Arka plan isolate →
+      // depodan oku; yoksa bu bebeğe dair zamanlanmış sayaç bildirimi de yok.
+      final slot = await SlotRegistry.instance.slotForStored(babyId);
+      if (slot != null) {
+        if (cancel.contains('sleep')) {
+          await NotificationService.instance
+              .cancelTimer(NotificationService.sleepIdFor(slot));
+        }
+        if (cancel.contains('breast')) {
+          await NotificationService.instance
+              .cancelTimer(NotificationService.breastIdFor(slot));
+        }
       }
     }
     return;

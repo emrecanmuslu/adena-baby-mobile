@@ -7,6 +7,7 @@ import '../../core/revenuecat_service.dart';
 import '../../data/auth_repository.dart';
 import '../../data/initial_import.dart';
 import '../../data/local_session.dart';
+import '../../data/slot_registry.dart';
 import '../../data/social_auth_service.dart';
 import '../../data/subscription_cache.dart';
 import '../../models/user.dart';
@@ -124,6 +125,7 @@ class AuthController extends AsyncNotifier<User?> {
   Future<void> deleteAccount() async {
     await PushService.instance.unregister(ref.read(apiClientProvider));
     await NotificationService.instance.cancelAll(); // eski hesabın bildirimleri kalmasın
+    await SlotRegistry.instance.clear(); // slot haritası sıfırlansın (yeni hesap 0'dan)
     await _repo.deleteAccount();
     state = const AsyncData(null);
   }
@@ -134,6 +136,7 @@ class AuthController extends AsyncNotifier<User?> {
     // Önceki hesabın zamanlanmış yerel bildirimlerini iptal et → yeni hesaba
     // "sonraki beslenme"/hatırlatıcı bildirimi sızmasın.
     await NotificationService.instance.cancelAll();
+    await SlotRegistry.instance.clear(); // slot haritası sıfırlansın (yeni hesap 0'dan)
     await _repo.logout();
     await RevenueCatService.instance.logoutUser();
     await SubscriptionCache().clear(); // sonraki kullanıcıya premium sızmasın

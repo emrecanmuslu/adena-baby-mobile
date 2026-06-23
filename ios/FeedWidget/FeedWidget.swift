@@ -67,9 +67,23 @@ struct FeedProvider: TimelineProvider {
 
     private func readEntry() -> FeedEntry {
         let defaults = UserDefaults(suiteName: appGroupId)
-        let name = defaults?.string(forKey: "baby_name") ?? "Bebek"
-        let msStr = defaults?.string(forKey: "next_feed_ms")
         let en = defaults?.string(forKey: "locale") == "en"
+        // Aktif bebeğin verisi ÖNCE per-baby anahtarlardan (name_<id>/next_<id>)
+        // okunur — push arka plan handler'ı (publishOne) ve NSE bunları yazar; iOS
+        // widget'ı tek bebek (aktif) gösterir. Yoksa eski aktif-fallback anahtarlarına
+        // (baby_name/next_feed_ms — publishAll ön planda yazar) düş. Bu okuma değişikliği
+        // olmadan push'la yazılan veriyi widget göremiyordu (yalnız açılışta güncellenirdi).
+        let activeId = defaults?.string(forKey: "active_id")
+        var name: String
+        var msStr: String?
+        if let id = activeId, !id.isEmpty,
+           let perBabyName = defaults?.string(forKey: "name_\(id)") {
+            name = perBabyName
+            msStr = defaults?.string(forKey: "next_\(id)")
+        } else {
+            name = defaults?.string(forKey: "baby_name") ?? (en ? "Baby" : "Bebek")
+            msStr = defaults?.string(forKey: "next_feed_ms")
+        }
         var feed: Date?
         if let msStr = msStr, let ms = Int(msStr), ms > 0 {
             feed = Date(timeIntervalSince1970: Double(ms) / 1000.0)

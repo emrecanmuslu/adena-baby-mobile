@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../data/slot_registry.dart';
+
 /// Bebek durumu: gebelik (bekleme) / doğmuş (takip).
 enum BabyStatus { expecting, born }
 
@@ -57,9 +59,10 @@ class Baby {
   /// Yalnız izleyen bakıcı mı?
   bool get isCaregiver => myRole == 'caregiver';
 
-  /// Bildirim id "slot"u (0..999) — çok-bebekte sayaç/beslenme bildirimleri
-  /// çakışmasın diye bebek başına ayrık id tabanı. id'den deterministik üretilir.
-  int get notifSlot => id.hashCode.abs() % 1000;
+  /// Bildirim id "slot"u — çok-bebekte sayaç/beslenme bildirimleri çakışmasın diye
+  /// bebek başına KALICI, BENZERSİZ slot (SlotRegistry). Eski `hashCode % 1000`
+  /// nadiren çakışıyordu; registry çakışmayı imkânsız kılar. main()'de load edilir.
+  int get notifSlot => SlotRegistry.instance.slotFor(id);
 
   factory Baby.fromJson(Map<String, dynamic> json) => Baby(
         id: json['id'] as String,

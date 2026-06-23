@@ -1,7 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// Aile etkinlik bildirimi yerel durumu (cihaza özel, sunucuya gitmez):
-///   • açık/kapalı tercihi (kişi başına, opt-in — varsayılan kapalı)
+/// Aile etkinlik bildirimi yerel durumu (cihaza özel; tercih sunucuya da senkronlanır):
+///   • açık/kapalı tercihi (kişi başına, varsayılan AÇIK — yalnız açıkça kapatılırsa kapalı)
 ///   • bebek başına "en son görülen olay" zaman damgası (polling cursor'u)
 /// Tema cache'i deseniyle aynı (FlutterSecureStorage).
 class ActivityNotifCache {
@@ -12,9 +12,10 @@ class ActivityNotifCache {
 
   Future<bool> enabled() async {
     try {
-      return (await _storage.read(key: _kEnabled)) == '1';
+      // Varsayılan AÇIK: yalnız kullanıcı açıkça kapatmışsa ('0') kapalı.
+      return (await _storage.read(key: _kEnabled)) != '0';
     } catch (_) {
-      return false;
+      return true;
     }
   }
 

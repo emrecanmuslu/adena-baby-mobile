@@ -32,6 +32,7 @@ import 'data/feed_input_cache.dart';
 import 'data/i18n_repository.dart';
 import 'data/local_session.dart';
 import 'data/migration_service.dart';
+import 'data/slot_registry.dart';
 import 'data/subscription_cache.dart';
 import 'data/subscription_repository.dart';
 import 'data/theme_cache.dart';
@@ -84,6 +85,9 @@ Future<void> main() async {
   // (hesapsız çalışma; router/repository senkron okur). Açılışı bloklamamalı ama
   // router rızayı ilk frame'de doğru görsün diye await edilir (çok hızlı).
   await LocalSession.ensureLoaded();
+  // Bildirim slot haritasını belleğe al → Baby.notifSlot (sync) benzersiz slot
+  // döndürsün (çok-bebekte beslenme/uyku/emzirme bildirim id çakışmasını önler).
+  await SlotRegistry.instance.load();
   // İlk açılışta (dil cache yokken) cihaz dili TR değilse çeviri bundle'ını
   // splash öncesi getir → İLK ekran (rıza/welcome) doğru dilde açılsın, TR flaş'ı
   // olmasın. Cache varsa anında uygulanır (ağ beklenmez). En fazla 4 sn bekler;
