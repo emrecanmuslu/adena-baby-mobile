@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/notification_service.dart';
 import '../../core/providers.dart';
 import '../../core/push_service.dart';
 import '../../core/revenuecat_service.dart';
@@ -122,6 +123,7 @@ class AuthController extends AsyncNotifier<User?> {
 
   Future<void> deleteAccount() async {
     await PushService.instance.unregister(ref.read(apiClientProvider));
+    await NotificationService.instance.cancelAll(); // eski hesabın bildirimleri kalmasın
     await _repo.deleteAccount();
     state = const AsyncData(null);
   }
@@ -129,6 +131,9 @@ class AuthController extends AsyncNotifier<User?> {
   Future<void> logout() async {
     // Token HÂLÂ geçerliyken bu cihazın FCM kaydını sil (çıkıştan önce).
     await PushService.instance.unregister(ref.read(apiClientProvider));
+    // Önceki hesabın zamanlanmış yerel bildirimlerini iptal et → yeni hesaba
+    // "sonraki beslenme"/hatırlatıcı bildirimi sızmasın.
+    await NotificationService.instance.cancelAll();
     await _repo.logout();
     await RevenueCatService.instance.logoutUser();
     await SubscriptionCache().clear(); // sonraki kullanıcıya premium sızmasın

@@ -124,14 +124,35 @@ class MembersScreen extends ConsumerWidget {
                   ref.watch(activityNotifEnabledProvider).asData?.value ?? false;
               void toggle() =>
                   ref.read(activityNotifEnabledProvider.notifier).set(!on);
-              return AdMenuItem(
-                icon: 'bell',
-                color: AppColors.coral,
-                bg: AppColors.feedBg,
-                title: tr('Aile etkinlik bildirimleri'),
-                meta: tr('Bir üye kayıt eklediğinde haber ver'),
-                trailing: Switch.adaptive(value: on, onChanged: (_) => toggle()),
-                onTap: toggle,
+              final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AdMenuItem(
+                    icon: 'bell',
+                    color: AppColors.coral,
+                    bg: AppColors.feedBg,
+                    title: tr('Aile etkinlik bildirimleri'),
+                    meta: tr('Bir üye kayıt eklediğinde haber ver'),
+                    trailing:
+                        Switch.adaptive(value: on, onChanged: (_) => toggle()),
+                    onTap: toggle,
+                  ),
+                  // iOS notu: bildirim kapalıyken + uygulama force-quit'teyken widget
+                  // güncellenmez (Apple sınırı; sessiz push force-quit'i uyandıramaz).
+                  if (isIOS)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+                      child: Text(
+                        tr('iPhone\'da: bu bildirim kapalıyken, uygulama tamamen '
+                            'kapatıldığında (kaydırılıp kapatıldığında) ana ekran '
+                            'widget\'ı güncellenmeyebilir. Uygulama açık veya arka '
+                            'plandayken güncellenir.'),
+                        style: TextStyle(
+                            fontSize: 12, height: 1.35, color: AppColors.muted),
+                      ),
+                    ),
+                ],
               );
             }),
           ],

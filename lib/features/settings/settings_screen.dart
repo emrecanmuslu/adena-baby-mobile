@@ -206,7 +206,22 @@ class SettingsScreen extends ConsumerWidget {
             bg: AppColors.line,
             title: tr('Çıkış yap'),
             trailing: const SizedBox.shrink(),
-            onTap: () => ref.read(authControllerProvider.notifier).logout(),
+            // Çıkış birkaç ağ çağrısı yapar (FCM kaydı sil + sunucu); loader olmadan
+            // basılmamış gibi hissettiriyordu → engelleyici göstergeyle geri bildirim ver.
+            onTap: () async {
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => const Center(child: CircularProgressIndicator()),
+              );
+              try {
+                await ref.read(authControllerProvider.notifier).logout();
+              } finally {
+                if (context.mounted) {
+                  Navigator.of(context, rootNavigator: true).pop();
+                }
+              }
+            },
           ),
 
           // Yalnız debug build'lerde: Geliştirici sayfası (API ortamı vb.).

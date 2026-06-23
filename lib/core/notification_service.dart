@@ -199,6 +199,16 @@ class NotificationService {
     await _plugin.cancel(id: id);
   }
 
+  /// Çıkış / hesap silme: bu cihazdaki TÜM zamanlanmış yerel bildirimleri iptal et.
+  /// Aksi halde önceki hesabın beslenme/hatırlatıcı bildirimleri yeni hesaba sızar
+  /// (ör. çıkış sonrası eski bebeğin "sonraki beslenme" bildirimi çalardı).
+  Future<void> cancelAll() async {
+    try {
+      if (!_ready) await init();
+      await _plugin.cancelAll();
+    } catch (_) {}
+  }
+
   /// Aile etkinlik bildirimi — başka bir üye kayıt eklediğinde (polling ile bulunur).
   /// [title] bebeğin adı (çok bebekte hangisi olduğu ayırt edilsin), [body] eylem.
   /// Her olay için ayrı id (üst üste binmesin) — 700000..700049 arası döner.
