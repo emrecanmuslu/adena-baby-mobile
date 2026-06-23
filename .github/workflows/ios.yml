@@ -161,17 +161,6 @@ jobs:
           -authenticationKeyID "$ASC_KEY_ID"
           -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
-      # TEŞHİS: export SONRASI IPA'nın gerçek aps-environment'ı (TestFlight'a giden değer).
-      - name: Export sonrası IPA entitlements
-        run: |
-          IPA=$(ls "$RUNNER_TEMP"/ipa/*.ipa 2>/dev/null | head -1)
-          echo "IPA: $IPA"
-          [ -z "$IPA" ] && { echo "IPA bulunamadi"; exit 0; }
-          cd "$RUNNER_TEMP" && rm -rf ipx && mkdir ipx && cd ipx && unzip -qq "$IPA"
-          APP=$(ls -d Payload/*.app | head -1)
-          echo "=== FINAL (export sonrasi) entitlements ==="
-          codesign -d --entitlements :- "$APP" 2>/dev/null | grep -iA1 "aps-environment" || codesign -d --entitlements :- "$APP" 2>/dev/null
-
       - name: IPA'yı artifact olarak sakla
         if: always()
         uses: actions/upload-artifact@v4
