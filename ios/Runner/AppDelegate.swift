@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import UserNotifications
 import workmanager_apple
 import FirebaseMessaging
 
@@ -51,5 +52,36 @@ import FirebaseMessaging
   ) {
     NSLog("APNs kayıt HATASI: \(error.localizedDescription)")
     super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+  }
+
+  // GELEN MESAJ köprüsü — APNs token'ında olduğu gibi, yeni UIScene yaşam
+  // döngüsünde firebase_messaging'in swizzling'i gelen bildirim callback'lerini
+  // güvenilir yakalayamıyor → mesajı Messaging'e ELLE iletiyoruz. Aksi halde
+  // ön planda onMessage hiç ateşlenmez (sync tetiklenmez) ve arka planda
+  // data/silent push işlenmez (widget güncellenmez).
+
+  // Ön plan: bildirim geldiğinde FlutterFire'a ilet (onMessage ateşlensin) +
+  // banner'ı göster (super, Dart setForegroundNotificationPresentationOptions'a göre karar verir).
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    Messaging.messaging().appDidReceiveMessage(notification.request.content.userInfo)
+    super.userNotificationCenter(
+      center, willPresent: notification, withCompletionHandler: completionHandler)
+  }
+
+  // Data / silent push (ön plan + arka plan): Messaging'e ilet → onMessage /
+  // onBackgroundMessage ateşlensin (widget güncellemesi, sessiz sync).
+  override func application(
+    _ application: UIApplication,
+    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) {
+    Messaging.messaging().appDidReceiveMessage(userInfo)
+    super.application(
+      application, didReceiveRemoteNotification: userInfo,
+      fetchCompletionHandler: completionHandler)
   }
 }

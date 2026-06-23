@@ -37,6 +37,7 @@ import 'features/development/teeth_screen.dart';
 import 'features/memories/memories_screen.dart';
 import 'features/onboarding/baby_setup_screen.dart';
 import 'features/settings/appearance_screen.dart';
+import 'features/settings/dev_settings_screen.dart';
 import 'features/settings/feedback_screen.dart';
 import 'features/settings/premium_screen.dart';
 import 'features/settings/privacy_screen.dart';
@@ -116,6 +117,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) =>
               const TourMount(tourKey: 'reminders', child: RemindersScreen())),
       GoRoute(path: '/appearance', builder: (_, _) => const AppearanceScreen()),
+      // Yalnız debug: Geliştirici ayarları (API ortamı vb.). Release'te menü
+      // öğesi gizli olduğundan buraya gidilmez.
+      GoRoute(path: '/dev', builder: (_, _) => const DevSettingsScreen()),
       GoRoute(path: '/privacy', builder: (_, _) => const PrivacyScreen()),
       GoRoute(path: '/feedback', builder: (_, _) => const FeedbackScreen()),
       GoRoute(
@@ -191,6 +195,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // giriş/kayıt → rıza (hesaba bağlı) → bebek → ana sayfa.
       final auth = ref.read(authControllerProvider);
       final loc = state.matchedLocation;
+      // Geliştirici sayfası (yalnız debug) her oturum durumunda erişilebilir —
+      // çıkışken bile ortam değiştirilebilsin (login ekranından açılır).
+      if (kDebugMode && loc == '/dev') return null;
       final onAuthPage = loc == '/login' ||
           loc == '/register' ||
           loc == '/forgot-password';

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -179,6 +180,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 22),
                     const LanguageQuickPick(),
+                    // Yalnız debug: oturum açmadan API ortamını değiştirebilmek
+                    // için Geliştirici sayfasına kısayol.
+                    if (kDebugMode)
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: () => context.push('/dev'),
+                          icon: const Icon(Icons.settings_outlined, size: 16),
+                          label: const Text('Geliştirici'),
+                          style: TextButton.styleFrom(foregroundColor: AppColors.muted),
+                        ),
+                      ),
                   ],
                 ),
               ),

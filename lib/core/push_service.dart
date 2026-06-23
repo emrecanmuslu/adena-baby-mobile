@@ -164,6 +164,14 @@ class PushService {
   void startForeground() {
     if (_foregroundReady) return;
     _foregroundReady = true;
+    // iOS: uygulama ön plandayken de bildirim banner/ses/rozet göster (varsayılan
+    // gizler). onMessage zaten ateşlenir; bu yalnız görünür sunumu açar. Android'de
+    // etkisi yok (orada data-only gelir, yerel bildirimi istemci basar).
+    FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
     FirebaseMessaging.onMessage.listen(handlePushMessage);
   }
 
