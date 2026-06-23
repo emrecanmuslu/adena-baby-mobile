@@ -45,14 +45,14 @@ Future<void> handlePushMessage(RemoteMessage message) async {
     // Çok-bebek: bu bebeğin verisini per-baby anahtarına yaz (o bebeği seçen widget tazelenir).
     final babyId = data['baby_id'];
     if (babyId is String && babyId.isNotEmpty) {
-      DateTime? next;
-      if (lastFeed != null) {
-        var interval = const FeedReminderConfig().intervalMin; // 120
-        final snap = await FeedReminderCache().read(babyId);
-        if (snap != null) interval = snap.intervalMin;
-        next = lastFeed.add(Duration(minutes: interval));
-      }
-      await WidgetService.publishOne(babyId: babyId, babyName: title, nextFeed: next);
+      // Aralığı lastFeed'den bağımsız hesapla → kapalıyken çalışacak iOS NSE için
+      // App Group'a da yazılsın (publishOne intervalMin'i önbelleğe alır).
+      var interval = const FeedReminderConfig().intervalMin; // 120
+      final snap = await FeedReminderCache().read(babyId);
+      if (snap != null) interval = snap.intervalMin;
+      final next = lastFeed?.add(Duration(minutes: interval));
+      await WidgetService.publishOne(
+          babyId: babyId, babyName: title, nextFeed: next, intervalMin: interval);
     }
   }
   // Hatırlatıcı yeniden planlaması aile-etkinlik bildirimi tercihinden BAĞIMSIZ:

@@ -6,6 +6,12 @@ import FirebaseMessaging
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  // Ön plan ekran tazeleme için Dart köprüsü. Her gelen push'ta Dart'a haber
+  // veririz → `requestSyncSoon` (FlutterFire onMessage'ın UIScene'de güvenilir
+  // ateşlenmemesine karşı deterministik yedek). Debounce'lu olduğu için onMessage
+  // ile çift tetiklense bile tek sync olur.
+  private var pushChannel: FlutterMethodChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -34,6 +40,21 @@ import FirebaseMessaging
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AdenaLiveActivity") {
       LiveActivityBridge.register(messenger: registrar.messenger())
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AdenaPushChannel") {
+      pushChannel = FlutterMethodChannel(
+        name: "adena/push", binaryMessenger: registrar.messenger())
+    }
+  }
+
+  /// Gelen push'un data'sını Dart'a ilet (ön planda sync tetiklensin). userInfo
+  /// değerlerini string'e indirger; Dart yalnız `type`/`baby_id` gibi anahtarları okur.
+  private func notifyFlutterPush(_ userInfo: [AnyHashable: Any]) {
+    guard let channel = pushChannel else { return }
+    var data: [String: String] = [:]
+    for (key, value) in userInfo {
+      if let k = key as? String { data[k] = "\(value)" }
+    }
+    DispatchQueue.main.async { channel.invokeMethod("onPush", arguments: data) }
   }
 
   // APNs device token → Firebase Messaging'e ELLE ilet (Scene lifecycle'da
@@ -68,6 +89,7 @@ import FirebaseMessaging
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
     Messaging.messaging().appDidReceiveMessage(notification.request.content.userInfo)
+    notifyFlutterPush(notification.request.content.userInfo)
     super.userNotificationCenter(
       center, willPresent: notification, withCompletionHandler: completionHandler)
   }
@@ -80,6 +102,7 @@ import FirebaseMessaging
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
     Messaging.messaging().appDidReceiveMessage(userInfo)
+    notifyFlutterPush(userInfo)
     super.application(
       application, didReceiveRemoteNotification: userInfo,
       fetchCompletionHandler: completionHandler)

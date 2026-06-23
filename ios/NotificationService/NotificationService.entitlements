@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Ana uygulama + widget ile AYNI App Group: NSE sonraki-beslenme verisini
+	     bu paylaşımlı UserDefaults'a yazar, widget oradan okur. (Portal'da
+	     com.adenababy.adenaBaby.NotificationService App ID'ine bu grup
+	     ilişkilendirilmeli — CI cloud imza -allowProvisioningUpdates ile otomatik.) -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.adenababy.adenaBaby</string>
+	</array>
+</dict>
+</plist>

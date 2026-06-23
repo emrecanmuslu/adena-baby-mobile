@@ -36,11 +36,33 @@ struct FeedProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<FeedEntry>) -> Void) {
-        let entry = readEntry()
-        // Geri sayım güncel kalsın diye 5 dakikada bir yenile.
-        let next = Calendar.current.date(byAdding: .minute, value: 5, to: Date())
-            ?? Date().addingTimeInterval(300)
-        completion(Timeline(entries: [entry], policy: .after(next)))
+        let base = readEntry()
+        guard let feed = base.nextFeed else {
+            // Kayıt yok → tek entry, 15 dakikada bir tazele.
+            let next = Date().addingTimeInterval(900)
+            completion(Timeline(entries: [base], policy: .after(next)))
+            return
+        }
+        // Saniye GÖSTERMEDEN dakikanın gerçek zamanlı düşmesi için, her biri kendi
+        // anına (date) sahip ~60 dakikalık entry üret. Metin entry.date'e göre
+        // hesaplandığından (countdownWords) widget tam dakika sınırında günceller —
+        // sistemi uyandırmadan, refresh bütçesi harcamadan.
+        let now = Date()
+        var entries: [FeedEntry] = [
+            FeedEntry(date: now, babyName: base.babyName, nextFeed: feed, en: base.en)
+        ]
+        // İlk dakika sınırına kalan saniye (gelecekte geri, geçmişte ileri sayım).
+        let secs = feed.timeIntervalSince(now)
+        var step = secs > 0
+            ? secs.truncatingRemainder(dividingBy: 60)
+            : 60 - (-secs).truncatingRemainder(dividingBy: 60)
+        if step <= 0 { step += 60 }
+        var t = now.addingTimeInterval(step)
+        for _ in 0..<60 {
+            entries.append(FeedEntry(date: t, babyName: base.babyName, nextFeed: feed, en: base.en))
+            t = t.addingTimeInterval(60)
+        }
+        completion(Timeline(entries: entries, policy: .after(t)))
     }
 
     private func readEntry() -> FeedEntry {
@@ -56,11 +78,21 @@ struct FeedProvider: TimelineProvider {
     }
 }
 
-/// CANLI sayan geri sayım metni: Text(_:style:.timer) her saniye kendi günceller
-/// (timeline yenilemesine bağlı DEĞİL) → widget "geri kalmış" görünmez. Gelecekte
-/// aşağı, geçmişte (gecikme) yukarı sayar. Format HH:MM:SS (dil-bağımsız).
-private func liveTimer(_ feed: Date) -> Text {
-    Text(feed, style: .timer)
+/// Geri sayım metni — DAKİKA çözünürlüğü (saniye YOK). Android FeedWidgetProvider
+/// (durText) ile aynı biçim: "1 sa 42 dk", "3 gün 5 sa", "şimdi". asOf = entry.date
+/// olduğundan, timeline dakika-başı entry ürettiği için değer canlı düşer. Gelecekte
+/// geri, geçmişte (gecikme) ileri sayar.
+private func countdownWords(_ feed: Date, asOf now: Date, en: Bool) -> String {
+    let diff = feed.timeIntervalSince(now)        // saniye; geçmiş → negatif
+    if diff >= 0 && diff < 60 { return en ? "now" : "şimdi" }
+    let totalMin = Int(abs(diff)) / 60
+    let days = totalMin / 1440
+    let hours = (totalMin % 1440) / 60
+    let mins = totalMin % 60
+    if days > 0 { return en ? "\(days)d \(hours)h" : "\(days) gün \(hours) sa" }
+    if hours > 0 && mins > 0 { return en ? "\(hours)h \(mins)m" : "\(hours) sa \(mins) dk" }
+    if hours > 0 { return en ? "\(hours)h" : "\(hours) sa" }
+    return en ? "\(mins)m" : "\(mins) dk"
 }
 
 /// Hedef geçmişte mi (gecikmiş mi) — etiket için (entry.date = timeline anı).
@@ -91,7 +123,7 @@ struct FeedHomeView: View {
                 .font(.caption2)
                 .foregroundColor(.secondary)
             if let feed = entry.nextFeed {
-                liveTimer(feed)
+                Text(countdownWords(feed, asOf: entry.date, en: entry.en))
                     .font(.headline)
                     .fontWeight(.bold)
                     .monospacedDigit()
@@ -122,7 +154,7 @@ struct FeedAccessoryView: View {
         case .accessoryInline:
             // Saatin hemen altında tek satır (ikon + CANLI sayaç).
             if let feed = entry.nextFeed {
-                Label { liveTimer(feed) } icon: { Image(systemName: "drop.fill") }
+                Label { Text(countdownWords(feed, asOf: entry.date, en: entry.en)) } icon: { Image(systemName: "drop.fill") }
             } else {
                 Label(entry.en ? "no feed" : "kayıt yok", systemImage: "drop.fill")
             }
@@ -132,7 +164,7 @@ struct FeedAccessoryView: View {
                 VStack(spacing: 0) {
                     Image(systemName: "drop.fill").font(.caption2)
                     if let feed = entry.nextFeed {
-                        liveTimer(feed)
+                        Text(countdownWords(feed, asOf: entry.date, en: entry.en))
                             .font(.system(size: 11, weight: .semibold))
                             .monospacedDigit().minimumScaleFactor(0.5).lineLimit(1)
                     } else {
@@ -149,7 +181,7 @@ struct FeedAccessoryView: View {
                                       : (entry.en ? "Next feed" : "Sonraki beslenme"))
                     .font(.caption2).foregroundStyle(.secondary)
                 if let feed = entry.nextFeed {
-                    liveTimer(feed)
+                    Text(countdownWords(feed, asOf: entry.date, en: entry.en))
                         .font(.headline).fontWeight(.bold).monospacedDigit()
                         .lineLimit(1).minimumScaleFactor(0.6)
                 } else {

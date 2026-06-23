@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -148,8 +149,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // ekrandaki "sonraki beslenme"/akış 1 dk'lık polling'i beklemeden yenilensin
     // (handlePushMessage drift'e dokunmaz; sync'i buradan, ref'le tetikliyoruz).
     try {
-      FirebaseMessaging.onMessage.listen((m) {
-        final t = m.data['type'];
+      // Ortak sevk: hem FlutterFire onMessage hem iOS native köprü buraya düşer.
+      void dispatch(String? t) {
         // family_activity = başka üye kayıt ekledi; sync_nudge = güncelleme/silme
         // (uyku/emzirme bitirme dahil). İkisi de yerel kayıtları hemen çeksin.
         if (t == 'family_activity' || t == 'sync_nudge') {
@@ -161,6 +162,19 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
         // düşürülüp yerel verisi temizlensin), 90 sn polling beklenmesin.
         if (t == 'baby_update' || t == 'access_removed') {
           ref.read(babyControllerProvider.notifier).refresh();
+        }
+      }
+
+      FirebaseMessaging.onMessage.listen((m) => dispatch(m.data['type'] as String?));
+      // iOS native köprü: AppDelegate her gelen push'ta 'adena/push' kanalını
+      // çağırır → FlutterFire onMessage yeni UIScene yaşam döngüsünde güvenilir
+      // ateşlenmese bile ön planda sync/refresh DETERMİNİSTİK tetiklenir. (Android'de
+      // kanal hiç çağrılmaz; orada onMessage yeterli.) requestSyncSoon debounce'lu →
+      // onMessage ile çift tetiklense bile tek sync olur.
+      const MethodChannel('adena/push').setMethodCallHandler((call) async {
+        if (call.method == 'onPush') {
+          final raw = (call.arguments as Map?) ?? const {};
+          dispatch(raw['type']?.toString());
         }
       });
     } catch (_) {}

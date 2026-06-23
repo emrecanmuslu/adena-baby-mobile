@@ -59,11 +59,18 @@ class WidgetService {
   static Future<void> publishOne(
       {required String babyId,
       required String babyName,
-      DateTime? nextFeed}) async {
+      DateTime? nextFeed,
+      int? intervalMin}) async {
     try {
       await _ensureInit();
       await HomeWidget.saveWidgetData<String>('name_$babyId', babyName);
       await HomeWidget.saveWidgetData<String>('next_$babyId', _ms(nextFeed));
+      // iOS Notification Service Extension (uygulama KAPALIYKEN) sonraki beslenmeyi
+      // last_feed_ts + bu aralıktan hesaplar — App Group'a önbelleğe al.
+      if (intervalMin != null) {
+        await HomeWidget.saveWidgetData<int>('feed_interval_$babyId', intervalMin);
+        await HomeWidget.saveWidgetData<int>('feed_interval_default', intervalMin);
+      }
       await HomeWidget.saveWidgetData<String>('locale', I18n.instance.locale);
       await _refresh();
     } catch (_) {}
