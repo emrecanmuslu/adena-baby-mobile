@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
 import '../../data/activity_notif_cache.dart';
+import '../../data/auth_repository.dart';
 import '../../data/sharing_repository.dart';
 import '../../models/activity_event.dart';
 import '../auth/auth_controller.dart';
@@ -16,6 +17,14 @@ class ActivityNotifEnabled extends AsyncNotifier<bool> {
   Future<void> set(bool v) async {
     await ActivityNotifCache().setEnabled(v);
     state = AsyncData(v);
+    // Tercihi SUNUCUYA bildir: backend opt-out üyelere iOS'ta GÖRÜNÜR alert yerine
+    // SESSİZ push gönderir (banner çıkmaz, Android gibi). Opt-in'lere alert + NSE.
+    try {
+      await ref.read(authRepositoryProvider)
+          .updateSettings({'notification_prefs': {'family_activity': v}});
+    } catch (_) {
+      // Çevrimdışı/oturum yok → açılışta (registerToken) tekrar senkronlanır.
+    }
     // Açar açmaz YALNIZ cursor'u kur, geçmişi bildirme. silent şart: kapalıyken
     // birikmiş olaylar yüzünden cursor bayatlamıştır; silent olmadan tekrar açış
     // o birikimin tamamını tek seferde bildirir (flood). bkz. _pollBaby.

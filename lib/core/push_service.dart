@@ -51,8 +51,11 @@ Future<void> handlePushMessage(RemoteMessage message) async {
       final snap = await FeedReminderCache().read(babyId);
       if (snap != null) interval = snap.intervalMin;
       final next = lastFeed?.add(Duration(minutes: interval));
+      // Bebek adı backend data'sında 'baby_name' ile gelir (sessiz iOS push'unda
+      // notification/title yok → title 'Adena Baby'ye düşerdi). title yedek.
+      final babyName = (data['baby_name'] as String?) ?? title;
       await WidgetService.publishOne(
-          babyId: babyId, babyName: title, nextFeed: next, intervalMin: interval);
+          babyId: babyId, babyName: babyName, nextFeed: next, intervalMin: interval);
     }
   }
   // Hatırlatıcı yeniden planlaması aile-etkinlik bildirimi tercihinden BAĞIMSIZ:
@@ -159,6 +162,7 @@ class PushService {
   bool _foregroundReady = false;
   String? _lastRegistered;
   bool _refreshSubscribed = false;
+  bool _prefSynced = false;
 
   /// Ön plan mesaj dinleyicisini kur (oturum gerektirmez). main() içinde bir kez.
   void startForeground() {
@@ -209,6 +213,19 @@ class PushService {
       }
     } catch (_) {
       // İzin reddi / ağ / APNs hatası → sessiz; onTokenRefresh backstop kalır.
+    }
+    // Aile etkinlik bildirim tercihini (cihaz-yerel) sunucuya bir kez yansıt →
+    // backend opt-out üyelere SESSİZ, opt-in'lere GÖRÜNÜR push seçer. Yalnız
+    // tercih değiştiğinde (notifier) + oturum başına bir kez (burada) gönderilir.
+    if (!_prefSynced) {
+      _prefSynced = true;
+      try {
+        final on = await ActivityNotifCache().enabled();
+        await api.dio.patch('/auth/me/settings',
+            data: {'notification_prefs': {'family_activity': on}});
+      } catch (_) {
+        _prefSynced = false; // başarısızsa bir sonraki çağrıda tekrar dene
+      }
     }
   }
 

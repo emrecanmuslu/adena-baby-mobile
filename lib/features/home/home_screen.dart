@@ -1293,14 +1293,39 @@ class _PredictSectionState extends ConsumerState<_PredictSection>
 
 /// "Son Aktivite" (design .ad-last3): beslenme/bez/uyku için son kaydın
 /// saati + kısa detayını gösteren 3 kart.
-class _LastActivitySection extends ConsumerWidget {
+class _LastActivitySection extends ConsumerStatefulWidget {
   final String babyId;
   final Units units;
   const _LastActivitySection({required this.babyId, required this.units});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(latestByTypeProvider(babyId));
+  ConsumerState<_LastActivitySection> createState() =>
+      _LastActivitySectionState();
+}
+
+class _LastActivitySectionState extends ConsumerState<_LastActivitySection> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    // "X dk önce" göreli zamanı canlı kalsın diye dakikada bir yeniden çiz —
+    // RecordUi.relative her build'de DateTime.now()'a göre hesaplanır. (Sonraki
+    // beslenme kartındaki _PredictSection ile aynı desen.)
+    _tick = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(latestByTypeProvider(widget.babyId));
     final types = ref.watch(homeLayoutControllerProvider).asData?.value.lastActivity ??
         HomeLayout.fallback.lastActivity;
     return Column(
@@ -1331,7 +1356,7 @@ class _LastActivitySection extends ConsumerWidget {
                     child: _LastCard(
                       type: types[i],
                       record: latest[types[i]],
-                      units: units,
+                      units: widget.units,
                     ),
                   ),
                 ],

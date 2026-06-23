@@ -40,12 +40,13 @@ class NotificationService: UNNotificationServiceExtension {
           let babyId = info["baby_id"] as? String, !babyId.isEmpty,
           let defaults = UserDefaults(suiteName: appGroupId) else { return }
 
-    // Ad = bebek adı. iOS görünür push'unda `data` title taşımaz (backend yalnız
-    // Android data'sına ekler); bebek adı aps.alert.title'dadır. Yoksa App Group'taki
-    // önceki ad, o da yoksa varsayılan.
+    // Ad = bebek adı. Backend artık data'da `baby_name` gönderir (en güvenilir).
+    // Yedekler: alert başlığı (görünür push'ta = bebek adı), App Group'taki önceki
+    // ad, son çare varsayılan.
     let apsTitle = ((info["aps"] as? [AnyHashable: Any])?["alert"]
       as? [AnyHashable: Any])?["title"] as? String
-    let name = apsTitle ?? defaults.string(forKey: "name_\(babyId)") ?? "Bebek"
+    let name = (info["baby_name"] as? String) ?? apsTitle
+      ?? defaults.string(forKey: "name_\(babyId)") ?? "Bebek"
     defaults.set(name, forKey: "name_\(babyId)")
 
     if let nextMs = nextFeedMs(info, babyId: babyId, defaults: defaults) {
