@@ -11,9 +11,10 @@
 	     ve provisioning profilleri otomatik oluşturulur. -->
 	<key>signingStyle</key>
 	<string>automatic</string>
-	<!-- exportArchive bittiğinde IPA'yı doğrudan App Store Connect'e (TestFlight) yükler. -->
+	<!-- GEÇİCİ TEŞHİS: upload yerine export → IPA yerelde kalsın, entitlement'ı incelensin.
+	     Teşhis bitince tekrar "upload" yapılacak. -->
 	<key>destination</key>
-	<string>upload</string>
+	<string>export</string>
 	<key>uploadSymbols</key>
 	<true/>
 	<key>manageAppVersionAndBuildNumber</key>
