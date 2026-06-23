@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,7 +6,11 @@ import 'package:go_router/go_router.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/app_version_footer.dart';
+import '../../core/config.dart';
 import '../../core/i18n.dart';
+import '../../core/providers.dart';
+import '../../core/restart_widget.dart';
+import '../../data/env_cache.dart';
 import '../../core/premium_gate.dart';
 import '../../core/theme.dart';
 import '../../core/tour.dart';
@@ -208,6 +213,8 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => ref.read(authControllerProvider.notifier).logout(),
           ),
 
+          // Yalnız debug build'lerde: API ortamını (Yerel/Prod) değiştir.
+          if (kDebugMode) const _DevEnvSection(),
           const SizedBox(height: 8),
           const Center(child: AppVersionFooter()),
         ],
@@ -243,5 +250,72 @@ class SettingsScreen extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) showAdError(context, apiErrorText(e));
     }
+  }
+}
+
+/// YALNIZ debug — API ortamını (Yerel/Prod) değiştirir. Değiştirince mevcut
+/// ortamda çıkış yapar + yerel veriyi temizler + uygulamayı yeniden başlatır
+/// (ortamlar/oturum karışmasın, temiz başlangıç). Release'te hiç gösterilmez.
+class _DevEnvSection extends ConsumerWidget {
+  const _DevEnvSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isProd = AppConfig.apiBaseUrl == AppConfig.envProdUrl;
+    return Column(
+      children: [
+        adSec('🛠 Geliştirici (debug)'),
+        AdMenuItem(
+          icon: 'home',
+          color: AppColors.sleep,
+          bg: AppColors.sleepBg,
+          title: 'Ortam: Yerel',
+          meta: isProd ? 'http://10.0.2.2:8000' : '● Aktif',
+          onTap:
+              isProd ? () => _switch(context, ref, AppConfig.envLocalUrl, 'Yerel') : () {},
+        ),
+        AdMenuItem(
+          icon: 'compass',
+          color: AppColors.coral,
+          bg: AppColors.feedBg,
+          title: 'Ortam: Prod',
+          meta: isProd ? '● Aktif' : 'api.adenababy.com',
+          onTap:
+              isProd ? () {} : () => _switch(context, ref, AppConfig.envProdUrl, 'Prod'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _switch(
+      BuildContext context, WidgetRef ref, String url, String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Ortam → $name'),
+        content: const Text(
+            'Çıkış yapılacak, YEREL VERİ TEMİZLENECEK ve uygulama yeniden '
+            'başlatılacak. Yeni ortamda yeniden giriş yapman gerekir. Onaylıyor musun?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false), child: const Text('Vazgeç')),
+          FilledButton(
+              onPressed: () => Navigator.pop(c, true), child: const Text('Onayla')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    // 1) Mevcut ortamda çıkış (token kaydını eski ortam geçerliyken sil).
+    try {
+      await ref.read(authControllerProvider.notifier).logout();
+    } catch (_) {}
+    // 2) Yeni ortamı kalıcı sakla (açılışta AppConfig'e uygulanır).
+    await EnvCache().write(url);
+    // 3) Yerel veriyi temizle (ortamlar arası karışmasın).
+    try {
+      await ref.read(databaseProvider).wipeAllData();
+    } catch (_) {}
+    // 4) Yeniden başlat → main yeni ortamı yükler, ApiClient yeni tabana bağlanır.
+    if (context.mounted) RestartWidget.restartApp(context);
   }
 }

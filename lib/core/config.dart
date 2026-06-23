@@ -3,10 +3,23 @@ class AppConfig {
   /// - Android emülatör → host makineye `10.0.2.2` ile erişir.
   /// - Fiziksel cihaz → PC'nin LAN IP'si (ör. http://192.168.1.X:8000/api/v1).
   /// `--dart-define=API_BASE_URL=...` ile override edilebilir.
-  static const String apiBaseUrl = String.fromEnvironment(
+  // Derleme-zamanı varsayılanı. Runtime'da (debug ortam değiştirici) override edilebilir.
+  static const String _compileApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:8000/api/v1',
   );
+
+  /// Debug "Geliştirici → Ortam" override'ı (EnvCache'ten açılışta yüklenir).
+  /// Yalnız debug build'lerde değiştirilir; release'te hep _compileApiBaseUrl.
+  static String? _runtimeApiBaseUrl;
+  static void setRuntimeApiBaseUrl(String? url) =>
+      _runtimeApiBaseUrl = (url == null || url.isEmpty) ? null : url;
+
+  static String get apiBaseUrl => _runtimeApiBaseUrl ?? _compileApiBaseUrl;
+
+  /// Bilinen ortam sabitleri (debug ortam değiştirici seçenekleri).
+  static const String envLocalUrl = 'http://10.0.2.2:8000/api/v1';
+  static const String envProdUrl = 'https://api.adenababy.com/api/v1';
 
   /// Sunucu kökü (media/static için) — `apiBaseUrl`'den `/api/v1` soneki atılır.
   /// Ör. http://10.0.2.2:8000 → fetus görselleri: `$mediaBaseUrl/media/fetus/12.png`.

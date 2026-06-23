@@ -22,9 +22,11 @@ import 'core/notification_service.dart';
 import 'core/providers.dart';
 import 'core/push_service.dart';
 import 'core/restart_widget.dart';
+import 'core/config.dart';
 import 'core/revenuecat_service.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_controller.dart';
+import 'data/env_cache.dart';
 import 'data/feed_input_cache.dart';
 import 'data/i18n_repository.dart';
 import 'data/local_session.dart';
@@ -86,6 +88,9 @@ Future<void> main() async {
   // olmasın. Cache varsa anında uygulanır (ağ beklenmez). En fazla 4 sn bekler;
   // ağ yok/timeout → router'ın I18n dinleyicisi bundle gelince yakalar.
   await _preloadLocaleBundle();
+  // Debug "Geliştirici → Ortam" seçimini uygula (ApiClient kurulmadan ÖNCE).
+  // Release'te EnvCache hep boş kalır (UI gösterilmez) → derleme varsayılanı.
+  AppConfig.setRuntimeApiBaseUrl(await EnvCache().read());
   // Son bilinen premium durumunu cache'ten oku → açılıştan itibaren flaş'sız.
   final cachedPremium = await SubscriptionCache().read();
   // Son seçilen temayı cache'ten oku → splash/ilk frame doğru temada açılsın.
