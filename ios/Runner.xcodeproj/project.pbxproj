@@ -14,6 +14,9 @@
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		87BFBCDBB92D78BC34E7D65A /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6DE8FDFE184D99304AFAD866 /* Pods_Runner.framework */; };
 		8BDB6B832FE2A0F7008EC428 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8BDB6B822FE2A0F7008EC428 /* GoogleService-Info.plist */; };
+		AABBCCDD0000000000000002 /* BabyTimerActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCCDD0000000000000001 /* BabyTimerActivityAttributes.swift */; };
+		AABBCCDD0000000000000003 /* BabyTimerActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCCDD0000000000000001 /* BabyTimerActivityAttributes.swift */; };
+		AABBCCDD0000000000000005 /* LiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCCDD0000000000000004 /* LiveActivityBridge.swift */; };
 		8BDB6B8A2FE2BB1D008EC428 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8BDB6B892FE2BB1C008EC428 /* WidgetKit.framework */; };
 		8BDB6B8C2FE2BB1D008EC428 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8BDB6B8B2FE2BB1D008EC428 /* SwiftUI.framework */; };
 		8BDB6B992FE2BB22008EC428 /* FeedWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8BDB6B882FE2BB1C008EC428 /* FeedWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -78,6 +81,8 @@
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		8BDB6B822FE2A0F7008EC428 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		AABBCCDD0000000000000001 /* BabyTimerActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BabyTimerActivityAttributes.swift; sourceTree = "<group>"; };
+		AABBCCDD0000000000000004 /* LiveActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityBridge.swift; sourceTree = "<group>"; };
 		8BDB6B882FE2BB1C008EC428 /* FeedWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FeedWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8BDB6B892FE2BB1C008EC428 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		8BDB6B8B2FE2BB1D008EC428 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -204,6 +209,8 @@
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
+				AABBCCDD0000000000000001 /* BabyTimerActivityAttributes.swift */,
+				AABBCCDD0000000000000004 /* LiveActivityBridge.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
@@ -496,6 +503,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AABBCCDD0000000000000003 /* BabyTimerActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -504,6 +512,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
+				AABBCCDD0000000000000002 /* BabyTimerActivityAttributes.swift in Sources */,
+				AABBCCDD0000000000000005 /* LiveActivityBridge.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 			);

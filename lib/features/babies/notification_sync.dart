@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n.dart';
+import '../../core/live_activity_service.dart';
 import '../../core/notification_service.dart';
 import '../../core/widget_service.dart';
 import '../../data/feed_reminder_cache.dart';
@@ -31,6 +32,8 @@ class FamilyNotificationSync extends ConsumerWidget {
         for (final b in babies) _BabyNotifSync(baby: b, key: ValueKey(b.id)),
         // Ana ekran widget'ı aktif bebeğin son beslenmesini gösterir.
         const _WidgetSync(),
+        // iOS Live Activity (süren sayaç — kilit ekranı + Dynamic Island).
+        const _LiveActivitySync(),
       ],
     );
   }
@@ -60,6 +63,74 @@ class _WidgetSync extends ConsumerWidget {
     final activeId = ref.watch(activeBabyProvider)?.id ?? born.first.id;
     // build içinde yan-etki: bu ekran zaten görünmez senkron katmanı.
     WidgetService.publishAll(widgetBabies, activeId);
+    return const SizedBox.shrink();
+  }
+}
+
+/// Tek aktif uyku/emzirme sayacını iOS Live Activity'sine yansıtır (kilit ekranı
+/// + Dynamic Island). Çok bebekte ilk aktif sayaç (önce emzirme, sonra uyku)
+/// gösterilir. Android/iOS<16.1'de no-op. Görünmez senkron katmanı.
+class _LiveActivitySync extends ConsumerWidget {
+  const _LiveActivitySync();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final babies = ref.watch(babyControllerProvider).asData?.value ?? const [];
+    final en = I18n.instance.locale == 'en';
+    final born = babies.where((b) => !b.isExpecting).toList();
+
+    // Tüm provider'ları KOŞULSUZ izle (Riverpod tutarlılığı), sonra ilk aktifi seç.
+    Record? chosenBreast;
+    Baby? chosenBreastBaby;
+    Record? chosenSleep;
+    Baby? chosenSleepBaby;
+    for (final b in born) {
+      final breast = ref.watch(ongoingBreastProvider(b.id));
+      final sleep = ref.watch(ongoingSleepProvider(b.id));
+      if (breast != null && chosenBreast == null) {
+        chosenBreast = breast;
+        chosenBreastBaby = b;
+      }
+      if (sleep != null && chosenSleep == null) {
+        chosenSleep = sleep;
+        chosenSleepBaby = b;
+      }
+    }
+
+    if (chosenBreast != null) {
+      final d = chosenBreast.data;
+      final paused = d['paused'] == true;
+      final side = d['side'] == 'right' ? 'right' : 'left';
+      var ms = (((d['left_ms'] as num?) ?? 0) + ((d['right_ms'] as num?) ?? 0)).toInt();
+      final seg = DateTime.tryParse(d['seg_start_ts'] as String? ?? '')?.toLocal();
+      if (seg != null && !paused) {
+        ms += DateTime.now().difference(seg).inMilliseconds.clamp(0, 24 * 3600 * 1000);
+      }
+      LiveActivityService.sync(
+        kind: 'breast',
+        babyName: chosenBreastBaby!.name,
+        effectiveStart: DateTime.now().subtract(Duration(milliseconds: ms)),
+        paused: paused,
+        pausedSeconds: ms ~/ 1000,
+        side: side,
+        en: en,
+      );
+    } else if (chosenSleep != null) {
+      final start =
+          DateTime.tryParse(chosenSleep.data['start_ts'] as String? ?? '')?.toLocal() ??
+              chosenSleep.ts;
+      LiveActivityService.sync(
+        kind: 'sleep',
+        babyName: chosenSleepBaby!.name,
+        effectiveStart: start,
+        paused: false,
+        pausedSeconds: 0,
+        side: '',
+        en: en,
+      );
+    } else {
+      LiveActivityService.end();
+    }
     return const SizedBox.shrink();
   }
 }

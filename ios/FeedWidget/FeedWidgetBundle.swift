@@ -12,5 +12,9 @@ import SwiftUI
 struct FeedWidgetBundle: WidgetBundle {
     var body: some Widget {
         FeedWidget()
+        // Süren emzirme/uyku sayacı Live Activity'si (iOS 16.1+).
+        if #available(iOS 16.1, *) {
+            BabyTimerLiveActivity()
+        }
     }
 }

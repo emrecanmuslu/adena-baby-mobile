@@ -24,5 +24,9 @@ import workmanager_apple
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // Live Activity (süren sayaç) MethodChannel'ı implicit engine messenger'ına bağla.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AdenaLiveActivity") {
+      LiveActivityBridge.register(messenger: registrar.messenger())
+    }
   }
 }
