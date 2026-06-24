@@ -56,9 +56,11 @@ class _WidgetSync extends ConsumerWidget {
     for (final b in born) {
       final recs = ref.watch(recentRecordsProvider(b.id)).asData?.value ?? const [];
       final cfg = ref.watch(feedReminderProvider(b.id));
-      final next =
-          nextFeedEstimate(cfg.enabled ? cfg : const FeedReminderConfig(), recs);
-      widgetBabies.add(WidgetBaby(id: b.id, name: b.name, nextFeed: next));
+      final effCfg = cfg.enabled ? cfg : const FeedReminderConfig();
+      final next = nextFeedEstimate(effCfg, recs);
+      final last = lastFeedAt(effCfg, recs);
+      widgetBabies
+          .add(WidgetBaby(id: b.id, name: b.name, nextFeed: next, lastFeed: last));
     }
     final activeId = ref.watch(activeBabyProvider)?.id ?? born.first.id;
     // build içinde yan-etki: bu ekran zaten görünmez senkron katmanı.

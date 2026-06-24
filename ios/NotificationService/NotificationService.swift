@@ -48,13 +48,20 @@ class NotificationService: UNNotificationServiceExtension {
       ?? defaults.string(forKey: "name_\(babyId)") ?? "Bebek"
     defaults.set(name, forKey: "name_\(babyId)")
 
+    let isActive = defaults.string(forKey: "active_id") == babyId
     if let nextMs = nextFeedMs(info, babyId: babyId, defaults: defaults) {
       defaults.set(String(nextMs), forKey: "next_\(babyId)")
       // Seçimsiz (aktif) widget fallback anahtarları: bu bebek aktifse onu da güncelle.
-      if defaults.string(forKey: "active_id") == babyId {
+      if isActive {
         defaults.set(name, forKey: "baby_name")
         defaults.set(String(nextMs), forKey: "next_feed_ms")
       }
+    }
+    // Widget "Son besleme HH:MM" gösterir → push'taki last_feed_ts'i de yaz.
+    if let ts = info["last_feed_ts"] as? String, let last = parseDate(ts) {
+      let lastMs = Int64(last.timeIntervalSince1970 * 1000)
+      defaults.set(String(lastMs), forKey: "last_\(babyId)")
+      if isActive { defaults.set(String(lastMs), forKey: "last_feed_ms") }
     }
 
     // Cross-process FLUSH: NSE yazıp hemen reload edince widget eski veriyi

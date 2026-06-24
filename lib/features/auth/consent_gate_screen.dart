@@ -1,3 +1,5 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,9 +23,30 @@ class ConsentGateScreen extends ConsumerStatefulWidget {
   ConsumerState<ConsentGateScreen> createState() => _ConsentGateScreenState();
 }
 
+/// GDPR-eşdeğeri katı bölgeler (AB/AEA + İngiltere + İsviçre). Buralarda ön-işaretli
+/// rıza kutusu GEÇERSİZ (CJEU Planet49) → analitik varsayılan KAPALI başlamalı.
+/// Bu kümede OLMAYAN ülkelerde (ör. ABD) kutu varsayılan AÇIK başlayabilir → daha
+/// çok kullanıcı opt-in olur, AB'yi riske atmadan. Bölge bilinmezse güvenli=kapalı.
+const _strictConsentRegions = {
+  // AB-27
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU',
+  'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
+  // AEA (AB dışı) + İngiltere + İsviçre
+  'IS', 'LI', 'NO', 'GB', 'CH',
+};
+
+/// Cihaz bölgesine göre analitik kutusunun varsayılanı. Katı bölge veya bilinmeyen
+/// ülke → false (kapalı, yasal güvenli); diğer → true (açık).
+bool _defaultAnalyticsConsent() {
+  final cc = PlatformDispatcher.instance.locale.countryCode?.toUpperCase();
+  if (cc == null || cc.isEmpty) return false;
+  return !_strictConsentRegions.contains(cc);
+}
+
 class _ConsentGateScreenState extends ConsumerState<ConsentGateScreen> {
   bool _accepted = false;
-  bool _analytics = false; // opsiyonel kullanım analitiği rızası (varsayılan kapalı)
+  // Opsiyonel analitik rızası — varsayılan bölgeye göre (AB/UK/CH kapalı, diğer açık).
+  bool _analytics = _defaultAnalyticsConsent();
   bool _saving = false;
 
   Future<void> _continue() async {
@@ -98,7 +121,8 @@ class _ConsentGateScreenState extends ConsumerState<ConsentGateScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  // Opsiyonel: kullanım analitiği rızası (işaretsiz; "Devam"ı engellemez).
+                  // Opsiyonel: kullanım analitiği rızası (varsayılan bölgeye göre —
+                  // AB/UK/CH kapalı, diğer açık; "Devam"ı engellemez, kullanıcı değiştirebilir).
                   InkWell(
                     onTap: () => setState(() => _analytics = !_analytics),
                     borderRadius: BorderRadius.circular(12),

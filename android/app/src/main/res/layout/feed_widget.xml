@@ -29,7 +29,7 @@
         android:textColor="#FFFFFF"
         android:textSize="12sp"
         android:alpha="0.85"
-        android:text="Son beslenme" />
+        android:text="Sonraki beslenme" />
 
     <TextView
         android:id="@+id/widget_value"
@@ -37,9 +37,21 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textColor="#FFFFFF"
-        android:textSize="20sp"
+        android:textSize="22sp"
         android:textStyle="bold"
         android:maxLines="1"
         android:ellipsize="end"
-        android:text="—" />
+        android:text="14:30" />
+
+    <TextView
+        android:id="@+id/widget_last"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:alpha="0.8"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:text="Son besleme 12:30" />
 </LinearLayout>

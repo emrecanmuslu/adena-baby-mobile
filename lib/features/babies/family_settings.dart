@@ -97,9 +97,10 @@ Future<void> updateQuietHours(WidgetRef ref, String babyId, QuietHours q) async 
   ref.invalidate(familySettingsProvider(babyId));
 }
 
-/// Config + kayıtlardan bir sonraki beslenme zamanını kestirir (null = veri yok).
-/// Son (baz türü) beslenmesi + sabit aralık. Süren emzirme çapayı oluşturmaz.
-DateTime? nextFeedEstimate(FeedReminderConfig cfg, List<Record> records) {
+/// Son (baz türü) beslenme kaydının zamanı (null = veri yok). nextFeedEstimate'in
+/// çapası; widget "son besleme" göstergesi bununla tutarlı olsun diye paylaşılır.
+/// Süren emzirme çapa oluşturmaz.
+DateTime? lastFeedAt(FeedReminderConfig cfg, List<Record> records) {
   bool matches(Record r) {
     if (r.type != RecordType.feed || r.isOngoingBreast) return false;
     return switch (cfg.baseType) {
@@ -111,6 +112,12 @@ DateTime? nextFeedEstimate(FeedReminderConfig cfg, List<Record> records) {
 
   final feeds = records.where(matches).toList()
     ..sort((a, b) => b.ts.compareTo(a.ts));
-  if (feeds.isEmpty) return null;
-  return feeds.first.ts.add(Duration(minutes: cfg.intervalMin));
+  return feeds.isEmpty ? null : feeds.first.ts;
+}
+
+/// Config + kayıtlardan bir sonraki beslenme zamanını kestirir (null = veri yok).
+/// Son (baz türü) beslenmesi + sabit aralık.
+DateTime? nextFeedEstimate(FeedReminderConfig cfg, List<Record> records) {
+  final last = lastFeedAt(cfg, records);
+  return last?.add(Duration(minutes: cfg.intervalMin));
 }

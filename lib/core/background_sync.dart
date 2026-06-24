@@ -92,11 +92,17 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
         );
   // nextFeedEstimate hatırlatıcı kapalıyken de varsayılan aralıkla widget için
   // hesaplar (ana sayfa kartı/_WidgetSync ile aynı mantık).
-  final next = nextFeedEstimate(cfg.enabled ? cfg : const FeedReminderConfig(), recs);
+  final effCfg = cfg.enabled ? cfg : const FeedReminderConfig();
+  final next = nextFeedEstimate(effCfg, recs);
+  final last = lastFeedAt(effCfg, recs);
   // Yalnız per-baby anahtarları yaz (publishOne); kullanıcının aktif-bebek seçimini
   // (active_id/baby_name/next_feed_ms) EZME — onu yalnız ön plan publishAll yönetir.
   await WidgetService.publishOne(
-      babyId: b.id, babyName: b.name, nextFeed: next, intervalMin: cfg.intervalMin);
+      babyId: b.id,
+      babyName: b.name,
+      nextFeed: next,
+      lastFeed: last,
+      intervalMin: cfg.intervalMin);
   // Bildirim yalnız hatırlatıcı açıksa yeniden planlanır (scheduleFeedReminder
   // aynı id'yi iptal edip yeniden kurar → çift olmaz, idempotent).
   if (snap != null && snap.enabled) {

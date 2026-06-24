@@ -1,34 +1,47 @@
 import WidgetKit
 import SwiftUI
 
-// Adena Baby — "Sonraki Beslenme" ana ekran widget'ı (iOS).
+// Adena Baby — "Sonraki Beslenme" widget'ı (iOS, ana ekran + kilit ekranı).
 //
-// Flutter tarafı (lib/core/widget_service.dart) paylaşımlı App Group depolama
-// alanına şu anahtarları yazar:
-//   - "baby_name"     : String   (aktif bebeğin adı)
-//   - "next_feed_ms"  : String   (TAHMİNİ sonraki beslenme epoch ms; "-1" = kayıt yok)
-//   - "locale"        : String   ("tr" | "en" — geri sayım metni dili)
-// home_widget eklentisi WidgetCenter.reloadTimelines(ofKind: "FeedWidget")
-// çağırır → kind ile iOSName ('FeedWidget') birebir aynı olmalı.
+// GERİ SAYIM DEĞİL, mutlak SAAT gösterir (ör. "14:30"): değer sabit olduğundan
+// widget'ın dakika-dakika güncellenmesi gerekmez → eski timeline donması ortadan
+// kalkar, refresh bütçesi harcanmaz. Ayrıca "Son besleme HH:MM" (gerçek bilgi).
 //
-// @main, FeedWidgetBundle.swift'te tanımlı; bu dosya yalnız widget'ı sağlar.
+// Flutter (lib/core/widget_service.dart) App Group'a şunları yazar:
+//   name_<id>/next_<id>/last_<id> (+ aktif fallback baby_name/next_feed_ms/last_feed_ms),
+//   active_id, locale. NSE (push) de aynı anahtarları günc: WidgetCenter reload eder.
 
 private let appGroupId = "group.com.adenababy.adenaBaby"
-
-// Tasarım mercan rengi #FF8A7A.
 private let coral = Color(red: 1.0, green: 138.0 / 255.0, blue: 122.0 / 255.0)
 
 struct FeedEntry: TimelineEntry {
     let date: Date
     let babyName: String
     let nextFeed: Date? // nil → henüz kayıt yok
+    let lastFeed: Date?
     let en: Bool
+}
+
+/// epoch ms → cihaz biçiminde saat (TR 24s "14:30", US 12s "2:30 PM").
+private func timeStr(_ d: Date) -> String {
+    let f = DateFormatter()
+    f.timeStyle = .short
+    f.dateStyle = .none
+    return f.string(from: d)
+}
+
+/// Etiket: vakit geçtiyse nazikçe "Beslenme zamanı", değilse "Sonraki beslenme".
+private func labelText(_ e: FeedEntry) -> String {
+    guard let f = e.nextFeed else { return e.en ? "Next feed" : "Sonraki beslenme" }
+    if f < e.date { return e.en ? "Feed time" : "Beslenme zamanı" }
+    return e.en ? "Next feed" : "Sonraki beslenme"
 }
 
 struct FeedProvider: TimelineProvider {
     func placeholder(in context: Context) -> FeedEntry {
         FeedEntry(date: Date(), babyName: "Bebek",
-                  nextFeed: Date().addingTimeInterval(3600), en: false)
+                  nextFeed: Date().addingTimeInterval(3600),
+                  lastFeed: Date().addingTimeInterval(-3600), en: false)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (FeedEntry) -> Void) {
@@ -38,123 +51,79 @@ struct FeedProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<FeedEntry>) -> Void) {
         let base = readEntry()
         guard let feed = base.nextFeed else {
-            // Kayıt yok → tek entry, 15 dakikada bir tazele.
-            let next = Date().addingTimeInterval(900)
-            completion(Timeline(entries: [base], policy: .after(next)))
+            completion(Timeline(entries: [base],
+                                policy: .after(Date().addingTimeInterval(1800))))
             return
         }
-        // Saniye GÖSTERMEDEN dakikanın gerçek zamanlı düşmesi için, her biri kendi
-        // anına (date) sahip dakika-dakika entry üret. Metin entry.date'e göre
-        // hesaplandığından (countdownWords) widget tam dakika sınırında günceller —
-        // sistemi uyandırmadan, refresh bütçesi harcamadan.
         let now = Date()
-        var entries: [FeedEntry] = [
-            FeedEntry(date: now, babyName: base.babyName, nextFeed: feed, en: base.en)
-        ]
-        // İlk dakika sınırına kalan saniye (gelecekte geri, geçmişte ileri sayım).
-        let secs = feed.timeIntervalSince(now)
-        var step = secs > 0
-            ? secs.truncatingRemainder(dividingBy: 60)
-            : 60 - (-secs).truncatingRemainder(dividingBy: 60)
-        if step <= 0 { step += 60 }
-        var t = now.addingTimeInterval(step)
-        // DONMA FIX: eskiden sabit 60 entry (1 saat) üretilirdi → 2-3 saatlik
-        // aralıkta 1. saatten sonra geri sayım DONUYORDU. Artık beslenmeye kadar
-        // (+30 dk gecikme payı) dakika-dakika entry üret; 6 saatle (360) sınırla
-        // (WidgetKit + reload bütçesi). Böylece widget tüm aralıkta canlı sayar.
-        let minsToFeed = secs > 0 ? Int(secs / 60) : 0
-        let count = min(max(minsToFeed + 30, 60), 360)
-        for _ in 0..<count {
-            entries.append(FeedEntry(date: t, babyName: base.babyName, nextFeed: feed, en: base.en))
-            t = t.addingTimeInterval(60)
+        var entries = [FeedEntry(date: now, babyName: base.babyName,
+                                 nextFeed: feed, lastFeed: base.lastFeed, en: base.en)]
+        // Vakit gelecekteyse, tam o ana bir entry daha ekle → etiket "Beslenme
+        // zamanı"na kendiliğinden dönsün (sistemi uyandırmadan). Saat metni sabit.
+        if feed > now {
+            entries.append(FeedEntry(date: feed, babyName: base.babyName,
+                                     nextFeed: feed, lastFeed: base.lastFeed, en: base.en))
         }
-        completion(Timeline(entries: entries, policy: .after(t)))
+        // Veri değişince publish/NSE reloadTimelines tetikler; yine de 30 dk'da bir
+        // tazele (son-besleme vb. yedek güncelleme).
+        completion(Timeline(entries: entries,
+                            policy: .after(now.addingTimeInterval(1800))))
     }
 
     private func readEntry() -> FeedEntry {
         let defaults = UserDefaults(suiteName: appGroupId)
         let en = defaults?.string(forKey: "locale") == "en"
-        // Aktif bebeğin verisi ÖNCE per-baby anahtarlardan (name_<id>/next_<id>)
-        // okunur — push arka plan handler'ı (publishOne) ve NSE bunları yazar; iOS
-        // widget'ı tek bebek (aktif) gösterir. Yoksa eski aktif-fallback anahtarlarına
-        // (baby_name/next_feed_ms — publishAll ön planda yazar) düş. Bu okuma değişikliği
-        // olmadan push'la yazılan veriyi widget göremiyordu (yalnız açılışta güncellenirdi).
+        // Aktif bebek per-baby anahtarlardan (name_/next_/last_<id>); yoksa fallback.
         let activeId = defaults?.string(forKey: "active_id")
         var name: String
-        var msStr: String?
+        var nextStr: String?
+        var lastStr: String?
         if let id = activeId, !id.isEmpty,
-           let perBabyName = defaults?.string(forKey: "name_\(id)") {
-            name = perBabyName
-            msStr = defaults?.string(forKey: "next_\(id)")
+           let perName = defaults?.string(forKey: "name_\(id)") {
+            name = perName
+            nextStr = defaults?.string(forKey: "next_\(id)")
+            lastStr = defaults?.string(forKey: "last_\(id)")
         } else {
             name = defaults?.string(forKey: "baby_name") ?? (en ? "Baby" : "Bebek")
-            msStr = defaults?.string(forKey: "next_feed_ms")
+            nextStr = defaults?.string(forKey: "next_feed_ms")
+            lastStr = defaults?.string(forKey: "last_feed_ms")
         }
-        var feed: Date?
-        if let msStr = msStr, let ms = Int(msStr), ms > 0 {
-            feed = Date(timeIntervalSince1970: Double(ms) / 1000.0)
+        return FeedEntry(date: Date(), babyName: name,
+                         nextFeed: dateFromMs(nextStr), lastFeed: dateFromMs(lastStr), en: en)
+    }
+
+    private func dateFromMs(_ s: String?) -> Date? {
+        if let s = s, let ms = Int(s), ms > 0 {
+            return Date(timeIntervalSince1970: Double(ms) / 1000.0)
         }
-        return FeedEntry(date: Date(), babyName: name, nextFeed: feed, en: en)
+        return nil
     }
 }
 
-/// Geri sayım metni — DAKİKA çözünürlüğü (saniye YOK). Android FeedWidgetProvider
-/// (durText) ile aynı biçim: "1 sa 42 dk", "3 gün 5 sa", "şimdi". asOf = entry.date
-/// olduğundan, timeline dakika-başı entry ürettiği için değer canlı düşer. Gelecekte
-/// geri, geçmişte (gecikme) ileri sayar.
-private func countdownWords(_ feed: Date, asOf now: Date, en: Bool) -> String {
-    let diff = feed.timeIntervalSince(now)        // saniye; geçmiş → negatif
-    if diff >= 0 && diff < 60 { return en ? "now" : "şimdi" }
-    let totalMin = Int(abs(diff)) / 60
-    let days = totalMin / 1440
-    let hours = (totalMin % 1440) / 60
-    let mins = totalMin % 60
-    if days > 0 { return en ? "\(days)d \(hours)h" : "\(days) gün \(hours) sa" }
-    if hours > 0 && mins > 0 { return en ? "\(hours)h \(mins)m" : "\(hours) sa \(mins) dk" }
-    if hours > 0 { return en ? "\(hours)h" : "\(hours) sa" }
-    return en ? "\(mins)m" : "\(mins) dk"
-}
-
-/// Hedef geçmişte mi (gecikmiş mi) — etiket için (entry.date = timeline anı).
-private func isOverdue(_ entry: FeedEntry) -> Bool {
-    guard let f = entry.nextFeed else { return false }
-    return f < entry.date
-}
-
-/// Ana ekran widget'ı (systemSmall/Medium) görünümü.
+/// Ana ekran widget'ı (systemSmall/Medium).
 struct FeedHomeView: View {
     var entry: FeedEntry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Image(systemName: "drop.fill")
-                    .font(.caption)
-                    .foregroundColor(coral)
-                Text(entry.babyName)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                Image(systemName: "drop.fill").font(.caption).foregroundColor(coral)
+                Text(entry.babyName).font(.caption).fontWeight(.semibold)
+                    .foregroundColor(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
-            Text(isOverdue(entry) ? (entry.en ? "Overdue" : "Gecikti")
-                                  : (entry.en ? "Next feed" : "Sonraki beslenme"))
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            Text(labelText(entry)).font(.caption2).foregroundColor(.secondary)
             if let feed = entry.nextFeed {
-                Text(countdownWords(feed, asOf: entry.date, en: entry.en))
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .monospacedDigit()
-                    .foregroundColor(coral)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                Text(timeStr(feed)).font(.title3).fontWeight(.bold)
+                    .monospacedDigit().foregroundColor(coral)
+                    .lineLimit(1).minimumScaleFactor(0.7)
             } else {
                 Text(entry.en ? "Awaiting feed" : "Beslenme bekleniyor")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
+                    .font(.subheadline).fontWeight(.semibold).foregroundColor(.secondary)
+            }
+            if let last = entry.lastFeed {
+                Text((entry.en ? "Last " : "Son besleme ") + timeStr(last))
+                    .font(.caption2).foregroundColor(.secondary).lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -162,8 +131,7 @@ struct FeedHomeView: View {
     }
 }
 
-/// Kilit ekranı (saat altı) accessory widget'ları — iOS 16+. Tek renkli/tint
-/// render edilir, color'a güvenmeyiz. Kısa "sonraki beslenme" bilgisi.
+/// Kilit ekranı (saat altı) accessory widget'ları — iOS 16+.
 @available(iOS 16.0, *)
 struct FeedAccessoryView: View {
     var entry: FeedEntry
@@ -172,9 +140,8 @@ struct FeedAccessoryView: View {
     var body: some View {
         switch family {
         case .accessoryInline:
-            // Saatin hemen altında tek satır (ikon + CANLI sayaç).
             if let feed = entry.nextFeed {
-                Label { Text(countdownWords(feed, asOf: entry.date, en: entry.en)) } icon: { Image(systemName: "drop.fill") }
+                Label { Text(timeStr(feed)) } icon: { Image(systemName: "drop.fill") }
             } else {
                 Label(entry.en ? "no feed" : "kayıt yok", systemImage: "drop.fill")
             }
@@ -184,8 +151,7 @@ struct FeedAccessoryView: View {
                 VStack(spacing: 0) {
                     Image(systemName: "drop.fill").font(.caption2)
                     if let feed = entry.nextFeed {
-                        Text(countdownWords(feed, asOf: entry.date, en: entry.en))
-                            .font(.system(size: 11, weight: .semibold))
+                        Text(timeStr(feed)).font(.system(size: 13, weight: .semibold))
                             .monospacedDigit().minimumScaleFactor(0.5).lineLimit(1)
                     } else {
                         Text("—").font(.caption2)
@@ -195,18 +161,18 @@ struct FeedAccessoryView: View {
         default: // .accessoryRectangular
             VStack(alignment: .leading, spacing: 2) {
                 Label(entry.babyName, systemImage: "drop.fill")
-                    .font(.caption2).fontWeight(.semibold)
-                    .lineLimit(1)
-                Text(isOverdue(entry) ? (entry.en ? "Overdue" : "Gecikti")
-                                      : (entry.en ? "Next feed" : "Sonraki beslenme"))
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(.caption2).fontWeight(.semibold).lineLimit(1)
+                Text(labelText(entry)).font(.caption2).foregroundStyle(.secondary)
                 if let feed = entry.nextFeed {
-                    Text(countdownWords(feed, asOf: entry.date, en: entry.en))
-                        .font(.headline).fontWeight(.bold).monospacedDigit()
-                        .lineLimit(1).minimumScaleFactor(0.6)
+                    Text(timeStr(feed)).font(.headline).fontWeight(.bold)
+                        .monospacedDigit().lineLimit(1)
                 } else {
                     Text(entry.en ? "Awaiting feed" : "Beslenme bekleniyor")
                         .font(.subheadline).fontWeight(.semibold)
+                }
+                if let last = entry.lastFeed {
+                    Text((entry.en ? "Last " : "Son ") + timeStr(last))
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -235,7 +201,6 @@ struct FeedWidgetEntryView: View {
 struct FeedWidget: Widget {
     let kind = "FeedWidget"
 
-    // iOS 16+ kilit ekranı accessory aileleri eklenir; eski sürümlerde yalnız ana ekran.
     private static var families: [WidgetFamily] {
         var f: [WidgetFamily] = [.systemSmall, .systemMedium]
         if #available(iOS 16.0, *) {
@@ -255,7 +220,7 @@ struct FeedWidget: Widget {
             }
         }
         .configurationDisplayName("Sonraki Beslenme")
-        .description("Aktif bebeğin tahmini sonraki beslenmesini gösterir.")
+        .description("Aktif bebeğin tahmini sonraki beslenme saatini gösterir.")
         .supportedFamilies(Self.families)
     }
 }

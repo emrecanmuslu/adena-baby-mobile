@@ -41,12 +41,14 @@ class WidgetService {
       for (final b in babies) {
         await HomeWidget.saveWidgetData<String>('name_${b.id}', b.name);
         await HomeWidget.saveWidgetData<String>('next_${b.id}', _ms(b.nextFeed));
+        await HomeWidget.saveWidgetData<String>('last_${b.id}', _ms(b.lastFeed));
       }
       final active = babies.where((b) => b.id == activeId).firstOrNull ??
           (babies.isNotEmpty ? babies.first : null);
       await HomeWidget.saveWidgetData<String>('active_id', active?.id ?? '');
       await HomeWidget.saveWidgetData<String>('baby_name', active?.name ?? 'Bebek');
       await HomeWidget.saveWidgetData<String>('next_feed_ms', _ms(active?.nextFeed));
+      await HomeWidget.saveWidgetData<String>('last_feed_ms', _ms(active?.lastFeed));
       await HomeWidget.saveWidgetData<String>('locale', I18n.instance.locale);
       await _refresh();
     } catch (_) {
@@ -61,11 +63,13 @@ class WidgetService {
       {required String babyId,
       required String babyName,
       DateTime? nextFeed,
+      DateTime? lastFeed,
       int? intervalMin}) async {
     try {
       await _ensureInit();
       await HomeWidget.saveWidgetData<String>('name_$babyId', babyName);
       await HomeWidget.saveWidgetData<String>('next_$babyId', _ms(nextFeed));
+      await HomeWidget.saveWidgetData<String>('last_$babyId', _ms(lastFeed));
       // iOS Notification Service Extension (uygulama KAPALIYKEN) sonraki beslenmeyi
       // last_feed_ts + bu aralıktan hesaplar — App Group'a önbelleğe al.
       if (intervalMin != null) {
@@ -135,5 +139,7 @@ class WidgetBaby {
   final String id;
   final String name;
   final DateTime? nextFeed;
-  const WidgetBaby({required this.id, required this.name, this.nextFeed});
+  final DateTime? lastFeed;
+  const WidgetBaby(
+      {required this.id, required this.name, this.nextFeed, this.lastFeed});
 }

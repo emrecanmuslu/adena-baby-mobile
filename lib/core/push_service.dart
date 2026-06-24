@@ -56,7 +56,11 @@ Future<void> handlePushMessage(RemoteMessage message) async {
       // notification/title yok → title 'Adena Baby'ye düşerdi). title yedek.
       final babyName = (data['baby_name'] as String?) ?? title;
       await WidgetService.publishOne(
-          babyId: babyId, babyName: babyName, nextFeed: next, intervalMin: interval);
+          babyId: babyId,
+          babyName: babyName,
+          nextFeed: next,
+          lastFeed: lastFeed,
+          intervalMin: interval);
     }
   }
   // Hatırlatıcı yeniden planlaması aile-etkinlik bildirimi tercihinden BAĞIMSIZ:
