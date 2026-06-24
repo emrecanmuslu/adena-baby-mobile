@@ -1,10 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/analytics_service.dart';
+import 'local_prefs.dart';
 
 /// Local-first kimlik & rıza deposu (hesapsız çalışma için).
 ///
@@ -13,7 +14,6 @@ import '../core/analytics_service.dart';
 /// rıza + 18+ yaş kapısı hesaptan bağımsız, yerelde alınır. Premium/aile/topluluk
 /// isteyince gerçek hesap açılır; o anda yerel rıza sunucuya da yazılır.
 class LocalSession {
-  static const _storage = FlutterSecureStorage();
   static const _kUserId = 'local_user_id';
   static const _kConsent = 'local_consent_v1'; // KVKK + Şartlar + 18+ yerel onayı
   static const _kAnalyticsConsent = 'local_analytics_consent_v1'; // opsiyonel kullanım analitiği rızası (varsayılan KAPALI)
@@ -34,28 +34,48 @@ class LocalSession {
 
   /// main()'de bir kez çağrılır; localUserId + rıza durumunu belleğe yükler,
   /// localUserId yoksa üretip kalıcılaştırır.
+  ///
+  /// Depo: SharedPreferences (eskiden Keychain). Soğuk başlatmada Keychain takılıp
+  /// uygulamayı koyu splash'te donduruyordu → taşındı. Eski Keychain değerleri
+  /// [LocalPrefs.migrateString] ile tek seferlik göç eder. KRİTİK: localUserId
+  /// Keychain'den OKUNAMAZSA (hata/timeout) YENİ UUID ÜRETİLMEZ — mevcut kullanıcının
+  /// yerel verisi yetim kalmasın; bir sonraki açılış göçü yeniden dener.
   static Future<void> ensureLoaded() async {
     try {
-      var id = await _storage.read(key: _kUserId);
-      if (id == null || id.isEmpty) {
-        id = const Uuid().v4();
-        await _storage.write(key: _kUserId, value: id);
+      final prefs = await SharedPreferences.getInstance();
+      final (existingId, idFailed) =
+          await LocalPrefs.migrateString(prefs, _kUserId);
+      if (existingId != null && existingId.isNotEmpty) {
+        _userId = existingId;
+      } else if (!idFailed) {
+        // Keychain temiz okundu + değer gerçekten yok → yeni kullanıcı → üret+kalıcılaştır.
+        final id = const Uuid().v4();
+        await prefs.setString(_kUserId, id);
+        _userId = id;
+      } else {
+        // Keychain okunamadı → ÜRETME (yetim veri riski). Bu açılış geçici boş.
+        _userId = null;
       }
-      _userId = id;
-      _consent = (await _storage.read(key: _kConsent)) == '1';
-      _analyticsConsent = (await _storage.read(key: _kAnalyticsConsent)) == '1';
-      _name = (await _storage.read(key: _kName)) ?? '';
-      final csv = await _storage.read(key: _kImportedAccts) ?? '';
-      _importedAccounts = csv.split(',').where((s) => s.isNotEmpty).toSet();
-      final psv = await _storage.read(key: _kPremiumSynced) ?? '';
-      _premiumSyncedAccounts = psv.split(',').where((s) => s.isNotEmpty).toSet();
-      final ph = await _storage.read(key: _kPurgeHandled) ?? '';
+      final (consent, _) = await LocalPrefs.migrateString(prefs, _kConsent);
+      _consent = consent == '1';
+      final (ac, _) = await LocalPrefs.migrateString(prefs, _kAnalyticsConsent);
+      _analyticsConsent = ac == '1';
+      final (nm, _) = await LocalPrefs.migrateString(prefs, _kName);
+      _name = nm ?? '';
+      final (csv, _) = await LocalPrefs.migrateString(prefs, _kImportedAccts);
+      _importedAccounts =
+          (csv ?? '').split(',').where((s) => s.isNotEmpty).toSet();
+      final (psv, _) = await LocalPrefs.migrateString(prefs, _kPremiumSynced);
+      _premiumSyncedAccounts =
+          (psv ?? '').split(',').where((s) => s.isNotEmpty).toSet();
+      final (ph, _) = await LocalPrefs.migrateString(prefs, _kPurgeHandled);
       _purgeHandled = {
-        for (final p in ph.split(';').where((s) => s.contains('=')))
+        for (final p in (ph ?? '').split(';').where((s) => s.contains('=')))
           p.substring(0, p.indexOf('=')): p.substring(p.indexOf('=') + 1)
       };
     } catch (_) {
-      _userId ??= const Uuid().v4();
+      // prefs bile açılamadı (çok nadir): localUserId'yi UYDURMA (yetim riski),
+      // rıza/ad güvenli varsayılanlar. Sonraki açılış yeniden dener.
       _consent ??= false;
       _analyticsConsent ??= false;
       _name ??= '';
@@ -89,7 +109,8 @@ class LocalSession {
   static Future<void> acceptConsent() async {
     _consent = true;
     try {
-      await _storage.write(key: _kConsent, value: '1');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kConsent, '1');
     } catch (_) {}
   }
 
@@ -97,22 +118,24 @@ class LocalSession {
   static Future<void> setAnalyticsConsent(bool granted) async {
     _analyticsConsent = granted;
     try {
-      await _storage.write(key: _kAnalyticsConsent, value: granted ? '1' : '0');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kAnalyticsConsent, granted ? '1' : '0');
     } catch (_) {}
   }
 
   static Future<void> setName(String name) async {
     _name = name.trim();
     try {
-      await _storage.write(key: _kName, value: _name);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kName, _name ?? '');
     } catch (_) {}
   }
 
   static Future<void> markImportedForAccount(String accountId) async {
     _importedAccounts.add(accountId);
     try {
-      await _storage.write(
-          key: _kImportedAccts, value: _importedAccounts.join(','));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kImportedAccts, _importedAccounts.join(','));
     } catch (_) {}
   }
 
@@ -120,8 +143,8 @@ class LocalSession {
   static Future<void> markPremiumSyncedForAccount(String accountId) async {
     _premiumSyncedAccounts.add(accountId);
     try {
-      await _storage.write(
-          key: _kPremiumSynced, value: _premiumSyncedAccounts.join(','));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPremiumSynced, _premiumSyncedAccounts.join(','));
     } catch (_) {}
   }
 
@@ -130,8 +153,8 @@ class LocalSession {
   static Future<void> clearPremiumSyncedForAccount(String accountId) async {
     if (!_premiumSyncedAccounts.remove(accountId)) return;
     try {
-      await _storage.write(
-          key: _kPremiumSynced, value: _premiumSyncedAccounts.join(','));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPremiumSynced, _premiumSyncedAccounts.join(','));
     } catch (_) {}
   }
 
@@ -146,11 +169,10 @@ class LocalSession {
   static Future<void> setPurgeHandled(String accountId, DateTime stamp) async {
     _purgeHandled[accountId] = stamp.toUtc().toIso8601String();
     try {
-      await _storage.write(
-          key: _kPurgeHandled,
-          value: _purgeHandled.entries
-              .map((e) => '${e.key}=${e.value}')
-              .join(';'));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _kPurgeHandled,
+          _purgeHandled.entries.map((e) => '${e.key}=${e.value}').join(';'));
     } catch (_) {}
   }
 
@@ -162,10 +184,11 @@ class LocalSession {
     _premiumSyncedAccounts = {};
     _purgeHandled = {};
     try {
-      await _storage.delete(key: _kName);
-      await _storage.delete(key: _kImportedAccts);
-      await _storage.delete(key: _kPremiumSynced);
-      await _storage.delete(key: _kPurgeHandled);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kName);
+      await prefs.remove(_kImportedAccts);
+      await prefs.remove(_kPremiumSynced);
+      await prefs.remove(_kPurgeHandled);
     } catch (_) {}
   }
 }

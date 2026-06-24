@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'local_prefs.dart';
 
 /// Son seçilen tema modunu kalıcı saklar — açılışta ANINDA okunur, böylece splash
 /// ve ilk frame doğru temada gelir (sistem koyu olsa bile 'Açık' seçiliyse açık).
 /// API/sunucu değeri gelince güncellenir. Değerler: light | dark | auto.
+///
+/// Depo: SharedPreferences (iOS NSUserDefaults). Eskiden Keychain'deydi; soğuk
+/// başlatmada Keychain takılıp koyu splash'te donmaya yol açabiliyordu → taşındı.
 class ThemeCache {
-  static const _storage = FlutterSecureStorage();
   static const _kTheme = 'app_theme_mode';
 
   Future<ThemeMode> read() async {
     try {
-      return _fromStr(await _storage.read(key: _kTheme));
+      final prefs = await SharedPreferences.getInstance();
+      final (v, _) = await LocalPrefs.migrateString(prefs, _kTheme);
+      return _fromStr(v);
     } catch (_) {
       return ThemeMode.system;
     }
@@ -18,13 +24,15 @@ class ThemeCache {
 
   Future<void> write(ThemeMode mode) async {
     try {
-      await _storage.write(key: _kTheme, value: _toStr(mode));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kTheme, _toStr(mode));
     } catch (_) {}
   }
 
   Future<void> clear() async {
     try {
-      await _storage.delete(key: _kTheme);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kTheme);
     } catch (_) {}
   }
 

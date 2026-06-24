@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:adena_baby/data/locale_cache.dart';
 import 'package:adena_baby/data/theme_cache.dart';
 import 'package:adena_baby/data/subscription_cache.dart';
@@ -49,9 +51,15 @@ void _installSecureStorageMock() {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // ThemeCache/SubscriptionCache artık SharedPreferences (NSUserDefaults) kullanır;
+  // _store ise eski Keychain'i temsil eder → göç (Keychain→prefs) testi de buradan.
+  Future<String?> pref(String key) async =>
+      (await SharedPreferences.getInstance()).getString(key);
+
   setUp(() {
     _store.clear();
     _installSecureStorageMock();
+    SharedPreferences.setMockInitialValues({});
   });
 
   // ---------------------------------------------------------------------------
@@ -104,24 +112,24 @@ void main() {
 
     test('light round-trip (serialized as "light")', () async {
       await cache.write(ThemeMode.light);
-      expect(_store['app_theme_mode'], 'light');
+      expect(await pref('app_theme_mode'), 'light');
       expect(await cache.read(), ThemeMode.light);
     });
 
     test('dark round-trip (serialized as "dark")', () async {
       await cache.write(ThemeMode.dark);
-      expect(_store['app_theme_mode'], 'dark');
+      expect(await pref('app_theme_mode'), 'dark');
       expect(await cache.read(), ThemeMode.dark);
     });
 
     test('system serialized as "auto" and reads back as system', () async {
       await cache.write(ThemeMode.system);
-      expect(_store['app_theme_mode'], 'auto');
+      expect(await pref('app_theme_mode'), 'auto');
       expect(await cache.read(), ThemeMode.system);
     });
 
     test('unknown stored value → system (default branch)', () async {
-      _store['app_theme_mode'] = 'garbage';
+      SharedPreferences.setMockInitialValues({'app_theme_mode': 'garbage'});
       expect(await cache.read(), ThemeMode.system);
     });
 
@@ -129,7 +137,14 @@ void main() {
       await cache.write(ThemeMode.dark);
       await cache.clear();
       expect(await cache.read(), ThemeMode.system);
-      expect(_store.containsKey('app_theme_mode'), isFalse);
+      expect(await pref('app_theme_mode'), isNull);
+    });
+
+    test('eski Keychain değeri prefs\'e göç eder ve Keychain temizlenir', () async {
+      _store['app_theme_mode'] = 'dark'; // eski sürüm Keychain'e yazmıştı
+      expect(await cache.read(), ThemeMode.dark); // göç + okuma
+      expect(await pref('app_theme_mode'), 'dark'); // prefs'e taşındı
+      expect(_store.containsKey('app_theme_mode'), isFalse); // Keychain temizlendi
     });
   });
 
@@ -143,18 +158,18 @@ void main() {
 
     test('write true → "1" → read true', () async {
       await cache.write(true);
-      expect(_store['sub_is_premium'], '1');
+      expect(await pref('sub_is_premium'), '1');
       expect(await cache.read(), isTrue);
     });
 
     test('write false → "0" → read false', () async {
       await cache.write(false);
-      expect(_store['sub_is_premium'], '0');
+      expect(await pref('sub_is_premium'), '0');
       expect(await cache.read(), isFalse);
     });
 
     test('only exactly "1" reads as true', () async {
-      _store['sub_is_premium'] = 'true';
+      SharedPreferences.setMockInitialValues({'sub_is_premium': 'true'});
       expect(await cache.read(), isFalse);
     });
 
@@ -162,6 +177,13 @@ void main() {
       await cache.write(true);
       await cache.clear();
       expect(await cache.read(), isFalse);
+      expect(await pref('sub_is_premium'), isNull);
+    });
+
+    test('eski Keychain "1" prefs\'e göç eder', () async {
+      _store['sub_is_premium'] = '1'; // eski sürüm Keychain
+      expect(await cache.read(), isTrue);
+      expect(await pref('sub_is_premium'), '1');
       expect(_store.containsKey('sub_is_premium'), isFalse);
     });
   });

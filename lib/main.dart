@@ -45,18 +45,53 @@ import 'features/settings/migration_overlay.dart';
 import 'features/settings/theme_controller.dart';
 import 'router.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+// Açılış izleme durumu — watchdog + telemetri için. UI ilk frame'e ulaşınca
+// _uiStarted=true; _startupStep o an çalışan adımı tutar (donmada hangi adımda
+// kalındığı). Uzun-uyku sonrası soğuk başlatma donmasının teşhisi + kanıtı.
+String _startupStep = 'start';
+bool _uiStarted = false;
+
+/// Açılış adımını timeout'la sarar: süre aşılır/patlarsa fallback döner ve
+/// Crashlytics'e non-fatal olarak düşer. runApp öncesi TÜM bekleyişler bundan
+/// geçer — Firebase init ve Keychain (flutter_secure_storage) okumaları uzun-uyku
+/// sonrası soğuk başlatmada süresiz takılıp UI'ı koyu splash'te donduruyordu;
+/// timeout bunu mekanik olarak imkânsız kılar, telemetri de nedenini söyler.
+Future<T> _step<T>(
+  String name,
+  Future<T> Function() body,
+  T fallback, {
+  Duration timeout = const Duration(seconds: 3),
+}) async {
+  _startupStep = name;
+  final sw = Stopwatch()..start();
   try {
-    await initializeDateFormatting(); // tüm locale tarih biçimleri (tr + en)
+    final r = await body().timeout(timeout);
+    if (sw.elapsedMilliseconds > 1500) {
+      _reportStartup('startup_slow', name, sw.elapsedMilliseconds);
+    }
+    return r;
+  } catch (e) {
+    _reportStartup('startup_timeout', '$name: $e', sw.elapsedMilliseconds);
+    return fallback;
+  }
+}
+
+/// Açılış telemetrisi → Crashlytics non-fatal (Firebase hazır değilse sessizce
+/// yutulur; konsola her durumda basılır).
+void _reportStartup(String kind, String detail, int ms) {
+  debugPrint('[startup] $kind — $detail (${ms}ms)');
+  try {
+    FirebaseCrashlytics.instance.recordError('$kind: $detail (${ms}ms)', null,
+        reason: 'cold-start', fatal: false);
   } catch (_) {}
-  // Firebase + push arka plan işleyicisi (config yoksa sessizce atlanır).
+}
+
+/// Firebase başarılı init sonrası: push arka plan işleyicisi + Crashlytics kancaları.
+void _setupFirebaseSideEffects() {
   try {
-    await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     // Crashlytics: debug'da topla(ma) — yalnız release'te çökme/raporları yolla.
-    await FirebaseCrashlytics.instance
-        .setCrashlyticsCollectionEnabled(!kDebugMode);
+    FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);
     // Flutter framework hataları → Crashlytics (önce konsola da bas).
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
     // Framework dışı (async/platform) yakalanmamış hatalar → Crashlytics.
@@ -65,6 +100,56 @@ Future<void> main() async {
       return true;
     };
   } catch (_) {}
+}
+
+/// initializeApp ilk denemede timeout ettiyse (UI zaten açıldı): Firebase'i sessizce
+/// yeniden dene ki push/Crashlytics çalışsın + bu gecikme kök-neden kanıtı olarak düşsün.
+Future<void> _retryFirebaseInBackground() async {
+  for (var i = 0; i < 3; i++) {
+    await Future.delayed(const Duration(seconds: 2));
+    try {
+      await Firebase.initializeApp();
+      _setupFirebaseSideEffects();
+      _reportStartup(
+          'firebase_init_deferred', 'recovered after timeout (try ${i + 1})', 0);
+      return;
+    } catch (_) {}
+  }
+}
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Watchdog: UI 12 sn'de ilk frame'e ulaşmazsa hangi adımda kalındığını Crashlytics'e
+  // düşür. Timeout'lu adımlar donmayı zaten ÖNLER; bu çok-adımlı yavaşlığa karşı backstop.
+  Timer(const Duration(seconds: 12), () {
+    if (_uiStarted) return;
+    debugPrint('[startup] WATCHDOG: ilk frame yok, son adım: $_startupStep');
+    try {
+      FirebaseCrashlytics.instance
+          .setCustomKey('startup_last_step', _startupStep);
+      FirebaseCrashlytics.instance.recordError(
+          'startup_watchdog_stall after "$_startupStep"', null,
+          reason: 'cold-start-hang', fatal: false);
+    } catch (_) {}
+  });
+
+  await _step<Object?>('intl', () async {
+    await initializeDateFormatting(); // tüm locale tarih biçimleri (tr + en)
+    return null;
+  }, null);
+
+  // Firebase init uzun-uyku sonrası soğuk başlatmada süresiz takılabiliyordu
+  // (koyu splash donması) → 5 sn timeout; başarısızsa UI'ı bekletme, arka planda yeniden dene.
+  final firebaseReady = await _step<bool>('firebase', () async {
+    await Firebase.initializeApp();
+    return true;
+  }, false, timeout: const Duration(seconds: 5));
+  if (firebaseReady) {
+    _setupFirebaseSideEffects();
+  } else {
+    unawaited(_retryFirebaseInBackground());
+  }
+
   // Bildirim/timezone init'i açılışı ENGELLEMESİN — iOS'ta hata/izin sorunu
   // tüm uygulamayı beyaz ekranda bırakmasın. Arka planda kurulur; planlama
   // çağrıları zaten gerekirse init()'i bekler.
@@ -81,28 +166,34 @@ Future<void> main() async {
   unawaited(AnalyticsService.instance.init());
   // Beslenme formu son-değer cache'ini belleğe al (form senkron okusun).
   unawaited(FeedInputCache.ensureLoaded());
-  // Local-first kimlik & rıza: localUserId + yerel rıza durumunu belleğe yükle
-  // (hesapsız çalışma; router/repository senkron okur). Açılışı bloklamamalı ama
-  // router rızayı ilk frame'de doğru görsün diye await edilir (çok hızlı).
-  // Local-first kimlik/rıza + bildirim slot haritası — bağımsız, PARALEL yükle
-  // (açılış bloke süresini kısalt). Router rızayı; Baby.notifSlot (sync) benzersiz
-  // slotu ilk frame'de okuyabilsin diye ikisi de runApp öncesi tamamlanır.
-  await Future.wait([
-    LocalSession.ensureLoaded(),
-    SlotRegistry.instance.load(),
-  ]);
+  // Local-first kimlik/rıza + bildirim slot haritası — bağımsız, PARALEL yükle.
+  // Router rızayı; Baby.notifSlot (sync) benzersiz slotu ilk frame'de okuyabilsin
+  // diye ikisi de runApp öncesi tamamlanır (Keychain takılırsa timeout kurtarır).
+  await _step<Object?>('session+slots', () async {
+    await Future.wait([
+      LocalSession.ensureLoaded(),
+      SlotRegistry.instance.load(),
+    ]);
+    return null;
+  }, null, timeout: const Duration(seconds: 5));
   // İlk açılışta (dil cache yokken) cihaz dili TR değilse çeviri bundle'ını
-  // splash öncesi getir → İLK ekran (rıza/welcome) doğru dilde açılsın, TR flaş'ı
-  // olmasın. Cache varsa anında uygulanır (ağ beklenmez). En fazla 2 sn bekler;
-  // ağ yok/timeout → router'ın I18n dinleyicisi bundle gelince yakalar.
-  await _preloadLocaleBundle();
+  // splash öncesi getir → İLK ekran doğru dilde açılsın. Cache varsa anında.
+  await _step<Object?>('locale-bundle', () async {
+    await _preloadLocaleBundle();
+    return null;
+  }, null);
   // Debug "Geliştirici → Ortam" seçimini uygula (ApiClient kurulmadan ÖNCE).
   // Release'te EnvCache hep boş kalır (UI gösterilmez) → derleme varsayılanı.
-  AppConfig.setRuntimeApiBaseUrl(await EnvCache().read());
+  AppConfig.setRuntimeApiBaseUrl(
+      await _step<String?>('env-cache', () => EnvCache().read(), null));
   // Son bilinen premium durumunu cache'ten oku → açılıştan itibaren flaş'sız.
-  final cachedPremium = await SubscriptionCache().read();
+  final cachedPremium =
+      await _step<bool>('premium-cache', () => SubscriptionCache().read(), false);
   // Son seçilen temayı cache'ten oku → splash/ilk frame doğru temada açılsın.
-  final cachedTheme = await ThemeCache().read();
+  final cachedTheme = await _step<ThemeMode>(
+      'theme-cache', () => ThemeCache().read(), ThemeMode.system);
+  _startupStep = 'runApp';
+  _uiStarted = true;
   runApp(RestartWidget(
     child: ProviderScope(
       overrides: [
