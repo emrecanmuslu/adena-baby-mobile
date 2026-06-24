@@ -44,7 +44,7 @@ struct FeedProvider: TimelineProvider {
             return
         }
         // Saniye GÖSTERMEDEN dakikanın gerçek zamanlı düşmesi için, her biri kendi
-        // anına (date) sahip ~60 dakikalık entry üret. Metin entry.date'e göre
+        // anına (date) sahip dakika-dakika entry üret. Metin entry.date'e göre
         // hesaplandığından (countdownWords) widget tam dakika sınırında günceller —
         // sistemi uyandırmadan, refresh bütçesi harcamadan.
         let now = Date()
@@ -58,7 +58,13 @@ struct FeedProvider: TimelineProvider {
             : 60 - (-secs).truncatingRemainder(dividingBy: 60)
         if step <= 0 { step += 60 }
         var t = now.addingTimeInterval(step)
-        for _ in 0..<60 {
+        // DONMA FIX: eskiden sabit 60 entry (1 saat) üretilirdi → 2-3 saatlik
+        // aralıkta 1. saatten sonra geri sayım DONUYORDU. Artık beslenmeye kadar
+        // (+30 dk gecikme payı) dakika-dakika entry üret; 6 saatle (360) sınırla
+        // (WidgetKit + reload bütçesi). Böylece widget tüm aralıkta canlı sayar.
+        let minsToFeed = secs > 0 ? Int(secs / 60) : 0
+        let count = min(max(minsToFeed + 30, 60), 360)
+        for _ in 0..<count {
             entries.append(FeedEntry(date: t, babyName: base.babyName, nextFeed: feed, en: base.en))
             t = t.addingTimeInterval(60)
         }

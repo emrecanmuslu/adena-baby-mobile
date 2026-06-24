@@ -240,6 +240,22 @@ class _BabyNotifSync extends ConsumerWidget {
         quiet: quiet,
       ),
     );
+    // iOS force-quit'te NSE'nin bildirimi yeniden planlayabilmesi için aynı
+    // parametreleri (locale'e çözülmüş metinlerle) App Group'a da aynala.
+    WidgetService.publishFeedReminderConfig(
+      babyId: baby.id,
+      enabled: cfg.enabled,
+      intervalMin: cfg.intervalMin,
+      preMin: cfg.preMin,
+      slot: slot,
+      sound: cfg.soundEnabled,
+      baseType: cfg.baseType,
+      quiet: quiet,
+      mainTitle: tr('Beslenme zamanı'),
+      mainBody: tr('Tahmini beslenme vakti geldi 🍼'),
+      preTitle: trp('Beslenmeye {n} dk kaldı', {'n': cfg.preMin}),
+      preBody: trp('Yaklaşık {n} dk sonra beslenme zamanı', {'n': cfg.preMin}),
+    );
     if (!cfg.enabled) {
       NotificationService.instance.scheduleFeedReminder(
           enabled: false, nextTime: null, preMin: 0, slot: slot, babyName: baby.name);

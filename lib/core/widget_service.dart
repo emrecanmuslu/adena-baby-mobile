@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:home_widget/home_widget.dart';
 
+import '../models/quiet_hours.dart';
 import 'i18n.dart';
 
 /// Ana ekran (home screen) widget'ı köprüsü — "sonraki beslenme" geri sayımı.
@@ -73,6 +74,50 @@ class WidgetService {
       }
       await HomeWidget.saveWidgetData<String>('locale', I18n.instance.locale);
       await _refresh();
+    } catch (_) {}
+  }
+
+  /// iOS Notification Service Extension'ın (uygulama FORCE-QUIT iken) beslenme
+  /// hatırlatıcısını yeniden planlayabilmesi için gereken config'i App Group'a
+  /// aynalar. Sorun: hatırlatıcı parametreleri Secure Storage'daki
+  /// FeedReminderCache'tedir; NSE (ayrı extension) onu okuyamaz. Bu yüzden NSE'nin
+  /// okuyabileceği App Group'a da yazarız. Android'de gerekmez (Dart arka plan
+  /// handler'ı zaten yeniden planlar) ama yazması zararsız/idempotent.
+  ///
+  /// Locale-bağımlı başlık/gövde metinleri burada (ön planda, doğru dilde) çözülüp
+  /// yazılır; NSE yalnız okuyup bebek adını başa ekler.
+  static Future<void> publishFeedReminderConfig({
+    required String babyId,
+    required bool enabled,
+    required int intervalMin,
+    required int preMin,
+    required int slot,
+    required bool sound,
+    required String baseType,
+    required QuietHours quiet,
+    required String mainTitle,
+    required String mainBody,
+    required String preTitle,
+    required String preBody,
+  }) async {
+    try {
+      await _ensureInit();
+      await HomeWidget.saveWidgetData<String>(
+          'fr_enabled_$babyId', enabled ? '1' : '0');
+      await HomeWidget.saveWidgetData<int>('feed_interval_$babyId', intervalMin);
+      await HomeWidget.saveWidgetData<int>('fr_premin_$babyId', preMin);
+      await HomeWidget.saveWidgetData<int>('fr_slot_$babyId', slot);
+      await HomeWidget.saveWidgetData<String>('fr_sound_$babyId', sound ? '1' : '0');
+      await HomeWidget.saveWidgetData<String>('fr_base_$babyId', baseType);
+      // Sessiz saat: "1|startMin|endMin" veya "0".
+      await HomeWidget.saveWidgetData<String>('fr_quiet_$babyId',
+          quiet.enabled ? '1|${quiet.startMin}|${quiet.endMin}' : '0');
+      // Ön-hatırlatma metinleri preMin'e bağlı → bebek-başına çözülmüş yazılır.
+      await HomeWidget.saveWidgetData<String>('fr_pre_title_$babyId', preTitle);
+      await HomeWidget.saveWidgetData<String>('fr_pre_body_$babyId', preBody);
+      // Ana uyarı metni bebekten bağımsız (yalnız dile bağlı) → ortak anahtar.
+      await HomeWidget.saveWidgetData<String>('fr_main_title', mainTitle);
+      await HomeWidget.saveWidgetData<String>('fr_main_body', mainBody);
     } catch (_) {}
   }
 
