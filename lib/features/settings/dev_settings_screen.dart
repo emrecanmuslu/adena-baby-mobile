@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_widgets.dart';
+import '../../core/api_error.dart';
 import '../../core/config.dart';
 import '../../core/providers.dart';
 import '../../core/restart_widget.dart';
 import '../../core/theme.dart';
 import '../../data/env_cache.dart';
+import '../../data/subscription_repository.dart';
 import '../auth/auth_controller.dart';
 import '../records/record_controller.dart';
 
@@ -53,9 +55,48 @@ class DevSettingsScreen extends ConsumerWidget {
             'açılışlar arasında korunur.',
             style: TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
           ),
+
+          const SizedBox(height: 20),
+          adSec('💎 Premium (geliştirme)'),
+          AdSaveButton(
+            label: 'Premium aç (sahte)',
+            color: AppColors.coral,
+            ghost: true,
+            onTap: () => _setPremium(context, ref, true),
+          ),
+          const SizedBox(height: 8),
+          AdSaveButton(
+            label: 'Premium kapat (sahte)',
+            color: AppColors.muted,
+            ghost: true,
+            onTap: () => _setPremium(context, ref, false),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Yalnız test amaçlı: backend dev-activate ile premium aç/kapa '
+            '(prod backend 403 döner). Gerçek satın alma premium sayfasındadır.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
+  }
+
+  /// GELİŞTİRME: backend dev-activate ile premium'u test için aç/kapa. Gerçek
+  /// mağaza satın alması emülatörde çalışmadığından test sürecinde kullanılır.
+  /// Prod backend bu ucu 403 ile reddeder.
+  Future<void> _setPremium(BuildContext context, WidgetRef ref, bool active) async {
+    try {
+      await ref
+          .read(subscriptionRepositoryProvider)
+          .devActivate(active: active);
+      ref.invalidate(subscriptionProvider);
+      if (context.mounted) {
+        showAdToast(context, active ? 'Premium açıldı 🎉' : 'Premium kapatıldı');
+      }
+    } catch (e) {
+      if (context.mounted) showAdError(context, apiErrorText(e));
+    }
   }
 
   /// API ortamını (Yerel/Prod) değiştirir. Değiştirince mevcut ortamda çıkış

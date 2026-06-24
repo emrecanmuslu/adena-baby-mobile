@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,9 +26,9 @@ import '../../data/subscription_repository.dart';
 
 /// Premium / paywall (design ScrPremium): özellik listesi + planlar + CTA + kod.
 ///
-/// İki mod: RevenueCat yapılandırılmışsa gerçek satın alma (offerings paketleri);
-/// değilse GELİŞTİRME modu — "satın al" backend dev-activate ile sahte premium
-/// verir (token gelene kadar). Her iki modda tek-kullanımlık "kod" da çalışır.
+/// Satın alma RevenueCat üzerinden gerçek mağaza (App Store / Google Play) ile
+/// yapılır; offerings paketleri gösterilir. Tek-kullanımlık "kod" da çalışır.
+/// (Geliştirme/test için sahte premium aç-kapa artık Geliştirici sayfasındadır.)
 class PremiumScreen extends ConsumerStatefulWidget {
   const PremiumScreen({super.key});
 
@@ -244,17 +243,6 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
             else
               _InfoCard(tr('Bu premium bir kod/deneme ile verildi; süresi dolunca '
                   'otomatik olarak ücretsiz katmana döner.')),
-            // GELİŞTİRME: yalnız debug build'inde premium'u test için kapatma
-            // (RC yapılandırılmış olsa da). Release'de asla görünmez.
-            if (kDebugMode) ...[
-              const SizedBox(height: 8),
-              AdSaveButton(
-                label: _saving ? tr('İşleniyor…') : tr('Premium\'u kapat (geliştirme)'),
-                color: AppColors.muted,
-                ghost: true,
-                onTap: _saving ? () {} : _devDeactivate,
-              ),
-            ],
           ] else ...[
             if (sub?.isLapsed ?? false) ...[
               const SizedBox(height: 12),
@@ -389,34 +377,12 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                   ),
               ],
             ),
-            if (!_rc) ...[
-              const SizedBox(height: 4),
-              Center(
-                child: Text(
-                  tr('Geliştirme modu · satın alma sahte (mağaza bağlanınca gerçek olur)'),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted),
-                ),
-              ),
-            ],
             const SizedBox(height: 6),
             Center(
               child: Text(tr('İstediğin zaman iptal et · baskı yok 💛'),
                   style: TextStyle(
                       fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
             ),
-            // GELİŞTİRME: emülatörde gerçek satın alma çalışmadığından debug'da
-            // sahte premium aç (release'de görünmez).
-            if (kDebugMode) ...[
-              const SizedBox(height: 8),
-              AdSaveButton(
-                label: _saving ? tr('İşleniyor…') : tr('Premium aç (geliştirme)'),
-                color: AppColors.muted,
-                ghost: true,
-                onTap: _saving ? () {} : _devActivate,
-              ),
-            ],
           ],
         ],
       ),
@@ -434,24 +400,31 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
 
   Future<void> _subscribe() async {
     if (!_ensureLoggedIn()) return;
+    // Gerçek satın alma için RevenueCat + seçili plana ait mağaza paketi şart.
+    // Paket gelmediyse (offerings yüklenmedi / o plan mağazada tanımsız) satın
+    // almayı başlatmadan kullanıcıyı bilgilendir.
+    final pkg = _packageFor(_plan);
+    if (!_rc || pkg == null) {
+      showAdError(context,
+          tr('Satın alma şu anda kullanılamıyor. Lütfen biraz sonra tekrar dene.'));
+      return;
+    }
     setState(() => _saving = true);
     try {
-      final pkg = _packageFor(_plan);
-      if (_rc && pkg != null) {
-        final ok = await RevenueCatService.instance.purchase(pkg);
-        if (ok) {
-          unawaited(AnalyticsService.instance
-              .log('purchase_completed', {'plan': _plan}));
-          await ref.read(subscriptionRepositoryProvider).refresh();
+      final ok = await RevenueCatService.instance.purchase(pkg);
+      if (ok) {
+        unawaited(AnalyticsService.instance.log('purchase_completed', {'plan': _plan}));
+        await ref.read(subscriptionRepositoryProvider).refresh();
+        ref.invalidate(subscriptionProvider);
+        if (mounted) {
+          showAdToast(context, tr('Premium etkinleştirildi 🎉'));
+          Navigator.maybePop(context);
         }
-      } else {
-        // Geliştirme modu — backend dev-activate ile sahte premium.
-        await ref.read(subscriptionRepositoryProvider).devActivate(plan: _plan);
-      }
-      ref.invalidate(subscriptionProvider);
-      if (mounted) {
-        showAdToast(context, tr('Premium etkinleştirildi 🎉'));
-        Navigator.maybePop(context);
+      } else if (mounted) {
+        // Satın alma tamamlandı ama entitlement doğrulanamadı → yine de bilgilendir.
+        setState(() => _saving = false);
+        showAdError(context, tr('Satın alma doğrulanamadı. Satın alımları geri '
+            'yüklemeyi dene veya destekle iletişime geç.'));
       }
     } on PlatformException catch (e) {
       // Kullanıcı satın almayı iptal ettiyse hata gösterme.
@@ -495,43 +468,6 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
-    }
-  }
-
-  /// GELİŞTİRME: backend dev-activate ile sahte premium aç (emülatör testi —
-  /// gerçek mağaza satın alması çalışmadığında). Yalnız debug'da çağrılır.
-  Future<void> _devActivate() async {
-    setState(() => _saving = true);
-    try {
-      await ref.read(subscriptionRepositoryProvider).devActivate(plan: _plan);
-      ref.invalidate(subscriptionProvider);
-      if (mounted) {
-        setState(() => _saving = false);
-        showAdToast(context, tr('Premium etkinleştirildi 🎉'));
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _saving = false);
-        showAdError(context, apiErrorText(e));
-      }
-    }
-  }
-
-  /// GELİŞTİRME: backend dev-activate(active:false) ile premium'u kapat (test).
-  Future<void> _devDeactivate() async {
-    setState(() => _saving = true);
-    try {
-      await ref.read(subscriptionRepositoryProvider).devActivate(active: false);
-      ref.invalidate(subscriptionProvider);
-      if (mounted) {
-        setState(() => _saving = false);
-        showAdToast(context, tr('Premium kapatıldı'));
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _saving = false);
-        showAdError(context, apiErrorText(e));
-      }
     }
   }
 
