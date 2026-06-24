@@ -17,6 +17,7 @@ import 'core/api_client.dart';
 import 'core/background_sync.dart';
 import 'core/i18n.dart';
 import 'core/locale_util.dart';
+import 'core/nse_reporter.dart'; // 🧹 TANI-GEÇİCİ (sorun çözülünce kaldır)
 import 'core/token_storage.dart';
 import 'data/locale_cache.dart';
 import 'core/notification_service.dart';
@@ -309,6 +310,10 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // kaydını yeniden dene (token artık hazırsa /me/devices'a düşer). Güvence.
     if (ref.read(authControllerProvider).asData?.value != null) {
       PushService.instance.registerToken(ref.read(apiClientProvider));
+      // 🧹 TANI-GEÇİCİ — sorun çözülünce bu blok + nse_reporter import'u silinecek.
+      // iOS NSE tanılama izini (App Group) backend'e raporla — prod cihazda /dev
+      // görünmediğinden "NSE koştu mu" Django admin'den (NseReport) izlensin.
+      unawaited(NseReporter.reportIfNew(ref.read(apiClientProvider)));
     }
     // App-Open reklamı: ilk çağrı (cold start) yalnız ön-yükler; sonraki
     // resume'larda limitler uygunsa gösterir (premium muaf). Hiç bebek yokken

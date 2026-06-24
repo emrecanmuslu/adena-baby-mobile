@@ -48,11 +48,19 @@ class NotificationService: UNNotificationServiceExtension {
       ?? defaults.string(forKey: "name_\(babyId)") ?? "Bebek"
     defaults.set(name, forKey: "name_\(babyId)")
 
-    let isActive = defaults.string(forKey: "active_id") == babyId
+    let activeId = defaults.string(forKey: "active_id")
+    let isActive = activeId == babyId
+    // Seçimsiz (aktif/fallback) widget anahtarlarını (baby_name/next_feed_ms/last_feed_ms)
+    // şu durumda da güncelle: aktif bu bebek VEYA active_id hiç yazılmamış/boş
+    // (ör. publishAll henüz koşmadı). Widget active_id boşken fallback'i okur; NSE de
+    // yazmazsa BAYAT kalıyordu — bu, "push dolu geldi ama widget güncellenmedi"nin
+    // başlıca cihaz-tarafı nedeni. Çok-bebekte (active_id dolu, başka bebek) dokunmaz.
+    let writeFallback = isActive || (activeId?.isEmpty ?? true)
+    var computedNext: Int64? = nil
     if let nextMs = nextFeedMs(info, babyId: babyId, defaults: defaults) {
+      computedNext = nextMs
       defaults.set(String(nextMs), forKey: "next_\(babyId)")
-      // Seçimsiz (aktif) widget fallback anahtarları: bu bebek aktifse onu da güncelle.
-      if isActive {
+      if writeFallback {
         defaults.set(name, forKey: "baby_name")
         defaults.set(String(nextMs), forKey: "next_feed_ms")
       }
@@ -61,8 +69,19 @@ class NotificationService: UNNotificationServiceExtension {
     if let ts = info["last_feed_ts"] as? String, let last = parseDate(ts) {
       let lastMs = Int64(last.timeIntervalSince1970 * 1000)
       defaults.set(String(lastMs), forKey: "last_\(babyId)")
-      if isActive { defaults.set(String(lastMs), forKey: "last_feed_ms") }
+      if writeFallback { defaults.set(String(lastMs), forKey: "last_feed_ms") }
     }
+
+    // 🧹 TANI-GEÇİCİ (kaldırılacak) — aşağıdaki 6 nse_* yazımı tanılama izidir.
+    // Sorun çözülünce SİL (writeFallback sertleştirmesi YUKARIDA KALICI, ona dokunma).
+    // NSE TANILAMA İZİ (dev sayfası + NseReport okur): NSE'nin GERÇEKTEN koştuğunu +
+    // active_id'yi ne gördüğünü + fallback yazıp yazmadığını + hesaplanan next'i kanıtlar.
+    defaults.set(ISO8601DateFormatter().string(from: Date()), forKey: "nse_last_ts")
+    defaults.set(babyId, forKey: "nse_last_baby")
+    defaults.set((info["event_id"] as? String) ?? "", forKey: "nse_last_event")
+    defaults.set(activeId ?? "", forKey: "nse_active_seen")
+    defaults.set(writeFallback ? "1" : "0", forKey: "nse_wrote_fallback")
+    defaults.set(computedNext != nil ? String(computedNext!) : "", forKey: "nse_next_ms")
 
     // Cross-process FLUSH: NSE yazıp hemen reload edince widget eski veriyi
     // okuyabiliyordu; synchronize() yazımı diske zorlar → widget güncel okusun.
