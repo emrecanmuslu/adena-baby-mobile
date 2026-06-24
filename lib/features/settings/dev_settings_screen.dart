@@ -8,6 +8,7 @@ import '../../core/restart_widget.dart';
 import '../../core/theme.dart';
 import '../../data/env_cache.dart';
 import '../auth/auth_controller.dart';
+import '../records/record_controller.dart';
 
 /// YALNIZ debug — Geliştirici ayarları sayfası. Şimdilik tek bölüm: API ortamı
 /// (Yerel/Prod) değiştirme. İleride başka geliştirici ayarları buraya eklenir.
@@ -90,6 +91,7 @@ class DevSettingsScreen extends ConsumerWidget {
     AppConfig.setRuntimeApiBaseUrl(url);
     // 4) Yerel veriyi temizle (ortamlar arası karışmasın).
     try {
+      SyncService.wiping = true; // silme sırasında sync re-insert etmesin (yarış)
       await ref.read(databaseProvider).wipeAllData();
     } catch (_) {}
     // 5) Yeniden başlat → ApiClient yeni tabana bağlanır, oturum sıfırlanır.

@@ -170,8 +170,9 @@ void main() {
   group('ActivityNotifCache', () {
     final cache = ActivityNotifCache();
 
-    test('enabled defaults to false; toggle round-trips', () async {
-      expect(await cache.enabled(), isFalse);
+    test('enabled defaults to true; toggle round-trips', () async {
+      // Varsayılan AÇIK: yalnız kullanıcı açıkça kapatınca ('0') kapalı.
+      expect(await cache.enabled(), isTrue);
       await cache.setEnabled(true);
       expect(_store['family_activity_notif_enabled'], '1');
       expect(await cache.enabled(), isTrue);

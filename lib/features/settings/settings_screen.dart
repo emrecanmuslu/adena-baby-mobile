@@ -262,6 +262,7 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+    controller.dispose();
     if (newName == null || newName.isEmpty) return;
     try {
       await ref.read(authControllerProvider.notifier).updateName(newName);

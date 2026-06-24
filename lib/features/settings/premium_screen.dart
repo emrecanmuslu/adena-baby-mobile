@@ -600,9 +600,10 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
     }
   }
 
-  Future<String?> _showRedeemSheet(BuildContext context) {
+  Future<String?> _showRedeemSheet(BuildContext context) async {
     final controller = TextEditingController();
-    return showModalBottomSheet<String>(
+    try {
+      return await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -660,7 +661,10 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
           ],
         ),
       ),
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 }
 

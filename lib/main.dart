@@ -84,13 +84,16 @@ Future<void> main() async {
   // Local-first kimlik & rıza: localUserId + yerel rıza durumunu belleğe yükle
   // (hesapsız çalışma; router/repository senkron okur). Açılışı bloklamamalı ama
   // router rızayı ilk frame'de doğru görsün diye await edilir (çok hızlı).
-  await LocalSession.ensureLoaded();
-  // Bildirim slot haritasını belleğe al → Baby.notifSlot (sync) benzersiz slot
-  // döndürsün (çok-bebekte beslenme/uyku/emzirme bildirim id çakışmasını önler).
-  await SlotRegistry.instance.load();
+  // Local-first kimlik/rıza + bildirim slot haritası — bağımsız, PARALEL yükle
+  // (açılış bloke süresini kısalt). Router rızayı; Baby.notifSlot (sync) benzersiz
+  // slotu ilk frame'de okuyabilsin diye ikisi de runApp öncesi tamamlanır.
+  await Future.wait([
+    LocalSession.ensureLoaded(),
+    SlotRegistry.instance.load(),
+  ]);
   // İlk açılışta (dil cache yokken) cihaz dili TR değilse çeviri bundle'ını
   // splash öncesi getir → İLK ekran (rıza/welcome) doğru dilde açılsın, TR flaş'ı
-  // olmasın. Cache varsa anında uygulanır (ağ beklenmez). En fazla 4 sn bekler;
+  // olmasın. Cache varsa anında uygulanır (ağ beklenmez). En fazla 2 sn bekler;
   // ağ yok/timeout → router'ın I18n dinleyicisi bundle gelince yakalar.
   await _preloadLocaleBundle();
   // Debug "Geliştirici → Ortam" seçimini uygula (ApiClient kurulmadan ÖNCE).
@@ -112,7 +115,7 @@ Future<void> main() async {
 }
 
 /// İlk açılışta çeviri bundle'ını splash öncesi getirir (cache yoksa ve cihaz
-/// dili TR değilse). Cache varsa anında uygular, ağ beklemez. En fazla 4 sn.
+/// dili TR değilse). Cache varsa anında uygular, ağ beklemez. En fazla 2 sn.
 Future<void> _preloadLocaleBundle() async {
   try {
     final cached = await LocaleCache().read();
@@ -125,7 +128,9 @@ Future<void> _preloadLocaleBundle() async {
       return;
     }
     // İlk açılış: bundle'ı getirip uygula (kısa timeout; takılırsa router yakalar).
-    final fresh = await repo.sync(locale).timeout(const Duration(seconds: 4));
+    // 2 sn: zayıf ağda koyu-splash'te uzun donmayı önler; bundle gelince I18n
+    // dinleyicisi mevcut ekranı yine de tazeler.
+    final fresh = await repo.sync(locale).timeout(const Duration(seconds: 2));
     I18n.instance.apply(locale, fresh);
   } catch (_) {
     // ağ yok/timeout → ilk ekran TR fallback; bundle gelince router I18n

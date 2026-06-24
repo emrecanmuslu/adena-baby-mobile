@@ -32,8 +32,20 @@ class WidgetService {
   /// TÜM bebeklerin sonraki-beslenme verisini + bebek listesini yazar (ön plan,
   /// reaktif). [babies] sırası listeyi belirler; [activeId] seçim yapılmamış
   /// widget'ların göstereceği bebek.
+  // build() her rebuild'de publishAll çağırır; içerik değişmediyse native widget
+  // yazımı + refresh'i atla (gereksiz platform-channel/jank). LiveActivityService
+  // ._lastSig deseniyle aynı. Yazım başarısızsa sıfırlanır → bir sonraki tekrar dener.
+  static String? _lastPublishSig;
+
   static Future<void> publishAll(
       List<WidgetBaby> babies, String activeId) async {
+    final sig = [
+      for (final b in babies)
+        '${b.id}|${b.name}|${_ms(b.nextFeed)}|${_ms(b.lastFeed)}',
+      'active=$activeId|loc=${I18n.instance.locale}',
+    ].join(';');
+    if (sig == _lastPublishSig) return;
+    _lastPublishSig = sig;
     try {
       await _ensureInit();
       final list = [for (final b in babies) {'id': b.id, 'name': b.name}];
@@ -52,6 +64,7 @@ class WidgetService {
       await HomeWidget.saveWidgetData<String>('locale', I18n.instance.locale);
       await _refresh();
     } catch (_) {
+      _lastPublishSig = null; // başarısız → sonraki çağrı tekrar denesin
       // Widget eklenmemiş / platform desteklemiyor → yoksay.
     }
   }

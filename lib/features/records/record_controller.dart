@@ -100,6 +100,9 @@ class SyncService with WidgetsBindingObserver {
   Timer? _poll;
   Timer? _debounce; // push tetikli sync'i coalesce et
   bool _running = false; // çakışan eşitleme turlarını önle
+  bool _pending = false; // tur sürerken gelen istek → tur bitince bir kez daha çalış
+  // GDPR "yerel verileri sil" sırasında sync re-insert etmesin (wipe yarışı).
+  static bool wiping = false;
 
   static const _pollInterval = Duration(minutes: 1);
 
@@ -145,9 +148,13 @@ class SyncService with WidgetsBindingObserver {
   /// — periyodik turda kullanılır. Açılış/yazma/bağlantı olaylarında false: tüm
   /// bebekler bir kez senkronlanır (tek kullanıcı verisi de yüklenip çekilsin).
   Future<void> syncAll({bool sharedOnly = false}) async {
+    if (wiping) return; // yerel veri siliniyor → re-insert etme (wipe yarışı)
     // Oturum yoksa hiç senkron yok (saf local-first).
     if (!_ref.read(loggedInProvider)) return;
-    if (_running) return; // önceki tur bitmeden yenisini başlatma
+    if (_running) {
+      _pending = true; // tur sürüyor → isteği yut yerine kuyruğa al (push nudge kaybolmasın)
+      return;
+    }
     _running = true;
     try {
       final babies = _ref.read(babyControllerProvider).asData?.value ?? [];
@@ -176,6 +183,11 @@ class SyncService with WidgetsBindingObserver {
       }
     } finally {
       _running = false;
+    }
+    // Tur sırasında istek geldiyse bir kez daha (tam) çek → kaçan değişiklik kalmasın.
+    if (_pending) {
+      _pending = false;
+      await syncAll(sharedOnly: false);
     }
   }
 

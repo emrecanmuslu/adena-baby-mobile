@@ -74,9 +74,10 @@ Future<void> showAddBabySheet(BuildContext context, WidgetRef ref) {
 }
 
 /// Başka bir ebeveyn/bakıcının paylaştığı davet kodunu girip katılma.
-Future<void> showAcceptInviteDialog(BuildContext context, WidgetRef ref) {
+Future<void> showAcceptInviteDialog(BuildContext context, WidgetRef ref) async {
   final controller = TextEditingController();
-  return showDialog(
+  try {
+    await showDialog(
     context: context,
     builder: (dialogCtx) => AlertDialog(
       title: Text(tr('Davet kodu')),
@@ -113,5 +114,8 @@ Future<void> showAcceptInviteDialog(BuildContext context, WidgetRef ref) {
         ),
       ],
     ),
-  );
+    );
+  } finally {
+    controller.dispose();
+  }
 }

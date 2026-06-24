@@ -396,6 +396,43 @@ void main() {
       expect(row.serverUpdatedAt!.toUtc(), DateTime.utc(2026, 1, 1, 8, 5));
     });
 
+    test('server_changes: yereldeki YENİ dirty düzenlemeyi ESKİ echo ezmez (#3)',
+        () async {
+      // Yerelde gönderilmemiş yeni düzenleme (upsertLocal clientUpdatedAt=now damgalar).
+      await repo.upsertLocal(rec('r1', RecordType.feed, DateTime.utc(2026, 1, 1, 8),
+          data: {'amount_ml': 200}));
+      // Sunucu, ESKİ client_updated_at'li aynı kaydı server_changes'te yansıtır
+      // (echo/başka cihazın eski sürümü). Yerel daha yeni → UYGULANMAMALI.
+      adapter.onPost(
+        '/sync',
+        (server) => server.reply(200, {
+          'applied': [],
+          'conflicts': [],
+          'server_changes': [
+            {
+              'id': 'r1',
+              'baby': babyId,
+              'type': 'feed',
+              'ts': '2026-01-01T08:00:00.000Z',
+              'data': {'amount_ml': 999}, // eski/echo değeri ezmemeli
+              'is_deleted': false,
+              'client_updated_at': '2020-01-01T00:00:00.000Z', // yereldekinden ESKİ
+              'updated_at': '2020-01-01T00:00:00.000Z',
+            }
+          ],
+          'next_cursor': null,
+        }),
+        data: Matchers.any,
+      );
+
+      await repo.sync(babyId);
+
+      final row = await rawRow('r1');
+      // Yerel yeni düzenleme korunur (999 değil 200) + dirty kalır (tekrar gönderilir).
+      expect(jsonDecode(row!.data)['amount_ml'], 200);
+      expect(row.dirty, isTrue);
+    });
+
     test('server_changes: yeni sunucu kayıtları yerele temiz upsert edilir',
         () async {
       // Yerelde hiç dirty yok; sunucudan yeni kayıt gelir.

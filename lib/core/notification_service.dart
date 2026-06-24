@@ -18,20 +18,23 @@ class NotificationService {
   bool _ready = false;
   bool _permissionAsked = false;
 
+  // NOT: kanal adları static final DEĞİL getter — tr() ilk erişimde değerlenirse
+  // (dil cache'i yüklenmeden init çağrılırsa) kanal adı kalıcı yanlış dilde donar
+  // (bkz static-final-tr/tema tuzağı). Getter her erişimde güncel dili okur.
   static const _channelId = 'reminders';
-  static final _channelName = tr('Hatırlatıcılar');
+  static String get _channelName => tr('Hatırlatıcılar');
 
   // Süren sayaç bildirimleri (uyku/emzirme) — ayrı sessiz kanal.
   static const _timerChannelId = 'timers';
-  static final _timerChannelName = tr('Süren sayaçlar');
+  static String get _timerChannelName => tr('Süren sayaçlar');
 
   // Beslenme hatırlatıcısı — sesli/heads-up kanal.
   static const feedChannelId = 'feed_reminders';
-  static final feedChannelName = tr('Beslenme hatırlatıcıları');
+  static String get feedChannelName => tr('Beslenme hatırlatıcıları');
   // Sessiz varyant — ayrı kanal (Android'de ses/önem kanala kilitli; aynı kanalda
   // playSound:false sonradan çalışmaz, bu yüzden iki kanal kullanıyoruz).
   static const feedSilentChannelId = 'feed_reminders_silent';
-  static final feedSilentChannelName = tr('Beslenme hatırlatıcıları (sessiz)');
+  static String get feedSilentChannelName => tr('Beslenme hatırlatıcıları (sessiz)');
 
   // Çok-bebek: bildirim id'leri bebek "slot"una (0..999) göre ayrılır → aynı türde
   // iki bebeğin bildirimi çakışmaz. Taban + slot; türler arası 10000 boşluk.
@@ -49,7 +52,7 @@ class NotificationService {
 
   // Aile etkinlik bildirimleri (başka üye kayıt ekleyince) — ayrı kanal + dönen id.
   static const _activityChannelId = 'family_activity';
-  static final _activityChannelName = tr('Aile etkinliği');
+  static String get _activityChannelName => tr('Aile etkinliği');
   static const _activityGroup = 'adena_family_activity'; // Android bildirim grubu
   static const _activityBaseId = 700000;
   int _activitySeq = 0;

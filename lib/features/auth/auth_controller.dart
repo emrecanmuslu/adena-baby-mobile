@@ -127,6 +127,11 @@ class AuthController extends AsyncNotifier<User?> {
     await NotificationService.instance.cancelAll(); // eski hesabın bildirimleri kalmasın
     await SlotRegistry.instance.clear(); // slot haritası sıfırlansın (yeni hesap 0'dan)
     await _repo.deleteAccount();
+    // logout ile AYNI temizlik: sonraki kullanıcıya premium/RC kimliği/yerel kapsam
+    // sızmasın (deleteAccount eksikti → aynı cihazda yeni free kullanıcıya premium flaşı).
+    await RevenueCatService.instance.logoutUser();
+    await SubscriptionCache().clear();
+    LocalSession.setActiveAccount(null);
     state = const AsyncData(null);
   }
 

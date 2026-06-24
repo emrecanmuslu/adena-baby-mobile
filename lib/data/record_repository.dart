@@ -206,6 +206,9 @@ class RecordRepository {
               'client_updated_at': r.clientUpdatedAt?.toUtc().toIso8601String(),
             })
         .toList();
+    // Gönderilen damgayı id başına sakla → applied temizlemesini buna koşulla
+    // (uçuş sırasında yeniden düzenlenen kayıt dirty kalmalı, kaybolmamalı).
+    final sentStamp = {for (final r in dirtyRows) r.id: r.clientUpdatedAt};
 
     final resp = await _api.dio.post('/sync', data: {
       'baby': babyId,
@@ -220,14 +223,21 @@ class RecordRepository {
     final nextCursor = data['next_cursor'] as String?;
 
     await _db.transaction(() async {
-      // Kabul edilenler: artık temiz.
+      // Kabul edilenler artık temiz — AMA yalnız GÖNDERDİĞİMİZ sürüm hâlâ duruyorsa.
+      // Uçuş sırasında kayıt yeniden düzenlendiyse (clientUpdatedAt değişti) dirty
+      // kalsın → yeni düzenleme bir sonraki sync'te gönderilsin (veri kaybı önlenir).
       for (final id in applied) {
-        await (_db.update(_db.records)..where((t) => t.id.equals(id)))
+        final sent = sentStamp[id];
+        await (_db.update(_db.records)
+              ..where((t) => sent == null
+                  ? t.id.equals(id) & t.clientUpdatedAt.isNull()
+                  : t.id.equals(id) & t.clientUpdatedAt.equals(sent)))
             .write(const RecordsCompanion(dirty: Value(false)));
       }
-      // Çakışmalar: sunucu kazandı → server_record ile üzerine yaz.
+      // Çakışmalar: sunucu OTORİTER kazandı (LWW veya bakıcı-yetki) → her zaman
+      // uygula (force), yereldeki dirty düzenleme daha yeni olsa bile geri al.
       for (final c in conflicts) {
-        await _applyServerRow(c['server_record'] as Map<String, dynamic>);
+        await _applyServerRow(c['server_record'] as Map<String, dynamic>, force: true);
       }
       // Sunucudaki değişiklikler: yerelde upsert (temiz).
       for (final sc in serverChanges) {
@@ -266,12 +276,29 @@ class RecordRepository {
     }
   }
 
-  Future<void> _applyServerRow(Map<String, dynamic> srv) async {
+  /// [force] true (yalnız çakışma yolu): sunucu otoriter kazandı → koşulsuz uygula.
+  /// false (server_changes/pull): yerelde gönderilmemiş (dirty) ve sunucununkinden
+  /// YENİ düzenleme varsa, sunucu satırını (echo/eski kopya) UYGULAMA → yerel
+  /// düzenleme korunur, sonraki sync'te gönderilir. "Uçuşta düzenleme echo ile
+  /// eziliyor" + "silinen kayıt diriliyor" fix'i. Backend LWW ile tutarlı.
+  Future<void> _applyServerRow(Map<String, dynamic> srv, {bool force = false}) async {
     DateTime? parse(dynamic v) =>
         (v is String && v.isNotEmpty) ? DateTime.parse(v) : null;
+    final id = srv['id'] as String;
+    final srvCua = parse(srv['client_updated_at']);
+    if (!force) {
+      final local = await (_db.select(_db.records)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+      if (local != null &&
+          local.dirty &&
+          local.clientUpdatedAt != null &&
+          (srvCua == null || local.clientUpdatedAt!.isAfter(srvCua))) {
+        return;
+      }
+    }
     await _db.into(_db.records).insertOnConflictUpdate(
           RecordsCompanion.insert(
-            id: srv['id'] as String,
+            id: id,
             baby: (srv['baby'] ?? srv['baby_id']) as String,
             type: srv['type'] as String,
             ts: DateTime.parse(srv['ts'] as String),

@@ -36,6 +36,35 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   final title = data['title'] ?? message.notification?.title ?? 'Adena Baby';
   final body = data['body'] ?? message.notification?.body ?? '';
 
+  // sync_nudge (sessiz güncelleme/silme) ve baby_update (profil değişimi) widget/
+  // hatırlatıcı yeniden planlamayı TETİKLEMEMELİ: silinen/güncellenen kayda ait
+  // last_feed_ts yanlış zamana hatırlatıcı kurabilirdi. En BAŞTA ele al ve dön.
+  if (type == 'sync_nudge') {
+    final cancel = (data['cancel'] as String?) ?? '';
+    final babyId = (data['baby_id'] as String?) ?? '';
+    if (cancel.isNotEmpty && babyId.isNotEmpty) {
+      // Slot = SlotRegistry (Baby.notifSlot ile AYNI kaynak). Arka plan isolate →
+      // depodan oku; yoksa bu bebeğe dair zamanlanmış sayaç bildirimi de yok.
+      final slot = await SlotRegistry.instance.slotForStored(babyId);
+      if (slot != null) {
+        if (cancel.contains('sleep')) {
+          await NotificationService.instance
+              .cancelTimer(NotificationService.sleepIdFor(slot));
+        }
+        if (cancel.contains('breast')) {
+          await NotificationService.instance
+              .cancelTimer(NotificationService.breastIdFor(slot));
+        }
+      }
+    }
+    return;
+  }
+  // baby_update = sahip bebek profilini değiştirdi (gebelik→doğdu vb). Sessiz; ön
+  // plan/öne geliş bebek listesini tazeler (main.dart).
+  if (type == 'baby_update') {
+    return;
+  }
+
   // 1) Beslenme olayı: widget + yerel hatırlatıcı güncellemesi. last_feed_ts
   //    süren emzirme dahil her beslenmede gelir; widget_update yalnız TAMAMLANMIŞ
   //    beslenmede (widget süren emzirmeyi "son beslenme" saymaz).
@@ -68,38 +97,6 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   // kapatmış olsa bile çalışmalı (widget güncellemesi gibi koşulsuz).
   if (lastFeed != null) {
     await _rescheduleFeedReminder(data, lastFeed, title);
-  }
-
-  // sync_nudge = sessiz (güncelleme/silme). Bildirim yok; ön planda sync'i main.dart
-  // tetikler. Burada yalnız biten süren-sayaç bildirimini iptal ederiz — alıcı ARKA
-  // PLANDA olsa bile (drift'e yazamasa da) cihazdaki "uyku/emzirme sürüyor"
-  // bildirimi düşsün. Slot = SlotRegistry (Baby.notifSlot ile AYNI kaynak).
-  if (type == 'sync_nudge') {
-    final cancel = (data['cancel'] as String?) ?? '';
-    final babyId = (data['baby_id'] as String?) ?? '';
-    if (cancel.isNotEmpty && babyId.isNotEmpty) {
-      // Slot = SlotRegistry (Baby.notifSlot ile AYNI kaynak). Arka plan isolate →
-      // depodan oku; yoksa bu bebeğe dair zamanlanmış sayaç bildirimi de yok.
-      final slot = await SlotRegistry.instance.slotForStored(babyId);
-      if (slot != null) {
-        if (cancel.contains('sleep')) {
-          await NotificationService.instance
-              .cancelTimer(NotificationService.sleepIdFor(slot));
-        }
-        if (cancel.contains('breast')) {
-          await NotificationService.instance
-              .cancelTimer(NotificationService.breastIdFor(slot));
-        }
-      }
-    }
-    return;
-  }
-
-  // baby_update = sahip bebek profilini değiştirdi (gebelik→doğdu vb). Sessiz: görünür
-  // bildirim yok. Ön planda main.dart bebek listesini tazeler; arka planda ise bir
-  // sonraki öne gelişte (_onForeground → babyController.refresh) status güncellenir.
-  if (type == 'baby_update') {
-    return;
   }
 
   // 2) Bildirimi göster.

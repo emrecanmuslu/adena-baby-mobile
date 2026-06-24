@@ -12,6 +12,7 @@ import '../../core/restart_widget.dart';
 import '../../core/theme.dart';
 import '../../data/auth_repository.dart';
 import '../../data/local_session.dart';
+import '../records/record_controller.dart';
 import '../../data/sync_gate.dart';
 import '../auth/auth_controller.dart';
 import 'data_export.dart';
@@ -305,6 +306,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
     );
     if (confirm != true) return;
     try {
+      SyncService.wiping = true; // silme sırasında sync re-insert etmesin (yarış)
       await ref.read(databaseProvider).wipeAllData();
       await LocalSession.clearLocalProfile();
       if (mounted) RestartWidget.restartApp(context);
