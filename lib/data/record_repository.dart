@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +8,7 @@ import '../core/api_client.dart';
 import '../core/providers.dart';
 import '../models/record.dart';
 import 'local/app_database.dart';
+import 'sync_diag.dart';
 
 /// Kayıtlar için yerel-önce (offline-first) depo.
 /// Yazımlar önce drift'e (dirty=true), `/sync` ile sunucuya delta gönderilir.
@@ -210,19 +212,30 @@ class RecordRepository {
     // (uçuş sırasında yeniden düzenlenen kayıt dirty kalmalı, kaybolmamalı).
     final sentStamp = {for (final r in dirtyRows) r.id: r.clientUpdatedAt};
 
-    final resp = await _api.dio.post('/sync', data: {
-      'baby': babyId,
-      'since_cursor': cursorRow?.cursor?.toUtc().toIso8601String(),
-      'changes': changes,
-    });
-    final data = resp.data as Map<String, dynamic>;
+    final sentCursor = cursorRow?.cursor?.toUtc().toIso8601String(); // TANI-GEÇİCİ
+    final bid = babyId.length > 6 ? babyId.substring(0, 6) : babyId; // TANI-GEÇİCİ
+    try {
+      // TANI-GEÇİCİ: try sarmalı yalnız tanı izi içindir; hata yine rethrow edilir.
+      final resp = await _api.dio.post('/sync', data: {
+        'baby': babyId,
+        'since_cursor': sentCursor,
+        'changes': changes,
+      });
+      final data = resp.data as Map<String, dynamic>;
 
-    final applied = (data['applied'] as List? ?? []).cast<String>();
-    final conflicts = (data['conflicts'] as List? ?? []);
-    final serverChanges = (data['server_changes'] as List? ?? []);
-    final nextCursor = data['next_cursor'] as String?;
+      final applied = (data['applied'] as List? ?? []).cast<String>();
+      final conflicts = (data['conflicts'] as List? ?? []);
+      final serverChanges = (data['server_changes'] as List? ?? []);
+      final nextCursor = data['next_cursor'] as String?;
 
-    await _db.transaction(() async {
+      // TANI-GEÇİCİ: ne gönderildi / sunucu ne döndü (boş dönerse cross-isolate
+      // cursor şüphesi; srv>0 ama Home bayatsa stream körlüğü; ERR ise auth/ağ).
+      await SyncDiag.add('sync $bid dirty=${changes.length} '
+          'cur=${sentCursor?.substring(5, 19) ?? "-"} '
+          'srv=${serverChanges.length} app=${applied.length} '
+          'conf=${conflicts.length} next=${nextCursor?.substring(5, 19) ?? "-"}');
+
+      await _db.transaction(() async {
       // Kabul edilenler artık temiz — AMA yalnız GÖNDERDİĞİMİZ sürüm hâlâ duruyorsa.
       // Uçuş sırasında kayıt yeniden düzenlendiyse (clientUpdatedAt değişti) dirty
       // kalsın → yeni düzenleme bir sonraki sync'te gönderilsin (veri kaybı önlenir).
@@ -251,7 +264,13 @@ class RecordRepository {
               ),
             );
       }
-    });
+      });
+    } catch (e) {
+      // TANI-GEÇİCİ: sync hatasını yakala-kaydet-rethrow (çağıran yine yutar).
+      final code = e is DioException ? e.response?.statusCode : null;
+      await SyncDiag.add('sync $bid ERR ${e.runtimeType} status=$code');
+      rethrow;
+    }
   }
 
   /// Tek-seferlik mevcut-kullanıcı import'u: kayıtları `/sync` POST yerine

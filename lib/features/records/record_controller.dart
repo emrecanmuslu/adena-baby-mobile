@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/ad_service.dart';
 import '../../core/analytics_service.dart';
+import '../../core/providers.dart';
 import '../../data/record_repository.dart';
 import '../../data/subscription_repository.dart';
 import '../../data/sync_gate.dart';
@@ -184,6 +185,12 @@ class SyncService with WidgetsBindingObserver {
     } finally {
       _running = false;
     }
+    // Sync sonrası ön plan stream'lerini ZORLA tazele: arka plan isolate'inin
+    // (workmanager bg sync / push handler) ayrı bağlantıyla dosyaya yazıp cursor'ı
+    // ilerlettiği satırlar bu bağlantının drift stream'lerine bildirilmez. Burada
+    // notifyUpdates ile yeniden okutulur → warm-resume/pull-refresh'te Home bayat
+    // kalmaz (yalnız kapat-aç düzeltiyordu). Bkz [[bug-home-bayat-veri-warm-resume]].
+    _ref.read(databaseProvider).refreshSyncedStreams();
     // Tur sırasında istek geldiyse bir kez daha (tam) çek → kaçan değişiklik kalmasın.
     if (_pending) {
       _pending = false;

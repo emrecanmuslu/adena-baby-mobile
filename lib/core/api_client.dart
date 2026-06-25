@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../data/sync_diag.dart';
 import 'config.dart';
 import 'i18n.dart';
 import 'token_storage.dart';
@@ -55,7 +56,10 @@ class ApiClient {
   /// Refresh token ile yeni access (ve dönerse refresh) alır.
   Future<bool> _refresh() async {
     final refresh = await _tokens.refreshToken;
-    if (refresh == null) return false;
+    if (refresh == null) {
+      await SyncDiag.add('refresh SKIP no-token'); // TANI-GEÇİCİ
+      return false;
+    }
     try {
       final resp = await _refreshClient
           .post('/auth/refresh', data: {'refresh': refresh});
@@ -63,8 +67,14 @@ class ApiClient {
         access: resp.data['access'] as String,
         refresh: resp.data['refresh'] as String?,
       );
+      await SyncDiag.add('refresh OK'); // TANI-GEÇİCİ
       return true;
-    } catch (_) {
+    } catch (e) {
+      // TANI-GEÇİCİ: token'ı silmeden ÖNCE hatayı kaydet. status=null → geçici
+      // ağ/timeout hatası (oturum gereksiz yere siliniyor olabilir); 401 → gerçek
+      // geçersiz refresh. Bu ayrım kök-nedeni belirler.
+      final code = e is DioException ? e.response?.statusCode : null;
+      await SyncDiag.add('refresh FAIL status=$code (${e.runtimeType})');
       await _tokens.clear();
       return false;
     }

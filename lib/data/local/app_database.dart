@@ -257,6 +257,29 @@ class AppDatabase extends _$AppDatabase {
         'CREATE INDEX IF NOT EXISTS idx_cycle_date ON cycle_entries (date)');
   }
 
+  /// Ön plan stream sorgularını ZORLA yeniden çalıştırır (drift `notifyUpdates`).
+  ///
+  /// Drift stream'leri yalnız KENDİ bağlantısındaki yazımları izler. Arka plan
+  /// isolate'i (workmanager bg sync / push handler) ayrı bir `AppDatabase`
+  /// bağlantısı açıp aynı SQLite dosyasına kayıt yazınca + cursor'ı ilerletince,
+  /// ön plandaki bu bağlantının stream'leri o yazımdan HABERSİZ kalır → warm-resume'da
+  /// Home bayat görünür, pull-refresh/sync no-op olur (cursor ilerlemiş, sunucu boş
+  /// döner → ön plan da yazmaz → emit yok), yalnız tam kapat-aç düzeltir.
+  /// Bunu warm-resume'da + her sync sonrası çağırınca tüm sync'li tablo stream'leri
+  /// dosyayı yeniden okur ve arka planda yazılan satırları yansıtır.
+  void refreshSyncedStreams() {
+    notifyUpdates({
+      TableUpdate.onTable(records),
+      TableUpdate.onTable(babies),
+      TableUpdate.onTable(memories),
+      TableUpdate.onTable(momEntries),
+      TableUpdate.onTable(cycleSettingsTable),
+      TableUpdate.onTable(cycleEntries),
+      TableUpdate.onTable(healthStatuses),
+      TableUpdate.onTable(localReminders),
+    });
+  }
+
   /// Tüm yerel verileri siler (hesapsız "yerel verileri sil" / GDPR). Şema kalır,
   /// satırlar gider — kullanıcı sıfırdan başlar.
   Future<void> wipeAllData() async {
