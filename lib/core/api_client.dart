@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../data/api_log.dart';
 import '../data/sync_diag.dart';
 import 'config.dart';
 import 'i18n.dart';
@@ -24,6 +25,29 @@ class ApiClient {
         )),
         _refreshClient =
             refreshClient ?? Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl)) {
+    // API LOG: her istek/yanıt/hata → ApiLog (method·path·status·süre). Hassas veri
+    // (gövde/header/token) YAZILMAZ. En önce eklenir → _t0 en erken damgalanır,
+    // onResponse/onError (ters sıra) en son çalışır → nihai durumu yakalar.
+    dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        options.extra['_t0'] = DateTime.now().millisecondsSinceEpoch;
+        handler.next(options);
+      },
+      onResponse: (resp, handler) {
+        final t0 = resp.requestOptions.extra['_t0'] as int?;
+        final ms = t0 == null ? -1 : DateTime.now().millisecondsSinceEpoch - t0;
+        ApiLog.add('${resp.requestOptions.method} ${resp.requestOptions.uri.path}'
+            ' → ${resp.statusCode} (${ms}ms)');
+        handler.next(resp);
+      },
+      onError: (e, handler) {
+        final t0 = e.requestOptions.extra['_t0'] as int?;
+        final ms = t0 == null ? -1 : DateTime.now().millisecondsSinceEpoch - t0;
+        ApiLog.add('${e.requestOptions.method} ${e.requestOptions.uri.path}'
+            ' → ERR ${e.response?.statusCode ?? e.type.name} (${ms}ms)');
+        handler.next(e);
+      },
+    ));
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         // Aktif dili gönder → sunucu (DRF/Django) hata mesajlarını bu dilde

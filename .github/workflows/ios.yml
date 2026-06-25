@@ -136,6 +136,31 @@ jobs:
           CURRENT_PROJECT_VERSION=${{ steps.vc.outputs.code }}
           archive
 
+      # dSYM'leri Crashlytics'e yükle → iOS çökmeleri (özellikle açılış watchdog
+      # kill'leri) SEMBOLLÜ/okunabilir gelsin. upload-symbols pod ile gelir
+      # (pod install sonrası). Plist ios/GoogleService-Info.plist'te.
+      - name: Crashlytics'e dSYM yükle
+        if: always()
+        run: |
+          UPLOAD="ios/Pods/FirebaseCrashlytics/upload-symbols"
+          GSP="ios/GoogleService-Info.plist"
+          DSYMS="$RUNNER_TEMP/Runner.xcarchive/dSYMs"
+          if [ -x "$UPLOAD" ] && [ -f "$GSP" ] && [ -d "$DSYMS" ]; then
+            "$UPLOAD" -gsp "$GSP" -p ios "$DSYMS" && echo "dSYM Crashlytics'e yüklendi" \
+              || echo "::warning::dSYM Crashlytics yüklemesi başarısız"
+          else
+            echo "::warning::dSYM upload atlandı (yok): UPLOAD=$UPLOAD GSP=$GSP DSYMS=$DSYMS"
+          fi
+
+      # dSYM'leri artifact olarak da sakla (gerekirse elle Crashlytics'e yüklemek için).
+      - name: dSYM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AdenaBaby-dSYMs
+          path: ${{ runner.temp }}/Runner.xcarchive/dSYMs
+          if-no-files-found: warn
+
       # Export + TestFlight yükleme (ExportOptions.plist destination=upload).
       - name: Export + TestFlight'a yükle
         run: >
