@@ -4,7 +4,6 @@ import 'package:workmanager/workmanager.dart';
 
 import '../data/feed_reminder_cache.dart';
 import '../data/record_repository.dart';
-import '../data/sync_diag.dart';
 import '../data/sync_gate.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/babies/baby_controller.dart';
@@ -42,26 +41,19 @@ void callbackDispatcher() {
 /// `ProviderContainer` ile repo.sync doğrudan sürülür.
 Future<void> runBackgroundSync() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SyncDiag.add('bgsync START'); // TANI-GEÇİCİ: gece çalıştı mı + ne zaman
   final container = ProviderContainer();
   try {
     // Oturum çözülene kadar bekle; yoksa hiç senkron yok (saf local-first).
     await container.read(authControllerProvider.future);
-    if (!container.read(loggedInProvider)) {
-      await SyncDiag.add('bgsync ABORT no-session'); // TANI-GEÇİCİ
-      return;
-    }
+    if (!container.read(loggedInProvider)) return;
     final babies = await container.read(babyControllerProvider.future);
     final repo = container.read(recordRepositoryProvider);
-    final shared = babies.where((b) => b.isShared).length; // TANI-GEÇİCİ
-    await SyncDiag.add('bgsync babies=${babies.length} shared=$shared'); // TANI-GEÇİCİ
     for (final b in babies) {
       if (!b.isShared) continue; // yalnız paylaşımlı bebek
       try {
         await repo.sync(b.id);
       } catch (_) {
         // 403 (erişim/grace) / çevrimdışı / 5xx → yerel korunur, sonraki tur tekrar.
-        // (Hata detayı repo.sync içinde SyncDiag'a yazılır — TANI-GEÇİCİ.)
       }
       // Senkron sonrası (push düşse bile) widget'ı + sonraki-beslenme bildirimini
       // taze veriyle yeniden kur: başka cihazın eklediği kayda göre HER İKİ
@@ -72,7 +64,6 @@ Future<void> runBackgroundSync() async {
   } catch (_) {
     // Auth/baby çözülemedi → sessiz; bir sonraki turda tekrar denenir.
   } finally {
-    await SyncDiag.add('bgsync DONE'); // TANI-GEÇİCİ
     container.dispose();
   }
 }

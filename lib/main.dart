@@ -32,10 +32,7 @@ import 'data/feed_input_cache.dart';
 import 'data/i18n_repository.dart';
 import 'data/local_session.dart';
 import 'data/migration_service.dart';
-import 'data/record_repository.dart'; // TANI-GEÇİCİ: resume diag drift okuması
 import 'data/slot_registry.dart';
-import 'data/sync_diag.dart'; // TANI-GEÇİCİ
-import 'models/record.dart'; // TANI-GEÇİCİ: RecordType.feed
 import 'data/subscription_cache.dart';
 import 'data/subscription_repository.dart';
 import 'data/theme_cache.dart';
@@ -303,8 +300,6 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   /// Öne gelince: aile etkinliğini yokla + bebek listesini tazele (çıkarılan
   /// üyenin erişimi düşsün, yerel verisi temizlensin).
   void _onForeground() {
-    SyncDiag.add('FOREGROUND resume'); // TANI-GEÇİCİ: warm-resume işareti
-    _emitSyncDiagSoon(); // TANI-GEÇİCİ: resume sync'i bitince izleri Crashlytics'e bas
     _pollActivity();
     // Warm-resume'da ön plan drift stream'lerini ANINDA yeniden okut: uygulama
     // kapalı/arka plandayken arka plan isolate'i (bg sync / push handler) ayrı
@@ -340,53 +335,6 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   void _pollActivity() {
     // Sessiz; tercih kapalıysa/oturum yoksa watcher kendi içinde no-op döner.
     ref.read(familyActivityWatcherProvider).poll();
-  }
-
-  /// TANI-GEÇİCİ (kullanıcı "kaldır" deyince SİL): warm-resume'da resume sync'i
-  /// (~birkaç sn) bitsin diye kısa gecikmeyle birikmiş [SyncDiag] izlerini + drift
-  /// bayatlık ölçümünü Crashlytics'e TEK non-fatal olarak basar, sonra temizler.
-  /// "API'ye sync etmedi / Home bayat" olayını cihazda kanıtlamak için.
-  /// (Crashlytics debug'da kapalı → yalnız TestFlight/release'te düşer.)
-  void _emitSyncDiagSoon() {
-    Future.delayed(const Duration(seconds: 7), () async {
-      try {
-        final user = ref.read(authControllerProvider).asData?.value;
-        if (user == null) return;
-        final babies = ref.read(babyControllerProvider).asData?.value ?? const [];
-        final shared = babies.where((b) => b.isShared).toList();
-        if (shared.isEmpty) return; // tek kullanıcı → bu sorun ilgisiz
-        final repo = ref.read(recordRepositoryProvider);
-        final crash = FirebaseCrashlytics.instance;
-        final now = DateTime.now();
-        for (final b in shared) {
-          try {
-            final recent = await repo.watchRecent(b.id).first;
-            final feeds = recent.where((r) => r.type == RecordType.feed).toList()
-              ..sort((x, y) => y.ts.compareTo(x.ts));
-            final lastFeed = feeds.isEmpty ? null : feeds.first.ts;
-            final ageMin =
-                lastFeed == null ? -1 : now.difference(lastFeed).inMinutes;
-            final bid = b.id.length > 6 ? b.id.substring(0, 6) : b.id;
-            crash.log('drift $bid lastFeed='
-                '${lastFeed?.toIso8601String().substring(5, 16) ?? "-"} '
-                'ageMin=$ageMin recN=${recent.length}');
-          } catch (_) {}
-        }
-        final lines = await SyncDiag.readAll();
-        for (final l in lines) {
-          crash.log(l);
-        }
-        crash.setCustomKey('diag_iz_sayisi', lines.length);
-        await crash.recordError(
-            'resume_sync_diag (${lines.length} iz, ${shared.length} paylaşımlı)',
-            null,
-            reason: 'sync-diag',
-            fatal: false);
-        await SyncDiag.clear();
-      } catch (_) {
-        // tanı — hiçbir koşulda akışı bozmamalı
-      }
-    });
   }
 
   @override

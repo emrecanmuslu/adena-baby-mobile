@@ -7,7 +7,6 @@ import '../../core/config.dart';
 import '../../core/providers.dart';
 import '../../core/restart_widget.dart';
 import '../../core/theme.dart';
-import '../../data/api_log.dart';
 import '../../data/env_cache.dart';
 import '../../data/subscription_repository.dart';
 import '../auth/auth_controller.dart';
@@ -78,10 +77,6 @@ class DevSettingsScreen extends ConsumerWidget {
             '(prod backend 403 döner). Gerçek satın alma premium sayfasındadır.',
             style: TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
           ),
-
-          const SizedBox(height: 20),
-          adSec('📡 API Log (son istekler)'),
-          const _ApiLogView(),
         ],
       ),
     );
@@ -142,85 +137,5 @@ class DevSettingsScreen extends ConsumerWidget {
     } catch (_) {}
     // 5) Yeniden başlat → ApiClient yeni tabana bağlanır, oturum sıfırlanır.
     if (context.mounted) RestartWidget.restartApp(context);
-  }
-}
-
-/// /dev → API Log görüntüleyici (en yeni üstte). Yenile/Temizle. ApiLog'tan okur.
-class _ApiLogView extends StatefulWidget {
-  const _ApiLogView();
-  @override
-  State<_ApiLogView> createState() => _ApiLogViewState();
-}
-
-class _ApiLogViewState extends State<_ApiLogView> {
-  List<String> _lines = const [];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final l = await ApiLog.readAll();
-    if (mounted) setState(() => _lines = l.reversed.toList()); // en yeni üstte
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('${_lines.length} kayıt',
-                  style: TextStyle(
-                      color: AppColors.muted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700)),
-            ),
-            TextButton(onPressed: _load, child: const Text('Yenile')),
-            TextButton(
-                onPressed: () async {
-                  await ApiLog.clear();
-                  await _load();
-                },
-                child: const Text('Temizle')),
-          ],
-        ),
-        Container(
-          height: 280,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1A24),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: _lines.isEmpty
-              ? const Text('Henüz kayıt yok',
-                  style: TextStyle(color: Colors.white54, fontSize: 12))
-              : ListView.builder(
-                  itemCount: _lines.length,
-                  itemBuilder: (_, i) {
-                    final line = _lines[i];
-                    final isErr = line.contains('→ ERR') ||
-                        line.contains('→ 4') ||
-                        line.contains('→ 5');
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 1),
-                      child: Text(line,
-                          style: TextStyle(
-                              color: isErr
-                                  ? const Color(0xFFFF9B8A)
-                                  : const Color(0xFFC8E6C9),
-                              fontSize: 11,
-                              fontFamily: 'monospace',
-                              height: 1.35)),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
   }
 }

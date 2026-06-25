@@ -1,7 +1,5 @@
 import 'package:dio/dio.dart';
 
-import '../data/api_log.dart';
-import '../data/sync_diag.dart';
 import 'config.dart';
 import 'i18n.dart';
 import 'token_storage.dart';
@@ -25,29 +23,6 @@ class ApiClient {
         )),
         _refreshClient =
             refreshClient ?? Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl)) {
-    // API LOG: her istek/yanıt/hata → ApiLog (method·path·status·süre). Hassas veri
-    // (gövde/header/token) YAZILMAZ. En önce eklenir → _t0 en erken damgalanır,
-    // onResponse/onError (ters sıra) en son çalışır → nihai durumu yakalar.
-    dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
-        options.extra['_t0'] = DateTime.now().millisecondsSinceEpoch;
-        handler.next(options);
-      },
-      onResponse: (resp, handler) {
-        final t0 = resp.requestOptions.extra['_t0'] as int?;
-        final ms = t0 == null ? -1 : DateTime.now().millisecondsSinceEpoch - t0;
-        ApiLog.add('${resp.requestOptions.method} ${resp.requestOptions.uri.path}'
-            ' → ${resp.statusCode} (${ms}ms)');
-        handler.next(resp);
-      },
-      onError: (e, handler) {
-        final t0 = e.requestOptions.extra['_t0'] as int?;
-        final ms = t0 == null ? -1 : DateTime.now().millisecondsSinceEpoch - t0;
-        ApiLog.add('${e.requestOptions.method} ${e.requestOptions.uri.path}'
-            ' → ERR ${e.response?.statusCode ?? e.type.name} (${ms}ms)');
-        handler.next(e);
-      },
-    ));
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         // Aktif dili gönder → sunucu (DRF/Django) hata mesajlarını bu dilde
@@ -80,10 +55,7 @@ class ApiClient {
   /// Refresh token ile yeni access (ve dönerse refresh) alır.
   Future<bool> _refresh() async {
     final refresh = await _tokens.refreshToken;
-    if (refresh == null) {
-      await SyncDiag.add('refresh SKIP no-token'); // TANI-GEÇİCİ
-      return false;
-    }
+    if (refresh == null) return false;
     try {
       final resp = await _refreshClient
           .post('/auth/refresh', data: {'refresh': refresh});
@@ -91,14 +63,8 @@ class ApiClient {
         access: resp.data['access'] as String,
         refresh: resp.data['refresh'] as String?,
       );
-      await SyncDiag.add('refresh OK'); // TANI-GEÇİCİ
       return true;
-    } catch (e) {
-      // TANI-GEÇİCİ: token'ı silmeden ÖNCE hatayı kaydet. status=null → geçici
-      // ağ/timeout hatası (oturum gereksiz yere siliniyor olabilir); 401 → gerçek
-      // geçersiz refresh. Bu ayrım kök-nedeni belirler.
-      final code = e is DioException ? e.response?.statusCode : null;
-      await SyncDiag.add('refresh FAIL status=$code (${e.runtimeType})');
+    } catch (_) {
       await _tokens.clear();
       return false;
     }
