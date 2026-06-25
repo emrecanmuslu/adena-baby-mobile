@@ -2,15 +2,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// JWT token'larını güvenli (şifreli) depolar.
 class TokenStorage {
-  // iOS: afterFirstUnlock → token cihaz KİLİTLİYKEN de (ilk açılıştan sonra) okunur.
-  // Varsayılan whenUnlocked, uygulama push/arka plan sync ile kilitliyken token'a
-  // erişince errSecInteractionNotAllowed FIRLATIYORDU; push sonrası simgeden soğuk
-  // açılışta da bu hata interceptor'da yakalanmadan fatal olup açılışı splash'te
-  // donduruyordu. Eski (whenUnlocked) kayıtlar sonraki login/refresh'te yeniden
-  // yazılınca bu erişime geçer. Bkz [[acilis-donmasi-keychain-fix]].
-  static const _storage = FlutterSecureStorage(
-    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
-  );
+  // NOT: iOS accessibility VARSAYILAN (whenUnlocked) bırakıldı. `first_unlock`'a
+  // geçmek mevcut (whenUnlocked) kayıtla migration çakışması yaratıp saveTokens'i
+  // (write) iOS'ta patlatıyordu → güncelleme sonrası "giriş yapılamıyor". Açılış
+  // donmasının asıl çözümü, OKUMALARI try/catch'e almaktır (aşağıda): Keychain
+  // okuması fırlarsa (kilit/transient) null döner → Dio interceptor'ında
+  // yakalanmamış fatal/donma olmaz. Bkz [[acilis-donmasi-keychain-fix]].
+  static const _storage = FlutterSecureStorage();
   static const _kAccess = 'access_token';
   static const _kRefresh = 'refresh_token';
 
@@ -21,10 +19,10 @@ class TokenStorage {
     }
   }
 
-  // Keychain okuması iOS'ta HATA FIRLATABİLİR (kilit/erişim/transient platform
-  // channel). Fırlatırsa null dön → açılış auth akışı çökmesin/donmasın (splash
-  // donmasının kök nedeni: okuma fırlatıp Dio interceptor'ında yakalanmadan fatal
-  // oluyordu, /auth/me Future'ı çözülmüyordu → router splash'te asılı kalıyordu).
+  // Keychain okuması iOS'ta HATA FIRLATABİLİR (kilit/erişim/transient). Fırlatırsa
+  // null dön → açılış auth akışı çökmesin/donmasın (splash donmasının kök nedeni:
+  // okuma fırlatıp Dio interceptor'ında yakalanmadan fatal oluyordu, /auth/me
+  // Future'ı çözülmüyordu → router splash'te asılı kalıyordu).
   Future<String?> get accessToken async {
     try {
       return await _storage.read(key: _kAccess);
