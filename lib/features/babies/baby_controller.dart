@@ -8,6 +8,7 @@ import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
 import '../../data/activity_notif_cache.dart';
 import '../../data/baby_repository.dart';
+import '../../data/health_repository.dart';
 import '../../data/memory_repository.dart';
 import '../../data/mom_repository.dart';
 import '../../data/record_repository.dart';
@@ -109,11 +110,14 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     }
     for (final b in removed) {
       // Erişim kaldırıldı (paylaşımdan düşme / sahibin premium'u bitti): bu bebeğin
-      // TÜM yerel verisini temizle (kayıt + anı + anne). Veri sahibe aitti.
+      // TÜM yerel verisini temizle. Veri sahibe aitti, cihazda kalmamalı:
+      // kayıt + anı + anne + SAĞLIK (aşı/gelişim/diş) + hatırlatıcılar. Bebek
+      // satırının kendisi pullFromServer'da zaten silinir.
       try {
         await ref.read(recordRepositoryProvider).purgeBaby(b.id);
         await ref.read(memoryRepositoryProvider).purgeBaby(b.id);
         await ref.read(momRepositoryProvider).purgeBaby(b.id);
+        await ref.read(healthRepositoryProvider).purgeBaby(b.id);
       } catch (_) {}
       await ActivityNotifCache().clearSeen(b.id);
       final slot = b.notifSlot;

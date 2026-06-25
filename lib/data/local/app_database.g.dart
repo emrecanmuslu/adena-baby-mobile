@@ -4764,11 +4764,11 @@ class $SyncCursorsTable extends SyncCursors
   );
   static const VerificationMeta _cursorMeta = const VerificationMeta('cursor');
   @override
-  late final GeneratedColumn<DateTime> cursor = GeneratedColumn<DateTime>(
+  late final GeneratedColumn<String> cursor = GeneratedColumn<String>(
     'cursor',
     aliasedName,
     true,
-    type: DriftSqlType.dateTime,
+    type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
   @override
@@ -4813,7 +4813,7 @@ class $SyncCursorsTable extends SyncCursors
         data['${effectivePrefix}baby'],
       )!,
       cursor: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
+        DriftSqlType.string,
         data['${effectivePrefix}cursor'],
       ),
     );
@@ -4827,14 +4827,14 @@ class $SyncCursorsTable extends SyncCursors
 
 class SyncCursor extends DataClass implements Insertable<SyncCursor> {
   final String baby;
-  final DateTime? cursor;
+  final String? cursor;
   const SyncCursor({required this.baby, this.cursor});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['baby'] = Variable<String>(baby);
     if (!nullToAbsent || cursor != null) {
-      map['cursor'] = Variable<DateTime>(cursor);
+      map['cursor'] = Variable<String>(cursor);
     }
     return map;
   }
@@ -4855,7 +4855,7 @@ class SyncCursor extends DataClass implements Insertable<SyncCursor> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return SyncCursor(
       baby: serializer.fromJson<String>(json['baby']),
-      cursor: serializer.fromJson<DateTime?>(json['cursor']),
+      cursor: serializer.fromJson<String?>(json['cursor']),
     );
   }
   @override
@@ -4863,13 +4863,13 @@ class SyncCursor extends DataClass implements Insertable<SyncCursor> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'baby': serializer.toJson<String>(baby),
-      'cursor': serializer.toJson<DateTime?>(cursor),
+      'cursor': serializer.toJson<String?>(cursor),
     };
   }
 
   SyncCursor copyWith({
     String? baby,
-    Value<DateTime?> cursor = const Value.absent(),
+    Value<String?> cursor = const Value.absent(),
   }) => SyncCursor(
     baby: baby ?? this.baby,
     cursor: cursor.present ? cursor.value : this.cursor,
@@ -4902,7 +4902,7 @@ class SyncCursor extends DataClass implements Insertable<SyncCursor> {
 
 class SyncCursorsCompanion extends UpdateCompanion<SyncCursor> {
   final Value<String> baby;
-  final Value<DateTime?> cursor;
+  final Value<String?> cursor;
   final Value<int> rowid;
   const SyncCursorsCompanion({
     this.baby = const Value.absent(),
@@ -4916,7 +4916,7 @@ class SyncCursorsCompanion extends UpdateCompanion<SyncCursor> {
   }) : baby = Value(baby);
   static Insertable<SyncCursor> custom({
     Expression<String>? baby,
-    Expression<DateTime>? cursor,
+    Expression<String>? cursor,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4928,7 +4928,7 @@ class SyncCursorsCompanion extends UpdateCompanion<SyncCursor> {
 
   SyncCursorsCompanion copyWith({
     Value<String>? baby,
-    Value<DateTime?>? cursor,
+    Value<String?>? cursor,
     Value<int>? rowid,
   }) {
     return SyncCursorsCompanion(
@@ -4945,7 +4945,7 @@ class SyncCursorsCompanion extends UpdateCompanion<SyncCursor> {
       map['baby'] = Variable<String>(baby.value);
     }
     if (cursor.present) {
-      map['cursor'] = Variable<DateTime>(cursor.value);
+      map['cursor'] = Variable<String>(cursor.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -7953,13 +7953,13 @@ typedef $$CycleEntriesTableProcessedTableManager =
 typedef $$SyncCursorsTableCreateCompanionBuilder =
     SyncCursorsCompanion Function({
       required String baby,
-      Value<DateTime?> cursor,
+      Value<String?> cursor,
       Value<int> rowid,
     });
 typedef $$SyncCursorsTableUpdateCompanionBuilder =
     SyncCursorsCompanion Function({
       Value<String> baby,
-      Value<DateTime?> cursor,
+      Value<String?> cursor,
       Value<int> rowid,
     });
 
@@ -7977,7 +7977,7 @@ class $$SyncCursorsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<DateTime> get cursor => $composableBuilder(
+  ColumnFilters<String> get cursor => $composableBuilder(
     column: $table.cursor,
     builder: (column) => ColumnFilters(column),
   );
@@ -7997,7 +7997,7 @@ class $$SyncCursorsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<DateTime> get cursor => $composableBuilder(
+  ColumnOrderings<String> get cursor => $composableBuilder(
     column: $table.cursor,
     builder: (column) => ColumnOrderings(column),
   );
@@ -8015,7 +8015,7 @@ class $$SyncCursorsTableAnnotationComposer
   GeneratedColumn<String> get baby =>
       $composableBuilder(column: $table.baby, builder: (column) => column);
 
-  GeneratedColumn<DateTime> get cursor =>
+  GeneratedColumn<String> get cursor =>
       $composableBuilder(column: $table.cursor, builder: (column) => column);
 }
 
@@ -8051,7 +8051,7 @@ class $$SyncCursorsTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> baby = const Value.absent(),
-                Value<DateTime?> cursor = const Value.absent(),
+                Value<String?> cursor = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SyncCursorsCompanion(
                 baby: baby,
@@ -8061,7 +8061,7 @@ class $$SyncCursorsTableTableManager
           createCompanionCallback:
               ({
                 required String baby,
-                Value<DateTime?> cursor = const Value.absent(),
+                Value<String?> cursor = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SyncCursorsCompanion.insert(
                 baby: baby,

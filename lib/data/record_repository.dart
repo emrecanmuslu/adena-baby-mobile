@@ -212,7 +212,7 @@ class RecordRepository {
     // (uçuş sırasında yeniden düzenlenen kayıt dirty kalmalı, kaybolmamalı).
     final sentStamp = {for (final r in dirtyRows) r.id: r.clientUpdatedAt};
 
-    final sentCursor = cursorRow?.cursor?.toUtc().toIso8601String(); // TANI-GEÇİCİ
+    final sentCursor = cursorRow?.cursor; // ISO string (tam hassasiyet, truncate yok)
     final bid = babyId.length > 6 ? babyId.substring(0, 6) : babyId; // TANI-GEÇİCİ
     try {
       // TANI-GEÇİCİ: try sarmalı yalnız tanı izi içindir; hata yine rethrow edilir.
@@ -260,7 +260,7 @@ class RecordRepository {
         await _db.into(_db.syncCursors).insertOnConflictUpdate(
               SyncCursorsCompanion(
                 baby: Value(babyId),
-                cursor: Value(DateTime.parse(nextCursor)),
+                cursor: Value(nextCursor), // ham ISO string sakla → truncate yok
               ),
             );
       }

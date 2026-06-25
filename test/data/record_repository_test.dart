@@ -270,7 +270,7 @@ void main() {
       await db.into(db.syncCursors).insertOnConflictUpdate(
             SyncCursorsCompanion(
               baby: const Value(babyId),
-              cursor: Value(DateTime.utc(2026, 1, 1)),
+              cursor: const Value('2026-01-01T00:00:00.000Z'),
             ),
           );
       await repo.purgeBaby(babyId);
@@ -319,7 +319,7 @@ void main() {
             ..where((c) => c.baby.equals(babyId)))
           .getSingleOrNull();
       expect(cursor, isNotNull);
-      expect(cursor!.cursor!.toUtc(), DateTime.utc(2026, 1, 2));
+      expect(cursor!.cursor, '2026-01-02T00:00:00.000Z');
     });
 
     test('gönderilen changes payload\'u doğru biçimlenir (op/type/ts/data)',
@@ -472,7 +472,7 @@ void main() {
       await db.into(db.syncCursors).insertOnConflictUpdate(
             SyncCursorsCompanion(
               baby: const Value(babyId),
-              cursor: Value(DateTime.utc(2026, 1, 1)),
+              cursor: const Value('2026-01-01T00:00:00.000Z'),
             ),
           );
       Map<String, dynamic>? sentBody;

@@ -38,15 +38,26 @@ class _CloudReadonlyBabies extends Notifier<Set<String>> {
     if (state.contains(babyId)) return;
     state = {...state, babyId};
   }
+
+  /// Geçici 403'ten kurtulma: bebek sync'i sonradan BAŞARIRSA bu işaret kaldırılır
+  /// (eskiden yalnız uygulama restart'ında temizlenirdi → katılıştaki anlık 403,
+  /// bebeği oturum boyu "salt-okunur" yapıp senkronu durduruyor + sahte banner
+  /// gösteriyordu). Artık her başarılı sync'te kendi kendine iyileşir.
+  void remove(String babyId) {
+    if (!state.contains(babyId)) return;
+    state = {...state}..remove(babyId);
+  }
 }
 
 final cloudReadonlyBabiesProvider =
     NotifierProvider<_CloudReadonlyBabies, Set<String>>(_CloudReadonlyBabies.new);
 
-final babyCloudSyncedProvider = Provider.family<bool, String>((ref, babyId) {
+/// Bebek bulut-UYGUN mu (rol/premium) — oturum-içi readonly (403) işaretini YOK
+/// SAYAR. `SyncService.syncAll` bunu kapı olarak kullanır: readonly bebeği de bir
+/// kez DAHA dener; başarırsa readonly'den çıkarıp iyileştirir (geçici 403'ten
+/// kurtulma). Görüntü/push gating için [babyCloudSyncedProvider] (readonly'yi sayar).
+final babyCloudEligibleProvider = Provider.family<bool, String>((ref, babyId) {
   if (!ref.watch(loggedInProvider)) return false;
-  // Bu oturumda 403 alındıysa (sahip premium bitti / grace) → senkron deneme.
-  if (ref.watch(cloudReadonlyBabiesProvider).contains(babyId)) return false;
   final babies = ref.watch(babyControllerProvider).asData?.value ?? const [];
   String? role;
   for (final b in babies) {
@@ -58,4 +69,10 @@ final babyCloudSyncedProvider = Provider.family<bool, String>((ref, babyId) {
   final shared = role == 'parent' || role == 'caregiver';
   if (shared) return true;
   return ref.watch(isPremiumProvider);
+});
+
+final babyCloudSyncedProvider = Provider.family<bool, String>((ref, babyId) {
+  // Bu oturumda 403 alındıysa (sahip premium bitti / grace) → salt-okunur say.
+  if (ref.watch(cloudReadonlyBabiesProvider).contains(babyId)) return false;
+  return ref.watch(babyCloudEligibleProvider(babyId));
 });

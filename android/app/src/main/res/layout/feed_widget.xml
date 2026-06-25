@@ -1,57 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Son beslenme" ana ekran widget'ı (2x1). -->
+<!-- "Büyük Saat" widget: ortalanmış, dev saat. İkon YOK. Metin boyutları
+     FeedWidgetProvider'da widget'ın o anki boyutuna göre ayarlanır (responsive:
+     kare/yatay/dikey her ölçüde alanı doldurur). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/feed_widget_bg"
-    android:padding="16dp"
-    android:gravity="center_vertical">
+    android:padding="10dp"
+    android:gravity="center">
 
+    <!-- Üst satır: "Defne · Sonraki beslenme" (provider birleştirir) -->
     <TextView
-        android:id="@+id/widget_baby"
+        android:id="@+id/widget_top"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textColor="#FFFFFF"
-        android:textSize="13sp"
-        android:textStyle="bold"
+        android:textSize="12sp"
         android:alpha="0.9"
         android:maxLines="1"
         android:ellipsize="end"
-        android:text="Bebek" />
+        android:gravity="center"
+        android:fontFamily="sans-serif-medium"
+        android:text="Bebek · Sonraki beslenme" />
 
-    <TextView
-        android:id="@+id/widget_label"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:textColor="#FFFFFF"
-        android:textSize="12sp"
-        android:alpha="0.85"
-        android:text="Sonraki beslenme" />
-
+    <!-- Dev saat -->
     <TextView
         android:id="@+id/widget_value"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
+        android:layout_marginTop="1dp"
+        android:layout_marginBottom="1dp"
         android:textColor="#FFFFFF"
-        android:textSize="22sp"
+        android:textSize="40sp"
         android:textStyle="bold"
         android:maxLines="1"
-        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:gravity="center"
         android:text="14:30" />
 
+    <!-- Son besleme -->
     <TextView
         android:id="@+id/widget_last"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
         android:textColor="#FFFFFF"
-        android:textSize="11sp"
-        android:alpha="0.8"
+        android:textSize="12sp"
+        android:alpha="0.82"
         android:maxLines="1"
         android:ellipsize="end"
+        android:gravity="center"
         android:text="Son besleme 12:30" />
 </LinearLayout>

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -165,9 +166,13 @@ class SyncService with WidgetsBindingObserver {
         // Per-baby gating (Seçenek 2): paylaşılan bebek sahibin bulutunda → kendi
         // premium'umdan bağımsız senkronla; kendi bebeğim için kendi premium'um gerekir.
         // Free kullanıcının KENDİ bebeklerinin kaydı yalnız yerelde kalır (ağa gitmez).
-        if (!_ref.read(babyCloudSyncedProvider(b.id))) continue;
+        // ELIGIBLE kapısı: readonly bebeği de DENE (synced değil, eligible) →
+        // başarırsa aşağıda readonly'den çıkar (geçici 403'ten self-heal).
+        if (!_ref.read(babyCloudEligibleProvider(b.id))) continue;
         try {
           await repo.sync(b.id);
+          // Başarılı → geçici 403 işaretini kaldır (varsa). Artık restart gerekmez.
+          _ref.read(cloudReadonlyBabiesProvider.notifier).remove(b.id);
         } on DioException catch (e) {
           if (e.response?.statusCode == 403) {
             // Paylaşılan bebeğin bulutu artık yazılamıyor (sahip premium bitti) ya da
@@ -209,9 +214,16 @@ class SyncService with WidgetsBindingObserver {
 final syncServiceProvider = Provider<SyncService>((ref) {
   final s = SyncService(ref);
   ref.onDispose(s.dispose);
-  // Bebek listesi gelince (giriş/açılış) ilk eşitleme.
-  ref.listen(babyControllerProvider, (_, next) {
-    if (next.asData?.value.isNotEmpty ?? false) s.syncAll();
+  // Bebek LİSTESİ DEĞİŞİNCE eşitle (giriş/açılış/üye ekleme-çıkarma). Yalnız id
+  // KÜMESİ değiştiğinde tetikle: aynı listenin tekrar emit'i syncAll'ı yeniden
+  // ÇAĞIRMASIN. Aksi halde geri besleme döngüsü: syncAll → refreshSyncedStreams()
+  // → notifyUpdates(babies) → babyController yeniden emit → bu listener → syncAll
+  // → ... (saniyede defalarca boş sync). id-kümesi karşılaştırması döngüyü kırar.
+  ref.listen(babyControllerProvider, (prev, next) {
+    final nextIds = next.asData?.value.map((b) => b.id).toSet() ?? const <String>{};
+    if (nextIds.isEmpty) return;
+    final prevIds = prev?.asData?.value.map((b) => b.id).toSet() ?? const <String>{};
+    if (!setEquals(prevIds, nextIds)) s.syncAll();
   });
   return s;
 });

@@ -133,7 +133,12 @@ class CycleEntries extends Table with _SyncCols {
 /// `baby` anahtarını kullanır (geriye dönük uyumlu).
 class SyncCursors extends Table {
   TextColumn get baby => text()(); // geriye dönük: records cursor anahtarı
-  DateTimeColumn get cursor => dateTime().nullable()();
+  // ISO-8601 STRING (ham sunucu next_cursor) — DİKKAT: DateTimeColumn DEĞİL.
+  // drift DateTime'ı Unix SANİYE'ye yuvarlayıp sub-second'ı atıyordu; sunucu
+  // updated_at'i mikrosaniyeli olduğundan `updated_at__gt=cursor` filtresinde
+  // boundary kaydı her sync'te yeniden dönüp SONSUZ sync döngüsü (saniyede bir,
+  // aynı kayıt) oluşuyordu. String, tam hassasiyeti koruyup döngüyü kırar.
+  TextColumn get cursor => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {baby};
@@ -183,7 +188,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -233,6 +238,14 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(cycleSettingsTable, cycleSettingsTable.periodLength);
             await m.addColumn(
                 cycleSettingsTable, cycleSettingsTable.lutealPhaseLength);
+          }
+          if (from < 9) {
+            // SyncCursors.cursor: DateTime(saniye) → Text(ISO, tam hassasiyet).
+            // Sütun tipi değişimi için tabloyu yeniden kur. Cursor kaybı ZARARSIZ:
+            // sonraki sync since=null gönderir → tam pull (idempotent, kayıt
+            // kaybı yok). Sonsuz sync döngüsü fix'i.
+            await m.database.customStatement('DROP TABLE IF EXISTS sync_cursors');
+            await m.createTable(syncCursors);
           }
         },
       );
