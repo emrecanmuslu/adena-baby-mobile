@@ -163,6 +163,14 @@ class CycleInfo {
   static String get estimate => tr(
       'Bu bir tahmindir, kesin değildir. Doğum sonrası hormonlar oturana kadar '
       'döngüler değişkenlik gösterebilir.');
+  static String get dialGuide => tr(
+      'Halka, döngünü tek bakışta gösterir:\n'
+      '• Koyu pembe yay = adet günleri\n'
+      '• Yeşil bölge = doğurganlık penceresi\n'
+      '• Altın nokta = yumurtlama günü\n'
+      '• Beyaz halka = bugünün konumu\n'
+      'Ortadaki büyük sayı, döngünün kaçıncı gününde olduğunu söyler. '
+      'Tahminler döngülerin biriktikçe güçlenir.');
 }
 
 /// "~ Tahmini · değişebilir" rozeti (design EstBadge) — düşük güvenli tahminlerde.

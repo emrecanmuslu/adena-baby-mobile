@@ -56,6 +56,14 @@ class AppColors {
   static Color get roseBg => _d ? const Color(0xFF3C2032) : const Color(0xFFF8E4EC);
   static Color get lochia => _d ? const Color(0xFFC8907A) : const Color(0xFFB8755E);
   static Color get lochiaBg => _d ? const Color(0xFF3A2218) : const Color(0xFFF5E1D6);
+  // Doğurganlık penceresi (sage/adaçayı) + yumurtlama (gold/altın) — takvim/Dial
+  // işaretleri için; mor #9B8CE8 yerine period-tracker diline uygun tonlar.
+  static Color get sage => _d ? const Color(0xFF86B898) : const Color(0xFF6F9E81);
+  static Color get sageD => _d ? const Color(0xFFA6CFB4) : const Color(0xFF4F7C61);
+  static Color get sageBg => _d ? const Color(0xFF1E2C22) : const Color(0xFFE6F0E8);
+  static Color get gold => _d ? const Color(0xFFE3B255) : const Color(0xFFD69A33);
+  static Color get goldD => _d ? const Color(0xFFF0CB7E) : const Color(0xFFA9761E);
+  static Color get goldBg => _d ? const Color(0xFF352A16) : const Color(0xFFFAF0D8);
 
   /// Yumuşak kart gölgesi (--sh).
   // Premium (altın) — paywall/AI export rozetleri.

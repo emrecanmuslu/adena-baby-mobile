@@ -104,6 +104,7 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
     try {
       await ref.read(cycleRepositoryProvider).saveEntry(entry);
       ref.invalidate(cycleEntriesProvider);
+      ref.invalidate(cycleSettingsProvider); // ilk adet → bekleme/loşia'dan aktife geçiş
       if (!mounted) return;
       final flags = _symptoms.where(redFlagSymptoms.contains).toList();
       Navigator.pop(context);

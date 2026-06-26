@@ -134,11 +134,12 @@ void main() {
       expect(s.daysToNextPeriod, 21);
     });
 
-    test('ovülasyon = sonraki adet - 14 gün; fertile pencere = ovülasyon-5..ovülasyon', () {
+    test('ovülasyon = sonraki adet - 14 gün; fertile pencere = ovülasyon-5..ovülasyon+1', () {
       final s = computeStatus(settings, entries, today: DateTime(2025, 3, 5));
       expect(s.ovulationDay, DateTime(2025, 3, 12));
       expect(s.fertileStart, DateTime(2025, 3, 7));
-      expect(s.fertileEnd, DateTime(2025, 3, 12));
+      // My Calendar pariteti: pencere ovülasyondan 1 gün sonra biter.
+      expect(s.fertileEnd, DateTime(2025, 3, 13));
     });
 
     test('3 başlangıç (2 tam döngü) hâlâ düşük güven (lengths.length<3)', () {
@@ -310,12 +311,17 @@ void main() {
       expect(s.avgPeriodDays, 5);
     });
 
-    test('ölçülmüş adet günü varsa manuel süre YOK sayılır', () {
+    test('TAMAMLANMIŞ döngüde ölçülmüş adet günü varsa manuel süre YOK sayılır', () {
       final settings = CycleSettings(
           firstPeriodDate: DateTime(2025, 1, 1), periodLength: 9);
+      // Ortalama yalnız TAMAMLANMIŞ döngülerden alınır (devam eden döngü hariç) →
+      // ikinci başlangıç ilk döngüyü kapatır, ölçülen 4 gün kazanır.
       final s = computeStatus(
-          settings, _periodRun('a', DateTime(2025, 1, 1), 4),
-          today: DateTime(2025, 1, 10));
+          settings, [
+            ..._periodRun('a', DateTime(2025, 1, 1), 4),
+            ..._periodRun('b', DateTime(2025, 1, 29), 4),
+          ],
+          today: DateTime(2025, 2, 1));
       expect(s.avgPeriodDays, 4); // ölçülen (4 gün) kazanır
     });
   });
@@ -331,7 +337,7 @@ void main() {
       expect(s.nextPeriod, DateTime(2025, 1, 29));
       expect(s.ovulationDay, DateTime(2025, 1, 17));
       expect(s.fertileStart, DateTime(2025, 1, 12)); // ovülasyon − 5
-      expect(s.fertileEnd, DateTime(2025, 1, 17));
+      expect(s.fertileEnd, DateTime(2025, 1, 18)); // ovülasyon + 1 (My Calendar pariteti)
     });
 
     test('geçersiz (10–16 dışı) lutealPhaseLength → 14 varsayılan', () {

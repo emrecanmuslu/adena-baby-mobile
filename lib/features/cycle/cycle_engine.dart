@@ -153,23 +153,42 @@ CycleStatus computeStatus(
     ));
   }
 
-  // Ortalamalar.
+  // Ortalamalar — My Calendar "Smart prediction" pariteli.
+  //  • smartPrediction AÇIK → döngü/adet süresi YAKIN loglardan (son [_recentWindow]
+  //    döngü) öğrenilir. Eski outlier'lar tahmini bozmasın diye tüm geçmiş değil
+  //    yakın pencere ortalaması alınır.
+  //  • smartPrediction KAPALI → kullanıcının girdiği sabit expected/period değerleri
+  //    kullanılır (ölçüm yok sayılır).
+  const recentWindow = 6;
+  final smart = settings.smartPrediction;
+  List<int> recent(List<int> xs) =>
+      xs.length > recentWindow ? xs.sublist(xs.length - recentWindow) : xs;
+  int mean(List<int> xs) => (xs.reduce((a, b) => a + b) / xs.length).round();
+
   final lengths = spans.where((s) => s.length != null).map((s) => s.length!).toList();
-  // Ölçülmüş döngü yoksa (ilk döngü) kullanıcının girdiği beklenen uzunluğu kullan
-  // (yoksa 21–40 dışı değerleri yok say → 28 varsayılan).
+  final recentLengths = recent(lengths);
+  // Ölçülmüş döngü yoksa (ilk döngü) ya da smart kapalıysa manuel beklenen uzunluk
+  // (21–40 dışı → yok say → 28 varsayılan).
   final manualLen = settings.expectedCycleLength;
   final manualValid = manualLen != null && manualLen >= 21 && manualLen <= 40;
-  final avgLen = lengths.isEmpty
+  final avgLen = (!smart || recentLengths.isEmpty)
       ? (manualValid ? manualLen : 28)
-      : (lengths.reduce((a, b) => a + b) / lengths.length).round();
-  final pdays = spans.where((s) => s.periodDays > 0).map((s) => s.periodDays).toList();
-  // Ölçülmüş adet günü yoksa kullanıcının girdiği süreyi kullan (2–10), yoksa 5.
+      : mean(recentLengths);
+  // Yalnız TAMAMLANMIŞ döngülerin (length != null) adet günü sayısı. Devam eden son
+  // döngü henüz büyüyor (1. günde periodDays=1) → dahil edersek ortalama bozulur ve
+  // tahmini adet tek güne düşer. My Calendar de mevcut döngüyü ortalamaya katmaz.
+  final pdays = spans
+      .where((s) => s.length != null && s.periodDays > 0)
+      .map((s) => s.periodDays)
+      .toList();
+  final recentPdays = recent(pdays);
+  // Ölçülmüş adet günü yoksa ya da smart kapalıysa manuel süre (2–10), yoksa 5.
   final manualPeriod = settings.periodLength;
   final manualPeriodValid =
       manualPeriod != null && manualPeriod >= 2 && manualPeriod <= 10;
-  final avgPeriod = pdays.isEmpty
+  final avgPeriod = (!smart || recentPdays.isEmpty)
       ? (manualPeriodValid ? manualPeriod : 5)
-      : (pdays.reduce((a, b) => a + b) / pdays.length).round();
+      : mean(recentPdays);
   // Luteal faz uzunluğu (gün) — ovülasyon konumunu belirler. Kullanıcı ayarı 10–16
   // arası geçerli, yoksa tıbbi varsayılan 14.
   final lutealRaw = settings.lutealPhaseLength;
@@ -181,9 +200,11 @@ CycleStatus computeStatus(
   final dayInCycle = _diffDays(now, lastStart) + 1;
   final nextPeriod = lastStart.add(Duration(days: avgLen));
   final daysToNext = _diffDays(nextPeriod, now);
-  // Ovülasyon ≈ sonraki adetten luteal faz kadar önce; doğurganlık penceresi -5 gün.
+  // Ovülasyon ≈ sonraki adetten luteal faz kadar önce; doğurganlık penceresi
+  // ovülasyon −5 … +1 (My Calendar pariteti — pencere ovülasyondan 1 gün sonra biter).
   final ovulation = nextPeriod.subtract(Duration(days: luteal));
   final fertileStart = ovulation.subtract(const Duration(days: 5));
+  final fertileEnd = ovulation.add(const Duration(days: 1));
   // Yaklaşan pencere: mevcut döngününki (fertileStart..ovulation) bugünü geçtiyse
   // sonraki döngünün penceresine kay → pano "geçmiş" pencere göstermez, doğurganlık
   // hatırlatıcısı doğru kurulur. (Mevcut fertileStart/End calendar için korunur.)
@@ -216,9 +237,9 @@ CycleStatus computeStatus(
     daysToNextPeriod: daysToNext,
     ovulationDay: ovulation,
     fertileStart: fertileStart,
-    fertileEnd: ovulation,
+    fertileEnd: fertileEnd,
     upcomingFertileStart: upcomingFertileStart,
-    upcomingFertileEnd: upcomingOvulation,
+    upcomingFertileEnd: upcomingOvulation.add(const Duration(days: 1)),
     fertileWindowIsNextCycle: windowPassed,
     lowConfidence: lengths.length < 3,
     spans: spans,

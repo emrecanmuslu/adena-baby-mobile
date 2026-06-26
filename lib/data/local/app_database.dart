@@ -108,6 +108,10 @@ class CycleSettingsTable extends Table with _SyncCols {
   IntColumn get expectedCycleLength => integer().nullable()();
   IntColumn get periodLength => integer().nullable()();
   IntColumn get lutealPhaseLength => integer().nullable()();
+  // Akıllı tahmin (My Calendar pariteli) — AÇIK: son loglardan öğren; KAPALI: sabit.
+  BoolColumn get smartPrediction => boolean().withDefault(const Constant(true))();
+  // Takvimde haftanın ilk günü Pazar mı (My Calendar "First day of week"). False → Pzt.
+  BoolColumn get weekStartsSunday => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -188,7 +192,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -246,6 +250,16 @@ class AppDatabase extends _$AppDatabase {
             // kaybı yok). Sonsuz sync döngüsü fix'i.
             await m.database.customStatement('DROP TABLE IF EXISTS sync_cursors');
             await m.createTable(syncCursors);
+          }
+          if (from < 10) {
+            // Akıllı tahmin toggle (My Calendar pariteli) yerelde de saklanır.
+            await m.addColumn(
+                cycleSettingsTable, cycleSettingsTable.smartPrediction);
+          }
+          if (from < 11) {
+            // Takvim haftanın ilk günü (Pazar/Pazartesi) ayarı.
+            await m.addColumn(
+                cycleSettingsTable, cycleSettingsTable.weekStartsSunday);
           }
         },
       );

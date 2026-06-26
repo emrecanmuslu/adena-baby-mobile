@@ -23,8 +23,8 @@ import 'features/content/article_detail_screen.dart';
 import 'features/content/article_list_screen.dart';
 import 'features/content/content_hub_screen.dart';
 import 'features/cycle/cycle_calendar_screen.dart';
-import 'features/cycle/cycle_dashboard_screen.dart';
 import 'features/cycle/cycle_settings_screen.dart';
+import 'features/cycle/cycle_shell.dart';
 import 'features/cycle/cycle_stats_screen.dart';
 import 'features/discover/discover_screen.dart';
 import 'features/health/health_screen.dart';
@@ -181,7 +181,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/cycle',
           builder: (_, _) =>
-              const TourMount(tourKey: 'cycle', child: CycleScreen())),
+              const TourMount(tourKey: 'cycle', child: CycleShell())),
       GoRoute(
           path: '/cycle/calendar',
           builder: (_, _) => const CycleCalendarScreen()),

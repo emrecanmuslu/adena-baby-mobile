@@ -8,6 +8,7 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
+import 'cycle_kit.dart';
 import 'cycle_widgets.dart';
 
 /// Ekran 1 — Doğum sonrası kurulum sihirbazı (3 adım). İlk girişte tek seferlik.
@@ -75,27 +76,48 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: _step == 0
-            ? null
-            : IconButton(
-                icon: Icon(Icons.chevron_left, color: AppColors.ink),
-                onPressed: () => setState(() => _step--)),
-      ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          padding: const EdgeInsets.fromLTRB(22, 6, 22, 18),
           child: Column(
             children: [
-              Text(tr('Adet Takvimi Kurulumu').toUpperCase(),
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.6,
-                      color: AppColors.roseD)),
-              const SizedBox(height: 18),
+              // header: geri + nokta göstergesi + atla
+              Row(
+                children: [
+                  SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: _step == 0
+                        ? null
+                        : GestureDetector(
+                            onTap: () => setState(() => _step--),
+                            child: Icon(Icons.chevron_left_rounded,
+                                color: AppColors.ink, size: 26)),
+                  ),
+                  const Spacer(),
+                  _dots(),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _next,
+                    child: Text(tr('Atla'),
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.muted)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(tr('Adet Takvimi · Kurulum').toUpperCase(),
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.6,
+                        color: AppColors.roseD)),
+              ),
+              const SizedBox(height: 12),
               Expanded(
                 child: switch (_step) {
                   0 => _step1(),
@@ -103,9 +125,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
                   _ => _step3(),
                 },
               ),
-              const SizedBox(height: 20),
-              _dots(),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               Text('🔒 ${tr('Verilerin gizli, yalnızca sana ait')}',
                   style: TextStyle(
                       fontSize: 11,
@@ -124,7 +144,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
           for (var i = 0; i < 3; i++)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 4),
-              width: i == _step ? 20 : 7,
+              width: i == _step ? 22 : 7,
               height: 7,
               decoration: BoxDecoration(
                   color: i == _step ? AppColors.rose : AppColors.line2,
@@ -133,79 +153,55 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
         ],
       );
 
-  Widget _saveBtn(String label) => _saving
-      ? FilledButton(
-          onPressed: null,
-          style: FilledButton.styleFrom(
-              backgroundColor: AppColors.rose,
-              minimumSize: const Size.fromHeight(52),
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-          child: const SizedBox(
-              height: 20,
-              width: 20,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2.5, color: Colors.white)),
-        )
-      : AdSaveButton(label: label, color: AppColors.rose, onTap: _next);
+  Widget _saveBtn(String label) =>
+      cycCta(context, _saving ? '…' : label, onTap: _saving ? () {} : _next);
+
+  // ── ortak: büyük soru + alt açıklama ──
+  Widget _q(String text) => Text(text,
+      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, height: 1.18));
+
+  Widget _qsub(String text) => Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w700, height: 1.5, color: AppColors.ink2)),
+      );
 
   // ── Adım 1 — Doğum tarihi ──
   Widget _step1() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(tr('Bebeğinin doğum tarihi'),
-            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 6),
-        Text(tr('Döngü hesabı için başlangıç noktası — annenin değil, bebeğinin.'),
-            style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
-        const SizedBox(height: 16),
-        InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () async {
-            final now = DateTime.now();
-            final picked = await showDatePicker(
-              context: context,
-              initialDate: _birth ?? now,
-              firstDate: DateTime(now.year - 3),
-              lastDate: now,
-            );
-            if (picked != null) setState(() => _birth = picked);
-          },
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: AppColors.softShadow),
-            child: Row(
-              children: [
-                AdIconChip('calendar', color: AppColors.roseD, bg: AppColors.roseBg, size: 44),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_birth == null ? tr('Tarih seç') : fmtDayMonthYear(_birth!),
-                          style: const TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w900)),
-                      Text(tr('Bebek profilinden · düzenlenebilir'),
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.muted)),
-                    ],
-                  ),
-                ),
-                Icon(Icons.edit, size: 17, color: AppColors.roseD),
-              ],
-            ),
+        _q(tr('Bebeğinin doğum tarihi')),
+        _qsub(tr('Döngü hesabı için başlangıç noktası — annenin değil, bebeğinin.')),
+        Expanded(
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _dateCard(
+                value: _birth,
+                placeholder: tr('Tarih seç'),
+                sub: tr('Bebek profilinden · düzenlenebilir'),
+                onTap: () async {
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _birth ?? now,
+                    firstDate: DateTime(now.year - 3),
+                    lastDate: now,
+                  );
+                  if (picked != null) setState(() => _birth = picked);
+                },
+              ),
+              const SizedBox(height: 14),
+              cycNote(context,
+                  clay: true,
+                  icon: Icons.favorite_rounded,
+                  body: tr('Doğumdan sonraki ilk ~6 hafta kanama loşiadır, adet değildir.'),
+                  infoTitle: tr('Loşia ve adet farkı'),
+                  info: CycleInfo.lochiaVsPeriod),
+            ]),
           ),
         ),
-        const SizedBox(height: 14),
-        _infoCard(tr('Loşia ve adet farkı'), CycleInfo.lochiaVsPeriod),
-        const Spacer(),
         _saveBtn(tr('Devam')),
       ],
     );
@@ -221,32 +217,31 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Flexible(
-              child: Text(tr('Emziriyor musun?'),
-                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-            ),
-            const SizedBox(width: 6),
-            AdInfoDot(title: tr('Emzirme ve doğurganlık'), body: CycleInfo.lam),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(tr('Emzirme durumu döngü tahminlerini etkiler'),
-            style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
-        const SizedBox(height: 18),
-        for (final o in opts) ...[
-          _optTile(
-            emoji: o.$2,
-            title: o.$3,
-            sub: o.$4,
-            on: _bf == o.$1,
-            onTap: () => setState(() => _bf = o.$1),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: _q(tr('Emziriyor musun?'))),
+          const SizedBox(width: 6),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: AdInfoDot(title: tr('Emzirme ve doğurganlık'), body: CycleInfo.lam),
           ),
-          const SizedBox(height: 10),
-        ],
-        const Spacer(),
+        ]),
+        _qsub(tr('Emzirme durumu döngü tahminlerini etkiler.')),
+        Expanded(
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              for (final o in opts) ...[
+                _optTile(
+                  emoji: o.$2,
+                  title: o.$3,
+                  sub: o.$4,
+                  on: _bf == o.$1,
+                  onTap: () => setState(() => _bf = o.$1),
+                ),
+                const SizedBox(height: 11),
+              ],
+            ]),
+          ),
+        ),
         _saveBtn(tr('Devam')),
       ],
     );
@@ -257,96 +252,86 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(tr('Adet döndü mü?'),
-            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 18),
-        _optTile(
-          emoji: '🌸',
-          title: tr('Henüz adet görmedim'),
-          sub: tr('Bilgilendirme modu · tahmin yapılmaz'),
-          on: !_periodReturned,
-          onTap: () => setState(() => _periodReturned = false),
-        ),
-        const SizedBox(height: 10),
-        _optTile(
-          emoji: '📅',
-          title: tr('İlk adetim geldi'),
-          sub: tr('Tarih gir → döngü takibi başlar'),
-          on: _periodReturned,
-          onTap: () => setState(() => _periodReturned = true),
-        ),
-        if (_periodReturned) ...[
-          const SizedBox(height: 12),
-          InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () async {
-              final now = DateTime.now();
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: _firstPeriod ?? now,
-                firstDate: _birth ?? DateTime(now.year - 1),
-                lastDate: now,
-                helpText: tr('İlk adet tarihi'),
-              );
-              if (picked != null) setState(() => _firstPeriod = picked);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              decoration: BoxDecoration(
-                  color: AppColors.roseBg,
-                  borderRadius: BorderRadius.circular(14)),
-              child: Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 15, color: AppColors.roseD),
-                  const SizedBox(width: 8),
-                  Text(
-                      _firstPeriod == null
-                          ? tr('İlk adet tarihini seç')
-                          : fmtDayMonthYear(_firstPeriod!),
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.roseD)),
-                ],
+        _q(tr('Adetin döndü mü?')),
+        _qsub(tr('İlk adetin döndüyse tarihini seç — döngü takibi buradan başlar.')),
+        Expanded(
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _optTile(
+                emoji: '🌸',
+                title: tr('Henüz adet görmedim'),
+                sub: tr('Bilgilendirme modu · tahmin yapılmaz'),
+                on: !_periodReturned,
+                onTap: () => setState(() => _periodReturned = false),
               ),
-            ),
+              const SizedBox(height: 11),
+              _optTile(
+                emoji: '📅',
+                title: tr('İlk adetim geldi'),
+                sub: tr('Tarih gir → döngü takibi başlar'),
+                on: _periodReturned,
+                onTap: () => setState(() => _periodReturned = true),
+              ),
+              if (_periodReturned) ...[
+                const SizedBox(height: 12),
+                _dateCard(
+                  value: _firstPeriod,
+                  placeholder: tr('İlk adet tarihini seç'),
+                  sub: tr('dokun → takvimden seç'),
+                  onTap: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _firstPeriod ?? now,
+                      firstDate: _birth ?? DateTime(now.year - 1),
+                      lastDate: now,
+                      helpText: tr('İlk adet tarihi'),
+                    );
+                    if (picked != null) setState(() => _firstPeriod = picked);
+                  },
+                ),
+              ],
+            ]),
           ),
-        ],
-        const Spacer(),
+        ),
         _saveBtn(tr('Tamamla')),
       ],
     );
   }
 
-  Widget _infoCard(String title, String body) => Container(
-        padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
-        decoration: BoxDecoration(
-            color: AppColors.roseBg, borderRadius: BorderRadius.circular(16)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(title,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.roseD)),
-                const SizedBox(width: 6),
-                AdInfoDot(title: title, body: body),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(body,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    height: 1.5,
-                    color: AppColors.ink2)),
-          ],
-        ),
+  // ── v3 tarih kartı ──
+  Widget _dateCard({
+    required DateTime? value,
+    required String placeholder,
+    required String sub,
+    required VoidCallback onTap,
+  }) =>
+      GestureDetector(
+        onTap: onTap,
+        child: cycCard(context, child: Row(children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+                color: AppColors.roseBg, borderRadius: BorderRadius.circular(15)),
+            child: Icon(Icons.calendar_today_rounded, size: 22, color: AppColors.roseD),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(value == null ? placeholder : fmtDayMonthYear(value),
+                  style: cycTitleStyle(size: 19)),
+              const SizedBox(height: 1),
+              Text(sub,
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
+            ]),
+          ),
+          Icon(Icons.edit_outlined, size: 18, color: AppColors.roseD),
+        ])),
       );
 
+  // ── v3 seçenek kartı (emoji kutu + başlık + alt + onay) ──
   Widget _optTile({
     required String emoji,
     required String title,
@@ -360,35 +345,36 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
             color: on ? AppColors.roseBg : Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-                color: on ? AppColors.rose : AppColors.line, width: 2),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: on ? AppColors.rose : AppColors.line, width: 1.8),
             boxShadow: on ? null : AppColors.softShadow,
           ),
-          child: Row(
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 24)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        style: const TextStyle(
-                            fontSize: 14.5, fontWeight: FontWeight.w800)),
-                    Text(sub,
-                        style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.muted)),
-                  ],
-                ),
-              ),
-              Icon(on ? Icons.check_circle : Icons.chevron_right,
-                  size: on ? 22 : 20,
-                  color: on ? AppColors.rose : AppColors.muted2),
-            ],
-          ),
+          child: Row(children: [
+            Container(
+              width: 46,
+              height: 46,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                  color: on ? Colors.white.withValues(alpha: 0.6) : AppColors.roseBg,
+                  borderRadius: BorderRadius.circular(14)),
+              child: Text(emoji, style: const TextStyle(fontSize: 23)),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 1),
+                Text(sub,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.muted)),
+              ]),
+            ),
+            Icon(on ? Icons.check_circle_rounded : Icons.chevron_right_rounded,
+                size: on ? 24 : 22, color: on ? AppColors.rose : AppColors.muted2),
+          ]),
         ),
       );
 }

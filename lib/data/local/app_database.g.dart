@@ -3301,6 +3301,36 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _smartPredictionMeta = const VerificationMeta(
+    'smartPrediction',
+  );
+  @override
+  late final GeneratedColumn<bool> smartPrediction = GeneratedColumn<bool>(
+    'smart_prediction',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("smart_prediction" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _weekStartsSundayMeta = const VerificationMeta(
+    'weekStartsSunday',
+  );
+  @override
+  late final GeneratedColumn<bool> weekStartsSunday = GeneratedColumn<bool>(
+    'week_starts_sunday',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("week_starts_sunday" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -3318,6 +3348,8 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     expectedCycleLength,
     periodLength,
     lutealPhaseLength,
+    smartPrediction,
+    weekStartsSunday,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3442,6 +3474,24 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         ),
       );
     }
+    if (data.containsKey('smart_prediction')) {
+      context.handle(
+        _smartPredictionMeta,
+        smartPrediction.isAcceptableOrUnknown(
+          data['smart_prediction']!,
+          _smartPredictionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('week_starts_sunday')) {
+      context.handle(
+        _weekStartsSundayMeta,
+        weekStartsSunday.isAcceptableOrUnknown(
+          data['week_starts_sunday']!,
+          _weekStartsSundayMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3511,6 +3561,14 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         DriftSqlType.int,
         data['${effectivePrefix}luteal_phase_length'],
       ),
+      smartPrediction: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}smart_prediction'],
+      )!,
+      weekStartsSunday: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}week_starts_sunday'],
+      )!,
     );
   }
 
@@ -3537,6 +3595,8 @@ class CycleSettingsRow extends DataClass
   final int? expectedCycleLength;
   final int? periodLength;
   final int? lutealPhaseLength;
+  final bool smartPrediction;
+  final bool weekStartsSunday;
   const CycleSettingsRow({
     required this.isDeleted,
     this.clientUpdatedAt,
@@ -3553,6 +3613,8 @@ class CycleSettingsRow extends DataClass
     this.expectedCycleLength,
     this.periodLength,
     this.lutealPhaseLength,
+    required this.smartPrediction,
+    required this.weekStartsSunday,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3590,6 +3652,8 @@ class CycleSettingsRow extends DataClass
     if (!nullToAbsent || lutealPhaseLength != null) {
       map['luteal_phase_length'] = Variable<int>(lutealPhaseLength);
     }
+    map['smart_prediction'] = Variable<bool>(smartPrediction);
+    map['week_starts_sunday'] = Variable<bool>(weekStartsSunday);
     return map;
   }
 
@@ -3626,6 +3690,8 @@ class CycleSettingsRow extends DataClass
       lutealPhaseLength: lutealPhaseLength == null && nullToAbsent
           ? const Value.absent()
           : Value(lutealPhaseLength),
+      smartPrediction: Value(smartPrediction),
+      weekStartsSunday: Value(weekStartsSunday),
     );
   }
 
@@ -3654,6 +3720,8 @@ class CycleSettingsRow extends DataClass
       ),
       periodLength: serializer.fromJson<int?>(json['periodLength']),
       lutealPhaseLength: serializer.fromJson<int?>(json['lutealPhaseLength']),
+      smartPrediction: serializer.fromJson<bool>(json['smartPrediction']),
+      weekStartsSunday: serializer.fromJson<bool>(json['weekStartsSunday']),
     );
   }
   @override
@@ -3675,6 +3743,8 @@ class CycleSettingsRow extends DataClass
       'expectedCycleLength': serializer.toJson<int?>(expectedCycleLength),
       'periodLength': serializer.toJson<int?>(periodLength),
       'lutealPhaseLength': serializer.toJson<int?>(lutealPhaseLength),
+      'smartPrediction': serializer.toJson<bool>(smartPrediction),
+      'weekStartsSunday': serializer.toJson<bool>(weekStartsSunday),
     };
   }
 
@@ -3694,6 +3764,8 @@ class CycleSettingsRow extends DataClass
     Value<int?> expectedCycleLength = const Value.absent(),
     Value<int?> periodLength = const Value.absent(),
     Value<int?> lutealPhaseLength = const Value.absent(),
+    bool? smartPrediction,
+    bool? weekStartsSunday,
   }) => CycleSettingsRow(
     isDeleted: isDeleted ?? this.isDeleted,
     clientUpdatedAt: clientUpdatedAt.present
@@ -3722,6 +3794,8 @@ class CycleSettingsRow extends DataClass
     lutealPhaseLength: lutealPhaseLength.present
         ? lutealPhaseLength.value
         : this.lutealPhaseLength,
+    smartPrediction: smartPrediction ?? this.smartPrediction,
+    weekStartsSunday: weekStartsSunday ?? this.weekStartsSunday,
   );
   CycleSettingsRow copyWithCompanion(CycleSettingsTableCompanion data) {
     return CycleSettingsRow(
@@ -3756,6 +3830,12 @@ class CycleSettingsRow extends DataClass
       lutealPhaseLength: data.lutealPhaseLength.present
           ? data.lutealPhaseLength.value
           : this.lutealPhaseLength,
+      smartPrediction: data.smartPrediction.present
+          ? data.smartPrediction.value
+          : this.smartPrediction,
+      weekStartsSunday: data.weekStartsSunday.present
+          ? data.weekStartsSunday.value
+          : this.weekStartsSunday,
     );
   }
 
@@ -3776,7 +3856,9 @@ class CycleSettingsRow extends DataClass
           ..write('enabled: $enabled, ')
           ..write('expectedCycleLength: $expectedCycleLength, ')
           ..write('periodLength: $periodLength, ')
-          ..write('lutealPhaseLength: $lutealPhaseLength')
+          ..write('lutealPhaseLength: $lutealPhaseLength, ')
+          ..write('smartPrediction: $smartPrediction, ')
+          ..write('weekStartsSunday: $weekStartsSunday')
           ..write(')'))
         .toString();
   }
@@ -3798,6 +3880,8 @@ class CycleSettingsRow extends DataClass
     expectedCycleLength,
     periodLength,
     lutealPhaseLength,
+    smartPrediction,
+    weekStartsSunday,
   );
   @override
   bool operator ==(Object other) =>
@@ -3817,7 +3901,9 @@ class CycleSettingsRow extends DataClass
           other.enabled == this.enabled &&
           other.expectedCycleLength == this.expectedCycleLength &&
           other.periodLength == this.periodLength &&
-          other.lutealPhaseLength == this.lutealPhaseLength);
+          other.lutealPhaseLength == this.lutealPhaseLength &&
+          other.smartPrediction == this.smartPrediction &&
+          other.weekStartsSunday == this.weekStartsSunday);
 }
 
 class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
@@ -3836,6 +3922,8 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
   final Value<int?> expectedCycleLength;
   final Value<int?> periodLength;
   final Value<int?> lutealPhaseLength;
+  final Value<bool> smartPrediction;
+  final Value<bool> weekStartsSunday;
   final Value<int> rowid;
   const CycleSettingsTableCompanion({
     this.isDeleted = const Value.absent(),
@@ -3853,6 +3941,8 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.expectedCycleLength = const Value.absent(),
     this.periodLength = const Value.absent(),
     this.lutealPhaseLength = const Value.absent(),
+    this.smartPrediction = const Value.absent(),
+    this.weekStartsSunday = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CycleSettingsTableCompanion.insert({
@@ -3871,6 +3961,8 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.expectedCycleLength = const Value.absent(),
     this.periodLength = const Value.absent(),
     this.lutealPhaseLength = const Value.absent(),
+    this.smartPrediction = const Value.absent(),
+    this.weekStartsSunday = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   static Insertable<CycleSettingsRow> custom({
@@ -3889,6 +3981,8 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Expression<int>? expectedCycleLength,
     Expression<int>? periodLength,
     Expression<int>? lutealPhaseLength,
+    Expression<bool>? smartPrediction,
+    Expression<bool>? weekStartsSunday,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3909,6 +4003,8 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
         'expected_cycle_length': expectedCycleLength,
       if (periodLength != null) 'period_length': periodLength,
       if (lutealPhaseLength != null) 'luteal_phase_length': lutealPhaseLength,
+      if (smartPrediction != null) 'smart_prediction': smartPrediction,
+      if (weekStartsSunday != null) 'week_starts_sunday': weekStartsSunday,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3929,6 +4025,8 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Value<int?>? expectedCycleLength,
     Value<int?>? periodLength,
     Value<int?>? lutealPhaseLength,
+    Value<bool>? smartPrediction,
+    Value<bool>? weekStartsSunday,
     Value<int>? rowid,
   }) {
     return CycleSettingsTableCompanion(
@@ -3947,6 +4045,8 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
       expectedCycleLength: expectedCycleLength ?? this.expectedCycleLength,
       periodLength: periodLength ?? this.periodLength,
       lutealPhaseLength: lutealPhaseLength ?? this.lutealPhaseLength,
+      smartPrediction: smartPrediction ?? this.smartPrediction,
+      weekStartsSunday: weekStartsSunday ?? this.weekStartsSunday,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4001,6 +4101,12 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     if (lutealPhaseLength.present) {
       map['luteal_phase_length'] = Variable<int>(lutealPhaseLength.value);
     }
+    if (smartPrediction.present) {
+      map['smart_prediction'] = Variable<bool>(smartPrediction.value);
+    }
+    if (weekStartsSunday.present) {
+      map['week_starts_sunday'] = Variable<bool>(weekStartsSunday.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4025,6 +4131,8 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
           ..write('expectedCycleLength: $expectedCycleLength, ')
           ..write('periodLength: $periodLength, ')
           ..write('lutealPhaseLength: $lutealPhaseLength, ')
+          ..write('smartPrediction: $smartPrediction, ')
+          ..write('weekStartsSunday: $weekStartsSunday, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7209,6 +7317,8 @@ typedef $$CycleSettingsTableTableCreateCompanionBuilder =
       Value<int?> expectedCycleLength,
       Value<int?> periodLength,
       Value<int?> lutealPhaseLength,
+      Value<bool> smartPrediction,
+      Value<bool> weekStartsSunday,
       Value<int> rowid,
     });
 typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
@@ -7228,6 +7338,8 @@ typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
       Value<int?> expectedCycleLength,
       Value<int?> periodLength,
       Value<int?> lutealPhaseLength,
+      Value<bool> smartPrediction,
+      Value<bool> weekStartsSunday,
       Value<int> rowid,
     });
 
@@ -7312,6 +7424,16 @@ class $$CycleSettingsTableTableFilterComposer
 
   ColumnFilters<int> get lutealPhaseLength => $composableBuilder(
     column: $table.lutealPhaseLength,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get smartPrediction => $composableBuilder(
+    column: $table.smartPrediction,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get weekStartsSunday => $composableBuilder(
+    column: $table.weekStartsSunday,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7399,6 +7521,16 @@ class $$CycleSettingsTableTableOrderingComposer
     column: $table.lutealPhaseLength,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get smartPrediction => $composableBuilder(
+    column: $table.smartPrediction,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get weekStartsSunday => $composableBuilder(
+    column: $table.weekStartsSunday,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CycleSettingsTableTableAnnotationComposer
@@ -7470,6 +7602,16 @@ class $$CycleSettingsTableTableAnnotationComposer
     column: $table.lutealPhaseLength,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get smartPrediction => $composableBuilder(
+    column: $table.smartPrediction,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get weekStartsSunday => $composableBuilder(
+    column: $table.weekStartsSunday,
+    builder: (column) => column,
+  );
 }
 
 class $$CycleSettingsTableTableTableManager
@@ -7527,6 +7669,8 @@ class $$CycleSettingsTableTableTableManager
                 Value<int?> expectedCycleLength = const Value.absent(),
                 Value<int?> periodLength = const Value.absent(),
                 Value<int?> lutealPhaseLength = const Value.absent(),
+                Value<bool> smartPrediction = const Value.absent(),
+                Value<bool> weekStartsSunday = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion(
                 isDeleted: isDeleted,
@@ -7544,6 +7688,8 @@ class $$CycleSettingsTableTableTableManager
                 expectedCycleLength: expectedCycleLength,
                 periodLength: periodLength,
                 lutealPhaseLength: lutealPhaseLength,
+                smartPrediction: smartPrediction,
+                weekStartsSunday: weekStartsSunday,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7563,6 +7709,8 @@ class $$CycleSettingsTableTableTableManager
                 Value<int?> expectedCycleLength = const Value.absent(),
                 Value<int?> periodLength = const Value.absent(),
                 Value<int?> lutealPhaseLength = const Value.absent(),
+                Value<bool> smartPrediction = const Value.absent(),
+                Value<bool> weekStartsSunday = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion.insert(
                 isDeleted: isDeleted,
@@ -7580,6 +7728,8 @@ class $$CycleSettingsTableTableTableManager
                 expectedCycleLength: expectedCycleLength,
                 periodLength: periodLength,
                 lutealPhaseLength: lutealPhaseLength,
+                smartPrediction: smartPrediction,
+                weekStartsSunday: weekStartsSunday,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

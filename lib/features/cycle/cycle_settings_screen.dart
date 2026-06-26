@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
 import 'cycle_engine.dart';
+import 'cycle_kit.dart';
 import 'cycle_widgets.dart';
 
 /// Varsayılan hatırlatıcı yapısı (ayar boşsa).
@@ -28,16 +29,36 @@ class CycleSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(cycleSettingsProvider);
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text(tr('Adet Takvimi Ayarları')),
-      ),
-      body: settingsAsync.when(
-        loading: () =>
-            const Center(child: CircularProgressIndicator(color: AppColors.coral)),
-        error: (e, _) => Center(child: Text(apiErrorText(e))),
-        data: (settings) => _Body(settings: settings),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 6, 18, 4),
+              child: Row(children: [
+                GestureDetector(
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    child: Icon(Icons.chevron_left_rounded, size: 28, color: AppColors.ink),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(tr('Ayarlar'),
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+              ]),
+            ),
+            Expanded(
+              child: settingsAsync.when(
+                loading: () =>
+                    Center(child: CircularProgressIndicator(color: AppColors.rose)),
+                error: (e, _) => Center(child: Text(apiErrorText(e))),
+                data: (settings) => _Body(settings: settings),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -54,6 +75,8 @@ class _Body extends ConsumerStatefulWidget {
 class _BodyState extends ConsumerState<_Body> {
   late Map<String, dynamic> _reminders;
   late bool _fertilityWarn;
+  late bool _smart; // akıllı tahmin (son loglardan öğren) — My Calendar pariteli
+  late bool _weekSunday; // takvimde hafta Pazar mı başlasın
   late int _cycleLen; // beklenen döngü uzunluğu (gün); ölçüm yokken kullanılır
   late int _periodLen; // adet (kanama) süresi (gün); ölçüm yokken kullanılır
   late int _lutealLen; // luteal faz uzunluğu (gün); ovülasyon konumunu belirler
@@ -76,6 +99,8 @@ class _BodyState extends ConsumerState<_Body> {
                   : {'on': e.value == true},
           };
     _fertilityWarn = widget.settings.showFertilityWarning;
+    _smart = widget.settings.smartPrediction;
+    _weekSunday = widget.settings.weekStartsSunday;
   }
 
   bool _on(String k) => _reminders[k]?['on'] == true;
@@ -84,6 +109,8 @@ class _BodyState extends ConsumerState<_Body> {
     final next = widget.settings.copyWith(
       reminders: _reminders,
       showFertilityWarning: _fertilityWarn,
+      smartPrediction: _smart,
+      weekStartsSunday: _weekSunday,
       expectedCycleLength: _cycleLen,
       periodLength: _periodLen,
       lutealPhaseLength: _lutealLen,
@@ -117,7 +144,7 @@ class _BodyState extends ConsumerState<_Body> {
       padding: EdgeInsets.fromLTRB(
           16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
       children: [
-        adSec(tr('Hatırlatıcılar'),
+        CycEyebrow(tr('Hatırlatıcılar'),
             info: tr('Hatırlatıcılar cihaz bildirimleri olarak gelir; sessiz saat '
                 'ayarına uyar.')),
         _card([
@@ -126,7 +153,7 @@ class _BodyState extends ConsumerState<_Body> {
           _switchRow(tr('PMS hatırlatıcısı'), tr('Adetten ~5 gün önce'), 'pms'),
           _switchRow(tr('Günlük kayıt'), tr('Her gün 21:00'), 'log', last: true),
         ]),
-        adSec(tr('Emzirme & Doğurganlık'), info: CycleInfo.lam),
+        CycEyebrow(tr('Emzirme & Doğurganlık'), info: CycleInfo.lam),
         _card([
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
@@ -165,11 +192,77 @@ class _BodyState extends ConsumerState<_Body> {
             ),
           ),
         ]),
-        adSec(tr('Tahmin ayarları'),
+        CycEyebrow(tr('Takvim')),
+        _card([
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(tr('Hafta Pazar başlasın'),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                    Text(_weekSunday ? tr('Paz – Cmt') : tr('Pzt – Paz'),
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.muted)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _weekSunday,
+                activeThumbColor: AppColors.rose,
+                onChanged: (v) {
+                  setState(() => _weekSunday = v);
+                  _persist();
+                },
+              ),
+            ]),
+          ),
+        ]),
+        CycEyebrow(tr('Tahmin ayarları'),
             info: tr('Tahminler bu değerlere göre yapılır. Yeterli kayıt birikince '
                 'sistem döngü ve adet süresini kendi öğrenir; luteal faz ise '
                 'ovülasyon gününü belirler. Emin değilsen varsayılanlarda bırak.')),
         _card([
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Text(tr('Akıllı tahmin'),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                      const SizedBox(width: 5),
+                      AdInfoDot(
+                          title: tr('Akıllı tahmin'),
+                          body: tr('Açıkken döngü ve adet süresini son kayıtlarından '
+                              '(yakın döngüler) otomatik öğrenir. Kapalıyken aşağıdaki '
+                              'sabit değerleri kullanır.')),
+                    ]),
+                    Text(tr('Son loglardan otomatik öğren'),
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.muted)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _smart,
+                activeThumbColor: AppColors.rose,
+                onChanged: (v) {
+                  setState(() => _smart = v);
+                  _persist();
+                },
+              ),
+            ]),
+          ),
+          Divider(height: 1, color: AppColors.line),
           _lenRow(
             tr('Ortalama döngü uzunluğu'),
             _cycleLen,
@@ -207,7 +300,7 @@ class _BodyState extends ConsumerState<_Body> {
                 'buna göre hesaplanır (sonraki adet − luteal). Çoğu kişide ~14 gün.'),
           ),
         ]),
-        adSec(tr('Emzirme Durumu')),
+        CycEyebrow(tr('Emzirme Durumu')),
         AdMenuItem(
           icon: 'heart',
           color: AppColors.roseD,
@@ -216,7 +309,7 @@ class _BodyState extends ConsumerState<_Body> {
           meta: tr('Güncelle'),
           onTap: _editBreastfeeding,
         ),
-        adSec(tr('Veri')),
+        CycEyebrow(tr('Veri')),
         _card([
           InkWell(
             onTap: _confirmDeleteAll,
@@ -328,14 +421,9 @@ class _BodyState extends ConsumerState<_Body> {
         ),
       );
 
-  Widget _card(List<Widget> children) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: AppColors.softShadow),
-        child: Column(children: children),
-      );
+  Widget _card(List<Widget> children) => cycCard(context,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(children: children));
 
   Widget _switchRow(String title, String sub, String key, {bool last = false}) {
     return Container(

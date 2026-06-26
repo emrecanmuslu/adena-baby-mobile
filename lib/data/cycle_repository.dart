@@ -65,6 +65,8 @@ class CycleRepository {
       expectedCycleLength: row.expectedCycleLength,
       periodLength: row.periodLength,
       lutealPhaseLength: row.lutealPhaseLength,
+      smartPrediction: row.smartPrediction,
+      weekStartsSunday: row.weekStartsSunday,
     );
   }
 
@@ -98,6 +100,8 @@ class CycleRepository {
             expectedCycleLength: Value(s.expectedCycleLength),
             periodLength: Value(s.periodLength),
             lutealPhaseLength: Value(s.lutealPhaseLength),
+            smartPrediction: Value(s.smartPrediction),
+            weekStartsSunday: Value(s.weekStartsSunday),
             clientUpdatedAt: Value(DateTime.now().toUtc()),
             dirty: Value(dirty),
           ),
@@ -163,6 +167,15 @@ class CycleRepository {
             dirty: const Value(true),
           ),
         );
+    // My Calendar pariteti: ilk gerçek adet loglandığında döngü takibi OTOMATİK
+    // başlar. Mod `firstPeriodDate`'e bağlı (entry'e değil) → boşsa bu kaydın
+    // tarihine set et: bekleme/loşia → aktif geçişi (yoksa log girilse de bekleme).
+    if (entry.isPeriod) {
+      final s = await getSettings();
+      if (s.firstPeriodDate == null) {
+        await patchSettings({'first_period_date': _isoDate(entry.date)});
+      }
+    }
     if (_cloudEnabled()) {
       try {
         await _pushDirtyEntries();
@@ -299,6 +312,9 @@ class CycleRepository {
   }
 
   static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+  static String _isoDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   CycleEntry _toEntry(CycleEntryRow r) => CycleEntry(
         id: r.id,

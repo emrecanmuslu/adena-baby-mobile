@@ -62,6 +62,11 @@ class CycleSettings {
   // Opsiyonel luteal faz uzunluğu (gün). Ovülasyon = sonraki adet − luteal.
   // Varsayılan 14; tıbben 10–16 arası. Ölçülemez, hep bu değer kullanılır.
   final int? lutealPhaseLength;
+  // Akıllı tahmin (My Calendar "Smart prediction" pariteli). AÇIK → döngü/adet
+  // süresi son loglardan (yakın pencere) öğrenilir; KAPALI → sabit expected/period.
+  final bool smartPrediction;
+  // Takvimde haftanın ilk günü Pazar mı (My Calendar "First day of week"). False → Pzt.
+  final bool weekStartsSunday;
 
   const CycleSettings({
     this.babyId,
@@ -74,6 +79,8 @@ class CycleSettings {
     this.expectedCycleLength,
     this.periodLength,
     this.lutealPhaseLength,
+    this.smartPrediction = true,
+    this.weekStartsSunday = false,
   });
 
   /// İlk gerçek adet kaydedilmiş mi → döngü tahmini yapılabilir mi?
@@ -90,6 +97,8 @@ class CycleSettings {
         expectedCycleLength: (j['expected_cycle_length'] as num?)?.toInt(),
         periodLength: (j['period_length'] as num?)?.toInt(),
         lutealPhaseLength: (j['luteal_phase_length'] as num?)?.toInt(),
+        smartPrediction: j['smart_prediction'] as bool? ?? true,
+        weekStartsSunday: j['week_starts_sunday'] as bool? ?? false,
       );
 
   Map<String, dynamic> toPatchJson() => {
@@ -103,6 +112,8 @@ class CycleSettings {
         'expected_cycle_length': expectedCycleLength,
         'period_length': periodLength,
         'luteal_phase_length': lutealPhaseLength,
+        'smart_prediction': smartPrediction,
+        'week_starts_sunday': weekStartsSunday,
       };
 
   CycleSettings copyWith({
@@ -116,6 +127,8 @@ class CycleSettings {
     Object? expectedCycleLength = _sentinel,
     Object? periodLength = _sentinel,
     Object? lutealPhaseLength = _sentinel,
+    bool? smartPrediction,
+    bool? weekStartsSunday,
   }) =>
       CycleSettings(
         babyId: babyId ?? this.babyId,
@@ -136,6 +149,8 @@ class CycleSettings {
         lutealPhaseLength: lutealPhaseLength == _sentinel
             ? this.lutealPhaseLength
             : lutealPhaseLength as int?,
+        smartPrediction: smartPrediction ?? this.smartPrediction,
+        weekStartsSunday: weekStartsSunday ?? this.weekStartsSunday,
       );
 
   static const _sentinel = Object();
