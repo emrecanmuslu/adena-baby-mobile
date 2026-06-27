@@ -64,8 +64,17 @@ class ApiClient {
         refresh: resp.data['refresh'] as String?,
       );
       return true;
+    } on DioException catch (e) {
+      // Sunucu refresh token'ı AÇIKÇA reddettiyse (süresi dolmuş/geçersiz) oturumu
+      // bırak. Ağ/timeout/5xx GEÇİCİ hatalarda token'ları KORU → bir sonraki
+      // açılışta (internet/sunucu gelince) oturum sürer, kullanıcı login'e düşmez.
+      final code = e.response?.statusCode;
+      if (code == 401 || code == 400) {
+        await _tokens.clear();
+      }
+      return false;
     } catch (_) {
-      await _tokens.clear();
+      // Beklenmeyen (ör. parse) hata — token'ları koru, oturumu kaybetme.
       return false;
     }
   }

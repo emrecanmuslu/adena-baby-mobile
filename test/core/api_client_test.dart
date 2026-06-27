@@ -179,11 +179,12 @@ void main() {
     });
 
     test(
-        '401 + refresh token VAR ama refresh POST başarısız → tokens.clear() ve orijinal 401 yüzeye çıkar',
+        '401 + refresh POST AĞ HATASI → tokens KORUNUR (clear yok), orijinal 401 yüzeye çıkar',
         () async {
       // _refresh() kod-içi yeni Dio ile /auth/refresh POST atar; test ortamında
-      // ağ yok → POST patlar → catch → clear() → false. shouldRetry false olur,
-      // orijinal 401 handler.next(e) ile yüzeye çıkar.
+      // ağ yok → POST connectionError (response yok) ile patlar. GEÇİCİ hata →
+      // token'lar SİLİNMEZ (offline-first: sonraki açılışta oturum sürer).
+      // shouldRetry false olur, orijinal 401 handler.next(e) ile yüzeye çıkar.
       final tokens = _FakeTokens(access: 'OLD', refresh: 'REF');
       final api = ApiClient(tokens);
       final adapter = DioAdapter(dio: api.dio);
@@ -198,7 +199,40 @@ void main() {
 
       expect(thrown, isNotNull);
       expect(thrown!.response?.statusCode, 401);
-      expect(tokens.clearCount, 1, reason: 'refresh POST patlayınca clear çağrılmalı');
+      expect(tokens.clearCount, 0,
+          reason: 'ağ hatasında oturum korunmalı (geçici), clear çağrılmamalı');
+      expect(tokens.saveCount, 0, reason: 'başarısız refresh saveTokens yapmamalı');
+    });
+
+    test(
+        '401 + refresh POST 401/400 (sunucu AÇIKÇA reddetti) → tokens.clear() çağrılır',
+        () async {
+      // Refresh token gerçekten geçersiz/süresi dolmuş (sunucu 401 döner) →
+      // gerçek çıkış → clear(). Enjekte refreshClient ile /auth/refresh'i 401 yap.
+      final tokens = _FakeTokens(access: 'OLD', refresh: 'DEAD');
+
+      final refreshDio = Dio(BaseOptions(baseUrl: 'https://test.local'));
+      DioAdapter(dio: refreshDio).onPost(
+        '/auth/refresh',
+        (server) => server.reply(401, {'detail': 'token_not_valid'}),
+        data: {'refresh': 'DEAD'},
+      );
+
+      final api = ApiClient(tokens, refreshClient: refreshDio);
+      final adapter = DioAdapter(dio: api.dio);
+      adapter.onGet('/secure', (server) => server.reply(401, {'detail': 'expired'}));
+
+      DioException? thrown;
+      try {
+        await api.dio.get('/secure');
+      } on DioException catch (e) {
+        thrown = e;
+      }
+
+      expect(thrown, isNotNull);
+      expect(thrown!.response?.statusCode, 401);
+      expect(tokens.clearCount, 1,
+          reason: 'sunucu refresh token\'ı reddedince clear çağrılmalı');
       expect(tokens.saveCount, 0, reason: 'başarısız refresh saveTokens yapmamalı');
     });
 

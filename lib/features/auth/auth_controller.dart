@@ -19,10 +19,11 @@ class AuthController extends AsyncNotifier<User?> {
 
   @override
   Future<User?> build() async {
-    final hasSession = await ref.read(tokenStorageProvider).hasSession;
-    if (!hasSession) return null;
+    final storage = ref.read(tokenStorageProvider);
+    if (!await storage.hasSession) return null;
     try {
       final user = await _repo.me();
+      await LocalSession.cacheAuthUser(user.toJson()); // offline açılış yedeği
       _syncRevenueCat(user);
       // Yerel veri izolasyonu: aktif hesabı set et (repo'lar buna göre kapsamlar).
       LocalSession.setActiveAccount(user.id);
@@ -31,8 +32,24 @@ class AuthController extends AsyncNotifier<User?> {
       await ref.read(initialImportProvider).runIfNeeded();
       return user;
     } catch (_) {
-      // Token geçersiz/temizlenmiş — çıkış durumuna düş.
-      await ref.read(tokenStorageProvider).clear();
+      // /auth/me başarısız. Token silme kararı TEK yerde: api_client._refresh
+      // refresh token'ı yalnız sunucu AÇIKÇA reddederse siler. Buraya gelince:
+      //  • token'lar HÂLÂ duruyorsa → yalnız GEÇİCİ ağ/sunucu hatası → oturumu
+      //    KORU (offline-first): önbellekteki kullanıcıyla devam et.
+      //  • token'lar GİTMİŞSE → refresh gerçek reddi gördü → gerçek çıkış.
+      if (await storage.hasSession) {
+        final cached = await LocalSession.cachedAuthUser();
+        if (cached != null) {
+          final user = User.fromJson(cached);
+          _syncRevenueCat(user);
+          LocalSession.setActiveAccount(user.id);
+          return user; // çevrimdışı/geçici hata — kullanıcı login'e düşmez
+        }
+        // Önbellek yok ama token duruyor → login göster ama token'ı SİLME;
+        // bir sonraki açılış internet/sunucu gelince normal akışla düzelir.
+        return null;
+      }
+      await LocalSession.clearCachedAuthUser();
       return null;
     }
   }
@@ -131,6 +148,7 @@ class AuthController extends AsyncNotifier<User?> {
     // sızmasın (deleteAccount eksikti → aynı cihazda yeni free kullanıcıya premium flaşı).
     await RevenueCatService.instance.logoutUser();
     await SubscriptionCache().clear();
+    await LocalSession.clearCachedAuthUser();
     LocalSession.setActiveAccount(null);
     state = const AsyncData(null);
   }
@@ -145,6 +163,7 @@ class AuthController extends AsyncNotifier<User?> {
     await _repo.logout();
     await RevenueCatService.instance.logoutUser();
     await SubscriptionCache().clear(); // sonraki kullanıcıya premium sızmasın
+    await LocalSession.clearCachedAuthUser(); // önbellekli kullanıcı sızmasın
     LocalSession.setActiveAccount(null); // yerel veri kapsamı kapanır (silinmez)
     state = const AsyncData(null);
   }

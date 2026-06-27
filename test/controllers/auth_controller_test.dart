@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:adena_baby/core/providers.dart';
 import 'package:adena_baby/core/token_storage.dart';
@@ -77,6 +78,7 @@ void main() {
 
   setUp(() {
     _installSecureStorageMock();
+    SharedPreferences.setMockInitialValues({}); // LocalSession önbelleği için temiz depo
     repo = MockAuthRepository();
     import = MockInitialImportService();
     tokens = _FakeTokens();
@@ -122,15 +124,55 @@ void main() {
       verify(() => import.runIfNeeded()).called(1);
     });
 
-    test('invalid token → me() throws → clears tokens, falls to null', () async {
+    test(
+        'gerçek auth reddi → interceptor token\'ları siler (hasSession false) → null',
+        () async {
+      // Üretimde geçersiz refresh → api_client._refresh clear() çağırır; bu yüzden
+      // build() catch\'ine gelindiğinde token gitmiştir. me() bunu modeller.
       tokens.access = 'BAD';
-      when(() => repo.me()).thenThrow(Exception('401'));
+      when(() => repo.me()).thenAnswer((_) async {
+        await tokens.clear(); // interceptor\'ın gerçek reddi sildi
+        throw Exception('401');
+      });
 
       final c = makeContainer();
       final user = await c.read(authControllerProvider.future);
 
       expect(user, isNull);
       expect(tokens.clearCount, 1);
+    });
+
+    test(
+        'geçici ağ hatası + önbellek YOK → token KORUNUR, null (login ama veri kaybı yok)',
+        () async {
+      // me() ağ hatasıyla patlar; interceptor token\'ı silmez → hasSession true.
+      // Önbellek de yok → null döner AMA token silinmez (sonraki açılış düzelir).
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenThrow(Exception('network'));
+
+      final c = makeContainer();
+      final user = await c.read(authControllerProvider.future);
+
+      expect(user, isNull);
+      expect(tokens.clearCount, 0, reason: 'geçici hatada oturum korunmalı');
+      expect(tokens.access, 'ACC');
+    });
+
+    test(
+        'geçici ağ hatası + önbellek VAR → önbellekteki kullanıcıyla devam (offline)',
+        () async {
+      // Daha önce başarılı /auth/me kullanıcıyı önbelleğe almış olsun.
+      await LocalSession.cacheAuthUser(_user(id: 'cached1').toJson());
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenThrow(Exception('network'));
+
+      final c = makeContainer();
+      final user = await c.read(authControllerProvider.future);
+
+      expect(user, isNotNull);
+      expect(user!.id, 'cached1');
+      expect(LocalSession.activeAccountId, 'cached1');
+      expect(tokens.clearCount, 0);
     });
   });
 

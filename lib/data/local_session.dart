@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,6 +22,7 @@ class LocalSession {
   static const _kPremiumSynced = 'premium_synced_accounts_v1'; // tam buluta yükleme yapılmış hesaplar (CSV)
   static const _kPurgeHandled = 'purge_handled_v1'; // hesap → işlenen son cloud_purged_at (acct=iso;...)
   static const _kName = 'local_user_name'; // ebeveyn adı (hesapsız profil)
+  static const _kCachedUser = 'cached_auth_user_v1'; // son başarılı /auth/me (offline açılış için)
 
   /// Açılışta okunup belleğe alınan değerler (senkron erişim için).
   static String? _userId;
@@ -173,6 +175,36 @@ class LocalSession {
       await prefs.setString(
           _kPurgeHandled,
           _purgeHandled.entries.map((e) => '${e.key}=${e.value}').join(';'));
+    } catch (_) {}
+  }
+
+  /// Son başarılı `/auth/me` kullanıcısını (JSON) önbelleğe alır. Soğuk açılışta
+  /// internet/sunucu yokken kullanıcıyı login'e atmadan oturumu sürdürmek için.
+  /// SharedPreferences kullanılır (Keychain soğuk-başlatma kilidi yaşamasın).
+  static Future<void> cacheAuthUser(Map<String, dynamic> json) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kCachedUser, jsonEncode(json));
+    } catch (_) {}
+  }
+
+  /// Önbellekteki son kullanıcı (yoksa null). Offline açılışta build() kullanır.
+  static Future<Map<String, dynamic>?> cachedAuthUser() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final s = prefs.getString(_kCachedUser);
+      if (s == null || s.isEmpty) return null;
+      return jsonDecode(s) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Çıkış/hesap silme/gerçek auth reddinde önbelleği temizler.
+  static Future<void> clearCachedAuthUser() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kCachedUser);
     } catch (_) {}
   }
 
