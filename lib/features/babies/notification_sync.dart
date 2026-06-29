@@ -206,6 +206,23 @@ class _BabyNotifSync extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // GEÇİŞ TOHUMU (kalıcı): beslenme hatırlatıcı aralığı artık cihaz-yerel
+    // (feedReminderStoreProvider). Eski PAYLAŞIMLI sunucu değeri (familySettings)
+    // yüklenince, yerelde bu bebek için kayıt YOKSA bir kez yerele yaz. Böylece
+    // sonraki açılışlarda provider sunucuyu beklemeden yerelden döner ve _syncFeed
+    // snapshot/App Group/widget/hatırlatıcıyı İLK ön planda doğru aralıkla yazar —
+    // arka plan push (kapalı uygulama) asla 120 dk=2 saat varsayılanına düşmez.
+    final loadedFs = ref.watch(familySettingsProvider(baby.id)).asData?.value;
+    if (loadedFs != null &&
+        !ref.read(feedReminderStoreProvider).containsKey(baby.id)) {
+      final feed = loadedFs['feed_reminder'];
+      final seeded = FeedReminderConfig.fromMap(
+          feed is Map ? Map<String, dynamic>.from(feed) : null);
+      // build sırasında provider durumu değiştirme → microtask'a ertele.
+      Future.microtask(
+          () => ref.read(feedReminderStoreProvider.notifier).set(baby.id, seeded));
+    }
+
     // Bekleme (gebelik) modunda kayıt/sayaç/beslenme uyarısı yok.
     if (!baby.isExpecting) {
       syncSleepTimer(baby, ref.watch(ongoingSleepProvider(baby.id)));
