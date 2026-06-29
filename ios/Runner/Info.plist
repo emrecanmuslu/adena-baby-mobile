@@ -43,7 +43,7 @@
 	</array>
 	<!-- AdMob/UMP izleme izni istediğinde bu açıklama yoksa iOS uygulamayı öldürür. -->
 	<key>NSUserTrackingUsageDescription</key>
-	<string>Sana daha uygun reklamlar gösterebilmek için kullanılır.</string>
+	<string>Used to show you more relevant ads.</string>
 	<!-- Google ile Giriş iOS redirect'i: GOOGLE_IOS_CLIENT_ID'nin ters (reversed)
 	     biçimi URL scheme olmalı, yoksa iOS'ta giriş akışı geri dönemez. -->
 	<key>CFBundleURLTypes</key>
@@ -58,9 +58,9 @@
 		</dict>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Anılara fotoğraf eklemek için kamerayı kullanır.</string>
+	<string>Used to take photos to add to your baby's memories.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Anılara eklemek üzere galerinizden fotoğraf seçer.</string>
+	<string>Lets you choose photos from your library to add to memories.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

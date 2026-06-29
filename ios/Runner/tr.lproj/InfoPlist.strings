@@ -2,3 +2,4 @@
    bu dosya kullanılır. Xcode'da InfoPlist.strings variant group'una bağlanmalı. */
 "NSCameraUsageDescription" = "Anılara fotoğraf eklemek için kamerayı kullanır.";
 "NSPhotoLibraryUsageDescription" = "Anılara eklemek üzere galerinizden fotoğraf seçer.";
+"NSUserTrackingUsageDescription" = "Sana daha uygun reklamlar gösterebilmek için kullanılır.";
