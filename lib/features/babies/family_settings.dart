@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/locale_util.dart';
 import '../../core/units.dart';
 import '../../data/baby_repository.dart';
+import '../../data/feed_reminder_store.dart';
 import '../../data/i18n_repository.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
@@ -63,22 +64,50 @@ Future<void> updateUnits(WidgetRef ref, String babyId, Units units) async {
   ref.invalidate(familySettingsProvider(babyId));
 }
 
-/// Aktif bebeğin beslenme hatırlatıcı ayarı (yüklenene kadar varsayılan/kapalı).
-/// Backend FamilySettings.feed_reminder JSON alanında tutulur.
+/// Beslenme hatırlatıcı ayarlarının CİHAZ-YEREL durumu (bebek başına). Açılışta
+/// yerelden yüklenir; güncelleme YALNIZ yerele yazılır (sunucuya gitmez) → her
+/// cihaz kendi hatırlatıcı tercihini tutar (anne 3 saat, baba 2 saat bağımsız).
+/// Eskiden bu ayar sunucuda PAYLAŞIMLI tutuluyordu; son yazan herkesinkini ezerdi.
+final feedReminderStoreProvider =
+    NotifierProvider<FeedReminderNotifier, Map<String, FeedReminderConfig>>(
+        FeedReminderNotifier.new);
+
+class FeedReminderNotifier extends Notifier<Map<String, FeedReminderConfig>> {
+  @override
+  Map<String, FeedReminderConfig> build() {
+    _load();
+    return const {};
+  }
+
+  Future<void> _load() async {
+    state = await FeedReminderStore().readAll();
+  }
+
+  Future<void> set(String babyId, FeedReminderConfig cfg) async {
+    state = {...state, babyId: cfg};
+    await FeedReminderStore().write(babyId, cfg);
+  }
+}
+
+/// Aktif bebeğin beslenme hatırlatıcı ayarı — CİHAZ-YEREL. Yerelde kayıt yoksa
+/// (yeni kurulum veya bu özelliği güncellemeden önceki kullanıcı) eski PAYLAŞIMLI
+/// sunucu değerinden bir kereye mahsus tohumlanır → mevcut kullanıcılar sıfırlanmaz.
+/// Kullanıcı ayarı bir kez kaydedince yerel değer kalıcılaşır ve cihaza özel olur.
 final feedReminderProvider = Provider.family<FeedReminderConfig, String>((ref, babyId) {
+  final local = ref.watch(feedReminderStoreProvider);
+  final cur = local[babyId];
+  if (cur != null) return cur;
+  // Geçiş tohumu: eski sunucu (paylaşımlı) değeri — yalnız yerel kayıt oluşana dek.
   final fs = ref.watch(familySettingsProvider(babyId)).asData?.value;
   final feed = fs?['feed_reminder'];
   return FeedReminderConfig.fromMap(
       feed is Map ? Map<String, dynamic>.from(feed) : null);
 });
 
-/// Beslenme hatırlatıcı ayarını günceller ve önbelleği tazeler.
+/// Beslenme hatırlatıcı ayarını CİHAZA-YEREL kaydeder (sunucuya gitmez).
 Future<void> updateFeedReminder(
     WidgetRef ref, String babyId, FeedReminderConfig cfg) async {
-  await ref
-      .read(babyRepositoryProvider)
-      .updateFamilySettings(babyId, {'feed_reminder': cfg.toMap()});
-  ref.invalidate(familySettingsProvider(babyId));
+  await ref.read(feedReminderStoreProvider.notifier).set(babyId, cfg);
 }
 
 /// Aktif bebeğin sessiz saat ayarı (yüklenene kadar varsayılan/kapalı).
