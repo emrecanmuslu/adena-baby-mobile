@@ -3,9 +3,10 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/local_prefs.dart';
 import 'config.dart';
 
 /// Reklam overlay'ini herhangi bir ekranın üstünden göstermek için kök
@@ -38,7 +39,9 @@ class AdService {
   // App-Open: uygulama öne gelince en fazla bu sıklıkta + reklam 4 saat geçerli.
   static const Duration _appOpenMinGap = Duration(hours: 4);
   static const Duration _appOpenTtl = Duration(hours: 4);
-  static const _storage = FlutterSecureStorage();
+  // Kalıcı durum SharedPreferences'ta (iOS NSUserDefaults). Eskiden Keychain'deydi;
+  // gizli olmayan veri + Keychain'in soğuk-başlatma/warm-resume takılmaları
+  // nedeniyle prefs'e taşındı (eski Keychain değerleri tek seferlik göç edilir).
   static const _kFirstLaunch = 'ad_first_launch';
   // Kalıcı durum (restart by-pass'ı kapatır): son gösterim + günlük sayaç.
   static const _kLastShown = 'ad_last_shown';
@@ -74,20 +77,23 @@ class AdService {
   /// zamanını kalıcı saklar (ilk 24 saat reklamsız). Hata uygulamayı engellemez.
   Future<void> init() async {
     try {
-      final stored = await _storage.read(key: _kFirstLaunch);
+      final prefs = await SharedPreferences.getInstance();
+      final (stored, _) = await LocalPrefs.migrateString(prefs, _kFirstLaunch);
       if (stored != null) {
         _firstLaunch = DateTime.tryParse(stored);
       } else {
         _firstLaunch = DateTime.now();
-        await _storage.write(
-            key: _kFirstLaunch, value: _firstLaunch!.toIso8601String());
+        await prefs.setString(_kFirstLaunch, _firstLaunch!.toIso8601String());
       }
       // Kalıcı reklam durumunu geri yükle (restart sonrası limitler korunsun).
-      _lastShown = DateTime.tryParse(await _storage.read(key: _kLastShown) ?? '');
-      _lastAppOpenShown =
-          DateTime.tryParse(await _storage.read(key: _kAppOpenLast) ?? '');
-      _dayKey = await _storage.read(key: _kDayKey);
-      _todayCount = int.tryParse(await _storage.read(key: _kDayCount) ?? '') ?? 0;
+      final (lastShown, _) = await LocalPrefs.migrateString(prefs, _kLastShown);
+      _lastShown = DateTime.tryParse(lastShown ?? '');
+      final (appOpenLast, _) = await LocalPrefs.migrateString(prefs, _kAppOpenLast);
+      _lastAppOpenShown = DateTime.tryParse(appOpenLast ?? '');
+      final (dayKey, _) = await LocalPrefs.migrateString(prefs, _kDayKey);
+      _dayKey = dayKey;
+      final (dayCount, _) = await LocalPrefs.migrateString(prefs, _kDayCount);
+      _todayCount = int.tryParse(dayCount ?? '') ?? 0;
     } catch (_) {}
     try {
       await MobileAds.instance.initialize();
@@ -110,16 +116,17 @@ class AdService {
 
   Future<void> _persistInterstitialState() async {
     try {
-      await _storage.write(key: _kLastShown, value: _lastShown!.toIso8601String());
-      await _storage.write(key: _kDayKey, value: _dayKey ?? '');
-      await _storage.write(key: _kDayCount, value: _todayCount.toString());
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kLastShown, _lastShown!.toIso8601String());
+      await prefs.setString(_kDayKey, _dayKey ?? '');
+      await prefs.setString(_kDayCount, _todayCount.toString());
     } catch (_) {}
   }
 
   Future<void> _persistAppOpenState() async {
     try {
-      await _storage.write(
-          key: _kAppOpenLast, value: _lastAppOpenShown!.toIso8601String());
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kAppOpenLast, _lastAppOpenShown!.toIso8601String());
     } catch (_) {}
   }
 

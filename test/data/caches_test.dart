@@ -16,9 +16,10 @@ import 'package:adena_baby/data/tour_cache.dart';
 import 'package:adena_baby/models/quiet_hours.dart';
 
 /// In-memory backing store for the flutter_secure_storage method channel.
-/// All cache classes under test use `const FlutterSecureStorage()`, which talks
-/// to the platform via this channel. We intercept it with a Map so reads/writes
-/// round-trip in-process. Reset [_store] in setUp for isolation between tests.
+/// All cache classes have been migrated to SharedPreferences (NSUserDefaults);
+/// `_store` now represents the LEGACY Keychain, so it both (a) backs the
+/// one-time Keychain→prefs migration tests and (b) lets us assert nothing new
+/// is written to Keychain anymore. Reset in setUp for isolation between tests.
 final Map<String, String> _store = {};
 
 void _installSecureStorageMock() {
@@ -51,10 +52,12 @@ void _installSecureStorageMock() {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // ThemeCache/SubscriptionCache artık SharedPreferences (NSUserDefaults) kullanır;
-  // _store ise eski Keychain'i temsil eder → göç (Keychain→prefs) testi de buradan.
+  // Tüm cache'ler artık SharedPreferences (NSUserDefaults) kullanır; `_store` eski
+  // Keychain'i temsil eder → göç (Keychain→prefs) testi de buradan.
   Future<String?> pref(String key) async =>
       (await SharedPreferences.getInstance()).getString(key);
+  Future<void> setPref(String key, String value) async =>
+      (await SharedPreferences.getInstance()).setString(key, value);
 
   setUp(() {
     _store.clear();
@@ -73,7 +76,7 @@ void main() {
     test('write → read round-trip', () async {
       await cache.write('tr');
       expect(await cache.read(), 'tr');
-      expect(_store['app_locale'], 'tr');
+      expect(await pref('app_locale'), 'tr');
     });
 
     test('overwrite replaces value', () async {
@@ -83,14 +86,14 @@ void main() {
     });
 
     test('read trims whitespace; whitespace-only → null', () async {
-      _store['app_locale'] = '  en  ';
+      await setPref('app_locale', '  en  ');
       expect(await cache.read(), 'en');
-      _store['app_locale'] = '   ';
+      await setPref('app_locale', '   ');
       expect(await cache.read(), isNull);
     });
 
     test('empty string stored → null', () async {
-      _store['app_locale'] = '';
+      await setPref('app_locale', '');
       expect(await cache.read(), isNull);
     });
 
@@ -98,7 +101,14 @@ void main() {
       await cache.write('en');
       await cache.clear();
       expect(await cache.read(), isNull);
-      expect(_store.containsKey('app_locale'), isFalse);
+      expect(await pref('app_locale'), isNull);
+    });
+
+    test('eski Keychain değeri prefs\'e göç eder ve Keychain temizlenir', () async {
+      _store['app_locale'] = 'en'; // eski sürüm Keychain'e yazmıştı
+      expect(await cache.read(), 'en'); // göç + okuma
+      expect(await pref('app_locale'), 'en'); // prefs'e taşındı
+      expect(_store.containsKey('app_locale'), isFalse); // Keychain temizlendi
     });
   });
 
@@ -196,10 +206,10 @@ void main() {
       // Varsayılan AÇIK: yalnız kullanıcı açıkça kapatınca ('0') kapalı.
       expect(await cache.enabled(), isTrue);
       await cache.setEnabled(true);
-      expect(_store['family_activity_notif_enabled'], '1');
+      expect(await pref('family_activity_notif_enabled'), '1');
       expect(await cache.enabled(), isTrue);
       await cache.setEnabled(false);
-      expect(_store['family_activity_notif_enabled'], '0');
+      expect(await pref('family_activity_notif_enabled'), '0');
       expect(await cache.enabled(), isFalse);
     });
 
@@ -210,7 +220,7 @@ void main() {
     test('lastSeen stored as UTC ISO8601 and read back', () async {
       final ts = DateTime(2026, 6, 18, 10, 30); // local
       await cache.setLastSeen('baby1', ts);
-      final stored = _store['family_activity_seen_baby1']!;
+      final stored = (await pref('family_activity_seen_baby1'))!;
       // Stored value must be UTC ISO8601.
       expect(stored, ts.toUtc().toIso8601String());
       final back = await cache.lastSeen('baby1');
@@ -235,8 +245,16 @@ void main() {
     });
 
     test('lastSeen with corrupt stored value → null (tryParse)', () async {
-      _store['family_activity_seen_x'] = 'not-a-date';
+      await setPref('family_activity_seen_x', 'not-a-date');
       expect(await cache.lastSeen('x'), isNull);
+    });
+
+    test('eski Keychain lastSeen prefs\'e göç eder', () async {
+      final ts = DateTime.utc(2026, 3, 3, 3);
+      _store['family_activity_seen_m'] = ts.toIso8601String();
+      expect((await cache.lastSeen('m'))!.toUtc(), ts);
+      expect(await pref('family_activity_seen_m'), ts.toIso8601String());
+      expect(_store.containsKey('family_activity_seen_m'), isFalse);
     });
 
     group('markNotifiedIfNew (event dedup)', () {
@@ -246,7 +264,7 @@ void main() {
 
       test('first sighting → true, records id', () async {
         expect(await cache.markNotifiedIfNew('evt-1'), isTrue);
-        expect(_store['family_activity_notified_ids'], 'evt-1');
+        expect(await pref('family_activity_notified_ids'), 'evt-1');
       });
 
       test('repeat sighting → false (deduped)', () async {
@@ -258,14 +276,14 @@ void main() {
         await cache.markNotifiedIfNew('a');
         await cache.markNotifiedIfNew('b');
         await cache.markNotifiedIfNew('c');
-        expect(_store['family_activity_notified_ids'], 'a,b,c');
+        expect(await pref('family_activity_notified_ids'), 'a,b,c');
       });
 
       test('caps at last 100 ids; oldest evicted', () async {
         for (var i = 0; i < 105; i++) {
           await cache.markNotifiedIfNew('id$i');
         }
-        final ids = _store['family_activity_notified_ids']!.split(',');
+        final ids = (await pref('family_activity_notified_ids'))!.split(',');
         expect(ids.length, 100);
         expect(ids.first, 'id5'); // first 5 evicted
         expect(ids.last, 'id104');
@@ -331,7 +349,7 @@ void main() {
       final id = babyId();
       final s = snap();
       await cache.save(id, s);
-      final raw = _store['feed_reminder_snap_$id']!;
+      final raw = (await pref('feed_reminder_snap_$id'))!;
       expect(jsonDecode(raw), s.toJson());
     });
 
@@ -348,7 +366,7 @@ void main() {
 
     test('read of corrupt JSON → null', () async {
       final id = babyId();
-      _store['feed_reminder_snap_$id'] = '{not json';
+      await setPref('feed_reminder_snap_$id', '{not json');
       final cache = FeedReminderCache();
       expect(await cache.read(id), isNull);
     });
@@ -359,9 +377,9 @@ void main() {
       await cache.save(id, snap());
       // Tamper with storage directly; an identical save must NOT overwrite it
       // because content is unchanged (in-memory _lastWritten matches).
-      _store['feed_reminder_snap_$id'] = 'TAMPERED';
+      await setPref('feed_reminder_snap_$id', 'TAMPERED');
       await cache.save(id, snap());
-      expect(_store['feed_reminder_snap_$id'], 'TAMPERED');
+      expect(await pref('feed_reminder_snap_$id'), 'TAMPERED');
     });
 
     test('dedup: changed content does rewrite storage', () async {
@@ -370,6 +388,14 @@ void main() {
       await cache.save(id, snap(intervalMin: 120));
       await cache.save(id, snap(intervalMin: 240));
       expect((await cache.read(id))!.intervalMin, 240);
+    });
+
+    test('eski Keychain snapshot prefs\'e göç eder', () async {
+      final cache = FeedReminderCache();
+      final id = babyId();
+      _store['feed_reminder_snap_$id'] = jsonEncode(snap(slot: 7).toJson());
+      expect((await cache.read(id))!.slot, 7);
+      expect(_store.containsKey('feed_reminder_snap_$id'), isFalse);
     });
 
     group('FeedReminderSnapshot.fromJson defaults', () {
@@ -420,11 +446,11 @@ void main() {
     // MUST be the first test in this group: ensureLoaded's storage-read path
     // only runs while the process-static _loaded flag is false (it flips true on
     // the first ensureLoaded/put in the isolate and there is no reset hook). We
-    // therefore exercise both hydration (draft recovery) and idempotency here,
-    // before any other test triggers loading.
+    // therefore exercise both hydration (draft recovery from legacy Keychain via
+    // migration) and idempotency here, before any other test triggers loading.
     test('ensureLoaded hydrates mem from storage, then is idempotent', () async {
-      // Simulate a previous session's persisted draft (clear() in setUp wiped
-      // _mem but _loaded is still false on this very first run).
+      // Simulate a previous session's persisted draft in legacy Keychain
+      // (clear() in setUp wiped _mem but _loaded is still false on this run).
       _store['feed_last_formula'] = jsonEncode({'amount': '120'});
       _store['feed_last_solid'] = jsonEncode({'food': 'avokado'});
       await FeedInputCache.ensureLoaded();
@@ -446,20 +472,20 @@ void main() {
       await FeedInputCache.put('formula', {'amount': '90', 'unit': 'ml'});
       expect(FeedInputCache.get('formula'), {'amount': '90', 'unit': 'ml'});
       // Persisted as JSON under feed_last_<sub>.
-      expect(jsonDecode(_store['feed_last_formula']!),
+      expect(jsonDecode((await pref('feed_last_formula'))!),
           {'amount': '90', 'unit': 'ml'});
     });
 
     test('put ignores breast', () async {
       await FeedInputCache.put('breast', {'side': 'L'});
       expect(FeedInputCache.get('breast'), isEmpty);
-      expect(_store.containsKey('feed_last_breast'), isFalse);
+      expect(await pref('feed_last_breast'), isNull);
     });
 
     test('put ignores unknown sub', () async {
       await FeedInputCache.put('bogus', {'x': '1'});
       expect(FeedInputCache.get('bogus'), isEmpty);
-      expect(_store.containsKey('feed_last_bogus'), isFalse);
+      expect(await pref('feed_last_bogus'), isNull);
     });
 
     test('all three allowed subs persist independently', () async {
@@ -477,9 +503,9 @@ void main() {
       await FeedInputCache.clear();
       expect(FeedInputCache.get('formula'), isEmpty);
       expect(FeedInputCache.get('pumped'), isEmpty);
-      expect(_store.containsKey('feed_last_formula'), isFalse);
-      expect(_store.containsKey('feed_last_pumped'), isFalse);
-      expect(_store.containsKey('feed_last_solid'), isFalse);
+      expect(await pref('feed_last_formula'), isNull);
+      expect(await pref('feed_last_pumped'), isNull);
+      expect(await pref('feed_last_solid'), isNull);
     });
   });
 
@@ -494,7 +520,7 @@ void main() {
     test('add → read round-trip', () async {
       await cache.add('home');
       expect(await cache.read(), {'home'});
-      expect(_store['tour_seen_v1'], 'home');
+      expect(await pref('tour_seen_v1'), 'home');
     });
 
     test('multiple adds accumulate (CSV)', () async {
@@ -509,11 +535,11 @@ void main() {
       await cache.add('home');
       await cache.add('home');
       expect(await cache.read(), {'home'});
-      expect(_store['tour_seen_v1'], 'home');
+      expect(await pref('tour_seen_v1'), 'home');
     });
 
     test('read filters empty tokens from CSV', () async {
-      _store['tour_seen_v1'] = 'home,,charts,';
+      await setPref('tour_seen_v1', 'home,,charts,');
       expect(await cache.read(), {'home', 'charts'});
     });
 
@@ -521,6 +547,13 @@ void main() {
       await cache.add('home');
       await cache.clear();
       expect(await cache.read(), isEmpty);
+      expect(await pref('tour_seen_v1'), isNull);
+    });
+
+    test('eski Keychain CSV prefs\'e göç eder', () async {
+      _store['tour_seen_v1'] = 'home,charts';
+      expect(await cache.read(), {'home', 'charts'});
+      expect(await pref('tour_seen_v1'), 'home,charts');
       expect(_store.containsKey('tour_seen_v1'), isFalse);
     });
   });

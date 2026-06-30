@@ -1,6 +1,8 @@
 import 'dart:convert';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'local_prefs.dart';
 
 /// Bebek-başına KALICI bildirim "slot"u (0,1,2…). Beslenme/uyku/emzirme bildirim
 /// id'leri slot'tan türer (NotificationService.feedMainIdFor(slot) vb.). Eski
@@ -10,11 +12,14 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 ///
 /// Ana isolate: bellek haritası (sync `slotFor`); kayıt main()'de [load] edilir.
 /// Arka plan isolate (push handler): ayrı bellek → depodan okur (async [slotForStored]).
+///
+/// Depo: SharedPreferences (iOS NSUserDefaults). Eskiden Keychain'deydi; iOS'ta
+/// push/arka-plan isolate'ından Keychain okuması takılıp slot bulunamayınca
+/// bildirimler yanlış id'ye düşebiliyordu → prefs'e taşındı (tek seferlik göç).
 class SlotRegistry {
   SlotRegistry._();
   static final SlotRegistry instance = SlotRegistry._();
 
-  static const _storage = FlutterSecureStorage();
   static const _key = 'baby_notif_slots'; // JSON: {babyId: slot}
 
   Map<String, int> _cache = {};
@@ -22,7 +27,8 @@ class SlotRegistry {
   /// Uygulama açılışında bir kez (main) — kalıcı haritayı belleğe yükle.
   Future<void> load() async {
     try {
-      final raw = await _storage.read(key: _key);
+      final prefs = await SharedPreferences.getInstance();
+      final (raw, _) = await LocalPrefs.migrateString(prefs, _key);
       if (raw != null && raw.isNotEmpty) {
         final m = jsonDecode(raw) as Map<String, dynamic>;
         _cache = m.map((k, v) => MapEntry(k, (v as num).toInt()));
@@ -50,7 +56,8 @@ class SlotRegistry {
   /// Yoksa null (o bebeğe dair zamanlanmış bir bildirim de yoktur → iptal gereksiz).
   Future<int?> slotForStored(String babyId) async {
     try {
-      final raw = await _storage.read(key: _key);
+      final prefs = await SharedPreferences.getInstance();
+      final (raw, _) = await LocalPrefs.migrateString(prefs, _key);
       if (raw == null || raw.isEmpty) return null;
       final m = jsonDecode(raw) as Map<String, dynamic>;
       final v = m[babyId];
@@ -62,7 +69,8 @@ class SlotRegistry {
 
   Future<void> _persist() async {
     try {
-      await _storage.write(key: _key, value: jsonEncode(_cache));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_key, jsonEncode(_cache));
     } catch (_) {}
   }
 
@@ -70,7 +78,8 @@ class SlotRegistry {
   Future<void> clear() async {
     _cache = {};
     try {
-      await _storage.delete(key: _key);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_key);
     } catch (_) {}
   }
 }

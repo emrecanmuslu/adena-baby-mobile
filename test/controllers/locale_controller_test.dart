@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:adena_baby/core/i18n.dart';
 import 'package:adena_baby/core/providers.dart';
@@ -39,7 +40,9 @@ class _FakeTokens implements TokenStorage {
   Future<void> clear() async => access = null;
 }
 
-/// In-memory backing for flutter_secure_storage so LocaleCache round-trips.
+/// In-memory backing for the LEGACY flutter_secure_storage (Keychain). LocaleCache
+/// now persists to SharedPreferences; seeding `_store` exercises the one-time
+/// Keychain→prefs migration that LocaleCache.read() performs.
 final Map<String, String> _store = {};
 
 void _installSecureStorageMock() {
@@ -72,9 +75,13 @@ void main() {
   late MockInitialImportService import;
   late _FakeTokens tokens;
 
+  Future<String?> pref(String key) async =>
+      (await SharedPreferences.getInstance()).getString(key);
+
   setUp(() {
     _store.clear();
     _installSecureStorageMock();
+    SharedPreferences.setMockInitialValues({});
     i18n = MockI18nRepository();
     auth = MockAuthRepository();
     import = MockInitialImportService();
@@ -148,7 +155,7 @@ void main() {
       await ctrl.setLocale('en');
 
       expect(c.read(localeControllerProvider).value, 'en');
-      expect(_store['app_locale'], 'en'); // written to LocaleCache
+      expect(await pref('app_locale'), 'en'); // written to LocaleCache (prefs)
       expect(I18n.instance.locale, 'en'); // i18n applied
       verify(() => auth.updateSettings({'language': 'en'})).called(1);
     });
@@ -176,7 +183,7 @@ void main() {
       await ctrl.setLocale('en');
 
       expect(c.read(localeControllerProvider).value, 'en');
-      expect(_store['app_locale'], 'en');
+      expect(await pref('app_locale'), 'en');
     });
 
     test('switching to tr applies tr without syncing a bundle', () async {

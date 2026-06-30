@@ -1,8 +1,9 @@
 import 'dart:convert';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/quiet_hours.dart';
+import 'local_prefs.dart';
 
 /// Beslenme hatırlatıcısının ARKA PLAN isolate'ından (FCM push) yeniden
 /// planlanabilmesi için gereken parametrelerin cihaz-yerel anlık görüntüsü.
@@ -63,10 +64,14 @@ class FeedReminderSnapshot {
 }
 
 /// Snapshot'ı bebek başına saklar (ActivityNotifCache deseniyle aynı storage).
+///
+/// Depo: SharedPreferences (iOS NSUserDefaults). Eskiden Keychain'deydi; bu
+/// snapshot ARKA PLAN isolate'ından (FCM push) okunduğundan, Keychain'in
+/// push/kilitli-cihaz takılması hatırlatıcının yeniden planlanmasını
+/// engelliyordu → prefs'e taşındı (eski Keychain değeri tek seferlik göç).
 class FeedReminderCache {
-  static const _storage = FlutterSecureStorage();
   static String _key(String babyId) => 'feed_reminder_snap_$babyId';
-  // _syncFeed her build'de save çağırır; aynı içeriği tekrar tekrar keystore'a
+  // _syncFeed her build'de save çağırır; aynı içeriği tekrar tekrar depoya
   // yazmamak için son yazılan JSON'u bellekte tut, değişmedikçe atla.
   static final Map<String, String> _lastWritten = {};
 
@@ -75,7 +80,8 @@ class FeedReminderCache {
     if (_lastWritten[babyId] == json) return; // değişmemiş → yazma
     _lastWritten[babyId] = json;
     try {
-      await _storage.write(key: _key(babyId), value: json);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_key(babyId), json);
     } catch (_) {
       _lastWritten.remove(babyId); // yazılamadıysa tekrar denensin
     }
@@ -83,7 +89,8 @@ class FeedReminderCache {
 
   Future<FeedReminderSnapshot?> read(String babyId) async {
     try {
-      final s = await _storage.read(key: _key(babyId));
+      final prefs = await SharedPreferences.getInstance();
+      final (s, _) = await LocalPrefs.migrateString(prefs, _key(babyId));
       if (s == null || s.isEmpty) return null;
       return FeedReminderSnapshot.fromJson(jsonDecode(s) as Map<String, dynamic>);
     } catch (_) {
