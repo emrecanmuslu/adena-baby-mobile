@@ -3,6 +3,7 @@ name: Android release (Play)
 # AAB build eder, upload key ile imzalar ve Google Play'e yükler.
 # Tetik: elle (Run workflow) veya `v*` tag push (örn. git tag v1.0.1 && git push --tags).
 # versionCode = github.run_number + 100 (monoton artar; elle yüklenenlerin üstünde).
+# Varsayılan track = alpha (Kapalı test); tag-push da alpha'ya gider.
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +14,7 @@ on:
       track:
         description: 'Play track (internal | alpha | beta | production)'
         required: true
-        default: 'internal'
+        default: 'alpha'
   push:
     tags: ['v*']
 
@@ -91,7 +92,7 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.adenababy.adena_baby
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
-          track: ${{ github.event.inputs.track || 'internal' }}
+          track: ${{ github.event.inputs.track || 'alpha' }}
           status: completed
 
       - name: AAB'yi artifact olarak da sakla
