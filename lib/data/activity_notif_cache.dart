@@ -11,7 +11,6 @@ import 'local_prefs.dart';
 /// yol açabiliyordu → prefs'e taşındı (eski Keychain değerleri tek seferlik göç).
 class ActivityNotifCache {
   static const _kEnabled = 'family_activity_notif_enabled';
-  static const _kNotified = 'family_activity_notified_ids';
   static String _kSeen(String babyId) => 'family_activity_seen_$babyId';
 
   Future<bool> enabled() async {
@@ -54,25 +53,5 @@ class ActivityNotifCache {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kSeen(babyId));
     } catch (_) {}
-  }
-
-  /// Bir aktivite olayı için bildirim gösterilmeli mi? İlk kez görülüyorsa kaydeder
-  /// ve true döner; daha önce gösterildiyse (push VEYA polling tarafından) false.
-  /// Push ve polling aynı olayı YARIŞ içinde işleyebildiğinden çift bildirimi bu
-  /// olay-id dedup'ı engeller. Son 100 id tutulur (UUID'ler, virgülle ayrık).
-  Future<bool> markNotifiedIfNew(String eventId) async {
-    if (eventId.isEmpty) return true;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final (raw, _) = await LocalPrefs.migrateString(prefs, _kNotified);
-      final ids = (raw == null || raw.isEmpty) ? <String>[] : raw.split(',');
-      if (ids.contains(eventId)) return false;
-      ids.add(eventId);
-      final trimmed = ids.length > 100 ? ids.sublist(ids.length - 100) : ids;
-      await prefs.setString(_kNotified, trimmed.join(','));
-      return true;
-    } catch (_) {
-      return true; // hata → kaçırmaktansa göster
-    }
   }
 }

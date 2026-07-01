@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
@@ -340,15 +339,6 @@ class _BodyState extends ConsumerState<_Body> {
             ),
           ),
         ]),
-        const SizedBox(height: 12),
-        AdMenuItem(
-          icon: 'moon',
-          color: AppColors.roseD,
-          bg: AppColors.roseBg,
-          title: tr('Modülü gizle'),
-          meta: tr('Keşfet menüsünden kaldır'),
-          onTap: _confirmHide,
-        ),
       ],
     );
   }
@@ -512,27 +502,6 @@ class _BodyState extends ConsumerState<_Body> {
       }
       ref.invalidate(cycleEntriesProvider);
       if (mounted) showAdToast(context, tr('Silindi'));
-    } catch (e) {
-      if (mounted) showAdError(context, apiErrorText(e));
-    }
-  }
-
-  Future<void> _confirmHide() async {
-    final ok = await _confirm(
-        tr('Modülü gizle'),
-        tr('Adet Takvimi Keşfet menüsünden kaldırılacak. Verilerin silinmez; '
-            'istediğinde ayarlardan tekrar açabilirsin.'));
-    if (!ok) return;
-    final next = widget.settings.copyWith(enabled: false);
-    try {
-      await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
-      ref.invalidate(cycleSettingsProvider);
-      // Bekleyen hatırlatıcıları temizle.
-      await NotificationService.instance.syncCycle(reminders: const {});
-      if (mounted) {
-        showAdToast(context, tr('Modül gizlendi'));
-        context.go('/discover');
-      }
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     }

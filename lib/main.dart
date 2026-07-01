@@ -16,6 +16,7 @@ import 'core/analytics_service.dart';
 import 'core/api_client.dart';
 import 'core/background_sync.dart';
 import 'core/i18n.dart';
+import 'core/in_app_notification.dart';
 import 'core/locale_util.dart';
 import 'core/token_storage.dart';
 import 'data/locale_cache.dart';
@@ -27,6 +28,7 @@ import 'core/config.dart';
 import 'core/revenuecat_service.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_controller.dart';
+import 'data/activity_notif_cache.dart';
 import 'data/env_cache.dart';
 import 'data/feed_input_cache.dart';
 import 'data/i18n_repository.dart';
@@ -36,7 +38,6 @@ import 'data/slot_registry.dart';
 import 'data/subscription_cache.dart';
 import 'data/subscription_repository.dart';
 import 'data/theme_cache.dart';
-import 'features/babies/activity_watcher.dart';
 import 'features/babies/baby_controller.dart';
 import 'features/babies/notification_sync.dart';
 import 'features/records/record_controller.dart';
@@ -237,12 +238,16 @@ class AdenaApp extends ConsumerStatefulWidget {
 }
 
 class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver {
-  Timer? _activityTimer;
+  // Ön plan in-app banner'ının aynı olayı iki kez göstermesini önleyen basit
+  // in-memory dedup (onMessage + iOS native köprü aynı push'u sevk edebilir).
+  String? _lastBannerEventId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Uygulama ön planda başlar → push OS bildirimi yerine in-app banner göstersin.
+    appInForeground = true;
     // Push: ön plan mesaj dinleyicisi (oturum gerektirmez).
     PushService.instance.startForeground();
     // Ön planda aile-etkinlik push'u gelince yerel kayıtları HEMEN çek → ana
@@ -250,7 +255,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // (handlePushMessage drift'e dokunmaz; sync'i buradan, ref'le tetikliyoruz).
     try {
       // Ortak sevk: hem FlutterFire onMessage hem iOS native köprü buraya düşer.
-      void dispatch(String? t) {
+      void dispatch(Map<String, dynamic> data) {
+        final t = data['type'] as String?;
         // family_activity = başka üye kayıt ekledi; sync_nudge = güncelleme/silme
         // (uyku/emzirme bitirme dahil). İkisi de yerel kayıtları hemen çeksin.
         if (t == 'family_activity' || t == 'sync_nudge') {
@@ -259,48 +265,68 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
         // baby_update = sahip bebek profilini değiştirdi (ör. gebelik→doğdu);
         // access_removed = paylaşımdan çıkarıldım / sahibin cloud'u silindi → ikisi de
         // bebek listesini hemen tazelesin (status güncellensin / erişimi kalkan bebek
-        // düşürülüp yerel verisi temizlensin), 90 sn polling beklenmesin.
+        // düşürülüp yerel verisi temizlensin), 90 sn beklenmesin.
         if (t == 'baby_update' || t == 'access_removed') {
           ref.read(babyControllerProvider.notifier).refresh();
         }
+        // Ön plan in-app banner: aile etkinliği / topluluk push'u. OS bildirimi ön
+        // planda basılmaz (bkz. appInForeground); kullanıcı uygulamanın içindeyken
+        // de yeni etkinliği görsün. Push tek kaynak → polling yok, çift bildirim yok.
+        if (t == 'family_activity' || (t != null && t.startsWith('community'))) {
+          _showActivityBanner(t!, data);
+        }
       }
 
-      FirebaseMessaging.onMessage.listen((m) => dispatch(m.data['type'] as String?));
+      FirebaseMessaging.onMessage.listen((m) => dispatch(m.data));
       // iOS native köprü: AppDelegate her gelen push'ta 'adena/push' kanalını
       // çağırır → FlutterFire onMessage yeni UIScene yaşam döngüsünde güvenilir
-      // ateşlenmese bile ön planda sync/refresh DETERMİNİSTİK tetiklenir. (Android'de
-      // kanal hiç çağrılmaz; orada onMessage yeterli.) requestSyncSoon debounce'lu →
-      // onMessage ile çift tetiklense bile tek sync olur.
+      // ateşlenmese bile ön planda sync/refresh/banner DETERMİNİSTİK tetiklenir.
+      // (Android'de kanal hiç çağrılmaz; orada onMessage yeterli.) requestSyncSoon
+      // debounce'lu + banner event_id dedup'lı → çift sevk tek sonuç verir.
       const MethodChannel('adena/push').setMethodCallHandler((call) async {
         if (call.method == 'onPush') {
           final raw = (call.arguments as Map?) ?? const {};
-          dispatch(raw['type']?.toString());
+          dispatch(raw.map((k, v) => MapEntry(k.toString(), v)));
         }
       });
     } catch (_) {}
     // Yol A: öne gelince + periyodik yoklama. İlk tetik ilk frame'den sonra
     // (oturum/bebekler yüklensin diye gecikmeli).
     WidgetsBinding.instance.addPostFrameCallback((_) => _onForeground());
-    _activityTimer = Timer.periodic(
-        const Duration(seconds: 90), (_) => _pollActivity());
   }
 
   @override
   void dispose() {
-    _activityTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Ön plan/arka plan bayrağı: ön planda push OS bildirimi yerine in-app banner
+    // gösterir (handlePushMessage appInForeground'a bakar).
+    appInForeground = state == AppLifecycleState.resumed;
     if (state == AppLifecycleState.resumed) _onForeground();
   }
 
-  /// Öne gelince: aile etkinliğini yokla + bebek listesini tazele (çıkarılan
-  /// üyenin erişimi düşsün, yerel verisi temizlensin).
+  /// Ön plan aile-etkinlik/topluluk push'u için in-app üst banner göster. event_id
+  /// ile in-memory dedup (onMessage + iOS native köprü aynı olayı sevk edebilir).
+  Future<void> _showActivityBanner(String type, Map<String, dynamic> data) async {
+    final eventId = data['event_id']?.toString() ?? '';
+    if (eventId.isNotEmpty && eventId == _lastBannerEventId) return;
+    if (eventId.isNotEmpty) _lastBannerEventId = eventId;
+    // Aile etkinliği tercihi kapalıysa gösterme (sunucu push görünürlüğüyle tutarlı).
+    if (type == 'family_activity' && !await ActivityNotifCache().enabled()) return;
+    final body = data['body']?.toString() ?? '';
+    if (body.isEmpty) return;
+    final title =
+        data['title']?.toString() ?? data['baby_name']?.toString() ?? 'Adena Baby';
+    showInAppNotification(title: title, body: body);
+  }
+
+  /// Öne gelince: bebek listesini tazele (çıkarılan üyenin erişimi düşsün, yerel
+  /// verisi temizlensin) + drift stream'lerini yeniden okut.
   void _onForeground() {
-    _pollActivity();
     // Warm-resume'da ön plan drift stream'lerini ANINDA yeniden okut: uygulama
     // kapalı/arka plandayken arka plan isolate'i (bg sync / push handler) ayrı
     // bağlantıyla yeni kayıtları dosyaya yazmış olabilir — bu bağlantının stream'leri
@@ -330,11 +356,6 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
         'is_premium', ref.read(isPremiumProvider) ? 'yes' : 'no'));
     unawaited(
         AnalyticsService.instance.setUserProperty('app_locale', I18n.instance.locale));
-  }
-
-  void _pollActivity() {
-    // Sessiz; tercih kapalıysa/oturum yoksa watcher kendi içinde no-op döner.
-    ref.read(familyActivityWatcherProvider).poll();
   }
 
   @override

@@ -18,9 +18,12 @@ import 'widget_service.dart';
 /// Mesajlar sunucudan DATA-ağırlıklı gelir; istemci hem yerel bildirimi gösterir
 /// hem de "son beslenme" ana ekran widget'ını günceller — uygulama kapalıyken bile.
 ///
-/// Çift bildirim önleme: push gösterince aile-etkinliği cursor'unu (ActivityNotifCache)
-/// ilerletir; böylece öne gelince çalışan polling watcher aynı olayı tekrar
-/// göstermez. Push düşmezse polling yedek olarak yakalar.
+/// Bildirim tek kaynak = PUSH. Uygulama ön plandayken OS bildirimi basılmaz;
+/// bunun yerine main.dart in-app üst banner gösterir (bkz. showInAppNotification).
+/// [appInForeground] bu ayrımı sağlar: ön planda `onMessage` ANA isolate'te çalışır
+/// (bayrak true → OS bildirimi atla), arka planda `onBackgroundMessage` AYRI
+/// isolate'te çalışır (bayrak varsayılan false → OS bildirimi göster).
+bool appInForeground = false;
 
 /// Arka plan (uygulama kapalı/arka planda) mesaj işleyici — TOP-LEVEL olmalı.
 @pragma('vm:entry-point')
@@ -99,29 +102,21 @@ Future<void> handlePushMessage(RemoteMessage message) async {
     await _rescheduleFeedReminder(data, lastFeed, title);
   }
 
-  // 2) Bildirimi göster.
+  // 2) Bildirimi göster — YALNIZ uygulama ön planda DEĞİLKEN (arka plan/kapalı).
+  // Ön planda OS bildirimi basılmaz; main.dart in-app üst banner gösterir (iOS'ta
+  // OS ön plan sunumu da kapalı → çift olmaz). Bu dal foreground onMessage'dan da
+  // çağrılır (push_service dinleyicisi) → bayrakla erken dön.
+  if (appInForeground) return;
+
   // iOS'ta görünür 'notification' payload'ı APNs tarafından zaten gösterilir →
   // tekrar yerel bildirim basma (çift olmasın). Android data-only geldiği için
   // her zaman yerel basılır.
-  final alreadyShownByOs = Platform.isIOS && message.notification != null;
-  if (alreadyShownByOs) {
-    // OS bildirimi gösterdi → polling'in aynı olayı tekrar göstermemesi için
-    // olay-id'yi işaretle, sonra cursor'u ilerlet.
-    final eventId = (data['event_id'] as String?) ?? '';
-    if (type == 'family_activity') await ActivityNotifCache().markNotifiedIfNew(eventId);
-    _advanceCursorIfFamily(type, data);
-    return;
-  }
+  if (Platform.isIOS && message.notification != null) return;
 
   if (type == 'family_activity') {
-    // Kullanıcı tercihi (opt-in, varsayılan kapalı) bunu da yönetir.
+    // Kullanıcı tercihi (varsayılan açık) bunu da yönetir.
     if (await ActivityNotifCache().enabled()) {
-      // Olay-id dedup: polling aynı olayı önce işlediyse tekrar gösterme.
-      final eventId = (data['event_id'] as String?) ?? '';
-      if (await ActivityNotifCache().markNotifiedIfNew(eventId)) {
-        await NotificationService.instance.showActivity(title: title, body: body);
-      }
-      await _advanceCursorIfFamily(type, data);
+      await NotificationService.instance.showActivity(title: title, body: body);
     }
   } else if (type.startsWith('community')) {
     await NotificationService.instance.showActivity(title: title, body: body);
@@ -154,15 +149,6 @@ Future<void> _rescheduleFeedReminder(
   );
 }
 
-/// Aile etkinliği gösterildiyse polling cursor'unu ilerlet (çift bildirim önleme).
-Future<void> _advanceCursorIfFamily(String type, Map<String, dynamic> data) async {
-  if (type != 'family_activity') return;
-  final babyId = data['baby_id'];
-  if (babyId is String && babyId.isNotEmpty) {
-    await ActivityNotifCache().setLastSeen(babyId, DateTime.now());
-  }
-}
-
 class PushService {
   PushService._();
   static final PushService instance = PushService._();
@@ -176,13 +162,13 @@ class PushService {
   void startForeground() {
     if (_foregroundReady) return;
     _foregroundReady = true;
-    // iOS: uygulama ön plandayken de bildirim banner/ses/rozet göster (varsayılan
-    // gizler). onMessage zaten ateşlenir; bu yalnız görünür sunumu açar. Android'de
-    // etkisi yok (orada data-only gelir, yerel bildirimi istemci basar).
+    // iOS: uygulama ön plandayken OS banner'ı GÖSTERME (alert:false) → onMessage
+    // yine ateşlenir ve main.dart in-app üst banner gösterir (tek, tutarlı UX).
+    // Rozet güncellensin diye badge açık. Android'de etkisi yok (data-only gelir).
     FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-      alert: true,
+      alert: false,
       badge: true,
-      sound: true,
+      sound: false,
     );
     FirebaseMessaging.onMessage.listen(handlePushMessage);
   }

@@ -6,7 +6,6 @@ import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
 import '../../core/premium_gate.dart';
 import '../../core/theme.dart';
-import '../../data/cycle_repository.dart';
 import '../babies/baby_controller.dart';
 
 /// Keşfet hub'ı — takip dışı yüzeyleri tek mantıklı yerde toplar:
@@ -19,10 +18,6 @@ class DiscoverScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final baby = ref.watch(activeBabyProvider);
     final expecting = baby?.isExpecting ?? false;
-    // Adet Takvimi (doğum sonrası anne) — yalnız takip modunda ve modül gizli
-    // değilse görünür. Veri kişiseldir; ayar yüklenene kadar iyimser göster.
-    final cycleEnabled =
-        ref.watch(cycleSettingsProvider).asData?.value.enabled ?? true;
 
     return Scaffold(
       appBar: AppBar(
@@ -53,7 +48,7 @@ class DiscoverScreen extends ConsumerWidget {
           ],
 
           // Annenin Sağlığı — doğum sonrası anneye özel (bekleme modunda gizli).
-          if (!expecting && cycleEnabled) ...[
+          if (!expecting) ...[
             adSec(tr('Annenin sağlığı')),
             AdMenuItem(
               icon: 'heart',

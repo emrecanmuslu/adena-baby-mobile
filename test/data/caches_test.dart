@@ -257,40 +257,6 @@ void main() {
       expect(_store.containsKey('family_activity_seen_m'), isFalse);
     });
 
-    group('markNotifiedIfNew (event dedup)', () {
-      test('empty eventId → true (always show)', () async {
-        expect(await cache.markNotifiedIfNew(''), isTrue);
-      });
-
-      test('first sighting → true, records id', () async {
-        expect(await cache.markNotifiedIfNew('evt-1'), isTrue);
-        expect(await pref('family_activity_notified_ids'), 'evt-1');
-      });
-
-      test('repeat sighting → false (deduped)', () async {
-        expect(await cache.markNotifiedIfNew('evt-1'), isTrue);
-        expect(await cache.markNotifiedIfNew('evt-1'), isFalse);
-      });
-
-      test('distinct ids accumulate comma-separated', () async {
-        await cache.markNotifiedIfNew('a');
-        await cache.markNotifiedIfNew('b');
-        await cache.markNotifiedIfNew('c');
-        expect(await pref('family_activity_notified_ids'), 'a,b,c');
-      });
-
-      test('caps at last 100 ids; oldest evicted', () async {
-        for (var i = 0; i < 105; i++) {
-          await cache.markNotifiedIfNew('id$i');
-        }
-        final ids = (await pref('family_activity_notified_ids'))!.split(',');
-        expect(ids.length, 100);
-        expect(ids.first, 'id5'); // first 5 evicted
-        expect(ids.last, 'id104');
-        // An evicted id is treated as new again.
-        expect(await cache.markNotifiedIfNew('id0'), isTrue);
-      });
-    });
   });
 
   // ---------------------------------------------------------------------------
