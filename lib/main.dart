@@ -269,12 +269,11 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
         if (t == 'baby_update' || t == 'access_removed') {
           ref.read(babyControllerProvider.notifier).refresh();
         }
-        // Ön plan in-app banner: aile etkinliği / topluluk push'u. OS bildirimi ön
-        // planda basılmaz (bkz. appInForeground); kullanıcı uygulamanın içindeyken
-        // de yeni etkinliği görsün. Push tek kaynak → polling yok, çift bildirim yok.
-        if (t == 'family_activity' || (t != null && t.startsWith('community'))) {
-          _showActivityBanner(t!, data);
-        }
+        // Ön plan in-app banner: GÖRÜNÜR body taşıyan her push (OS bildirimi ön
+        // planda basılmaz — bkz. appInForeground). Sessiz push'lar (sync_nudge/
+        // baby_update/access_removed) body taşımadığından _showActivityBanner
+        // içindeki body-boş kontrolüyle elenir. Push tek kaynak → çift bildirim yok.
+        _showActivityBanner(t, data);
       }
 
       FirebaseMessaging.onMessage.listen((m) => dispatch(m.data));
@@ -309,16 +308,18 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) _onForeground();
   }
 
-  /// Ön plan aile-etkinlik/topluluk push'u için in-app üst banner göster. event_id
-  /// ile in-memory dedup (onMessage + iOS native köprü aynı olayı sevk edebilir).
-  Future<void> _showActivityBanner(String type, Map<String, dynamic> data) async {
+  /// Ön plan push'u için in-app üst banner göster. Yalnız GÖRÜNÜR body taşıyan
+  /// push'lar (family_activity/topluluk/admin test); sessiz push'lar body boş →
+  /// gösterilmez. event_id ile in-memory dedup (onMessage + iOS native köprü aynı
+  /// olayı sevk edebilir).
+  Future<void> _showActivityBanner(String? type, Map<String, dynamic> data) async {
+    final body = data['body']?.toString() ?? '';
+    if (body.isEmpty) return; // sessiz push (sync_nudge/baby_update/...) → banner yok
     final eventId = data['event_id']?.toString() ?? '';
     if (eventId.isNotEmpty && eventId == _lastBannerEventId) return;
     if (eventId.isNotEmpty) _lastBannerEventId = eventId;
     // Aile etkinliği tercihi kapalıysa gösterme (sunucu push görünürlüğüyle tutarlı).
     if (type == 'family_activity' && !await ActivityNotifCache().enabled()) return;
-    final body = data['body']?.toString() ?? '';
-    if (body.isEmpty) return;
     final title =
         data['title']?.toString() ?? data['baby_name']?.toString() ?? 'Adena Baby';
     showInAppNotification(title: title, body: body);
