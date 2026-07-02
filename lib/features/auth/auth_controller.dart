@@ -187,6 +187,12 @@ final activeAccountIdProvider = Provider<String?>((ref) {
   // Misafir ("kayıt olmadan devam et"): yerel veri kapsamı device-UUID'ye bağlanır
   // (LocalSession.activeAccountId ile aynı). Böylece misafir bebek/kayıt/adet
   // yerelde görünür ve misafir moduna geçince ilgili controller'lar yeniden kurulur.
-  if (ref.watch(guestModeProvider)) return ref.watch(localUserIdProvider);
+  // localUserIdProvider (plain Provider) enterGuest ÜRETMEDEN önce okunmuşsa '' cache'ler
+  // → kapsamı bozar; statik userId'yi DOĞRUDAN oku (enterGuest üretmiş olur, guestMode
+  // flip'i bu provider'ı yeniden hesaplar).
+  if (ref.watch(guestModeProvider)) {
+    final gid = LocalSession.userId;
+    return gid.isEmpty ? null : gid;
+  }
   return null;
 });

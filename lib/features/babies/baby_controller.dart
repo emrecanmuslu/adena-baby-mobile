@@ -26,11 +26,16 @@ class BabyController extends AsyncNotifier<List<Baby>> {
   @override
   Future<List<Baby>> build() async {
     // Hesap değişince controller yeniden kurulsun (yerel veri aktif hesaba göre
-    // kapsamlanır → farklı hesaba girişte doğru bebek listesi gelir).
-    ref.watch(activeAccountIdProvider);
+    // kapsamlanır → farklı hesaba girişte doğru bebek listesi gelir). KRİTİK:
+    // watchAll/getAll'ı statik LocalSession.activeAccountId yerine BU provider
+    // değeriyle çağır — login/logout geçişinde statik henüz güncellenmemişken
+    // (setActiveAccount _postLogin'de) rebuild olursa stream YANLIŞ hesabı sorgulayıp
+    // bebeği kaybediyordu (onboarding'e atıyordu, intermittent). Provider = rebuild
+    // tetikçisi → aynı değerle sorgu daima tutarlı.
+    final acct = ref.watch(activeAccountIdProvider);
     // Yerel akışı dinle: yerel yazımlar (create/update/delete) state'i otomatik
     // günceller — çıkışta bile veri kalır (local her zaman birincil).
-    final sub = _repo.watchAll().listen((list) {
+    final sub = _repo.watchAll(accountId: acct).listen((list) {
       state = AsyncData(list);
     });
     ref.onDispose(sub.cancel);
@@ -41,7 +46,7 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     if (ref.watch(loggedInProvider)) {
       unawaited(_pull());
     }
-    return _repo.getAll();
+    return _repo.getAll(accountId: acct);
   }
 
   /// Onboarding'den yeni bebek oluşturur (istemci-üretimli UUID, yerele yazılır).

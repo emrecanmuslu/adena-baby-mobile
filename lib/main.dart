@@ -333,37 +333,83 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   /// misafir verisini gerçek hesaba rebind eder (premium'da buluta yükler).
   Future<void> _maybeOfferGuestMigration(String accountId) async {
     if (_guestMigChecked || LocalSession.guestMigrationResolved) return;
-    _guestMigChecked = true;
     final db = ref.read(databaseProvider);
     if (!await GuestMigration.hasData(db, accountId)) return;
-    // Bu misafir turu için yanıtlandı say (enterGuest'te yeniden sıfırlanır).
-    await LocalSession.setGuestMigrationResolved(true);
-    final ctx = rootNavigatorKey.currentContext;
-    if (ctx == null || !ctx.mounted) return;
-    final migrate = await showDialog<bool>(
-      context: ctx,
-      barrierDismissible: false,
-      builder: (c) => AlertDialog(
-        title: Text(tr('Kayıtlarını hesabına aktaralım mı?')),
-        content: Text(tr('Kayıt olmadan eklediğin bebek ve kayıtlar bu cihazda '
-            'duruyor. Hesabına aktaralım mı? Aktarmazsan hesabın boş başlar '
-            've bu veriler cihazda kalır.')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, false),
-            child: Text(tr('Hayır')),
+    _guestMigChecked = true; // veri var → bu oturumda bir kez teklif et
+    // KRİTİK: kayıt/giriş anında dinleyici tetikleniyor ama go_router aynı anda
+    // yeni hesabı yönlendiriyor (bebek yoksa → /onboarding, varsa → /home). Diyalog
+    // bu geçişten ÖNCE basılırsa kök navigator geçişte onu anında kaldırıyor
+    // (kullanıcı hiç göremiyor). Yönlendirme yerleşene kadar bekle, sonra göster.
+    await Future.delayed(const Duration(milliseconds: 1200));
+    // Döngü: Aktar → göç; Hayır → KALICI silme onayı (Sil → sil / Vazgeç → tekrar sor).
+    while (true) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return; // resolved SET ETME → sonraki açılışta yeniden sor
+      final migrate = await showDialog<bool>(
+        context: ctx,
+        barrierDismissible: false,
+        builder: (c) => PopScope(
+          // Kazara geri tuşuyla kapanmasın → Aktar/Hayır'dan biri seçilmeli.
+          canPop: false,
+          child: AlertDialog(
+            title: Text(tr('Kayıtlarını hesabına aktaralım mı?')),
+            content: Text(
+                tr('Kayıt olmadan eklediğin bebek ve kayıtlar bu cihazda duruyor. '
+                    'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.')),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: Text(tr('Hayır')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: Text(tr('Aktar')),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, true),
-            child: Text(tr('Aktar')),
+        ),
+      );
+      if (migrate == null) return; // istemsiz kapanma → resolved set etme
+      if (migrate == true) {
+        await LocalSession.setGuestMigrationResolved(true);
+        await GuestMigration.migrate(ref, accountId);
+        showInAppNotification(
+            title: tr('Aktarıldı'), body: tr('Kayıtların hesabına taşındı.'));
+        return;
+      }
+      // Hayır → ikinci diyalog: KALICI silme onayı (yanlışlıkla veri kaybı olmasın).
+      final ctx2 = rootNavigatorKey.currentContext;
+      if (ctx2 == null || !ctx2.mounted) return;
+      final del = await showDialog<bool>(
+        context: ctx2,
+        barrierDismissible: false,
+        builder: (c) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: Text(tr('Misafir verileri silinsin mi?')),
+            content: Text(
+                tr('Aktarmadığın bebek ve kayıtlar bu cihazdan KALICI olarak '
+                    'silinecek. Bu işlem geri alınamaz.')),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: Text(tr('Vazgeç')),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: AppColors.fever),
+                onPressed: () => Navigator.pop(c, true),
+                child: Text(tr('Sil')),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-    if (migrate == true) {
-      await GuestMigration.migrate(ref, accountId);
-      showInAppNotification(
-          title: tr('Aktarıldı'), body: tr('Kayıtların hesabına taşındı.'));
+        ),
+      );
+      if (del == true) {
+        await LocalSession.setGuestMigrationResolved(true);
+        await GuestMigration.discard(ref);
+        return;
+      }
+      // Vazgeç (del == false/null) → döngü başa: göç diyaloğunu tekrar göster.
     }
   }
 

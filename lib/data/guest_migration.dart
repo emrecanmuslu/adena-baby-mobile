@@ -3,9 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
 import '../features/babies/baby_controller.dart';
+import 'baby_repository.dart';
+import 'health_repository.dart';
 import 'local/app_database.dart';
 import 'local_session.dart';
+import 'memory_repository.dart';
 import 'migration_service.dart';
+import 'mom_repository.dart';
+import 'record_repository.dart';
 import 'sync_gate.dart';
 
 /// Misafir ("kayıt olmadan devam et") verisini gerçek hesaba bağlar.
@@ -92,8 +97,13 @@ class GuestMigration {
     }
 
     // Yerel akışları tazele → bebek listesi/kayıtlar yeni hesap altında görünsün.
+    // babyController'ın drift stream'i ESKİ hesap kapsamına (misafir id) bağlı kalmış
+    // olabilir: register anında rebuild olurken statik activeAccountId henüz gerçek
+    // hesaba geçmemişti. refresh() (=cloud pull) yerel stream'i yeniden kurmaz → tam
+    // invalidate ile temiz yeniden kur; yeni watchAll güncel hesabı sorgular ve rebound
+    // bebeği görür (aksi halde onboarding'de takılı kalır).
     db.refreshSyncedStreams();
-    ref.read(babyControllerProvider.notifier).refresh();
+    ref.invalidate(babyControllerProvider);
 
     // Premium ise buluta tam yükleme (overlay ile). Free ise veri yerelde hesap
     // altında kalır; kullanıcı sonradan premium olursa migrasyon zaten yükler.
@@ -101,5 +111,31 @@ class GuestMigration {
       await LocalSession.clearPremiumSyncedForAccount(newAccountId);
       await ref.read(migrationControllerProvider.notifier).run();
     }
+  }
+
+  /// "Hayır" (aktarmayı reddet) + silme onayı sonrası: misafir kapsamındaki TÜM
+  /// yerel veriyi KALICI siler. babies + kayıt/anı/anne/sağlık/hatırlatıcı (bebek
+  /// FK) + adet (guestId kapsamı). Yalnız yerel; sunucuya hiç gitmemişti.
+  static Future<void> discard(WidgetRef ref) async {
+    final db = ref.read(databaseProvider);
+    final guestId = LocalSession.userId;
+    if (guestId.isEmpty) return;
+    final babies =
+        await ref.read(babyRepositoryProvider).getAll(accountId: guestId);
+    for (final b in babies) {
+      try {
+        await ref.read(recordRepositoryProvider).purgeBaby(b.id);
+        await ref.read(memoryRepositoryProvider).purgeBaby(b.id);
+        await ref.read(momRepositoryProvider).purgeBaby(b.id);
+        await ref.read(healthRepositoryProvider).purgeBaby(b.id);
+      } catch (_) {}
+    }
+    await (db.delete(db.babies)..where((b) => b.accountId.equals(guestId))).go();
+    await (db.delete(db.cycleEntries)..where((e) => e.accountId.equals(guestId)))
+        .go();
+    await (db.delete(db.cycleSettingsTable)..where((s) => s.id.equals(guestId)))
+        .go();
+    db.refreshSyncedStreams();
+    ref.invalidate(babyControllerProvider);
   }
 }

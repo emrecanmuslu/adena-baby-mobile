@@ -57,39 +57,90 @@ class SettingsScreen extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(2, 0, 2, 6),
             child: user == null
-                ? InkWell(
-                    onTap: () => context.push('/login'),
-                    borderRadius: BorderRadius.circular(16),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 26,
-                            backgroundColor: AppColors.peach,
-                            child: Icon(Icons.person_outline,
-                                color: AppColors.coralDark, size: 24),
+                ? Container(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.feedBg,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: AppColors.coral.withValues(alpha: 0.25),
+                          width: 1.5),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: AppColors.coral.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text('🍼',
+                                  style: TextStyle(fontSize: 22)),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(tr('Verilerini kaybetme'),
+                                  style: const TextStyle(
+                                      fontSize: 16.5,
+                                      fontWeight: FontWeight.w900)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          tr('Hesap oluştur; verilerini yedekle, ailenle paylaş '
+                              've her cihazdan eriş.'),
+                          style: TextStyle(
+                              fontSize: 13,
+                              height: 1.45,
+                              color: AppColors.muted,
+                              fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.coral,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                            ),
+                            onPressed: () => context.push('/register'),
+                            child: Text(tr('Kayıt ol'),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900, fontSize: 15)),
                           ),
-                          const SizedBox(width: 13),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(tr('Misafir'),
-                                    style: const TextStyle(
-                                        fontSize: 18, fontWeight: FontWeight.w900)),
-                                Text(
-                                    tr('Hesap oluştur → verilerini yedekle ve paylaş'),
-                                    style: TextStyle(
-                                        color: AppColors.muted,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700)),
-                              ],
+                        ),
+                        const SizedBox(height: 8),
+                        Center(
+                          child: GestureDetector(
+                            onTap: () => context.push('/login'),
+                            child: Text.rich(
+                              TextSpan(
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: AppColors.muted,
+                                    fontWeight: FontWeight.w700),
+                                children: [
+                                  TextSpan(text: tr('Zaten hesabın var mı? ')),
+                                  TextSpan(
+                                      text: tr('Giriş yap'),
+                                      style: const TextStyle(
+                                          color: AppColors.coralDark,
+                                          fontWeight: FontWeight.w900)),
+                                ],
+                              ),
                             ),
                           ),
-                          Icon(Icons.chevron_right, color: AppColors.muted),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   )
                 : Row(
@@ -238,29 +289,33 @@ class SettingsScreen extends ConsumerWidget {
             meta: tr('Verini indir · yedekleme · hesabı sil'),
             onTap: () => context.push('/privacy'),
           ),
-          AdMenuItem(
-            icon: 'logout',
-            color: AppColors.muted,
-            bg: AppColors.line,
-            title: tr('Çıkış yap'),
-            trailing: const SizedBox.shrink(),
-            // Çıkış birkaç ağ çağrısı yapar (FCM kaydı sil + sunucu); loader olmadan
-            // basılmamış gibi hissettiriyordu → engelleyici göstergeyle geri bildirim ver.
-            onTap: () async {
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (_) => const Center(child: CircularProgressIndicator()),
-              );
-              try {
-                await ref.read(authControllerProvider.notifier).logout();
-              } finally {
-                if (context.mounted) {
-                  Navigator.of(context, rootNavigator: true).pop();
+          // "Çıkış yap" yalnız GERÇEK oturumda gösterilir. Misafirin çıkacağı bir
+          // oturum yok (hesaba geçiş üstteki "Hesap oluştur" CTA'sında); ayrıca guest
+          // logout activeAccount'ı bozup bebeği restart'a kadar kaybediyordu → gizle.
+          if (user != null)
+            AdMenuItem(
+              icon: 'logout',
+              color: AppColors.muted,
+              bg: AppColors.line,
+              title: tr('Çıkış yap'),
+              trailing: const SizedBox.shrink(),
+              // Çıkış birkaç ağ çağrısı yapar (FCM kaydı sil + sunucu); loader olmadan
+              // basılmamış gibi hissettiriyordu → engelleyici göstergeyle geri bildirim ver.
+              onTap: () async {
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => const Center(child: CircularProgressIndicator()),
+                );
+                try {
+                  await ref.read(authControllerProvider.notifier).logout();
+                } finally {
+                  if (context.mounted) {
+                    Navigator.of(context, rootNavigator: true).pop();
+                  }
                 }
-              }
-            },
-          ),
+              },
+            ),
 
           // Yalnız debug build'lerde: Geliştirici sayfası (API ortamı vb.).
           if (kDebugMode)

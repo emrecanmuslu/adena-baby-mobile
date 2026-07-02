@@ -119,6 +119,18 @@ class LocalSession {
   /// bağlanmaz; sonraki açılış göçü yeniden dener.
   static Future<void> enterGuest() async {
     _guest = true;
+    // Misafir yerel veri kapsamı localUserId'ye bağlı. ensureLoaded, secure-storage
+    // okuma hatasında userId'yi ÜRETMEMİŞ olabilir (yetim-koruma guard'ı) → boş kalırsa
+    // misafir bebekleri account_id=null ile yazılıp GÖRÜNMEZ olur ve onboarding donar.
+    // Misafire GİRERKEN userId yoksa burada üret+kalıcılaştır (prefs artık kanonik depo).
+    if ((_userId ?? '').isEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final id = const Uuid().v4();
+        await prefs.setString(_kUserId, id);
+        _userId = id;
+      } catch (_) {}
+    }
     if ((_userId ?? '').isNotEmpty) _activeAccountId = _userId;
     // Yeni misafir turu → göç sorusu yeniden sorulabilsin (önceki tur "Hayır"
     // demiş olabilir; bu turda yeni veri için tekrar sorulmalı).
@@ -293,6 +305,9 @@ class GuestModeController extends Notifier<bool> {
 
   Future<void> enter() async {
     await LocalSession.enterGuest();
+    // enterGuest userId'yi yeni üretmiş olabilir → localUserIdProvider'ın stale ''
+    // cache'ini tazele (createdBy vb. doğru id'yi alsın).
+    ref.invalidate(localUserIdProvider);
     state = true;
   }
 

@@ -23,8 +23,8 @@ class BabyRepository {
 
   // ---- Yerel okuma (yalnız aktif hesabın bebekleri) ----
 
-  Stream<List<Baby>> watchAll() {
-    final acct = LocalSession.activeAccountId;
+  Stream<List<Baby>> watchAll({String? accountId}) {
+    final acct = accountId ?? LocalSession.activeAccountId;
     if (acct == null) return Stream.value(const []);
     final q = _db.select(_db.babies)
       ..where((b) => b.isDeleted.equals(false) & b.accountId.equals(acct))
@@ -47,8 +47,8 @@ class BabyRepository {
     return rows.isNotEmpty;
   }
 
-  Future<List<Baby>> getAll() async {
-    final acct = LocalSession.activeAccountId;
+  Future<List<Baby>> getAll({String? accountId}) async {
+    final acct = accountId ?? LocalSession.activeAccountId;
     if (acct == null) return const [];
     final rows = await (_db.select(_db.babies)
           ..where((b) => b.isDeleted.equals(false) & b.accountId.equals(acct))
