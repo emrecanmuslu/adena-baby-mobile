@@ -14,7 +14,6 @@ import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
 import '../../data/subscription_repository.dart';
-import '../auth/auth_controller.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/reminder.dart';
@@ -89,26 +88,23 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
     }
     final isPremium = ref.watch(isPremiumProvider);
-    // Özel (sunucu) hatırlatıcılar hesap gerektirir. Beslenme + sessiz saat
-    // ZATEN yerel (hesapsızda da çalışır) → onları her zaman gösteririz.
-    final loggedIn = ref.watch(authControllerProvider).asData?.value != null;
-    final async = loggedIn ? ref.watch(remindersProvider(baby.id)) : null;
+    // Özel hatırlatıcılar LOCAL-FIRST (Drift + cihaz bildirimi) → hesap GEREKMEZ;
+    // misafir dahil herkeste çalışır. Giriş yapılınca cihazlar-arası senkron da
+    // eklenir (health/sync). Beslenme + sessiz saat de zaten yerel.
+    final async = ref.watch(remindersProvider(baby.id));
     // Free limit: en fazla 2 özel (custom) hatırlatıcı.
-    final customCount = (async?.asData?.value ?? const [])
+    final customCount = (async.asData?.value ?? const [])
         .where((r) => r.type == 'custom' && !_hidden.contains(r.id))
         .length;
 
-    // Liste değiştikçe cihaz bildirimlerini eşitle + süresi geçmiş tek-seferlikleri
-    // temizle. Yalnız hesaplı kullanıcıda (hesapsızda sunucu listesi yok).
-    if (loggedIn) {
-      ref.listen(remindersProvider(baby.id), (_, next) {
-        final list = next.asData?.value;
-        if (list != null) {
-          NotificationService.instance.sync(list);
-          _pruneExpiredOnce(baby.id, list);
-        }
-      });
-    }
+    // Liste değiştikçe cihaz bildirimlerini eşitle + süresi geçmiş tek-seferlikleri temizle.
+    ref.listen(remindersProvider(baby.id), (_, next) {
+      final list = next.asData?.value;
+      if (list != null) {
+        NotificationService.instance.sync(list);
+        _pruneExpiredOnce(baby.id, list);
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -125,11 +121,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           adSec(tr('Sessiz saat')),
           _QuietHoursCard(babyId: baby.id),
           adSec(tr('Aktif hatırlatıcılar')),
-          // Hesapsız: özel hatırlatıcılar (ilaç/randevu) cloud + hesap gerektirir.
-          if (!loggedIn)
-            const _CustomRemindersLocked()
-          else ...[
-            async!.when(
+          async.when(
               loading: () => Column(
                 children: [
                   for (var i = 0; i < 3; i++)
@@ -182,7 +174,6 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
                 }
               },
             ),
-          ],
         ],
       ),
     );
@@ -309,47 +300,6 @@ class _ReminderTile extends ConsumerWidget {
 /// Hesapsız kullanıcıya özel hatırlatıcıların hesap gerektirdiğini anlatan kart.
 /// Beslenme hatırlatıcısı + sessiz saat zaten yerel çalışır; bu yalnız özel
 /// (ilaç/randevu) hatırlatıcılar için.
-class _CustomRemindersLocked extends StatelessWidget {
-  const _CustomRemindersLocked();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppColors.softShadow,
-      ),
-      child: Column(
-        children: [
-          AdenaIcon('bell', size: 38, color: AppColors.peach),
-          const SizedBox(height: 10),
-          Text(tr('Özel hatırlatıcılar için giriş yap'),
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text(
-              tr('İlaç, vitamin ve randevu hatırlatıcıları hesabınla cihazların '
-                  'arasında senkronlanır. Beslenme hatırlatıcısı ve sessiz saat '
-                  'hesapsız da çalışır.'),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 14),
-          AdSaveButton(
-            label: tr('Giriş yap / Hesap oluştur'),
-            color: AppColors.coral,
-            onTap: () => context.push('/login'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _Empty extends StatelessWidget {
   const _Empty();
 

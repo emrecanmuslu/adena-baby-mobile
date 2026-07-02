@@ -7,8 +7,8 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
-import '../../core/language_quick_pick.dart';
 import '../../core/theme.dart';
+import '../../data/local_session.dart';
 import 'auth_controller.dart';
 import 'oauth_buttons.dart';
 
@@ -40,6 +40,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           password: _password.text,
         );
     // Yönlendirme router redirect ile otomatik; hata varsa aşağıda gösterilir.
+  }
+
+  /// "Kayıt olmadan devam et" — hesapsız yerel misafir oturumu başlatır. Router
+  /// misafir dalına geçer (yerel rıza → bebek → ana sayfa). Sonradan istediğinde
+  /// giriş yapıp yerel verisini hesabına aktarabilir.
+  Future<void> _continueAsGuest() async {
+    await ref.read(guestModeProvider.notifier).enter();
+    if (mounted) context.go('/');
   }
 
   @override
@@ -81,7 +89,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             fontSize: 13.5),
                       ),
                     ),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 24),
+                    // Hesapsız keşif — üyelik açmadan yerel kullanım (öne çıkan yol;
+                    // veri telefonda kalır, sonradan giriş yapıp hesaba aktarılabilir).
+                    OutlinedButton(
+                      onPressed: loading ? null : _continueAsGuest,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.coralDark,
+                        side: BorderSide(color: AppColors.line, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: Text(tr('Üyeliksiz devam et'),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w900, fontSize: 14.5)),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(child: Divider(color: AppColors.line, thickness: 1)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(tr('veya'),
+                              style: TextStyle(
+                                  color: AppColors.muted,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11.5)),
+                        ),
+                        Expanded(child: Divider(color: AppColors.line, thickness: 1)),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
                     AdField(
                       label: tr('E-posta'),
                       child: TextFormField(
@@ -178,8 +217,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 22),
-                    const LanguageQuickPick(),
+                    const SizedBox(height: 18),
                     // Yalnız debug: oturum açmadan API ortamını değiştirebilmek
                     // için Geliştirici sayfasına kısayol.
                     if (kDebugMode)

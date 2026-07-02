@@ -31,6 +31,7 @@ import 'features/auth/auth_controller.dart';
 import 'data/activity_notif_cache.dart';
 import 'data/env_cache.dart';
 import 'data/feed_input_cache.dart';
+import 'data/guest_migration.dart';
 import 'data/i18n_repository.dart';
 import 'data/local_session.dart';
 import 'data/migration_service.dart';
@@ -241,6 +242,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   // Ön plan in-app banner'ının aynı olayı iki kez göstermesini önleyen basit
   // in-memory dedup (onMessage + iOS native köprü aynı push'u sevk edebilir).
   String? _lastBannerEventId;
+  // Misafir→hesap göç teklifini oturum başına bir kez sor.
+  bool _guestMigChecked = false;
 
   @override
   void initState() {
@@ -325,6 +328,45 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     showInAppNotification(title: title, body: body);
   }
 
+  /// Misafirken giriş/kayıt yapan kullanıcıya "yereldeki kayıtlarını hesabına
+  /// aktaralım mı?" diye bir kez sorar. Onaylarsa [GuestMigration.migrate] yerel
+  /// misafir verisini gerçek hesaba rebind eder (premium'da buluta yükler).
+  Future<void> _maybeOfferGuestMigration(String accountId) async {
+    if (_guestMigChecked || LocalSession.guestMigrationResolved) return;
+    _guestMigChecked = true;
+    final db = ref.read(databaseProvider);
+    if (!await GuestMigration.hasData(db, accountId)) return;
+    // Bu misafir turu için yanıtlandı say (enterGuest'te yeniden sıfırlanır).
+    await LocalSession.setGuestMigrationResolved(true);
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    final migrate = await showDialog<bool>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        title: Text(tr('Kayıtlarını hesabına aktaralım mı?')),
+        content: Text(tr('Kayıt olmadan eklediğin bebek ve kayıtlar bu cihazda '
+            'duruyor. Hesabına aktaralım mı? Aktarmazsan hesabın boş başlar '
+            've bu veriler cihazda kalır.')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(tr('Hayır')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(tr('Aktar')),
+          ),
+        ],
+      ),
+    );
+    if (migrate == true) {
+      await GuestMigration.migrate(ref, accountId);
+      showInAppNotification(
+          title: tr('Aktarıldı'), body: tr('Kayıtların hesabına taşındı.'));
+    }
+  }
+
   /// Öne gelince: bebek listesini tazele (çıkarılan üyenin erişimi düşsün, yerel
   /// verisi temizlensin) + drift stream'lerini yeniden okut.
   void _onForeground() {
@@ -364,8 +406,14 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     final router = ref.watch(routerProvider);
     // Oturum açıkken FCM token'ını sunucuya kaydet (giriş sonrası da tetiklenir).
     ref.listen(authControllerProvider, (prev, next) {
-      if (next.asData?.value != null) {
+      final user = next.asData?.value;
+      if (user != null) {
         PushService.instance.registerToken(ref.read(apiClientProvider));
+        // Misafirken (çıkış/oturum-yok) giriş/kayıt yapıldıysa: yereldeki misafir
+        // verisini hesaba aktarmayı bir kez teklif et.
+        if (prev?.asData?.value == null) {
+          unawaited(_maybeOfferGuestMigration(user.id));
+        }
       }
     });
     ref.watch(syncServiceProvider); // connectivity dinleyicisini canlı tut

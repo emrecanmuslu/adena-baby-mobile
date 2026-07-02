@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/notification_service.dart';
@@ -21,6 +23,8 @@ class AuthController extends AsyncNotifier<User?> {
   Future<User?> build() async {
     final storage = ref.read(tokenStorageProvider);
     if (!await storage.hasSession) return null;
+    // Gerçek oturum var → misafir ("kayıt olmadan devam et") bayrağını kapat.
+    unawaited(LocalSession.exitGuest());
     try {
       final user = await _repo.me();
       await LocalSession.cacheAuthUser(user.toJson()); // offline açılış yedeği
@@ -86,6 +90,9 @@ class AuthController extends AsyncNotifier<User?> {
   Future<void> _postLogin() async {
     final u = state.value;
     if (u != null) {
+      // Misafir modundan çık (varsa) — yerel veri kapsamı gerçek hesaba geçer.
+      // Misafir verisi varsa "aktaralım mı?" sorusu AdenaApp dinleyicisinde sorulur.
+      await ref.read(guestModeProvider.notifier).exit();
       LocalSession.setActiveAccount(u.id);
       await ref.read(initialImportProvider).runIfNeeded();
     }
@@ -174,5 +181,12 @@ final authControllerProvider =
 
 /// O an oturum açık hesabın id'si — repo'lar/controller'lar yerel veriyi buna
 /// göre kapsamlar (hesap değişince ilgili akışlar yeniden kurulur).
-final activeAccountIdProvider = Provider<String?>(
-    (ref) => ref.watch(authControllerProvider).asData?.value?.id);
+final activeAccountIdProvider = Provider<String?>((ref) {
+  final uid = ref.watch(authControllerProvider).asData?.value?.id;
+  if (uid != null) return uid;
+  // Misafir ("kayıt olmadan devam et"): yerel veri kapsamı device-UUID'ye bağlanır
+  // (LocalSession.activeAccountId ile aynı). Böylece misafir bebek/kayıt/adet
+  // yerelde görünür ve misafir moduna geçince ilgili controller'lar yeniden kurulur.
+  if (ref.watch(guestModeProvider)) return ref.watch(localUserIdProvider);
+  return null;
+});

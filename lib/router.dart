@@ -51,6 +51,7 @@ class _RouterRefresh extends ChangeNotifier {
     ref.listen(babyControllerProvider, (_, _) => notifyListeners());
     ref.listen(localConsentProvider, (_, _) => notifyListeners());
     ref.listen(localNameProvider, (_, _) => notifyListeners());
+    ref.listen(guestModeProvider, (_, _) => notifyListeners());
     // Çeviri bundle'ı (EN) açılışta async gelir; go_router mevcut sayfayı
     // refresh olmadan yeniden çizmez → ilk ekran (rıza/welcome) gezinmeye kadar
     // kaynak (TR) dilde kalırdı. I18n değişince router'ı tazele → anında EN.
@@ -191,8 +192,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) => const CycleSettingsScreen()),
     ],
     redirect: (context, state) {
-      // HESAP ZORUNLU: misafir/hesapsız akış kaldırıldı. Sıra: karşılama →
-      // giriş/kayıt → rıza (hesaba bağlı) → bebek → ana sayfa.
+      // İki yol: (a) GERÇEK HESAP → giriş/kayıt → rıza (sunucu) → bebek → ana sayfa;
+      // (b) MİSAFİR ("kayıt olmadan devam et") → yerel rıza → bebek → ana sayfa.
       final auth = ref.read(authControllerProvider);
       final loc = state.matchedLocation;
       // Geliştirici sayfası (yalnız debug) her oturum durumunda erişilebilir —
@@ -211,10 +212,33 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       final user = auth.asData?.value;
 
-      // 1) Oturum yok → doğrudan giriş ekranı (ara karşılama yok; kayıt giriş
-      //    ekranından erişilir).
+      // 1) Gerçek oturum yok.
       if (user == null) {
-        return onAuthPage ? null : '/login';
+        final guest = ref.read(guestModeProvider);
+        // Misafir değil → giriş ekranı (misafir girişi login ekranından yapılır).
+        if (!guest) {
+          return onAuthPage ? null : '/login';
+        }
+        // MİSAFİR akışı:
+        // Sonradan hesap açmak/giriş yapmak isterse auth sayfalarına izin ver.
+        if (onAuthPage) return null;
+        // a) Yerel rıza (18+/şartlar) — hesapsız, yerelde alınır.
+        if (!ref.read(localConsentProvider)) {
+          return loc == '/consent-gate' ? null : '/consent-gate';
+        }
+        // b) Bebek (yerel) — yüklenmesini bekle.
+        final gBabies = ref.read(babyControllerProvider);
+        if (gBabies.isLoading || !gBabies.hasValue) {
+          return (loc == '/' || loc == '/consent-gate') ? null : '/';
+        }
+        if ((gBabies.asData?.value ?? const []).isEmpty) {
+          return loc == '/onboarding' ? null : '/onboarding';
+        }
+        // c) Her şey tamam → ana sayfa (ara ekranlardan çık).
+        if (loc == '/' || loc == '/consent-gate' || loc == '/onboarding') {
+          return '/home';
+        }
+        return null;
       }
 
       // 2) Rıza (hesaba bağlı) — kayıt/giriş sonrası alınır.

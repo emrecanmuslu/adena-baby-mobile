@@ -7,7 +7,6 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
-import '../../core/language_quick_pick.dart';
 import '../../core/theme.dart';
 import '../../data/local_session.dart';
 import 'auth_controller.dart';
@@ -190,9 +189,6 @@ class _ConsentGateScreenState extends ConsumerState<ConsentGateScreen> {
                       ),
                     ),
                   ],
-                  // Dil seçici — kullanıcı isterse en alttan dili değiştirir.
-                  const SizedBox(height: 26),
-                  const LanguageQuickPick(),
                 ],
               ),
             ),

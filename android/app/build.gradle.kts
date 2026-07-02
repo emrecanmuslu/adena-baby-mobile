@@ -60,6 +60,13 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // R8 release'te Firebase component registrar'larını (özellikle Crashlytics)
+            // budayıp "component is not present" → Firebase.initializeApp() çökmesine
+            // ve FCM token kaydının düşmesine yol açıyordu → keep kuralları uygula.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }

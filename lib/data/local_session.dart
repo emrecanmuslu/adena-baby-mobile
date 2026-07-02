@@ -23,12 +23,16 @@ class LocalSession {
   static const _kPurgeHandled = 'purge_handled_v1'; // hesap → işlenen son cloud_purged_at (acct=iso;...)
   static const _kName = 'local_user_name'; // ebeveyn adı (hesapsız profil)
   static const _kCachedUser = 'cached_auth_user_v1'; // son başarılı /auth/me (offline açılış için)
+  static const _kGuest = 'guest_mode_v1'; // "kayıt olmadan devam et" — hesapsız yerel oturum açık mı
+  static const _kGuestMigResolved = 'guest_migration_resolved_v1'; // misafir→hesap "aktaralım mı?" sorusu bu misafir turunda yanıtlandı mı
 
   /// Açılışta okunup belleğe alınan değerler (senkron erişim için).
   static String? _userId;
   static bool? _consent;
   static bool? _analyticsConsent;
   static String? _name;
+  static bool? _guest; // "kayıt olmadan devam et" oturumu açık mı (kalıcı)
+  static bool? _guestMigResolved; // misafir→hesap göç sorusu yanıtlandı mı
   static String? _activeAccountId; // o an oturum açık hesap (yerel izolasyon anahtarı)
   static Set<String> _importedAccounts = {}; // cloud→local göçü yapılmış hesaplar
   static Set<String> _premiumSyncedAccounts = {}; // free→premium tam yüklemesi yapılmış hesaplar
@@ -64,6 +68,16 @@ class LocalSession {
       _analyticsConsent = ac == '1';
       final (nm, _) = await LocalPrefs.migrateString(prefs, _kName);
       _name = nm ?? '';
+      final (g, _) = await LocalPrefs.migrateString(prefs, _kGuest);
+      _guest = g == '1';
+      final (gmr, _) = await LocalPrefs.migrateString(prefs, _kGuestMigResolved);
+      _guestMigResolved = gmr == '1';
+      // Misafir oturumu açıksa + gerçek oturum yoksa: yerel veri kapsamını
+      // localUserId'ye bağla (repo'lar bunu account anahtarı gibi kullanır).
+      // Gerçek oturum varsa AuthController.build bunu kendi user.id'siyle ezer.
+      if (_guest == true && (_userId ?? '').isNotEmpty) {
+        _activeAccountId = _userId;
+      }
       final (csv, _) = await LocalPrefs.migrateString(prefs, _kImportedAccts);
       _importedAccounts =
           (csv ?? '').split(',').where((s) => s.isNotEmpty).toSet();
@@ -81,6 +95,8 @@ class LocalSession {
       _consent ??= false;
       _analyticsConsent ??= false;
       _name ??= '';
+      _guest ??= false;
+      _guestMigResolved ??= false;
     }
   }
 
@@ -94,6 +110,47 @@ class LocalSession {
   /// O an oturum açık hesabın id'si (yerel izolasyon anahtarı). null = oturum yok.
   static String? get activeAccountId => _activeAccountId;
   static void setActiveAccount(String? id) => _activeAccountId = id;
+
+  /// "Kayıt olmadan devam et" oturumu açık mı (kalıcı; hesapsız yerel kullanım).
+  static bool get guest => _guest ?? false;
+
+  /// Misafir oturumunu başlatır: bayrağı kalıcılaştırır + yerel veri kapsamını
+  /// localUserId'ye bağlar. localUserId henüz yoksa (Keychain hatası) kapsam
+  /// bağlanmaz; sonraki açılış göçü yeniden dener.
+  static Future<void> enterGuest() async {
+    _guest = true;
+    if ((_userId ?? '').isNotEmpty) _activeAccountId = _userId;
+    // Yeni misafir turu → göç sorusu yeniden sorulabilsin (önceki tur "Hayır"
+    // demiş olabilir; bu turda yeni veri için tekrar sorulmalı).
+    _guestMigResolved = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kGuest, '1');
+      await prefs.remove(_kGuestMigResolved);
+    } catch (_) {}
+  }
+
+  /// Misafir→hesap göç sorusu ("kayıtlarını aktaralım mı?") bu turda yanıtlandı mı.
+  /// true → login sonrası bir daha sorma. enterGuest'te sıfırlanır.
+  static bool get guestMigrationResolved => _guestMigResolved ?? false;
+
+  static Future<void> setGuestMigrationResolved(bool v) async {
+    _guestMigResolved = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kGuestMigResolved, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  /// Misafir oturumunu kapatır (gerçek giriş/kayıt yapılınca çağrılır). Yerel
+  /// veri kapsamını KAPATMAZ — çağıran (AuthController) gerçek hesap id'sini set eder.
+  static Future<void> exitGuest() async {
+    _guest = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kGuest);
+    } catch (_) {}
+  }
 
   /// Bu hesabın sunucu verisi yerele bir kez indirildi mi?
   static bool importedForAccount(String accountId) =>
@@ -227,6 +284,26 @@ class LocalSession {
 
 /// Yerel kullanıcı kimliği (createdBy). main()'de gerçek değerle override edilir.
 final localUserIdProvider = Provider<String>((_) => LocalSession.userId);
+
+/// "Kayıt olmadan devam et" oturumu — router bunu izler (misafir yolunu açar).
+/// enter() misafiri başlatır, exit() gerçek giriş/kayıtta kapatır.
+class GuestModeController extends Notifier<bool> {
+  @override
+  bool build() => LocalSession.guest;
+
+  Future<void> enter() async {
+    await LocalSession.enterGuest();
+    state = true;
+  }
+
+  Future<void> exit() async {
+    await LocalSession.exitGuest();
+    state = false;
+  }
+}
+
+final guestModeProvider =
+    NotifierProvider<GuestModeController, bool>(GuestModeController.new);
 
 /// Yerel rıza durumu — router bunu izler (kabul edilince kapıdan çıkar).
 class LocalConsentController extends Notifier<bool> {

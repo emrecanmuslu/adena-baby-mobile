@@ -51,45 +51,83 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: [
-          // Profil başlığı (design ScrMenu)
+          // Profil başlığı (design ScrMenu). Hesaplıda: ad/e-posta + düzenle kalemi.
+          // MİSAFİRDE: düzenlenecek sunucu profili yok → yerine "hesap oluştur" CTA
+          // (verini yedekle & paylaş dürtüsü; dokununca /login).
           Padding(
             padding: const EdgeInsets.fromLTRB(2, 0, 2, 6),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 26,
-                  backgroundColor: AppColors.peach,
-                  child: Text(
-                    avatarInitial,
-                    style: const TextStyle(
-                        color: AppColors.coralDark,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 20),
-                  ),
-                ),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            child: user == null
+                ? InkWell(
+                    onTap: () => context.push('/login'),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 26,
+                            backgroundColor: AppColors.peach,
+                            child: Icon(Icons.person_outline,
+                                color: AppColors.coralDark, size: 24),
+                          ),
+                          const SizedBox(width: 13),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(tr('Misafir'),
+                                    style: const TextStyle(
+                                        fontSize: 18, fontWeight: FontWeight.w900)),
+                                Text(
+                                    tr('Hesap oluştur → verilerini yedekle ve paylaş'),
+                                    style: TextStyle(
+                                        color: AppColors.muted,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700)),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.chevron_right, color: AppColors.muted),
+                        ],
+                      ),
+                    ),
+                  )
+                : Row(
                     children: [
-                      Text(profileName.isNotEmpty ? profileName : '—',
+                      CircleAvatar(
+                        radius: 26,
+                        backgroundColor: AppColors.peach,
+                        child: Text(
+                          avatarInitial,
                           style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w900)),
-                      Text(profileSubtitle,
-                          style: TextStyle(
-                              color: AppColors.muted,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700)),
+                              color: AppColors.coralDark,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 20),
+                        ),
+                      ),
+                      const SizedBox(width: 13),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(profileName.isNotEmpty ? profileName : '—',
+                                style: const TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.w900)),
+                            Text(profileSubtitle,
+                                style: TextStyle(
+                                    color: AppColors.muted,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: tr('Adı düzenle'),
+                        icon: Icon(Icons.edit_outlined, color: AppColors.muted),
+                        onPressed: () => _editName(context, ref, profileName),
+                      ),
                     ],
                   ),
-                ),
-                IconButton(
-                  tooltip: tr('Adı düzenle'),
-                  icon: Icon(Icons.edit_outlined, color: AppColors.muted),
-                  onPressed: () => _editName(context, ref, profileName),
-                ),
-              ],
-            ),
           ),
 
           adSec(tr('Ayarlar & Profil')),

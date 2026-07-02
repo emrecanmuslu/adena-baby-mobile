@@ -124,13 +124,19 @@ final pricingProvider = FutureProvider<Map<String, PlanPricing>>(
   (ref) => ref.watch(subscriptionRepositoryProvider).pricing(),
 );
 
-/// UI gating + gösterim için premium bayrağı. Canlı durum yüklendiyse onu,
+/// UI gating + gösterim için premium bayrağı. Canlı durum KESİN yüklendiyse onu,
 /// yoksa cache'lenmiş son durumu kullanır (flaş'sız). Her yerde bunu kullan.
-final isPremiumProvider = Provider<bool>(
-  (ref) =>
-      ref.watch(subscriptionProvider).asData?.value.isPremium ??
-      ref.watch(cachedPremiumProvider),
-);
+///
+/// Splash penceresi (auth hâlâ /auth/me doğruluyor) için KRİTİK: auth AsyncLoading
+/// iken `subscriptionProvider` "oturum yok → free" senkron değerini üretir; bu SAHTE
+/// free'ye takılıp cache fallback'ini gölgelemesin diye auth yüklenirken doğrudan
+/// cache okunur → premium rozeti açılıştan itibaren flaş'sız görünür. (Auth çıkışa
+/// çözülürse cache zaten logout'ta temizlenmiştir → free doğru.)
+final isPremiumProvider = Provider<bool>((ref) {
+  final cached = ref.watch(cachedPremiumProvider);
+  if (ref.watch(authControllerProvider).isLoading) return cached;
+  return ref.watch(subscriptionProvider).asData?.value.isPremium ?? cached;
+});
 
 /// Premium DEĞİL mi (rozet/upsell/kilit gösterimi için). Cache sayesinde
 /// açılıştan itibaren doğru → flaş yok.

@@ -38,12 +38,9 @@ class DiscoverScreen extends ConsumerWidget {
               bg: AppColors.feverBg,
               title: tr('Bebeğin Sağlığı'),
               meta: tr('Aşı · randevu · ateş & ilaç · diş · gelişim'),
-              // Sağlık (aşı/gelişim/diş) takvimi cloud'dan üretilir → hesap gerekir.
-              onTap: () => requireAccount(context, ref,
-                  feature: tr('Bebeğin Sağlığı'),
-                  desc: tr('Aşı takvimi, gelişim ve diş takibi buluttan gelir; '
-                      'ücretsiz bir hesap oluşturman yeterli.'),
-                  onAllowed: () => context.push('/health')),
+              // Sağlık (aşı/gelişim/diş) local-first: katalog anonim erişilebilir,
+              // veri telefonda tutulur → misafir dahil hesapsız çalışır.
+              onTap: () => context.push('/health'),
             ),
           ],
 

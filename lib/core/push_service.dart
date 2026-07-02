@@ -175,6 +175,14 @@ class PushService {
 
   /// FCM token'ını al ve sunucuya kaydet (oturum açıkken çağır). İzin de ister.
   Future<void> registerToken(ApiClient api) async {
+    // Açılışta Firebase.initializeApp() timeout'a ya da bir eklenti (Crashlytics)
+    // component hatasına takılıp başarısız olmuş olabilir → FirebaseMessaging.instance
+    // [core/no-app] fırlatır ve token kaydı sessizce düşerdi. FCM'e dokunmadan önce
+    // Firebase'in hazır olduğundan emin ol (asıl kalıcı çözüm release R8 keep kuralları;
+    // bu ek güvence).
+    try {
+      if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+    } catch (_) {}
     // KRİTİK: onTokenRefresh'i KOŞULSUZ + EN BAŞTA kur. iOS'ta ilk anda
     // getToken() null dönebilir/atabilir (APNs token henüz gelmemiş); token
     // saniyeler sonra hazır olunca BU dinleyici yakalar ve kaydeder. Önceden
