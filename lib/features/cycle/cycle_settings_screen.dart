@@ -10,6 +10,8 @@ import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
 import 'cycle_engine.dart';
 import 'cycle_kit.dart';
+import 'cycle_lifecycle.dart';
+import 'cycle_pregnancy_bridge.dart';
 import 'cycle_widgets.dart';
 
 /// Varsayılan hatırlatıcı yapısı (ayar boşsa).
@@ -143,6 +145,14 @@ class _BodyState extends ConsumerState<_Body> {
       padding: EdgeInsets.fromLTRB(
           16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
       children: [
+        CycEyebrow(tr('Hedefim'),
+            info: tr('Adet takibini gebe kalmaya çalışma (ovülasyon planlama) veya '
+                'gebelik moduna geçirebilirsin. Tümü aynı verini kullanır.')),
+        CycleModeSwitcher(
+          settings: widget.settings,
+          onPregnant: () => startCyclePregnancy(context, ref, widget.settings),
+        ),
+        const SizedBox(height: 6),
         CycEyebrow(tr('Hatırlatıcılar'),
             info: tr('Hatırlatıcılar cihaz bildirimleri olarak gelir; sessiz saat '
                 'ayarına uyar.')),

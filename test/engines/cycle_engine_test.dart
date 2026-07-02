@@ -392,5 +392,17 @@ void main() {
           isFalse);
       expect(CycleEntry(id: 'x', date: DateTime(2025, 1, 1)).isPeriod, isFalse);
     });
+    test('loşia rengi taşıyan gün adet değildir (akış olsa bile)', () {
+      // Doğum sonrası loşia günü: akış girilmiş olsa da loşia rengi varsa adet
+      // sayılmaz → yanlış döngü başlangıcı üretmez (regresyon).
+      expect(
+          CycleEntry(
+                  id: 'x',
+                  date: DateTime(2025, 1, 1),
+                  flow: FlowLevel.heavy,
+                  lochiaColor: LochiaColor.red)
+              .isPeriod,
+          isFalse);
+    });
   });
 }

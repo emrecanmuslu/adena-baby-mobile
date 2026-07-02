@@ -11,6 +11,7 @@ import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
 import 'cycle_engine.dart';
 import 'cycle_entry_sheet.dart';
+import 'cycle_period_adjust_sheet.dart';
 import 'cycle_shell.dart';
 import 'cycle_widgets.dart';
 
@@ -699,6 +700,30 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
           _markersInfo(byDay, status),
           const SizedBox(height: 12),
           _periodAction(byDay),
+          // Çok-günlü "günlere dokun" düzenleme takvimi (Flo/My Calendar pariteti):
+          // başlangıca dokun → adet otomatik dolar, işaretliye dokun → çıkar. Loşia
+          // modunda gizli (o modda adet düzenlemesi anlamsız).
+          if (status.mode != CycleMode.lochia) ...[
+            const SizedBox(height: 10),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showCyclePeriodAdjustSheet(
+                context, ref,
+                settings: settings,
+                entries: byDay.values.toList(),
+                autoFillDays: status.avgPeriodDays,
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.edit_calendar_rounded, size: 15, color: AppColors.muted),
+                const SizedBox(width: 6),
+                Text(tr('Regl tarihlerini düzenle'),
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.muted)),
+              ]),
+            ),
+          ],
           if (entry == null)
             Padding(
               padding: const EdgeInsets.only(top: 12),

@@ -159,7 +159,10 @@ CycleStatus computeStatus(
   //    yakın pencere ortalaması alınır.
   //  • smartPrediction KAPALI → kullanıcının girdiği sabit expected/period değerleri
   //    kullanılır (ölçüm yok sayılır).
-  const recentWindow = 6;
+  // Öğrenme penceresi: son kaç döngü ortalanır (kullanıcı ayarı; null → 6).
+  // Düzensiz/uzun döngülerde kullanıcı 3'e indirip son eğilimi yakalayabilir.
+  final lw = settings.learningWindow;
+  final recentWindow = (lw != null && lw >= 2 && lw <= 12) ? lw : 6;
   final smart = settings.smartPrediction;
   List<int> recent(List<int> xs) =>
       xs.length > recentWindow ? xs.sublist(xs.length - recentWindow) : xs;

@@ -12,6 +12,20 @@ enum Breastfeeding {
           orElse: () => Breastfeeding.exclusive);
 }
 
+/// Yaşam-döngüsü modu (Flo-tarzı) — adet modülünün hangi deneyimde olduğu.
+/// Tek çapa = son adet ilk günü (LMP); tüm modlar aynı veriyi kullanır.
+enum CycleLifecycleMode {
+  tracking, // klasik adet/döngü takibi
+  ttc, // gebe kalmaya çalışma (ovülasyon/doğurgan pencere vurgusu)
+  pregnant, // gebelik (kaynak = ana gebelik modülü; burada yalnız bayrak)
+  postpartum, // doğum sonrası (loşia → LAM → ilk adete kadar tahmin yok)
+  loss; // gebelik kaybı (şefkatli mod — tahminler gizli)
+
+  static CycleLifecycleMode fromString(String? s) =>
+      CycleLifecycleMode.values.firstWhere((e) => e.name == s,
+          orElse: () => CycleLifecycleMode.tracking);
+}
+
 /// Adet akış miktarı (design ScrCycleEntry).
 enum FlowLevel {
   none,
@@ -67,6 +81,12 @@ class CycleSettings {
   final bool smartPrediction;
   // Takvimde haftanın ilk günü Pazar mı (My Calendar "First day of week"). False → Pzt.
   final bool weekStartsSunday;
+  // ── Yaşam-döngüsü (Flo-tarzı) ──
+  final CycleLifecycleMode lifecycleMode;
+  final DateTime? ttcStartedAt; // TTC moduna geçiş anı (içerik/analitik)
+  final bool predictionsHidden; // düşük/postpartum'da doğurganlık tahminini gizle
+  final DateTime? lastLossDate; // son gebelik kaybı (dönüş penceresi)
+  final int? learningWindow; // akıllı tahmin öğrenme penceresi (döngü); null→6
 
   const CycleSettings({
     this.babyId,
@@ -81,6 +101,11 @@ class CycleSettings {
     this.lutealPhaseLength,
     this.smartPrediction = true,
     this.weekStartsSunday = false,
+    this.lifecycleMode = CycleLifecycleMode.tracking,
+    this.ttcStartedAt,
+    this.predictionsHidden = false,
+    this.lastLossDate,
+    this.learningWindow,
   });
 
   /// İlk gerçek adet kaydedilmiş mi → döngü tahmini yapılabilir mi?
@@ -99,6 +124,12 @@ class CycleSettings {
         lutealPhaseLength: (j['luteal_phase_length'] as num?)?.toInt(),
         smartPrediction: j['smart_prediction'] as bool? ?? true,
         weekStartsSunday: j['week_starts_sunday'] as bool? ?? false,
+        lifecycleMode:
+            CycleLifecycleMode.fromString(j['lifecycle_mode'] as String?),
+        ttcStartedAt: _date(j['ttc_started_at']),
+        predictionsHidden: j['predictions_hidden'] as bool? ?? false,
+        lastLossDate: _date(j['last_loss_date']),
+        learningWindow: (j['learning_window'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toPatchJson() => {
@@ -114,6 +145,11 @@ class CycleSettings {
         'luteal_phase_length': lutealPhaseLength,
         'smart_prediction': smartPrediction,
         'week_starts_sunday': weekStartsSunday,
+        'lifecycle_mode': lifecycleMode.name,
+        'ttc_started_at': _iso(ttcStartedAt),
+        'predictions_hidden': predictionsHidden,
+        'last_loss_date': _iso(lastLossDate),
+        'learning_window': learningWindow,
       };
 
   CycleSettings copyWith({
@@ -129,6 +165,11 @@ class CycleSettings {
     Object? lutealPhaseLength = _sentinel,
     bool? smartPrediction,
     bool? weekStartsSunday,
+    CycleLifecycleMode? lifecycleMode,
+    Object? ttcStartedAt = _sentinel,
+    bool? predictionsHidden,
+    Object? lastLossDate = _sentinel,
+    Object? learningWindow = _sentinel,
   }) =>
       CycleSettings(
         babyId: babyId ?? this.babyId,
@@ -151,6 +192,17 @@ class CycleSettings {
             : lutealPhaseLength as int?,
         smartPrediction: smartPrediction ?? this.smartPrediction,
         weekStartsSunday: weekStartsSunday ?? this.weekStartsSunday,
+        lifecycleMode: lifecycleMode ?? this.lifecycleMode,
+        ttcStartedAt: ttcStartedAt == _sentinel
+            ? this.ttcStartedAt
+            : ttcStartedAt as DateTime?,
+        predictionsHidden: predictionsHidden ?? this.predictionsHidden,
+        lastLossDate: lastLossDate == _sentinel
+            ? this.lastLossDate
+            : lastLossDate as DateTime?,
+        learningWindow: learningWindow == _sentinel
+            ? this.learningWindow
+            : learningWindow as int?,
       );
 
   static const _sentinel = Object();
@@ -182,8 +234,14 @@ class CycleEntry {
     this.note,
   });
 
+  /// Bu gün gerçek adet (kanama) günü mü? Loşia (lohusalık) günleri HARİÇ:
+  /// doğum sonrası bir güne hem akış hem loşia rengi girilmişse bu bir adet
+  /// başlangıcı DEĞİL loşiadır → tahmin motoru yanlış döngü başlatmasın.
   bool get isPeriod =>
-      flow != null && flow != FlowLevel.none && flow != FlowLevel.spotting;
+      lochiaColor == null &&
+      flow != null &&
+      flow != FlowLevel.none &&
+      flow != FlowLevel.spotting;
 
   factory CycleEntry.fromJson(Map<String, dynamic> j) => CycleEntry(
         id: j['id'] as String,

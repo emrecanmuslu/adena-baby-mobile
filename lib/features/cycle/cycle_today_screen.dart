@@ -13,7 +13,9 @@ import '../content/article_list_screen.dart';
 import 'cycle_dial.dart';
 import 'cycle_engine.dart';
 import 'cycle_entry_sheet.dart';
+import 'cycle_loss.dart';
 import 'cycle_period_adjust_sheet.dart';
+import 'cycle_pregnancy_bridge.dart';
 import 'cycle_kit.dart';
 import 'cycle_shell.dart';
 import 'cycle_widgets.dart';
@@ -86,6 +88,7 @@ class _Today extends ConsumerWidget {
         settings: settings,
         entries: entries,
         startDate: start ? DateTime.now() : null,
+        autoFillDays: status.avgPeriodDays,
       );
 
   /// My Calendar "Period Starts" pariteti — tek dokunuşla bugünü adet başlangıcı
@@ -115,15 +118,44 @@ class _Today extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Yaşam-döngüsü modu (Flo-tarzı) motor modundan ÖNCE gelir: kayıp/gebelik
+    // özel deneyimlerdir; TTC ise aktif döngü üstüne "gebe kalma" vurgusu ekler.
+    final lc = settings.lifecycleMode;
+    final children = switch (lc) {
+      CycleLifecycleMode.loss => _loss(context, ref),
+      CycleLifecycleMode.pregnant => _pregnant(context, ref),
+      _ => switch (status.mode) {
+          CycleMode.lochia => _lochia(context, ref),
+          CycleMode.waiting => _waiting(context, ref),
+          CycleMode.active => _active(context, ref),
+        },
+    };
     return ListView(
       padding: EdgeInsets.fromLTRB(18, 6, 18, 24 + MediaQuery.of(context).padding.bottom),
-      children: switch (status.mode) {
-        CycleMode.lochia => _lochia(context, ref),
-        CycleMode.waiting => _waiting(context, ref),
-        CycleMode.active => _active(context, ref),
-      },
+      children: children,
     );
   }
+
+  bool get _ttc => settings.lifecycleMode == CycleLifecycleMode.ttc;
+
+  /// TTC (gebe kalma) modunda üstte gösterilen vurgu şeridi.
+  Widget _ttcBanner(BuildContext context) => Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+            color: AppColors.sageBg, borderRadius: BorderRadius.circular(16)),
+        child: Row(children: [
+          Icon(Icons.spa_rounded, size: 18, color: AppColors.sageD),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(tr('Gebe kalma modu — doğurgan pencereni takip et'),
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.sageD)),
+          ),
+        ]),
+      );
 
   // ── küçük başlık (Hero eyebrow, ortalı) ──
   Widget _heroEyebrow(String text) => Padding(
@@ -247,6 +279,7 @@ class _Today extends ConsumerWidget {
     }
 
     final out = <Widget>[
+      if (_ttc) _ttcBanner(context),
       _heroEyebrow(trp('Döngü {c} · {d}', {'c': status.cycleNumber, 'd': _todayStr})),
       _dialCenter(CycleDial(
         mode: DialMode.cycle,
@@ -384,6 +417,70 @@ class _Today extends ConsumerWidget {
     out.addAll([const SizedBox(height: 4), _feelPrompt(context, ref)]);
     return out;
   }
+
+  // ════════ GEBELİK (yaşam-döngüsü köprüsü) ════════
+  // Kaynak = ana gebelik modülü; burada LMP'den türetilmiş salt-okunur özet.
+  List<Widget> _pregnant(BuildContext context, WidgetRef ref) {
+    final info = pregnancyFromLmp(settings.firstPeriodDate);
+    return [
+      _heroEyebrow(tr('Gebelik')),
+      _dialCenter(CycleDial(
+        mode: DialMode.heal,
+        day: info?.weeks ?? 0,
+        num: info == null ? '—' : '${info.weeks}',
+        numSize: 54,
+        label: tr('Hafta'),
+        sub: info == null ? tr('Gebelik takibi') : trp('{d} günlük', {'d': info.days}),
+        accent: AppColors.coralDd,
+      )),
+      const SizedBox(height: 16),
+      if (info != null)
+        cycCard(context,
+            child: Row(children: [
+              Icon(Icons.event_rounded, size: 20, color: AppColors.coralDd),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(tr('Tahmini doğum'),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.muted)),
+                  Text(fmtDayMonthYear(info.dueDate),
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w900)),
+                ]),
+              ),
+            ])),
+      const SizedBox(height: 12),
+      cycNote(context,
+          icon: Icons.info_outline_rounded,
+          body: tr('Gebeliğini hafta hafta, bebeğinin gelişimiyle takip etmek için '
+              'ana gebelik ekranını kullan. Buradaki tarih son adetinden hesaplanır.')),
+      const SizedBox(height: 14),
+      cycCta(context, tr('Gebelik ekranına git'),
+          onTap: () => context.go('/')),
+      const SizedBox(height: 10),
+      Center(
+        child: TextButton(
+          onPressed: () => showCycleLossOrEnd(context, ref, settings),
+          child: Text(tr('Durumu güncelle'),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.muted)),
+        ),
+      ),
+    ];
+  }
+
+  // ════════ İYİLEŞME (gebelik kaybı — şefkatli mod) ════════
+  List<Widget> _loss(BuildContext context, WidgetRef ref) => cycleLossToday(
+        context,
+        ref,
+        settings,
+        lastLoss: settings.lastLossDate,
+      );
 
   // ════════ LOHUSALIK ════════
   List<Widget> _lochia(BuildContext context, WidgetRef ref) {

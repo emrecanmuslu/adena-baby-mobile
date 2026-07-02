@@ -3331,6 +3331,66 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _lifecycleModeMeta = const VerificationMeta(
+    'lifecycleMode',
+  );
+  @override
+  late final GeneratedColumn<String> lifecycleMode = GeneratedColumn<String>(
+    'lifecycle_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('tracking'),
+  );
+  static const VerificationMeta _ttcStartedAtMeta = const VerificationMeta(
+    'ttcStartedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> ttcStartedAt = GeneratedColumn<DateTime>(
+    'ttc_started_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _predictionsHiddenMeta = const VerificationMeta(
+    'predictionsHidden',
+  );
+  @override
+  late final GeneratedColumn<bool> predictionsHidden = GeneratedColumn<bool>(
+    'predictions_hidden',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("predictions_hidden" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _lastLossDateMeta = const VerificationMeta(
+    'lastLossDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastLossDate = GeneratedColumn<DateTime>(
+    'last_loss_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _learningWindowMeta = const VerificationMeta(
+    'learningWindow',
+  );
+  @override
+  late final GeneratedColumn<int> learningWindow = GeneratedColumn<int>(
+    'learning_window',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -3350,6 +3410,11 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     lutealPhaseLength,
     smartPrediction,
     weekStartsSunday,
+    lifecycleMode,
+    ttcStartedAt,
+    predictionsHidden,
+    lastLossDate,
+    learningWindow,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3492,6 +3557,51 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         ),
       );
     }
+    if (data.containsKey('lifecycle_mode')) {
+      context.handle(
+        _lifecycleModeMeta,
+        lifecycleMode.isAcceptableOrUnknown(
+          data['lifecycle_mode']!,
+          _lifecycleModeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('ttc_started_at')) {
+      context.handle(
+        _ttcStartedAtMeta,
+        ttcStartedAt.isAcceptableOrUnknown(
+          data['ttc_started_at']!,
+          _ttcStartedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('predictions_hidden')) {
+      context.handle(
+        _predictionsHiddenMeta,
+        predictionsHidden.isAcceptableOrUnknown(
+          data['predictions_hidden']!,
+          _predictionsHiddenMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_loss_date')) {
+      context.handle(
+        _lastLossDateMeta,
+        lastLossDate.isAcceptableOrUnknown(
+          data['last_loss_date']!,
+          _lastLossDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('learning_window')) {
+      context.handle(
+        _learningWindowMeta,
+        learningWindow.isAcceptableOrUnknown(
+          data['learning_window']!,
+          _learningWindowMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3569,6 +3679,26 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         DriftSqlType.bool,
         data['${effectivePrefix}week_starts_sunday'],
       )!,
+      lifecycleMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}lifecycle_mode'],
+      )!,
+      ttcStartedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}ttc_started_at'],
+      ),
+      predictionsHidden: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}predictions_hidden'],
+      )!,
+      lastLossDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_loss_date'],
+      ),
+      learningWindow: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}learning_window'],
+      ),
     );
   }
 
@@ -3597,6 +3727,11 @@ class CycleSettingsRow extends DataClass
   final int? lutealPhaseLength;
   final bool smartPrediction;
   final bool weekStartsSunday;
+  final String lifecycleMode;
+  final DateTime? ttcStartedAt;
+  final bool predictionsHidden;
+  final DateTime? lastLossDate;
+  final int? learningWindow;
   const CycleSettingsRow({
     required this.isDeleted,
     this.clientUpdatedAt,
@@ -3615,6 +3750,11 @@ class CycleSettingsRow extends DataClass
     this.lutealPhaseLength,
     required this.smartPrediction,
     required this.weekStartsSunday,
+    required this.lifecycleMode,
+    this.ttcStartedAt,
+    required this.predictionsHidden,
+    this.lastLossDate,
+    this.learningWindow,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3654,6 +3794,17 @@ class CycleSettingsRow extends DataClass
     }
     map['smart_prediction'] = Variable<bool>(smartPrediction);
     map['week_starts_sunday'] = Variable<bool>(weekStartsSunday);
+    map['lifecycle_mode'] = Variable<String>(lifecycleMode);
+    if (!nullToAbsent || ttcStartedAt != null) {
+      map['ttc_started_at'] = Variable<DateTime>(ttcStartedAt);
+    }
+    map['predictions_hidden'] = Variable<bool>(predictionsHidden);
+    if (!nullToAbsent || lastLossDate != null) {
+      map['last_loss_date'] = Variable<DateTime>(lastLossDate);
+    }
+    if (!nullToAbsent || learningWindow != null) {
+      map['learning_window'] = Variable<int>(learningWindow);
+    }
     return map;
   }
 
@@ -3692,6 +3843,17 @@ class CycleSettingsRow extends DataClass
           : Value(lutealPhaseLength),
       smartPrediction: Value(smartPrediction),
       weekStartsSunday: Value(weekStartsSunday),
+      lifecycleMode: Value(lifecycleMode),
+      ttcStartedAt: ttcStartedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ttcStartedAt),
+      predictionsHidden: Value(predictionsHidden),
+      lastLossDate: lastLossDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastLossDate),
+      learningWindow: learningWindow == null && nullToAbsent
+          ? const Value.absent()
+          : Value(learningWindow),
     );
   }
 
@@ -3722,6 +3884,11 @@ class CycleSettingsRow extends DataClass
       lutealPhaseLength: serializer.fromJson<int?>(json['lutealPhaseLength']),
       smartPrediction: serializer.fromJson<bool>(json['smartPrediction']),
       weekStartsSunday: serializer.fromJson<bool>(json['weekStartsSunday']),
+      lifecycleMode: serializer.fromJson<String>(json['lifecycleMode']),
+      ttcStartedAt: serializer.fromJson<DateTime?>(json['ttcStartedAt']),
+      predictionsHidden: serializer.fromJson<bool>(json['predictionsHidden']),
+      lastLossDate: serializer.fromJson<DateTime?>(json['lastLossDate']),
+      learningWindow: serializer.fromJson<int?>(json['learningWindow']),
     );
   }
   @override
@@ -3745,6 +3912,11 @@ class CycleSettingsRow extends DataClass
       'lutealPhaseLength': serializer.toJson<int?>(lutealPhaseLength),
       'smartPrediction': serializer.toJson<bool>(smartPrediction),
       'weekStartsSunday': serializer.toJson<bool>(weekStartsSunday),
+      'lifecycleMode': serializer.toJson<String>(lifecycleMode),
+      'ttcStartedAt': serializer.toJson<DateTime?>(ttcStartedAt),
+      'predictionsHidden': serializer.toJson<bool>(predictionsHidden),
+      'lastLossDate': serializer.toJson<DateTime?>(lastLossDate),
+      'learningWindow': serializer.toJson<int?>(learningWindow),
     };
   }
 
@@ -3766,6 +3938,11 @@ class CycleSettingsRow extends DataClass
     Value<int?> lutealPhaseLength = const Value.absent(),
     bool? smartPrediction,
     bool? weekStartsSunday,
+    String? lifecycleMode,
+    Value<DateTime?> ttcStartedAt = const Value.absent(),
+    bool? predictionsHidden,
+    Value<DateTime?> lastLossDate = const Value.absent(),
+    Value<int?> learningWindow = const Value.absent(),
   }) => CycleSettingsRow(
     isDeleted: isDeleted ?? this.isDeleted,
     clientUpdatedAt: clientUpdatedAt.present
@@ -3796,6 +3973,13 @@ class CycleSettingsRow extends DataClass
         : this.lutealPhaseLength,
     smartPrediction: smartPrediction ?? this.smartPrediction,
     weekStartsSunday: weekStartsSunday ?? this.weekStartsSunday,
+    lifecycleMode: lifecycleMode ?? this.lifecycleMode,
+    ttcStartedAt: ttcStartedAt.present ? ttcStartedAt.value : this.ttcStartedAt,
+    predictionsHidden: predictionsHidden ?? this.predictionsHidden,
+    lastLossDate: lastLossDate.present ? lastLossDate.value : this.lastLossDate,
+    learningWindow: learningWindow.present
+        ? learningWindow.value
+        : this.learningWindow,
   );
   CycleSettingsRow copyWithCompanion(CycleSettingsTableCompanion data) {
     return CycleSettingsRow(
@@ -3836,6 +4020,21 @@ class CycleSettingsRow extends DataClass
       weekStartsSunday: data.weekStartsSunday.present
           ? data.weekStartsSunday.value
           : this.weekStartsSunday,
+      lifecycleMode: data.lifecycleMode.present
+          ? data.lifecycleMode.value
+          : this.lifecycleMode,
+      ttcStartedAt: data.ttcStartedAt.present
+          ? data.ttcStartedAt.value
+          : this.ttcStartedAt,
+      predictionsHidden: data.predictionsHidden.present
+          ? data.predictionsHidden.value
+          : this.predictionsHidden,
+      lastLossDate: data.lastLossDate.present
+          ? data.lastLossDate.value
+          : this.lastLossDate,
+      learningWindow: data.learningWindow.present
+          ? data.learningWindow.value
+          : this.learningWindow,
     );
   }
 
@@ -3858,13 +4057,18 @@ class CycleSettingsRow extends DataClass
           ..write('periodLength: $periodLength, ')
           ..write('lutealPhaseLength: $lutealPhaseLength, ')
           ..write('smartPrediction: $smartPrediction, ')
-          ..write('weekStartsSunday: $weekStartsSunday')
+          ..write('weekStartsSunday: $weekStartsSunday, ')
+          ..write('lifecycleMode: $lifecycleMode, ')
+          ..write('ttcStartedAt: $ttcStartedAt, ')
+          ..write('predictionsHidden: $predictionsHidden, ')
+          ..write('lastLossDate: $lastLossDate, ')
+          ..write('learningWindow: $learningWindow')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     isDeleted,
     clientUpdatedAt,
     serverUpdatedAt,
@@ -3882,7 +4086,12 @@ class CycleSettingsRow extends DataClass
     lutealPhaseLength,
     smartPrediction,
     weekStartsSunday,
-  );
+    lifecycleMode,
+    ttcStartedAt,
+    predictionsHidden,
+    lastLossDate,
+    learningWindow,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3903,7 +4112,12 @@ class CycleSettingsRow extends DataClass
           other.periodLength == this.periodLength &&
           other.lutealPhaseLength == this.lutealPhaseLength &&
           other.smartPrediction == this.smartPrediction &&
-          other.weekStartsSunday == this.weekStartsSunday);
+          other.weekStartsSunday == this.weekStartsSunday &&
+          other.lifecycleMode == this.lifecycleMode &&
+          other.ttcStartedAt == this.ttcStartedAt &&
+          other.predictionsHidden == this.predictionsHidden &&
+          other.lastLossDate == this.lastLossDate &&
+          other.learningWindow == this.learningWindow);
 }
 
 class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
@@ -3924,6 +4138,11 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
   final Value<int?> lutealPhaseLength;
   final Value<bool> smartPrediction;
   final Value<bool> weekStartsSunday;
+  final Value<String> lifecycleMode;
+  final Value<DateTime?> ttcStartedAt;
+  final Value<bool> predictionsHidden;
+  final Value<DateTime?> lastLossDate;
+  final Value<int?> learningWindow;
   final Value<int> rowid;
   const CycleSettingsTableCompanion({
     this.isDeleted = const Value.absent(),
@@ -3943,6 +4162,11 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.lutealPhaseLength = const Value.absent(),
     this.smartPrediction = const Value.absent(),
     this.weekStartsSunday = const Value.absent(),
+    this.lifecycleMode = const Value.absent(),
+    this.ttcStartedAt = const Value.absent(),
+    this.predictionsHidden = const Value.absent(),
+    this.lastLossDate = const Value.absent(),
+    this.learningWindow = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CycleSettingsTableCompanion.insert({
@@ -3963,6 +4187,11 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.lutealPhaseLength = const Value.absent(),
     this.smartPrediction = const Value.absent(),
     this.weekStartsSunday = const Value.absent(),
+    this.lifecycleMode = const Value.absent(),
+    this.ttcStartedAt = const Value.absent(),
+    this.predictionsHidden = const Value.absent(),
+    this.lastLossDate = const Value.absent(),
+    this.learningWindow = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   static Insertable<CycleSettingsRow> custom({
@@ -3983,6 +4212,11 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Expression<int>? lutealPhaseLength,
     Expression<bool>? smartPrediction,
     Expression<bool>? weekStartsSunday,
+    Expression<String>? lifecycleMode,
+    Expression<DateTime>? ttcStartedAt,
+    Expression<bool>? predictionsHidden,
+    Expression<DateTime>? lastLossDate,
+    Expression<int>? learningWindow,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4005,6 +4239,11 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
       if (lutealPhaseLength != null) 'luteal_phase_length': lutealPhaseLength,
       if (smartPrediction != null) 'smart_prediction': smartPrediction,
       if (weekStartsSunday != null) 'week_starts_sunday': weekStartsSunday,
+      if (lifecycleMode != null) 'lifecycle_mode': lifecycleMode,
+      if (ttcStartedAt != null) 'ttc_started_at': ttcStartedAt,
+      if (predictionsHidden != null) 'predictions_hidden': predictionsHidden,
+      if (lastLossDate != null) 'last_loss_date': lastLossDate,
+      if (learningWindow != null) 'learning_window': learningWindow,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4027,6 +4266,11 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Value<int?>? lutealPhaseLength,
     Value<bool>? smartPrediction,
     Value<bool>? weekStartsSunday,
+    Value<String>? lifecycleMode,
+    Value<DateTime?>? ttcStartedAt,
+    Value<bool>? predictionsHidden,
+    Value<DateTime?>? lastLossDate,
+    Value<int?>? learningWindow,
     Value<int>? rowid,
   }) {
     return CycleSettingsTableCompanion(
@@ -4047,6 +4291,11 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
       lutealPhaseLength: lutealPhaseLength ?? this.lutealPhaseLength,
       smartPrediction: smartPrediction ?? this.smartPrediction,
       weekStartsSunday: weekStartsSunday ?? this.weekStartsSunday,
+      lifecycleMode: lifecycleMode ?? this.lifecycleMode,
+      ttcStartedAt: ttcStartedAt ?? this.ttcStartedAt,
+      predictionsHidden: predictionsHidden ?? this.predictionsHidden,
+      lastLossDate: lastLossDate ?? this.lastLossDate,
+      learningWindow: learningWindow ?? this.learningWindow,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4107,6 +4356,21 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     if (weekStartsSunday.present) {
       map['week_starts_sunday'] = Variable<bool>(weekStartsSunday.value);
     }
+    if (lifecycleMode.present) {
+      map['lifecycle_mode'] = Variable<String>(lifecycleMode.value);
+    }
+    if (ttcStartedAt.present) {
+      map['ttc_started_at'] = Variable<DateTime>(ttcStartedAt.value);
+    }
+    if (predictionsHidden.present) {
+      map['predictions_hidden'] = Variable<bool>(predictionsHidden.value);
+    }
+    if (lastLossDate.present) {
+      map['last_loss_date'] = Variable<DateTime>(lastLossDate.value);
+    }
+    if (learningWindow.present) {
+      map['learning_window'] = Variable<int>(learningWindow.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4133,6 +4397,11 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
           ..write('lutealPhaseLength: $lutealPhaseLength, ')
           ..write('smartPrediction: $smartPrediction, ')
           ..write('weekStartsSunday: $weekStartsSunday, ')
+          ..write('lifecycleMode: $lifecycleMode, ')
+          ..write('ttcStartedAt: $ttcStartedAt, ')
+          ..write('predictionsHidden: $predictionsHidden, ')
+          ..write('lastLossDate: $lastLossDate, ')
+          ..write('learningWindow: $learningWindow, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7319,6 +7588,11 @@ typedef $$CycleSettingsTableTableCreateCompanionBuilder =
       Value<int?> lutealPhaseLength,
       Value<bool> smartPrediction,
       Value<bool> weekStartsSunday,
+      Value<String> lifecycleMode,
+      Value<DateTime?> ttcStartedAt,
+      Value<bool> predictionsHidden,
+      Value<DateTime?> lastLossDate,
+      Value<int?> learningWindow,
       Value<int> rowid,
     });
 typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
@@ -7340,6 +7614,11 @@ typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
       Value<int?> lutealPhaseLength,
       Value<bool> smartPrediction,
       Value<bool> weekStartsSunday,
+      Value<String> lifecycleMode,
+      Value<DateTime?> ttcStartedAt,
+      Value<bool> predictionsHidden,
+      Value<DateTime?> lastLossDate,
+      Value<int?> learningWindow,
       Value<int> rowid,
     });
 
@@ -7434,6 +7713,31 @@ class $$CycleSettingsTableTableFilterComposer
 
   ColumnFilters<bool> get weekStartsSunday => $composableBuilder(
     column: $table.weekStartsSunday,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lifecycleMode => $composableBuilder(
+    column: $table.lifecycleMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get ttcStartedAt => $composableBuilder(
+    column: $table.ttcStartedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get predictionsHidden => $composableBuilder(
+    column: $table.predictionsHidden,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastLossDate => $composableBuilder(
+    column: $table.lastLossDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get learningWindow => $composableBuilder(
+    column: $table.learningWindow,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7531,6 +7835,31 @@ class $$CycleSettingsTableTableOrderingComposer
     column: $table.weekStartsSunday,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get lifecycleMode => $composableBuilder(
+    column: $table.lifecycleMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get ttcStartedAt => $composableBuilder(
+    column: $table.ttcStartedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get predictionsHidden => $composableBuilder(
+    column: $table.predictionsHidden,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastLossDate => $composableBuilder(
+    column: $table.lastLossDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get learningWindow => $composableBuilder(
+    column: $table.learningWindow,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CycleSettingsTableTableAnnotationComposer
@@ -7612,6 +7941,31 @@ class $$CycleSettingsTableTableAnnotationComposer
     column: $table.weekStartsSunday,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get lifecycleMode => $composableBuilder(
+    column: $table.lifecycleMode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get ttcStartedAt => $composableBuilder(
+    column: $table.ttcStartedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get predictionsHidden => $composableBuilder(
+    column: $table.predictionsHidden,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastLossDate => $composableBuilder(
+    column: $table.lastLossDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get learningWindow => $composableBuilder(
+    column: $table.learningWindow,
+    builder: (column) => column,
+  );
 }
 
 class $$CycleSettingsTableTableTableManager
@@ -7671,6 +8025,11 @@ class $$CycleSettingsTableTableTableManager
                 Value<int?> lutealPhaseLength = const Value.absent(),
                 Value<bool> smartPrediction = const Value.absent(),
                 Value<bool> weekStartsSunday = const Value.absent(),
+                Value<String> lifecycleMode = const Value.absent(),
+                Value<DateTime?> ttcStartedAt = const Value.absent(),
+                Value<bool> predictionsHidden = const Value.absent(),
+                Value<DateTime?> lastLossDate = const Value.absent(),
+                Value<int?> learningWindow = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion(
                 isDeleted: isDeleted,
@@ -7690,6 +8049,11 @@ class $$CycleSettingsTableTableTableManager
                 lutealPhaseLength: lutealPhaseLength,
                 smartPrediction: smartPrediction,
                 weekStartsSunday: weekStartsSunday,
+                lifecycleMode: lifecycleMode,
+                ttcStartedAt: ttcStartedAt,
+                predictionsHidden: predictionsHidden,
+                lastLossDate: lastLossDate,
+                learningWindow: learningWindow,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7711,6 +8075,11 @@ class $$CycleSettingsTableTableTableManager
                 Value<int?> lutealPhaseLength = const Value.absent(),
                 Value<bool> smartPrediction = const Value.absent(),
                 Value<bool> weekStartsSunday = const Value.absent(),
+                Value<String> lifecycleMode = const Value.absent(),
+                Value<DateTime?> ttcStartedAt = const Value.absent(),
+                Value<bool> predictionsHidden = const Value.absent(),
+                Value<DateTime?> lastLossDate = const Value.absent(),
+                Value<int?> learningWindow = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion.insert(
                 isDeleted: isDeleted,
@@ -7730,6 +8099,11 @@ class $$CycleSettingsTableTableTableManager
                 lutealPhaseLength: lutealPhaseLength,
                 smartPrediction: smartPrediction,
                 weekStartsSunday: weekStartsSunday,
+                lifecycleMode: lifecycleMode,
+                ttcStartedAt: ttcStartedAt,
+                predictionsHidden: predictionsHidden,
+                lastLossDate: lastLossDate,
+                learningWindow: learningWindow,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -252,7 +252,8 @@ void main() {
       expect(e.lochiaColor, LochiaColor.yellowWhite);
       expect(e.symptoms, ['cramp', 'mood']);
       expect(e.mood, 3);
-      expect(e.isPeriod, isTrue); // medium → gerçek adet
+      // Loşia rengi set → gün ADET sayılmaz (yeni kural; loşia ≠ adet).
+      expect(e.isPeriod, isFalse);
     });
 
     test('spotting/none isPeriod false', () {

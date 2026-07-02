@@ -112,6 +112,19 @@ class CycleSettingsTable extends Table with _SyncCols {
   BoolColumn get smartPrediction => boolean().withDefault(const Constant(true))();
   // Takvimde haftanın ilk günü Pazar mı (My Calendar "First day of week"). False → Pzt.
   BoolColumn get weekStartsSunday => boolean().withDefault(const Constant(false))();
+  // ── Yaşam-döngüsü (Flo-tarzı) ──
+  // Aktif mod: tracking (adet) | ttc (gebe kalma) | pregnant | postpartum | loss.
+  TextColumn get lifecycleMode =>
+      text().withDefault(const Constant('tracking'))();
+  // TTC (gebe kalmaya çalışma) moduna ne zaman geçildi (içerik/analitik).
+  DateTimeColumn get ttcStartedAt => dateTime().nullable()();
+  // Şefkatli gizleme: düşük/postpartum'da doğurganlık tahminlerini gizle.
+  BoolColumn get predictionsHidden =>
+      boolean().withDefault(const Constant(false))();
+  // Son gebelik kaybı (düşük) tarihi — dönüş penceresi/şefkatli akış için.
+  DateTimeColumn get lastLossDate => dateTime().nullable()();
+  // Akıllı tahmin öğrenme penceresi (kaç döngü ortalanır): null → 6 varsayılan.
+  IntColumn get learningWindow => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -192,7 +205,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -260,6 +273,19 @@ class AppDatabase extends _$AppDatabase {
             // Takvim haftanın ilk günü (Pazar/Pazartesi) ayarı.
             await m.addColumn(
                 cycleSettingsTable, cycleSettingsTable.weekStartsSunday);
+          }
+          if (from < 12) {
+            // Yaşam-döngüsü (Flo-tarzı): adet ↔ TTC ↔ gebelik ↔ postpartum ↔ kayıp.
+            await m.addColumn(
+                cycleSettingsTable, cycleSettingsTable.lifecycleMode);
+            await m.addColumn(
+                cycleSettingsTable, cycleSettingsTable.ttcStartedAt);
+            await m.addColumn(
+                cycleSettingsTable, cycleSettingsTable.predictionsHidden);
+            await m.addColumn(
+                cycleSettingsTable, cycleSettingsTable.lastLossDate);
+            await m.addColumn(
+                cycleSettingsTable, cycleSettingsTable.learningWindow);
           }
         },
       );

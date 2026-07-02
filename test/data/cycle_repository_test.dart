@@ -154,7 +154,9 @@ void main() {
       expect(saved.lochiaColor, LochiaColor.yellowWhite);
       expect(saved.symptoms, ['cramp', 'headache']);
       expect(saved.mood, 3);
-      expect(saved.isPeriod, isTrue);
+      // Loşia rengi set olduğunda gün ADET sayılmaz (yeni kural): doğum sonrası
+      // loşia günü yanlışlıkla döngü başlatmasın. Adet günü loşia rengi taşımaz.
+      expect(saved.isPeriod, isFalse);
 
       final row = await (db.select(db.cycleEntries)
             ..where((r) => r.id.equals(saved.id)))

@@ -67,6 +67,11 @@ class CycleRepository {
       lutealPhaseLength: row.lutealPhaseLength,
       smartPrediction: row.smartPrediction,
       weekStartsSunday: row.weekStartsSunday,
+      lifecycleMode: CycleLifecycleMode.fromString(row.lifecycleMode),
+      ttcStartedAt: row.ttcStartedAt,
+      predictionsHidden: row.predictionsHidden,
+      lastLossDate: row.lastLossDate,
+      learningWindow: row.learningWindow,
     );
   }
 
@@ -102,6 +107,11 @@ class CycleRepository {
             lutealPhaseLength: Value(s.lutealPhaseLength),
             smartPrediction: Value(s.smartPrediction),
             weekStartsSunday: Value(s.weekStartsSunday),
+            lifecycleMode: Value(s.lifecycleMode.name),
+            ttcStartedAt: Value(s.ttcStartedAt),
+            predictionsHidden: Value(s.predictionsHidden),
+            lastLossDate: Value(s.lastLossDate),
+            learningWindow: Value(s.learningWindow),
             clientUpdatedAt: Value(DateTime.now().toUtc()),
             dirty: Value(dirty),
           ),

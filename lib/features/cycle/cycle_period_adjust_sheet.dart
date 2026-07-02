@@ -20,15 +20,18 @@ import '../../models/cycle.dart';
 ///  • [startDate] verilirse (başlatma modu) o gün ön-seçili gelir.
 ///  • Değişiklik varken kapatınca "Değişiklikleri kaydet?" onayı.
 ///
-/// Bizim kasıtlı sadeleştirme: My Calendar'ın gelecek-pre-fill'i ve "uzak güne dokun →
-/// boşluğu köprüle" sürprizi yerine, yalnız gerçek (≤bugün) günleri tek-tek toggle
-/// ediyoruz — kalan adet süresi zaten tahmin motorunca ('pred' dolgusu) gösterilir.
+/// Flo/My Calendar pariteti: boş bir güne dokununca (yeni başlangıç) o gün
+/// [autoFillDays] kadar (ortalama adet süresi) OTOMATİK dolar → tek dokunuşla
+/// tam adet loglanır (tek gün değil). Bitişik bir güne dokunmak tek-gün ekler;
+/// işaretli güne dokunmak çıkarır (uzat/kısalt). Gelecek günler kilitli (yalnız
+/// ≤bugün dolar). Kaydet'te ilk-adet çapası (firstPeriodDate) yeniden hesaplanır.
 Future<bool> showCyclePeriodAdjustSheet(
   BuildContext context,
   WidgetRef ref, {
   required CycleSettings settings,
   required List<CycleEntry> entries,
   DateTime? startDate,
+  int autoFillDays = 5,
 }) async {
   final saved = await showModalBottomSheet<bool>(
     context: context,
@@ -42,6 +45,7 @@ Future<bool> showCyclePeriodAdjustSheet(
       settings: settings,
       entries: entries,
       startDate: startDate,
+      autoFillDays: autoFillDays,
     ),
   );
   return saved ?? false;
@@ -51,10 +55,12 @@ class _PeriodAdjustSheet extends ConsumerStatefulWidget {
   final CycleSettings settings;
   final List<CycleEntry> entries;
   final DateTime? startDate;
+  final int autoFillDays;
   const _PeriodAdjustSheet({
     required this.settings,
     required this.entries,
     this.startDate,
+    this.autoFillDays = 5,
   });
 
   @override
@@ -71,6 +77,9 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
   bool _saving = false;
 
   DateTime _dOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+  String _iso(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   @override
   void initState() {
@@ -82,7 +91,9 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
     };
     _marked = {..._original};
     final s = widget.startDate;
-    if (s != null) _marked.add(_dOnly(s));
+    // Başlatma modu: verilen günden itibaren ortalama adet süresi kadar otomatik
+    // doldur (gelecek günler hariç) → tek dokunuşta tam adet, "1 günlük adet" bug'ı yok.
+    if (s != null) _fill(_dOnly(s));
 
     // Önceki + mevcut + sonraki ay (My Calendar dikey takvimi gibi). Sonraki ay
     // tümüyle gelecek → soluk/kilitli, sadece kaydırma boşluğu sağlar; bu boşluk
@@ -118,13 +129,28 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
     return false;
   }
 
+  /// [d]'den itibaren ortalama adet süresi kadar ardışık günü işaretle; gelecek
+  /// (>bugün) günleri atla. setState DIŞINDA çağrılır (initState / _toggle içi).
+  void _fill(DateTime d) {
+    final n = widget.autoFillDays.clamp(1, 10);
+    for (var i = 0; i < n; i++) {
+      final day = d.add(Duration(days: i));
+      if (day.isAfter(_today)) break;
+      _marked.add(day);
+    }
+  }
+
   void _toggle(DateTime d) {
     if (d.isAfter(_today)) return; // gelecek kilitli
+    final adjacent = _marked.contains(d.subtract(const Duration(days: 1))) ||
+        _marked.contains(d.add(const Duration(days: 1)));
     setState(() {
       if (_marked.contains(d)) {
-        _marked.remove(d);
+        _marked.remove(d); // işaretliyi çıkar (kısalt/bitir)
+      } else if (adjacent) {
+        _marked.add(d); // mevcut adete bitişik → tek gün uzat
       } else {
-        _marked.add(d);
+        _fill(d); // yalıtık boş gün → yeni adet başlangıcı, otomatik doldur
       }
     });
   }
@@ -183,6 +209,17 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
         } else {
           await repo.deleteEntry(existing.id);
         }
+      }
+      // İlk-adet çapası (firstPeriodDate) bakımı: adet günleri değişince çapa en
+      // erken işaretli güne eşitlenir; hiç adet kalmadıysa null → bekleme moduna
+      // döner. Bu olmadan silinen adette çapa bayat kalıp tahmini bozardı (bug #2).
+      final newAnchor =
+          _marked.isEmpty ? null : (_marked.toList()..sort()).first;
+      final curAnchor = widget.settings.firstPeriodDate;
+      final curD = curAnchor == null ? null : _dOnly(curAnchor);
+      if (newAnchor != curD) {
+        await repo.patchSettings(
+            {'first_period_date': newAnchor == null ? null : _iso(newAnchor)});
       }
       ref.invalidate(cycleEntriesProvider);
       ref.invalidate(cycleSettingsProvider); // ilk adet → mod değişebilir
@@ -299,7 +336,7 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                    tr('Adet günlerine dokunarak işaretle; tekrar dokun = kaldır'),
+                    tr('Başlangıç gününe dokun → adet otomatik dolar; işaretliye dokun = kaldır'),
                     style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,
