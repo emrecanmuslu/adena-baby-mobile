@@ -100,6 +100,10 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
 
     // Liste değiştikçe cihaz bildirimlerini eşitle + süresi geçmiş tek-seferlikleri temizle.
     ref.listen(remindersProvider(baby.id), (_, next) {
+      // invalidate sonrası yenileme sırasında asData ESKİ listeyi taşır
+      // (Riverpod: AsyncData isLoading iken önceki değeri korur) — silinmiş
+      // hatırlatıcıyı yeniden kurmamak için yalnız oturmuş veriyle çalış.
+      if (next.isLoading) return;
       final list = next.asData?.value;
       if (list != null) {
         NotificationService.instance.sync(list);

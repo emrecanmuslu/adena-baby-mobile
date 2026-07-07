@@ -216,7 +216,10 @@ class _ReminderSync extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Liste değiştikçe (ilk yükleme dahil) cihaz planlarını eşitle. Yalnız bu
     // provider izlendiğinden rebuild = liste değişimi; sync idempotenttir.
-    final list = ref.watch(remindersProvider(baby.id)).asData?.value;
+    // Yenileme (invalidate) sırasında asData ESKİ listeyi taşır — silinmiş bir
+    // hatırlatıcıyı yeniden kurmamak için yalnız oturmuş veriyle çalış.
+    final async = ref.watch(remindersProvider(baby.id));
+    final list = async.isLoading ? null : async.asData?.value;
     if (list != null) NotificationService.instance.sync(list);
     return const SizedBox.shrink();
   }
