@@ -36,6 +36,8 @@ import 'features/development/milestones_screen.dart';
 import 'features/development/teeth_screen.dart';
 import 'features/memories/memories_screen.dart';
 import 'features/onboarding/baby_setup_screen.dart';
+import 'features/onboarding/welcome_choice_screen.dart';
+import 'models/baby.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/dev_settings_screen.dart';
 import 'features/settings/feedback_screen.dart';
@@ -43,6 +45,18 @@ import 'features/settings/premium_screen.dart';
 import 'features/settings/privacy_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/splash/splash_screen.dart';
+
+/// Bebeksiz "adet & gebelik takibi" dalında (cycleFirst) hangi rotalara izin var.
+/// Bu dalda kullanıcının bebeği yoktur; ana bebek ekranları (home/health/timeline
+/// vb.) bebek gerektirdiği için erişilmez, ara ekranlar /cycle'a yönlenir. Yalnız
+/// Adet Takvimi + bebek/gebelik ekleme + premium/gizlilik + auth sayfaları açık.
+bool _cycleFirstAllows(String loc) =>
+    loc.startsWith('/cycle') ||
+    loc == '/baby-add' ||
+    loc == '/premium' ||
+    loc == '/privacy' ||
+    loc == '/feedback' ||
+    loc == '/dev';
 
 /// Riverpod değişimlerini go_router'a köprüler (provider değişince redirect tetiklenir).
 class _RouterRefresh extends ChangeNotifier {
@@ -52,6 +66,7 @@ class _RouterRefresh extends ChangeNotifier {
     ref.listen(localConsentProvider, (_, _) => notifyListeners());
     ref.listen(localNameProvider, (_, _) => notifyListeners());
     ref.listen(guestModeProvider, (_, _) => notifyListeners());
+    ref.listen(cycleFirstProvider, (_, _) => notifyListeners());
     // Çeviri bundle'ı (EN) açılışta async gelir; go_router mevcut sayfayı
     // refresh olmadan yeniden çizmez → ilk ekran (rıza/welcome) gezinmeye kadar
     // kaynak (TR) dilde kalırdı. I18n değişince router'ı tazele → anında EN.
@@ -84,7 +99,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) => const ForgotPasswordScreen()),
       GoRoute(
           path: '/consent-gate', builder: (_, _) => const ConsentGateScreen()),
-      GoRoute(path: '/onboarding', builder: (_, _) => const BabySetupScreen()),
+      // Onboarding iki adım: (1) hedef seçimi (bebek doğdu / hamile / adet
+      // takvimi / davet-giriş), (2) seçime göre bebek formu.
+      GoRoute(
+          path: '/onboarding', builder: (_, _) => const WelcomeChoiceScreen()),
+      GoRoute(
+        path: '/onboarding/baby',
+        builder: (_, state) =>
+            BabySetupScreen(initialStatus: state.extra as BabyStatus?),
+      ),
       GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
       GoRoute(
           path: '/baby-add',
@@ -232,10 +255,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           return (loc == '/' || loc == '/consent-gate') ? null : '/';
         }
         if ((gBabies.asData?.value ?? const []).isEmpty) {
-          return loc == '/onboarding' ? null : '/onboarding';
+          // Bebeksiz "adet & gebelik takibi" dalı: bebek zorunlu değil → doğrudan
+          // Adet Takvimi. Ara ekranları (splash/rıza/onboarding) /cycle'a yönlt.
+          if (ref.read(cycleFirstProvider)) {
+            return _cycleFirstAllows(loc) ? null : '/cycle';
+          }
+          return loc.startsWith('/onboarding') ? null : '/onboarding';
         }
         // c) Her şey tamam → ana sayfa (ara ekranlardan çık).
-        if (loc == '/' || loc == '/consent-gate' || loc == '/onboarding') {
+        if (loc == '/' ||
+            loc == '/consent-gate' ||
+            loc.startsWith('/onboarding')) {
           return '/home';
         }
         return null;
@@ -253,7 +283,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       final hasBaby = (babies.asData?.value ?? []).isNotEmpty;
       if (!hasBaby) {
-        return loc == '/onboarding' ? null : '/onboarding';
+        // Bebeksiz "adet & gebelik takibi" dalı (hesaplı kullanıcı da seçebilir).
+        if (ref.read(cycleFirstProvider)) {
+          return _cycleFirstAllows(loc) ? null : '/cycle';
+        }
+        return loc.startsWith('/onboarding') ? null : '/onboarding';
       }
 
       // 4) Her şey tamam → ara ekranlardan (splash/rıza/onboarding/auth) ana
@@ -261,7 +295,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loc == '/' ||
           onAuthPage ||
           loc == '/consent-gate' ||
-          loc == '/onboarding') {
+          loc.startsWith('/onboarding')) {
         return '/home';
       }
       return null;

@@ -77,6 +77,23 @@ class CycleRepository {
 
   Future<CycleSettings> patchSettings(Map<String, dynamic> fields) async {
     final current = await getSettings();
+    // Durum-makinesi: postpartum/loss'ta İLK ADET işaretlenince (çapa null →
+    // dolu) döngü takibine otomatik dönülür ("ilk gerçek adet = yeni Gün 1").
+    // Merkezde (patchSettings) yapılır ki hem saveEntry kancası hem adet-düzenleme
+    // takvimi hem hızlı giriş aynı geçişi tetiklesin.
+    final setsAnchor = fields['first_period_date'] != null;
+    final wasPaused = current.lifecycleMode == CycleLifecycleMode.postpartum ||
+        current.lifecycleMode == CycleLifecycleMode.loss;
+    if (setsAnchor &&
+        current.firstPeriodDate == null &&
+        wasPaused &&
+        !fields.containsKey('lifecycle_mode')) {
+      fields = {
+        ...fields,
+        'lifecycle_mode': CycleLifecycleMode.tracking.name,
+        'predictions_hidden': false,
+      };
+    }
     final merged = {...current.toPatchJson(), ...fields};
     final next = CycleSettings.fromJson(merged);
     await _writeSettings(next, dirty: true);
@@ -184,6 +201,15 @@ class CycleRepository {
       final s = await getSettings();
       if (s.firstPeriodDate == null) {
         await patchSettings({'first_period_date': _isoDate(entry.date)});
+      } else if (s.predictionsHidden) {
+        // Onarım: çapa dolu ama tahminler gizli kalmış (ör. eski sürümden gelen
+        // tutarsız durum). Kullanıcı adet logluyorsa takibe dönmek istiyor.
+        await patchSettings({
+          'predictions_hidden': false,
+          if (s.lifecycleMode == CycleLifecycleMode.postpartum ||
+              s.lifecycleMode == CycleLifecycleMode.loss)
+            'lifecycle_mode': CycleLifecycleMode.tracking.name,
+        });
       }
     }
     if (_cloudEnabled()) {
@@ -355,13 +381,19 @@ final cycleRepositoryProvider = Provider<CycleRepository>(
 
 /// Kullanıcının adet modülü ayarı (yerel; premium'da sunucuyla eşlenir).
 /// Hesap değişince yeniden yüklenir (aktif hesaba göre kapsamlı).
-final cycleSettingsProvider = FutureProvider<CycleSettings>((ref) {
+final cycleSettingsProvider = FutureProvider<CycleSettings>((ref) async {
+  // Açılış yarışı koruması: oturum çözülmeden (auth loading) activeAccountId
+  // null olur ve boş ayarlar "kurulmamış" sanılıp sihirbaz açılırdı. Auth
+  // sonuçlanana dek bekle → shell bu sürede spinner gösterir.
+  await ref.watch(authControllerProvider.future);
   ref.watch(activeAccountIdProvider);
   return ref.watch(cycleRepositoryProvider).getSettings();
 });
 
 /// Tüm adet kayıtları (yeni→eski).
-final cycleEntriesProvider = FutureProvider<List<CycleEntry>>((ref) {
+final cycleEntriesProvider = FutureProvider<List<CycleEntry>>((ref) async {
+  // bkz. cycleSettingsProvider — aynı açılış yarışı koruması.
+  await ref.watch(authControllerProvider.future);
   ref.watch(activeAccountIdProvider);
   return ref.watch(cycleRepositoryProvider).listEntries();
 });

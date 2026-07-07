@@ -94,6 +94,10 @@ class AuthController extends AsyncNotifier<User?> {
       // Misafir verisi varsa "aktaralım mı?" sorusu AdenaApp dinleyicisinde sorulur.
       await ref.read(guestModeProvider.notifier).exit();
       LocalSession.setActiveAccount(u.id);
+      // Offline açılış yedeği: taze login/kayıtta build() yeniden koşmadığı
+      // için /auth/me önbelleği burada da yazılır — yoksa ilk soğuk açılış
+      // çevrimdışıyken oturum çözülemez (repo'lar hesapsız kalır).
+      await LocalSession.cacheAuthUser(u.toJson());
       await ref.read(initialImportProvider).runIfNeeded();
     }
   }

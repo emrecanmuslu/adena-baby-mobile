@@ -7,6 +7,7 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
+import 'cycle_loss.dart';
 
 /// Yaşam-döngüsü (Flo-tarzı) mod yönetimi — tek merkez.
 /// Adet ↔ TTC ↔ gebelik ↔ postpartum ↔ kayıp; tek çapa = son adet (LMP).
@@ -158,6 +159,13 @@ class CycleModeSwitcher extends ConsumerWidget {
   Future<void> _select(
       BuildContext context, WidgetRef ref, CycleLifecycleMode m) async {
     if (m == settings.lifecycleMode) return;
+    // Gebelikten çıkış TEK kapıdan geçer (doğum/kayıp/takibe dön akışı) —
+    // doğrudan tracking/ttc yazmak gebelik bebeğini yetim bırakır (Baby
+    // expecting kalır, adet ekranı takip gösterir → tutarsız çift durum).
+    if (settings.lifecycleMode == CycleLifecycleMode.pregnant) {
+      await showCycleLossOrEnd(context, ref, settings);
+      return;
+    }
     if (m == CycleLifecycleMode.pregnant) {
       onPregnant();
       return;

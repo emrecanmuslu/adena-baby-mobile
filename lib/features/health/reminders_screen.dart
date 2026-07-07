@@ -88,9 +88,10 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
     }
     final isPremium = ref.watch(isPremiumProvider);
-    // Özel hatırlatıcılar LOCAL-FIRST (Drift + cihaz bildirimi) → hesap GEREKMEZ;
-    // misafir dahil herkeste çalışır. Giriş yapılınca cihazlar-arası senkron da
-    // eklenir (health/sync). Beslenme + sessiz saat de zaten yerel.
+    // Özel hatırlatıcılar KİŞİSEL ve YERELDİR (Drift + cihaz bildirimi) → hesap
+    // GEREKMEZ; misafir dahil herkeste çalışır. Karar (2026-07-07): aile
+    // paylaşımına DAHİL DEĞİL — herkes kendi cihazında kendi düzenini kurar;
+    // sunucuyla senkronlanmaz. Beslenme + sessiz saat de zaten yerel.
     final async = ref.watch(remindersProvider(baby.id));
     // Free limit: en fazla 2 özel (custom) hatırlatıcı.
     final customCount = (async.asData?.value ?? const [])
@@ -354,7 +355,14 @@ String _typeLabel(Reminder r) => switch (r.type) {
     };
 
 String _scheduleLabel(Reminder r) {
-  // Şekil-tabanlı: tek-seferlik ('at') ya da günlük ('time').
+  // Şekil-tabanlı: periyodik ('every_min'), tek-seferlik ('at') ya da günlük ('time').
+  final every = r.schedule['every_min'];
+  if (every is num && every >= 1) {
+    final n = every.toInt();
+    return n % 60 == 0
+        ? trp('Her {n} saat', {'n': n ~/ 60})
+        : trp('Her {n} dk', {'n': n});
+  }
   final at = DateTime.tryParse(r.schedule['at'] as String? ?? '')?.toLocal();
   if (at != null) return fmtDayMonTime(at);
   final time = r.schedule['time'] as String?;
@@ -398,9 +406,10 @@ class _AddReminderSheet extends StatefulWidget {
 
 class _AddReminderSheetState extends State<_AddReminderSheet> {
   final _title = TextEditingController();
-  String _repeat = 'daily'; // 'daily' | 'once'
+  String _repeat = 'daily'; // 'daily' | 'once' | 'interval'
   TimeOfDay _time = const TimeOfDay(hour: 9, minute: 0);
   late DateTime _onceAt = _roundedSoon();
+  int _everyMin = 30; // periyodik aralık (dk)
   bool _saving = false;
 
   static DateTime _roundedSoon() {
@@ -444,7 +453,11 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
             AdField(
               label: tr('Tekrar'),
               child: AdTabs(
-                options: {'daily': tr('Her gün'), 'once': tr('Bir kez')},
+                options: {
+                  'daily': tr('Her gün'),
+                  'once': tr('Bir kez'),
+                  'interval': tr('Periyodik'),
+                },
                 selected: _repeat,
                 onSelect: (v) => setState(() => _repeat = v),
               ),
@@ -458,11 +471,27 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
                   if (picked != null) setState(() => _time = picked);
                 }),
               )
-            else
+            else if (_repeat == 'once')
               AdField(
                 label: tr('Tarih & saat'),
                 child: _pickerRow(
                     fmtDayMonthTime(_onceAt), _pickOnce),
+              )
+            else
+              AdField(
+                label: tr('Aralık'),
+                info: tr('Kapatana dek her seçtiğin aralıkta hatırlatır — ateş '
+                    'ölçümü, sık ilaç/su takibi gibi kısa aralıklı kontroller için. '
+                    'İşin bitince hatırlatıcıyı kapatmayı unutma.'),
+                child: AdTabs(
+                  options: {
+                    '15': tr('15 dk'),
+                    '30': tr('30 dk'),
+                    '60': tr('1 saat'),
+                  },
+                  selected: _everyMin.toString(),
+                  onSelect: (v) => setState(() => _everyMin = int.parse(v)),
+                ),
               ),
             const SizedBox(height: 6),
             AdSaveButton(
@@ -524,9 +553,11 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
 
   Map<String, dynamic> _schedule() {
     final title = _title.text.trim();
-    return _repeat == 'once'
-        ? {'repeat': 'once', 'at': _onceAt.toUtc().toIso8601String(), 'title': title}
-        : {'repeat': 'daily', 'time': _fmt(_time), 'title': title};
+    return switch (_repeat) {
+      'once' => {'repeat': 'once', 'at': _onceAt.toUtc().toIso8601String(), 'title': title},
+      'interval' => {'repeat': 'interval', 'every_min': _everyMin, 'title': title},
+      _ => {'repeat': 'daily', 'time': _fmt(_time), 'title': title},
+    };
   }
 
   Future<void> _save() async {

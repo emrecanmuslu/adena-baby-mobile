@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/cycle_repository.dart';
+import '../../models/baby.dart';
 import '../../models/cycle.dart';
+import '../babies/baby_controller.dart';
 import 'cycle_lifecycle.dart';
 
-/// Gebelik köprüsü (F4) — TTC/adet → gebelik geçişi.
-/// KARAR: cycle yalnız tetikler/bayrak tutar; gebelik verisinin kaynağı ana
-/// gebelik modülüdür. Burada LMP'den (son adet) gebelik haftası + tahmini doğum
-/// (Naegele: LMP+280g) TÜRETİLİR ve onaylı olarak `lifecycle_mode=pregnant`
-/// yazılır. Ana gebelik modülü (Baby.status=expecting) kullanıcı hazır olunca
-/// devralır — cycle pregnant modu bu türetilmiş bilgiyi salt-okunur gösterir.
+/// Gebelik köprüsü — TTC/adet → gebelik geçişi.
+/// KARAR (güncellendi 2026-07-03): gebeliğin TEK gerçek kaynağı ana gebelik
+/// modülüdür (`Baby.status=expecting`). "Hamileyim" seçilince cycle artık salt
+/// bayrak yazmaz; LMP'den GERÇEK bir bekleme-modu bebeği oluşturur/bağlar
+/// ([[ensureExpectingBabyForPregnancy]]) ve kullanıcıyı ana gebelik ekranına
+/// (ExpectingHome) götürür. cycle `lifecycle_mode=pregnant` yalnız bu duruma
+/// eşlik eden bir yansımadır; hafta/TDT tek kaynaktan (Baby.dueDate) okunur.
 
 /// LMP'den türetilmiş gebelik bilgisi.
 class PregnancyFromLmp {
@@ -33,6 +38,51 @@ PregnancyFromLmp? pregnancyFromLmp(DateTime? lmp, {DateTime? today}) {
   if (totalDays < 0 || totalDays > 300) return null; // makul aralık dışı
   return PregnancyFromLmp(
       totalDays ~/ 7, totalDays % 7, l.add(const Duration(days: 280)));
+}
+
+/// Gebeliğin GERÇEK kaynağını sağlar: bekleyen (expecting) bir Baby.
+/// - Zaten bekleyen bir bebek varsa onu kullanır.
+/// - Yoksa ve LMP biliniyorsa GERÇEK bir `Baby(status=expecting, dueDate=LMP+280,
+///   lastMenstrualDate=LMP)` oluşturur (bebeksiz cycle-first kullanıcı dahil).
+/// - LMP yoksa ve bebek de yoksa `null` döner (çağıran elle giriş ekranına yollar).
+/// Ardından cycle'ı bu gebeliğe bağlar (`baby` + `lifecycle_mode=pregnant`).
+Future<Baby?> ensureExpectingBabyForPregnancy(
+    WidgetRef ref, CycleSettings settings) async {
+  final babies = ref.read(babyControllerProvider).asData?.value ?? const [];
+  Baby? baby =
+      babies.where((b) => b.status == BabyStatus.expecting).firstOrNull;
+  if (baby == null) {
+    final info = pregnancyFromLmp(settings.firstPeriodDate);
+    if (info == null) return null; // LMP yok → gebelik verisi türetilemez
+    baby = await ref.read(babyControllerProvider.notifier).create(
+          name: tr('Bebeğim'),
+          status: BabyStatus.expecting,
+          dueDate: info.dueDate,
+          lastMenstrualDate: settings.firstPeriodDate,
+        );
+  }
+  ref.read(activeBabyIdProvider.notifier).set(baby.id);
+  // cycle'ı bu gebeliğe bağla (yansıma bayrağı + geri-dönüş için LMP zaten var).
+  await ref.read(cycleRepositoryProvider).patchSettings({
+    'lifecycle_mode': CycleLifecycleMode.pregnant.name,
+    'predictions_hidden': false,
+    'baby': baby.id,
+  });
+  ref.invalidate(cycleSettingsProvider);
+  return baby;
+}
+
+/// cycle "pregnant" ekranından ana gebelik ekranına götürür (T2 fix).
+/// Gerçek bekleme-modu bebeği yoksa oluşturur; LMP yoksa elle giriş ekranına.
+Future<void> openPregnancyScreen(
+    BuildContext context, WidgetRef ref, CycleSettings settings) async {
+  try {
+    final baby = await ensureExpectingBabyForPregnancy(ref, settings);
+    if (!context.mounted) return;
+    context.go(baby != null ? '/home' : '/baby-add');
+  } catch (e) {
+    if (context.mounted) showAdError(context, apiErrorText(e));
+  }
 }
 
 /// "Hamileyim" seçilince çağrılır. LMP varsa türetilmiş bilgiyle onay ister,
@@ -147,8 +197,19 @@ Future<void> startCyclePregnancy(
   );
   if (confirmed != true) return;
   try {
-    await setCycleLifecycleMode(ref, CycleLifecycleMode.pregnant);
-    if (context.mounted) showAdToast(context, tr('Gebelik moduna geçildi'));
+    // Gerçek bekleme-modu bebeği oluştur/bağla → ana gebelik ekranı devreye girer.
+    final baby = await ensureExpectingBabyForPregnancy(ref, settings);
+    if (!context.mounted) return;
+    if (baby != null) {
+      showAdToast(context, tr('Gebelik takibine geçildi'));
+      context.go('/home');
+    } else {
+      // LMP yok → gebelik ayrıntılarını elle gir (bekleme modunda bebek ekle).
+      await setCycleLifecycleMode(ref, CycleLifecycleMode.pregnant);
+      if (!context.mounted) return;
+      showAdToast(context, tr('Gebelik ayrıntılarını girelim'));
+      context.go('/baby-add');
+    }
   } catch (e) {
     if (context.mounted) showAdError(context, apiErrorText(e));
   }

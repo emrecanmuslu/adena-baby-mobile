@@ -149,8 +149,8 @@ class CycleInfo {
       'ÖNCE döner — ilk adeti görmeden gebe kalınabilir.');
   static String get fertileWindow => tr(
       'Doğurganlık penceresi, gebe kalma olasılığının en yüksek olduğu ~6 günlük '
-      'dönemdir (ovülasyon ve öncesi). Doğum sonrası ilk döngülerde tahmindir, '
-      'kesin değildir.');
+      'dönemdir (ovülasyon ve öncesi). İlk döngülerde — özellikle doğum '
+      'sonrasında — tahmindir, kesin değildir.');
   static String get flowAmount => tr(
       'Günlük kanama miktarını seç: Yok · Lekelenme · Hafif · Orta · Yoğun. '
       'Bu, döngü uzunluğunu ve adet süresini hesaplamamızı sağlar.');
@@ -158,11 +158,11 @@ class CycleInfo {
       'Lohusalık kanamasının rengi iyileşmenin evresini gösterir: '
       'kırmızı → pembe → kahve → sarı/beyaz. Zamanla açılması beklenir.');
   static String get regularity => tr(
-      'İlk döngülerin düzensiz olması doğum sonrası dönemde tamamen normaldir. '
-      '3+ döngü birikince tahminler güvenilirleşir.');
+      'İlk döngülerin düzensiz olması — özellikle doğum sonrası dönemde — '
+      'tamamen normaldir. 3+ döngü birikince tahminler güvenilirleşir.');
   static String get estimate => tr(
-      'Bu bir tahmindir, kesin değildir. Doğum sonrası hormonlar oturana kadar '
-      'döngüler değişkenlik gösterebilir.');
+      'Bu bir tahmindir, kesin değildir. Döngüler oturana kadar (özellikle '
+      'doğum sonrası) değişkenlik gösterebilir.');
   static String get dialGuide => tr(
       'Halka, döngünü tek bakışta gösterir:\n'
       '• Koyu pembe yay = adet günleri\n'

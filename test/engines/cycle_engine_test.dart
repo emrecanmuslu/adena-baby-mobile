@@ -405,4 +405,104 @@ void main() {
           isFalse);
     });
   });
+
+  // Bebeksiz "adet & gebelik takibi" dalı: doğum tarihi yok (birthDate=null),
+  // emzirme none, kurulumda son adet (LMP) girilir → doğrudan aktif takip modu.
+  // Loşia/bekleme çerçevesine düşmemeli.
+  group('bebeksiz dal (cycle-first)', () {
+    test('birthDate=null + LMP girili → aktif mod (loşia değil, bekleme değil)', () {
+      const settings = CycleSettings(
+        birthDate: null,
+        breastfeeding: Breastfeeding.none,
+        lifecycleMode: CycleLifecycleMode.tracking,
+      );
+      final s = settings.copyWith(firstPeriodDate: DateTime(2025, 1, 1));
+      final st = computeStatus(s, const [], today: DateTime(2025, 1, 8));
+      expect(st.mode, CycleMode.active);
+      expect(st.dayInCycle, 8); // 1 Oca başlangıç → 8 Oca = 8. gün
+      expect(st.nextPeriod, isNotNull);
+    });
+
+    test('birthDate=null + LMP yok → bekleme modu (loşia DEĞİL — doğum yok)', () {
+      const settings = CycleSettings(
+        birthDate: null,
+        breastfeeding: Breastfeeding.none,
+      );
+      final st = computeStatus(settings, const [], today: DateTime(2025, 1, 8));
+      expect(st.mode, CycleMode.waiting);
+    });
+
+    test('TTC hedefi motoru bozmaz — LMP ile aktif doğurganlık penceresi üretir', () {
+      const settings = CycleSettings(
+        breastfeeding: Breastfeeding.none,
+        lifecycleMode: CycleLifecycleMode.ttc,
+      );
+      final s = settings.copyWith(firstPeriodDate: DateTime(2025, 1, 1));
+      final st = computeStatus(s, const [], today: DateTime(2025, 1, 10));
+      expect(st.mode, CycleMode.active);
+      expect(st.ovulationDay, isNotNull);
+      expect(st.fertileStart, isNotNull);
+    });
+  });
+
+  // Doğum/kayıp sonrası "ilk gerçek adet = yeni Gün 1" sıfırlaması: çapa
+  // (firstPeriodDate) yeniden kurulunca eski dönemin kayıtları tahmine karışmaz.
+  group('yaşam-döngüsü sıfırlaması (postpartum/düşük → yeni Gün 1)', () {
+    test('çapadan ÖNCEKİ eski adet kayıtları yok sayılır', () {
+      final entries = [
+        ..._periodRun('eski1', DateTime(2025, 1, 1), 5),
+        ..._periodRun('eski2', DateTime(2025, 1, 29), 4),
+        ..._periodRun('yeni', DateTime(2025, 6, 1), 4),
+      ];
+      const settings = CycleSettings(breastfeeding: Breastfeeding.none);
+      final s = settings.copyWith(firstPeriodDate: DateTime(2025, 6, 1));
+      final st = computeStatus(s, entries, today: DateTime(2025, 6, 10));
+      // Eski Ocak kayıtları span/döngü numarası/ortalamayı kirletmemeli.
+      expect(st.cycleNumber, 1);
+      expect(st.dayInCycle, 10);
+      expect(st.spans.single.start, DateTime(2025, 6, 1));
+      expect(st.avgCycleLength, 28); // ölçülmüş tam döngü yok → varsayılan
+    });
+
+    test('predictionsHidden=true → çapa dolu olsa bile tahmin üretilmez', () {
+      const settings = CycleSettings(
+        birthDate: null,
+        breastfeeding: Breastfeeding.none,
+        predictionsHidden: true,
+      );
+      final s = settings.copyWith(firstPeriodDate: DateTime(2025, 1, 1));
+      final st = computeStatus(s, const [], today: DateTime(2025, 1, 10));
+      expect(st.mode, CycleMode.waiting);
+      expect(st.nextPeriod, isNull);
+      expect(st.ovulationDay, isNull);
+    });
+  });
+
+  // Kademeli gebe-kalma olasılığı — Bugün + Takvim'in ortak kaynağı.
+  // LMP 1 Oca, 28g döngü → sonraki adet 29 Oca, ovülasyon 15 Oca, pencere 10–16.
+  group('conceptionChance — kademeli olasılık (Wilcox)', () {
+    final s = const CycleSettings(breastfeeding: Breastfeeding.none)
+        .copyWith(firstPeriodDate: DateTime(2025, 1, 1));
+
+    ConceptionChance at(DateTime day) =>
+        conceptionChance(day, computeStatus(s, const [], today: day));
+
+    test('yumurtlama günü = çok yüksek', () {
+      expect(at(DateTime(2025, 1, 15)), ConceptionChance.veryHigh);
+    });
+    test('ov−2/−1 = yüksek (zirveye yakın)', () {
+      expect(at(DateTime(2025, 1, 13)), ConceptionChance.high);
+      expect(at(DateTime(2025, 1, 14)), ConceptionChance.high);
+    });
+    test('pencere ilk günü (ov−5) = orta (My Calendar MEDIUM pariteti, #5)', () {
+      expect(at(DateTime(2025, 1, 10)), ConceptionChance.medium);
+    });
+    test('ov+1 = orta (ovülasyon sonrası olasılık hızla düşer)', () {
+      expect(at(DateTime(2025, 1, 16)), ConceptionChance.medium);
+    });
+    test('pencere dışı = düşük', () {
+      expect(at(DateTime(2025, 1, 5)), ConceptionChance.low);
+      expect(at(DateTime(2025, 1, 20)), ConceptionChance.low);
+    });
+  });
 }

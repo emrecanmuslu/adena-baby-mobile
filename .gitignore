@@ -46,3 +46,4 @@ app.*.map.json
 
 # Firebase iOS config (API anahtari icerir, repoya girmesin)
 ios/GoogleService-Info.plist
+test-screenshots/

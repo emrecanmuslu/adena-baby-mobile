@@ -88,12 +88,18 @@ class AuthorRow extends StatelessWidget {
 
 /// Dikey oy kontrolü (design .ad-vote) — yukarı/aşağı arrowUp + skor.
 /// [myVote] -1|0|1; aynı yöne tekrar basınca oy kaldırılır (0).
+/// [enabled] false → kendi içeriği (self-vote yok): oklar soluk, dokunuş no-op.
 class VoteControl extends StatelessWidget {
   final int score;
   final int myVote;
+  final bool enabled;
   final ValueChanged<int> onVote; // gönderilen yeni değer: 1, -1 veya 0
   const VoteControl(
-      {super.key, required this.score, required this.myVote, required this.onVote});
+      {super.key,
+      required this.score,
+      required this.myVote,
+      required this.onVote,
+      this.enabled = true});
 
   @override
   Widget build(BuildContext context) {
@@ -108,8 +114,12 @@ class VoteControl extends StatelessWidget {
           _btn(
             flip: false,
             bg: up ? AppColors.growthBg : restBg,
-            color: up ? bestGreen : AppColors.muted2,
-            onTap: () => onVote(up ? 0 : 1),
+            color: !enabled
+                ? AppColors.line
+                : up
+                    ? bestGreen
+                    : AppColors.muted2,
+            onTap: enabled ? () => onVote(up ? 0 : 1) : null,
           ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),
@@ -123,8 +133,12 @@ class VoteControl extends StatelessWidget {
           _btn(
             flip: true,
             bg: down ? AppColors.feverBg : restBg,
-            color: down ? AppColors.coralDd : AppColors.muted2,
-            onTap: () => onVote(down ? 0 : -1),
+            color: !enabled
+                ? AppColors.line
+                : down
+                    ? AppColors.coralDd
+                    : AppColors.muted2,
+            onTap: enabled ? () => onVote(down ? 0 : -1) : null,
           ),
         ],
       ),
@@ -135,7 +149,7 @@ class VoteControl extends StatelessWidget {
       {required bool flip,
       required Color bg,
       required Color color,
-      required VoidCallback onTap}) {
+      required VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(

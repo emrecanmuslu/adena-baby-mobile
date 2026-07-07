@@ -42,7 +42,8 @@ class CycleStatsScreen extends ConsumerWidget {
                   if (status.mode != CycleMode.active) {
                     return _waitingState(status.mode);
                   }
-                  return _StatsView(status: status);
+                  return _StatsView(
+                      status: status, hadBirth: settings.birthDate != null);
                 },
               ),
             ),
@@ -77,7 +78,9 @@ class CycleStatsScreen extends ConsumerWidget {
 
 class _StatsView extends StatelessWidget {
   final CycleStatus status;
-  const _StatsView({required this.status});
+  // BULGU-2: postpartum metinleri yalnız doğum yapmış kullanıcıya.
+  final bool hadBirth;
+  const _StatsView({required this.status, required this.hadBirth});
 
   @override
   Widget build(BuildContext context) {
@@ -133,8 +136,11 @@ class _StatsView extends StatelessWidget {
             padding: const EdgeInsets.only(top: 4),
             child: cycNote(context,
                 icon: Icons.lightbulb_outline_rounded,
-                body: tr('Henüz yeterli veri yok. 3+ döngü birikince tahminler '
-                    'güvenilirleşir — doğum sonrası bu normaldir.'),
+                body: hadBirth
+                    ? tr('Henüz yeterli veri yok. 3+ döngü birikince tahminler '
+                        'güvenilirleşir — doğum sonrası bu normaldir.')
+                    : tr('Henüz yeterli veri yok. 3+ döngü birikince tahminler '
+                        'güvenilirleşir.'),
                 infoTitle: tr('Düzenlilik'),
                 info: CycleInfo.regularity),
           ),
@@ -165,7 +171,7 @@ class _StatsView extends StatelessWidget {
               ? tr('Düzenli seyir')
               : tr('Değişken seyir'),
               style: cycTitleStyle(size: 17)),
-          cycPill(tr('Postpartum normal')),
+          cycPill(hadBirth ? tr('Postpartum normal') : tr('Değişkenlik normal')),
         ]),
         const SizedBox(height: 13),
         if (reg.isEmpty)
@@ -187,8 +193,11 @@ class _StatsView extends StatelessWidget {
             ],
           ]),
         const SizedBox(height: 11),
-        Text(tr('Doğum sonrası ilk döngülerde dalgalanma beklenir. 3+ döngü '
-            'biriktikçe tahminler güçlenir.'),
+        Text(hadBirth
+            ? tr('Doğum sonrası ilk döngülerde dalgalanma beklenir. 3+ döngü '
+                'biriktikçe tahminler güçlenir.')
+            : tr('Döngüler doğal olarak birkaç gün değişebilir. 3+ döngü '
+                'biriktikçe tahminler güçlenir.'),
             style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,

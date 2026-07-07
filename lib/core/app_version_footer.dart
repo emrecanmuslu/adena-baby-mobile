@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'config.dart';
+import 'i18n.dart';
 import 'theme.dart';
 
 /// Ayarlar altındaki sürüm + ortam göstergesi.
@@ -21,8 +22,8 @@ class AppVersionFooter extends StatelessWidget {
 
   static String _apiLabel() {
     final host = Uri.tryParse(AppConfig.apiBaseUrl)?.host ?? AppConfig.apiBaseUrl;
-    if (host.contains('adenababy.com')) return 'canlı API';
-    return 'yerel API ($host)';
+    if (host.contains('adenababy.com')) return tr('canlı API');
+    return trp('yerel API ({host})', {'host': host});
   }
 
   @override

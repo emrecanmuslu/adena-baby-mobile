@@ -326,7 +326,8 @@ class _QuestionBlock extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          VoteControl(score: q.score, myVote: q.myVote, onVote: onVote),
+          VoteControl(
+              score: q.score, myVote: q.myVote, enabled: !q.isMine, onVote: onVote),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -429,7 +430,8 @@ class _AnswerTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          VoteControl(score: a.score, myVote: a.myVote, onVote: onVote),
+          VoteControl(
+              score: a.score, myVote: a.myVote, enabled: !a.isMine, onVote: onVote),
           const SizedBox(width: 11),
           Expanded(
             child: Column(

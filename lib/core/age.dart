@@ -15,7 +15,7 @@ int? ageInMonths(Baby? b, {DateTime? now}) {
   return m < 0 ? 0 : m;
 }
 
-/// Kısa yaş etiketi ("5 gün", "2 ay 5 gün", "3 yaş 4 ay"; bekleme: hafta /
+/// Kısa yaş etiketi ("5 gün", "2 ay 5 gün", "1 yaş 2 ay"; bekleme: hafta /
 /// "Bekliyor"; doğum yok: "Takip"). Ay/gün takvim-doğru (30.44 yaklaşımı değil).
 ///
 /// Saf (test edilebilir): referans an [now] verilebilir; verilmezse
@@ -63,12 +63,12 @@ String _calendarAgeLabel(DateTime bd0, DateTime ref) {
 
   // 1 aydan küçük → yalnız gün.
   if (totalMonths < 1) return trp('{n} gün', {'n': days});
-  // 2 yaşından küçük → ay + gün.
-  if (totalMonths < 24) {
+  // 1 yaşından küçük → ay + gün.
+  if (totalMonths < 12) {
     final ay = trp('{n} ay', {'n': totalMonths});
     return days > 0 ? '$ay ${trp('{n} gün', {'n': days})}' : ay;
   }
-  // 2 yaş ve üzeri → yaş + ay.
+  // 1 yaş ve üzeri → yaş + ay (milestone etiketiyle tutarlı: 12. ayda "1 yaş").
   final yas = trp('{n} yaş', {'n': years});
   return months > 0 ? '$yas ${trp('{n} ay', {'n': months})}' : yas;
 }
@@ -130,6 +130,12 @@ String correctedAgeShort(Baby b, {DateTime? now}) {
   if (!usesCorrectedAge(b, now: now)) return babyAgeShort(b, now: now);
   final ref = now ?? DateTime.now();
   final adj = b.birthDate!.add(Duration(days: prematureEarlyDays(b)));
+  // Çok erken doğumda düzeltilmiş yaş TDT'ye kadar negatiftir; _calendarAgeLabel
+  // gelecekteki tarihe "Takip" derdi (ana ekranda "Bebeğim · Takip" bug'ı).
+  // Negatif düzeltilmiş yaşta takvim yaşını göster ("0 gün" vb.).
+  final a = DateTime(adj.year, adj.month, adj.day);
+  final t = DateTime(ref.year, ref.month, ref.day);
+  if (t.isBefore(a)) return babyAgeShort(b, now: now);
   return _calendarAgeLabel(adj, ref);
 }
 

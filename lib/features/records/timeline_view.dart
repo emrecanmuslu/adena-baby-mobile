@@ -45,6 +45,24 @@ class _TimelineViewState extends ConsumerState<TimelineView> {
         _filter = null;
       });
 
+  /// Etikete dokununca takvimle istenen güne atla (gelecek gün seçilemez).
+  Future<void> _pickDay() async {
+    final today = _todayDate();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _day,
+      firstDate: DateTime(today.year - 5),
+      lastDate: today,
+      helpText: tr('Güne git'),
+    );
+    if (picked != null) {
+      setState(() {
+        _day = DateTime(picked.year, picked.month, picked.day);
+        _filter = null;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isToday = _day == _todayDate();
@@ -57,6 +75,7 @@ class _TimelineViewState extends ConsumerState<TimelineView> {
           label: _dayLabel(_day),
           onPrev: () => _shiftDay(-1),
           onNext: isToday ? null : () => _shiftDay(1),
+          onPickDay: _pickDay,
         ),
         if (all != null && all.isNotEmpty) ...[
           _DayChip(records: all),
@@ -109,11 +128,17 @@ class _TimelineViewState extends ConsumerState<TimelineView> {
 }
 
 /// Tarih geçişi (design .ad-tlday): ‹ etiket › — gelecekte gün yok.
+/// Etikete dokununca takvimle güne atlanır (onPickDay).
 class _DayNav extends StatelessWidget {
   final String label;
   final VoidCallback onPrev;
   final VoidCallback? onNext;
-  const _DayNav({required this.label, required this.onPrev, required this.onNext});
+  final VoidCallback onPickDay;
+  const _DayNav(
+      {required this.label,
+      required this.onPrev,
+      required this.onNext,
+      required this.onPickDay});
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +148,23 @@ class _DayNav extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _btn(context, 'chevL', onPrev),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+          GestureDetector(
+            onTap: onPickDay,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AdenaIcon('calendar', size: 15, color: AppColors.muted),
+                  const SizedBox(width: 6),
+                  Text(label,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 15)),
+                ],
+              ),
+            ),
+          ),
           _btn(context, 'chevR', onNext),
         ],
       ),

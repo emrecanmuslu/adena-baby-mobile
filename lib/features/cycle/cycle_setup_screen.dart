@@ -17,11 +17,15 @@ class CycleSetupView extends ConsumerStatefulWidget {
   final CycleSettings initial;
   final DateTime? babyBirthDate;
   final VoidCallback onDone;
+  // Bebeksiz "adet & gebelik takibi" dalı: doğum tarihi/emzirme/loşia yok →
+  // Flo-tarzı 2 adım (hedef + son adet tarihi/LMP).
+  final bool cycleFirst;
   const CycleSetupView(
       {super.key,
       required this.initial,
       required this.onDone,
-      this.babyBirthDate});
+      this.babyBirthDate,
+      this.cycleFirst = false});
 
   @override
   ConsumerState<CycleSetupView> createState() => _CycleSetupViewState();
@@ -34,6 +38,11 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
   DateTime? _firstPeriod;
   bool _periodReturned = false;
   bool _saving = false;
+  // Bebeksiz dal — hedef (yalnız takip / gebe kalmaya çalışma).
+  CycleLifecycleMode _goal = CycleLifecycleMode.tracking;
+
+  /// Bu sihirbazın toplam adım sayısı (bebeksiz dal 2, doğum sonrası 3).
+  int get _stepCount => widget.cycleFirst ? 2 : 3;
 
   @override
   void initState() {
@@ -42,16 +51,37 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
     _bf = widget.initial.breastfeeding;
     _firstPeriod = widget.initial.firstPeriodDate;
     _periodReturned = widget.initial.periodReturned;
+    final m = widget.initial.lifecycleMode;
+    _goal = m == CycleLifecycleMode.ttc
+        ? CycleLifecycleMode.ttc
+        : CycleLifecycleMode.tracking;
   }
 
   Future<void> _finish() async {
     setState(() => _saving = true);
-    final next = widget.initial.copyWith(
-      birthDate: _birth,
-      breastfeeding: _bf ?? Breastfeeding.exclusive,
-      firstPeriodDate: _periodReturned ? (_firstPeriod ?? DateTime.now()) : null,
-      enabled: true,
-    );
+    // Bebeksiz dal: doğum sonrası alanları (birthDate/emzirme/loşia) yok. Kurulumu
+    // tamamlanmış saymak için breastfeeding=none (bebek yok → emzirmiyor) yazılır;
+    // hedef ve son adet (LMP) motoru besler.
+    final next = widget.cycleFirst
+        ? widget.initial.copyWith(
+            birthDate: null,
+            breastfeeding: Breastfeeding.none,
+            firstPeriodDate: _firstPeriod, // null → bilgilendirme (bekleme) modu
+            lifecycleMode: _goal,
+            // Sihirbaz yeniden koşarsa (örn. açılış yarışı sonrası) orijinal
+            // TTC başlangıç damgası korunur — yoksa her kurulumda bugüne ezilir.
+            ttcStartedAt: _goal == CycleLifecycleMode.ttc
+                ? (widget.initial.ttcStartedAt ?? DateTime.now())
+                : null,
+            enabled: true,
+          )
+        : widget.initial.copyWith(
+            birthDate: _birth,
+            breastfeeding: _bf ?? Breastfeeding.exclusive,
+            firstPeriodDate:
+                _periodReturned ? (_firstPeriod ?? DateTime.now()) : null,
+            enabled: true,
+          );
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
       ref.invalidate(cycleSettingsProvider);
@@ -66,7 +96,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
   }
 
   void _next() {
-    if (_step < 2) {
+    if (_step < _stepCount - 1) {
       setState(() => _step++);
     } else {
       _finish();
@@ -81,7 +111,9 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
           padding: const EdgeInsets.fromLTRB(22, 6, 22, 18),
           child: Column(
             children: [
-              // header: geri + nokta göstergesi + atla
+              // header: geri + nokta göstergesi. "Atla" bilinçli YOK: her adımın
+              // güvenli varsayılanı var, atlanabilir tek şey son adet tarihi ve
+              // o da kendi adımının CTA'sında ("Şimdilik atla") açıkça sunulur.
               Row(
                 children: [
                   SizedBox(
@@ -97,14 +129,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
                   const Spacer(),
                   _dots(),
                   const Spacer(),
-                  GestureDetector(
-                    onTap: _next,
-                    child: Text(tr('Atla'),
-                        style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.muted)),
-                  ),
+                  const SizedBox(width: 40, height: 40),
                 ],
               ),
               const SizedBox(height: 20),
@@ -119,11 +144,16 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: switch (_step) {
-                  0 => _step1(),
-                  1 => _step2(),
-                  _ => _step3(),
-                },
+                child: widget.cycleFirst
+                    ? switch (_step) {
+                        0 => _goalStep(),
+                        _ => _lmpStep(),
+                      }
+                    : switch (_step) {
+                        0 => _step1(),
+                        1 => _step2(),
+                        _ => _step3(),
+                      },
               ),
               const SizedBox(height: 12),
               Text('🔒 ${tr('Verilerin gizli, yalnızca sana ait')}',
@@ -141,7 +171,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
   Widget _dots() => Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          for (var i = 0; i < 3; i++)
+          for (var i = 0; i < _stepCount; i++)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 4),
               width: i == _step ? 22 : 7,
@@ -295,6 +325,86 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
           ),
         ),
         _saveBtn(tr('Tamamla')),
+      ],
+    );
+  }
+
+  // ── Bebeksiz dal · Adım 1 — Hedef ──
+  Widget _goalStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _q(tr('Neden buradasın?')),
+        _qsub(tr('Adet takvimini nasıl kullanmak istediğini seç. Daha sonra '
+            'Ayarlar > Hedefim\'den değiştirebilirsin.')),
+        Expanded(
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _optTile(
+                emoji: '📅',
+                title: tr('Adet takibi'),
+                sub: tr('Döngünü ve adetini izle'),
+                on: _goal == CycleLifecycleMode.tracking,
+                onTap: () =>
+                    setState(() => _goal = CycleLifecycleMode.tracking),
+              ),
+              const SizedBox(height: 11),
+              _optTile(
+                emoji: '🌿',
+                title: tr('Gebe kalmaya çalışıyorum'),
+                sub: tr('Ovülasyon ve doğurgan pencereni takip et'),
+                on: _goal == CycleLifecycleMode.ttc,
+                onTap: () => setState(() => _goal = CycleLifecycleMode.ttc),
+              ),
+            ]),
+          ),
+        ),
+        _saveBtn(tr('Devam')),
+      ],
+    );
+  }
+
+  // ── Bebeksiz dal · Adım 2 — Son adet (LMP) ──
+  Widget _lmpStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _q(tr('Son adetin ne zaman başladı?')),
+        _qsub(tr('Son adetinin ilk günü tüm tahminlerin başlangıç noktasıdır. '
+            'Bilmiyorsan "Şimdilik atla" ile geç — ilk adetini girince takip '
+            'başlar.')),
+        Expanded(
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _dateCard(
+                value: _firstPeriod,
+                placeholder: tr('Son adet tarihini seç'),
+                sub: tr('dokun → takvimden seç'),
+                onTap: () async {
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _firstPeriod ?? now,
+                    firstDate: DateTime(now.year - 1),
+                    lastDate: now,
+                    helpText: tr('Son adet tarihi'),
+                  );
+                  if (picked != null) setState(() => _firstPeriod = picked);
+                },
+              ),
+              const SizedBox(height: 14),
+              cycNote(context,
+                  clay: true,
+                  icon: Icons.info_outline_rounded,
+                  body: tr('Bu bir tahmindir, kesin değildir. Birkaç döngü '
+                      'kaydettikçe tahminler güçlenir.'),
+                  infoTitle: tr('Doğurganlık penceresi'),
+                  info: CycleInfo.fertileWindow),
+            ]),
+          ),
+        ),
+        // Tarih seçilmediyse bitirme niyeti "atlamak"tır — CTA bunu açıkça söyler.
+        _saveBtn(_firstPeriod == null ? tr('Şimdilik atla') : tr('Tamamla')),
       ],
     );
   }

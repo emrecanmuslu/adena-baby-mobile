@@ -25,6 +25,7 @@ class LocalSession {
   static const _kCachedUser = 'cached_auth_user_v1'; // son başarılı /auth/me (offline açılış için)
   static const _kGuest = 'guest_mode_v1'; // "kayıt olmadan devam et" — hesapsız yerel oturum açık mı
   static const _kGuestMigResolved = 'guest_migration_resolved_v1'; // misafir→hesap "aktaralım mı?" sorusu bu misafir turunda yanıtlandı mı
+  static const _kCycleFirst = 'cycle_first_entry_v1'; // "bebeğim yok — sadece adet/gebelik takibi" ile girildi mi (Flo-tarzı bebeksiz dal)
 
   /// Açılışta okunup belleğe alınan değerler (senkron erişim için).
   static String? _userId;
@@ -33,6 +34,7 @@ class LocalSession {
   static String? _name;
   static bool? _guest; // "kayıt olmadan devam et" oturumu açık mı (kalıcı)
   static bool? _guestMigResolved; // misafir→hesap göç sorusu yanıtlandı mı
+  static bool? _cycleFirst; // bebeksiz adet/gebelik dalı seçildi mi (kalıcı)
   static String? _activeAccountId; // o an oturum açık hesap (yerel izolasyon anahtarı)
   static Set<String> _importedAccounts = {}; // cloud→local göçü yapılmış hesaplar
   static Set<String> _premiumSyncedAccounts = {}; // free→premium tam yüklemesi yapılmış hesaplar
@@ -72,6 +74,8 @@ class LocalSession {
       _guest = g == '1';
       final (gmr, _) = await LocalPrefs.migrateString(prefs, _kGuestMigResolved);
       _guestMigResolved = gmr == '1';
+      final (cf, _) = await LocalPrefs.migrateString(prefs, _kCycleFirst);
+      _cycleFirst = cf == '1';
       // Misafir oturumu açıksa + gerçek oturum yoksa: yerel veri kapsamını
       // localUserId'ye bağla (repo'lar bunu account anahtarı gibi kullanır).
       // Gerçek oturum varsa AuthController.build bunu kendi user.id'siyle ezer.
@@ -97,6 +101,7 @@ class LocalSession {
       _name ??= '';
       _guest ??= false;
       _guestMigResolved ??= false;
+      _cycleFirst ??= false;
     }
   }
 
@@ -139,6 +144,24 @@ class LocalSession {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kGuest, '1');
       await prefs.remove(_kGuestMigResolved);
+    } catch (_) {}
+  }
+
+  /// "Bebeğim yok — adet & gebelik takibi" dalıyla mı girildi (Flo-tarzı bebeksiz
+  /// kullanım). true → router bebek zorunluluğunu esnetip doğrudan Adet Takvimi'ni
+  /// açar; bebek eklenince yine tam uygulama kullanılır (bayrak yalnız bebek yokken
+  /// dikkate alınır).
+  static bool get cycleFirst => _cycleFirst ?? false;
+
+  static Future<void> setCycleFirst(bool v) async {
+    _cycleFirst = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (v) {
+        await prefs.setString(_kCycleFirst, '1');
+      } else {
+        await prefs.remove(_kCycleFirst);
+      }
     } catch (_) {}
   }
 
@@ -284,12 +307,14 @@ class LocalSession {
     _importedAccounts = {};
     _premiumSyncedAccounts = {};
     _purgeHandled = {};
+    _cycleFirst = false;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kName);
       await prefs.remove(_kImportedAccts);
       await prefs.remove(_kPremiumSynced);
       await prefs.remove(_kPurgeHandled);
+      await prefs.remove(_kCycleFirst);
     } catch (_) {}
   }
 }
@@ -319,6 +344,22 @@ class GuestModeController extends Notifier<bool> {
 
 final guestModeProvider =
     NotifierProvider<GuestModeController, bool>(GuestModeController.new);
+
+/// "Bebeğim yok — adet & gebelik takibi" bebeksiz dalı — router bunu izler
+/// (bebek zorunluluğunu esnetip doğrudan /cycle'ı açar). set(true) onboarding'de
+/// kullanıcı bu seçeneği seçince çağrılır.
+class CycleFirstController extends Notifier<bool> {
+  @override
+  bool build() => LocalSession.cycleFirst;
+
+  Future<void> set(bool v) async {
+    await LocalSession.setCycleFirst(v);
+    state = v;
+  }
+}
+
+final cycleFirstProvider =
+    NotifierProvider<CycleFirstController, bool>(CycleFirstController.new);
 
 /// Yerel rıza durumu — router bunu izler (kabul edilince kapıdan çıkar).
 class LocalConsentController extends Notifier<bool> {

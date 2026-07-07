@@ -6,6 +6,7 @@ import '../../core/live_activity_service.dart';
 import '../../core/notification_service.dart';
 import '../../core/widget_service.dart';
 import '../../data/feed_reminder_cache.dart';
+import '../../data/health_repository.dart';
 import '../../models/baby.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
@@ -30,6 +31,8 @@ class FamilyNotificationSync extends ConsumerWidget {
     return Stack(
       children: [
         for (final b in babies) _BabyNotifSync(baby: b, key: ValueKey(b.id)),
+        // Özel/randevu hatırlatıcıları: açılışta sunucudan çek + global planla.
+        for (final b in babies) _ReminderSync(baby: b, key: ValueKey('rem-${b.id}')),
         // Ana ekran widget'ı aktif bebeğin son beslenmesini gösterir.
         const _WidgetSync(),
         // iOS Live Activity (süren sayaç — kilit ekranı + Dynamic Island).
@@ -197,6 +200,25 @@ void repostActiveTimers(WidgetRef ref) {
     if (b.isExpecting) continue;
     syncSleepTimer(b, ref.read(ongoingSleepProvider(b.id)));
     syncBreastTimer(b, ref.read(ongoingBreastProvider(b.id)));
+  }
+}
+
+/// Özel/randevu hatırlatıcılarını GLOBAL katmanda cihaz bildirimleriyle eşitler
+/// (önceden yalnız Hatırlatıcılar ekranı açıkken planlanıyordu — ekran hiç
+/// açılmasa da açılışta planlar kurulur). Hatırlatıcılar KİŞİSELDİR (karar
+/// 2026-07-07): aile paylaşımına dahil değildir, sunucuyla senkronlanmaz;
+/// kaynak yalnız bu cihazdaki Drift.
+class _ReminderSync extends ConsumerWidget {
+  final Baby baby;
+  const _ReminderSync({required this.baby, super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Liste değiştikçe (ilk yükleme dahil) cihaz planlarını eşitle. Yalnız bu
+    // provider izlendiğinden rebuild = liste değişimi; sync idempotenttir.
+    final list = ref.watch(remindersProvider(baby.id)).asData?.value;
+    if (list != null) NotificationService.instance.sync(list);
+    return const SizedBox.shrink();
   }
 }
 

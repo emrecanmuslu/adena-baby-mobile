@@ -200,7 +200,10 @@ Widget cycAct(String label, {required VoidCallback onTap, IconData? icon}) =>
 
 /// .cy-card içi "Mini" insight kartı (label + ikon + büyük değer)
 Widget cycMini(BuildContext c,
-    {required String label, required String value, Widget? icon}) {
+    {required String label,
+    required String value,
+    Widget? icon,
+    Color? valueColor}) {
   return Expanded(
     child: cycCard(c,
         soft: true,
@@ -220,7 +223,10 @@ Widget cycMini(BuildContext c,
           const SizedBox(height: 8),
           Text(value,
               style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.ink, height: 1)),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: valueColor ?? AppColors.ink,
+                  height: 1)),
         ])),
   );
 }

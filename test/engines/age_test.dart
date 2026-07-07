@@ -71,14 +71,19 @@ void main() {
       expect(babyAgeShort(_born(DateTime(2026, 6, 13)), now: now), '5 gün');
     });
 
-    test('24 aydan küçük, gün=0 → "{n} ay"', () {
+    test('12 aydan küçük, gün>0 → "{n} ay {d} gün"', () {
       final now = DateTime(2026, 6, 18);
-      expect(babyAgeShort(_born(DateTime(2025, 4, 18)), now: now), '14 ay');
+      expect(babyAgeShort(_born(DateTime(2025, 8, 10)), now: now), '10 ay 8 gün');
     });
 
-    test('24 aydan küçük, gün>0 → "{n} ay {d} gün"', () {
+    test('tam 12 ay → "1 yaş" (BULGU-8: "12 ay" değil)', () {
       final now = DateTime(2026, 6, 18);
-      expect(babyAgeShort(_born(DateTime(2025, 4, 10)), now: now), '14 ay 8 gün');
+      expect(babyAgeShort(_born(DateTime(2025, 6, 18)), now: now), '1 yaş');
+    });
+
+    test('12–24 ay arası → "1 yaş {m} ay"', () {
+      final now = DateTime(2026, 6, 18);
+      expect(babyAgeShort(_born(DateTime(2025, 4, 10)), now: now), '1 yaş 2 ay');
     });
 
     test('24 ay ve üzeri, ay=0 → "{n} yaş"', () {

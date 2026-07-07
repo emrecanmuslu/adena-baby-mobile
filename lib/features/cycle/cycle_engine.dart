@@ -81,13 +81,47 @@ class CycleStatus {
 DateTime _d(DateTime x) => DateTime(x.year, x.month, x.day);
 int _diffDays(DateTime a, DateTime b) => _d(a).difference(_d(b)).inDays;
 
+/// DST-güvenli gün ekleme. `.add(Duration(days: n))` bir DST (yaz saati) geçişini
+/// aşarsa yerel gece-yarısı 23:00'e (önceki gün) ya da 01:00'e kayabilir → işaretli
+/// tarih 1 gün kayar. DateTime yapıcısı gün taşmasını normalize eder ve her zaman
+/// yerel gece-yarısı üretir (Türkiye kalıcı UTC+3 olduğundan etkilenmez, ABD DST'de
+/// etkilenirdi). Tüm tahmin tarihleri bununla üretilir; takvim/bugün UI'ları da
+/// gün aritmetiğinde bunu kullanmalı (Duration değil).
+DateTime cycleAddDays(DateTime x, int days) =>
+    DateTime(x.year, x.month, x.day + days);
+DateTime _addDays(DateTime x, int days) => cycleAddDays(x, days);
+
+/// Gebe kalma olasılığı seviyesi (Wilcox eğrisi, kademeli).
+enum ConceptionChance { low, medium, high, veryHigh }
+
+/// Bir günün gebe-kalma olasılığı — Bugün ve Takvim AYNI fonksiyonu kullanır
+/// (kopya mantık çelişki üretmesin). Kademelendirme (My Calendar + Wilcox):
+/// yumurtlama=çok yüksek; ov−2/−1=yüksek; pencere kenarları (ov−5..−3) ve
+/// ovülasyon SONRASI gün (ov+1, olasılık hızla düşer)=orta; pencere dışı=düşük.
+ConceptionChance conceptionChance(DateTime day, CycleStatus status) {
+  if (status.mode != CycleMode.active) return ConceptionChance.low;
+  final d = _d(day);
+  final ovu = status.ovulationDay;
+  if (ovu != null && _d(ovu).isAtSameMomentAs(d)) return ConceptionChance.veryHigh;
+  if (status.fertileStart != null &&
+      status.fertileEnd != null &&
+      !d.isBefore(_d(status.fertileStart!)) &&
+      !d.isAfter(_d(status.fertileEnd!))) {
+    final toOvu = ovu == null ? null : _diffDays(ovu, d);
+    return (toOvu != null && toOvu >= 1 && toOvu <= 2)
+        ? ConceptionChance.high
+        : ConceptionChance.medium;
+  }
+  return ConceptionChance.low;
+}
+
 /// Adet kayıtlarından döngü başlangıçlarını çıkarır: bir gün, adet günüyse ve
 /// bir önceki gün adet değilse "başlangıç"tır.
 List<DateTime> periodStarts(List<CycleEntry> entries) {
   final periodDays = entries.where((e) => e.isPeriod).map((e) => _d(e.date)).toSet();
   final starts = <DateTime>[];
   for (final day in periodDays) {
-    if (!periodDays.contains(day.subtract(const Duration(days: 1)))) {
+    if (!periodDays.contains(_addDays(day, -1))) {
       starts.add(day);
     }
   }
@@ -103,8 +137,10 @@ CycleStatus computeStatus(
 }) {
   final now = _d(today ?? DateTime.now());
 
-  // 1) Mod tayini.
-  if (!settings.periodReturned) {
+  // 1) Mod tayini. `predictionsHidden` (düşük/doğum sonrası şefkatli gizleme)
+  // açıkken çapa dolu olsa bile tahmin üretilmez — bayrak yalnız yazılan değil,
+  // burada TÜKETİLEN bir koruma katmanı (aksi halde işlevsiz kalırdı).
+  if (!settings.periodReturned || settings.predictionsHidden) {
     final birth = settings.birthDate;
     final sinceBirth = birth == null ? null : _diffDays(now, birth);
     final hasLochia = entries.any((e) => e.lochiaColor != null);
@@ -120,9 +156,13 @@ CycleStatus computeStatus(
   }
 
   // 2) Aktif döngü — başlangıçları topla (ilk adet tarihi dahil).
+  // Çapadan (firstPeriodDate) ÖNCEKİ adet kayıtları yok sayılır: doğum/kayıp
+  // sonrası "ilk adet = yeni Gün 1" sıfırlamasında eski dönemin kayıtları
+  // ortalama ve döngü numarasını kirletmesin (çapa öncesi dev span oluşurdu).
+  final anchor = _d(settings.firstPeriodDate!);
   final starts = <DateTime>{
-    _d(settings.firstPeriodDate!),
-    ...periodStarts(entries),
+    anchor,
+    ...periodStarts(entries).where((s) => !s.isBefore(anchor)),
   }.toList()
     ..sort();
 
@@ -131,7 +171,7 @@ CycleStatus computeStatus(
   for (var i = 0; i < starts.length; i++) {
     final start = starts[i];
     final next = i + 1 < starts.length ? starts[i + 1] : null;
-    final end = next?.subtract(const Duration(days: 1));
+    final end = next == null ? null : _addDays(next, -1);
     final pDays = entries.where((e) {
       final d = _d(e.date);
       return e.isPeriod &&
@@ -201,21 +241,21 @@ CycleStatus computeStatus(
 
   final lastStart = starts.last;
   final dayInCycle = _diffDays(now, lastStart) + 1;
-  final nextPeriod = lastStart.add(Duration(days: avgLen));
+  final nextPeriod = _addDays(lastStart, avgLen);
   final daysToNext = _diffDays(nextPeriod, now);
   // Ovülasyon ≈ sonraki adetten luteal faz kadar önce; doğurganlık penceresi
   // ovülasyon −5 … +1 (My Calendar pariteti — pencere ovülasyondan 1 gün sonra biter).
-  final ovulation = nextPeriod.subtract(Duration(days: luteal));
-  final fertileStart = ovulation.subtract(const Duration(days: 5));
-  final fertileEnd = ovulation.add(const Duration(days: 1));
+  final ovulation = _addDays(nextPeriod, -luteal);
+  final fertileStart = _addDays(ovulation, -5);
+  final fertileEnd = _addDays(ovulation, 1);
   // Yaklaşan pencere: mevcut döngününki (fertileStart..ovulation) bugünü geçtiyse
   // sonraki döngünün penceresine kay → pano "geçmiş" pencere göstermez, doğurganlık
   // hatırlatıcısı doğru kurulur. (Mevcut fertileStart/End calendar için korunur.)
   final windowPassed = ovulation.isBefore(now);
-  final nextCyclePeriod = nextPeriod.add(Duration(days: avgLen));
-  final nextOvulation = nextCyclePeriod.subtract(Duration(days: luteal));
+  final nextCyclePeriod = _addDays(nextPeriod, avgLen);
+  final nextOvulation = _addDays(nextCyclePeriod, -luteal);
   final upcomingOvulation = windowPassed ? nextOvulation : ovulation;
-  final upcomingFertileStart = upcomingOvulation.subtract(const Duration(days: 5));
+  final upcomingFertileStart = _addDays(upcomingOvulation, -5);
 
   // Faz.
   CyclePhase phase;
@@ -242,7 +282,7 @@ CycleStatus computeStatus(
     fertileStart: fertileStart,
     fertileEnd: fertileEnd,
     upcomingFertileStart: upcomingFertileStart,
-    upcomingFertileEnd: upcomingOvulation.add(const Duration(days: 1)),
+    upcomingFertileEnd: _addDays(upcomingOvulation, 1),
     fertileWindowIsNextCycle: windowPassed,
     lowConfidence: lengths.length < 3,
     spans: spans,

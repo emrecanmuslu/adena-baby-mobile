@@ -56,6 +56,7 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     BabyGender gender = BabyGender.unknown,
     DateTime? birthDate,
     DateTime? dueDate,
+    DateTime? lastMenstrualDate,
     int? gestationalWeeks,
     int gestationalDays = 0,
   }) async {
@@ -66,6 +67,7 @@ class BabyController extends AsyncNotifier<List<Baby>> {
       status: status,
       birthDate: birthDate,
       dueDate: dueDate,
+      lastMenstrualDate: lastMenstrualDate,
       gestationalWeeks: gestationalWeeks,
       gestationalDays: gestationalDays,
       myRole: 'owner',

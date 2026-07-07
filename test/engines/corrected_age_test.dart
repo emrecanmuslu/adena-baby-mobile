@@ -117,6 +117,14 @@ void main() {
       expect(correctedAgeShort(b, now: now), isNot(babyAgeShort(b, now: now)));
       expect(correctedAgeShort(b, now: now), contains('ay'));
     });
+    test('düzeltilmiş yaş negatifken (TDT gelmedi) takvim yaşına düşer — "Takip" değil', () {
+      // Çok erken doğum (22 hf), doğum günü = bugün: düzeltilmiş doğum anı
+      // gelecekte → eski davranış "Takip" gösteriyordu (ana ekran rozeti bug'ı).
+      final b = born(birth: DateTime(2026, 6, 1), gestWeeks: 22);
+      final s = correctedAgeShort(b, now: DateTime(2026, 6, 1));
+      expect(s, babyAgeShort(b, now: DateTime(2026, 6, 1))); // "0 gün"
+      expect(s, isNot('Takip'));
+    });
   });
 
   group('dualAgeLabel', () {

@@ -8,8 +8,10 @@ import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/cycle_repository.dart';
 import '../../data/health_repository.dart';
 import '../../models/baby.dart';
+import '../../models/cycle.dart';
 import 'baby_actions.dart';
 import 'baby_controller.dart';
 import 'premature_section.dart';
@@ -59,11 +61,18 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
   Future<void> _pickDate(Baby b) async {
     final now = DateTime.now();
     final isBorn = !b.isExpecting;
+    // DateTime(now.year + 1) "gelecek yılın 1 Ocak'ı" demekti — TDT sonraki
+    // yıla sarkınca initialDate > lastDate assert'iyle seçici hiç açılmıyordu.
+    final first = isBorn ? DateTime(now.year - 5) : now;
+    final last = isBorn ? now : DateTime(now.year + 1, now.month, now.day);
+    var init = _date ?? now;
+    if (init.isAfter(last)) init = last;
+    if (init.isBefore(first)) init = first;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date ?? now,
-      firstDate: isBorn ? DateTime(now.year - 5) : now,
-      lastDate: isBorn ? now : DateTime(now.year + 1),
+      initialDate: init,
+      firstDate: first,
+      lastDate: last,
       helpText: isBorn ? tr('Doğum tarihi') : tr('Tahmini doğum tarihi'),
     );
     if (picked != null) setState(() => _date = picked);
@@ -125,6 +134,26 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
     try {
       await ref.read(babyControllerProvider.notifier).deleteBaby(b.id);
       ref.read(activeBabyIdProvider.notifier).set(null); // ilk bebeğe düşer
+      // Cycle temizliği: silinen bebek adet modülüne bağlıysa bağ kopar; bir
+      // GEBELİK bebeği silindiyse mod da gebelikte takılı kalmasın (kayıp
+      // akışı dışı silme = kaçış kapısı; adet çapasına dokunmayız).
+      try {
+        final repo = ref.read(cycleRepositoryProvider);
+        final cs = await repo.getSettings();
+        final wasLinked = cs.babyId == b.id;
+        final orphanPregnant =
+            b.isExpecting && cs.lifecycleMode == CycleLifecycleMode.pregnant;
+        if (wasLinked || orphanPregnant) {
+          await repo.patchSettings({
+            if (wasLinked) 'baby': null,
+            if (orphanPregnant) ...{
+              'lifecycle_mode': CycleLifecycleMode.tracking.name,
+              'predictions_hidden': false,
+            },
+          });
+          ref.invalidate(cycleSettingsProvider);
+        }
+      } catch (_) {}
       if (mounted) context.go('/home');
     } catch (e) {
       _snack(apiErrorText(e));

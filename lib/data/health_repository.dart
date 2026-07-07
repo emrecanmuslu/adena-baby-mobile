@@ -158,6 +158,9 @@ class HealthRepository {
           erupted ? (date ?? DateTime.now()) : null);
 
   // ── Hatırlatıcılar (yerel int id → NotificationService) ──
+  // KARAR (2026-07-07): hatırlatıcılar KİŞİSELDİR — aile paylaşımına dahil
+  // değildir; buluta itilmez/çekilmez (herkes kendi cihazında kendi düzenini
+  // kurar). Bu yüzden push/pull/import yolları kaldırıldı; yalnız Drift.
 
   Reminder _toReminder(ReminderRow r) => Reminder(
         id: r.localId,
@@ -186,7 +189,6 @@ class HealthRepository {
             createdAt: Value(DateTime.now()),
           ),
         );
-    await _maybePushReminders(babyId);
     final row = await (_db.select(_db.localReminders)
           ..where((r) => r.localId.equals(id)))
         .getSingle();
@@ -194,38 +196,23 @@ class HealthRepository {
   }
 
   Future<void> setReminderEnabled(int id, bool enabled) async {
-    final row = await (_db.select(_db.localReminders)
-          ..where((r) => r.localId.equals(id)))
-        .getSingleOrNull();
     await (_db.update(_db.localReminders)..where((r) => r.localId.equals(id)))
         .write(LocalRemindersCompanion(enabled: Value(enabled)));
-    if (row != null) await _maybePushReminders(row.baby);
   }
 
   Future<void> deleteReminder(int id) async {
-    final row = await (_db.select(_db.localReminders)
-          ..where((r) => r.localId.equals(id)))
-        .getSingleOrNull();
     await (_db.delete(_db.localReminders)..where((r) => r.localId.equals(id))).go();
-    if (row != null) await _maybePushReminders(row.baby);
-  }
-
-  Future<void> _maybePushReminders(String babyId) async {
-    if (!_cloudEnabled(babyId)) return;
-    try {
-      await pushAll(babyId);
-    } catch (_) {}
   }
 
   // ── Cloud (premium) ──
 
-  /// Tüm sağlık durumunu + hatırlatıcıları buluta iter (son-yazan-kazanır).
-  /// Premium push (durum değişimi / migrasyon).
+  /// Tüm sağlık DURUMUNU buluta iter (son-yazan-kazanır). Premium push (durum
+  /// değişimi / migrasyon). Hatırlatıcılar KİŞİSEL olduğundan gönderilmez —
+  /// 'reminders' anahtarı yoksa backend mevcut satırlara dokunmaz.
   Future<void> pushAll(String babyId) async {
     final vac = await vaccines(babyId);
     final mil = await milestones(babyId);
     final tee = await teeth(babyId);
-    final rem = await reminders(babyId);
     await _api.dio.post('/babies/$babyId/health/sync', data: {
       'vaccines': [
         for (final v in vac)
@@ -238,10 +225,6 @@ class HealthRepository {
       'teeth': [
         for (final t in tee)
           {'key': t.key, 'erupted': t.erupted, 'erupted_date': _d(t.eruptedDate)}
-      ],
-      'reminders': [
-        for (final r in rem)
-          {'type': r.type, 'schedule': r.schedule, 'enabled': r.enabled}
       ],
     });
   }
@@ -279,28 +262,7 @@ class HealthRepository {
         }
       }
     } catch (_) {}
-    // Hatırlatıcılar: yalnız yerel boşsa içeri al (çift kayıt olmasın).
-    try {
-      final existing = await (_db.select(_db.localReminders)
-            ..where((x) => x.baby.equals(babyId)))
-          .get();
-      if (existing.isEmpty) {
-        final r = await _api.dio.get('/babies/$babyId/reminders');
-        for (final e in (r.data as List? ?? const [])) {
-          final m = e as Map<String, dynamic>;
-          await _db.into(_db.localReminders).insert(
-                LocalRemindersCompanion.insert(
-                  baby: babyId,
-                  type: Value(m['type'] as String? ?? 'custom'),
-                  scheduleJson: Value(jsonEncode(
-                      (m['schedule'] as Map?)?.cast<String, dynamic>() ?? const {})),
-                  enabled: Value(m['enabled'] as bool? ?? true),
-                  createdAt: Value(DateTime.now()),
-                ),
-              );
-        }
-      }
-    } catch (_) {}
+    // Hatırlatıcılar KİŞİSEL (karar 2026-07-07) → buluttan içeri alınmaz.
   }
 
   Future<void> purgeBaby(String babyId) async {

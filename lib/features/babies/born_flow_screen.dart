@@ -8,6 +8,8 @@ import '../../core/age.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/cycle_repository.dart';
+import '../../models/cycle.dart';
 import 'baby_controller.dart';
 import 'premature_section.dart';
 
@@ -80,6 +82,26 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
         'gestational_age_weeks': _gestWeeks,
         'gestational_age_days': _gestWeeks == null ? 0 : _gestDays,
       });
+      // Ters senkron (T5): Adet Takvimi'ni kullanan kullanıcıda doğum → cycle
+      // otomatik doğum-sonrasına (loşia + ilk adete kadar tahmin yok). Yalnız
+      // "pregnant" moduna bağlamıyoruz: gebelik bebeği köprü dışından eklendiyse
+      // mod tracking/ttc'de takılı kalmış olabilir — doğum olayı her durumda
+      // döngüyü sıfırlar. Cycle hiç kurulmamışsa (breastfeeding null) dokunma —
+      // istenmeden kurulum tetiklememek için.
+      try {
+        final cs = await ref.read(cycleRepositoryProvider).getSettings();
+        if (cs.breastfeeding != null) {
+          await ref.read(cycleRepositoryProvider).patchSettings({
+            'lifecycle_mode': CycleLifecycleMode.postpartum.name,
+            'predictions_hidden': true,
+            'birth_date': _iso(_birth),
+            // Doğum → gebelik öncesi LMP artık geçersiz; temizle ki motor "ilk adet
+            // henüz dönmedi" (loşia/bekleme) moduna geçsin, aktif takipte kalmasın.
+            'first_period_date': null,
+          });
+          ref.invalidate(cycleSettingsProvider);
+        }
+      } catch (_) {}
       if (!mounted) return;
       // Bu ekran zaten "Tebrikler!" tebrik ekranı — ayrıca toast göstermek gereksiz.
       context.go('/home');

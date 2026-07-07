@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
+import '../../data/local_session.dart';
+import '../../models/baby.dart';
 import '../../models/cycle.dart';
+import '../babies/baby_controller.dart';
 import 'cycle_kit.dart';
+import 'cycle_pregnancy_bridge.dart';
 
 /// F5 — Gebelik kaybı (düşük) şefkatli akışı + doğum sonrası geçiş.
 /// Natural Cycles "Recovery Mode" deseni: kayıp loglanınca doğurganlık tahminleri
@@ -15,6 +21,9 @@ import 'cycle_kit.dart';
 /// olduğunda takibe döner. Zorlama/metrik baskısı yok.
 
 /// Kaydı yaz + şefkatli moda geç.
+/// Döngü çapası (first_period_date) SIFIRLANIR: gebelikteki LMP artık geçersiz —
+/// bırakılsaydı "takibe dön" sonrası motor eski LMP'den sayıp "56 gün gecikti"
+/// gibi çöp tahmin üretirdi. İlk gerçek adet = yeni Gün 1 (bekleme modundan).
 Future<void> recordCycleLoss(WidgetRef ref, {DateTime? date}) async {
   final d = date ?? DateTime.now();
   final iso = '${d.year.toString().padLeft(4, '0')}-'
@@ -23,6 +32,10 @@ Future<void> recordCycleLoss(WidgetRef ref, {DateTime? date}) async {
     'lifecycle_mode': CycleLifecycleMode.loss.name,
     'predictions_hidden': true,
     'last_loss_date': iso,
+    'first_period_date': null,
+    // Gebelik bebeği kayıp akışında silinir → ayarlardaki bağ da kopmalı
+    // (bayat id, sonraki köprü çağrılarında yanlış bebeğe işaret ederdi).
+    'baby': null,
   });
   ref.invalidate(cycleSettingsProvider);
 }
@@ -75,16 +88,14 @@ Future<void> showCycleLossOrEnd(
   if (choice == null || !context.mounted) return;
   try {
     if (choice == 'loss') {
-      await _confirmLoss(context, ref);
+      await _confirmLoss(context, ref, settings);
     } else if (choice == 'birth') {
-      await ref.read(cycleRepositoryProvider).patchSettings({
-        'lifecycle_mode': CycleLifecycleMode.postpartum.name,
-        'predictions_hidden': true,
-      });
-      ref.invalidate(cycleSettingsProvider);
-      if (context.mounted) {
-        showAdToast(context, tr('Doğum sonrası moduna geçildi'));
-      }
+      // GERÇEK doğum akışı: bekleyen bebeği doğum ekranına (born_flow) götür →
+      // Baby.status=born + gerçek doğum tarihi/prematüre; born_flow ayrıca cycle'ı
+      // doğum sonrasına (loşia) senkronlar. Yalnız cycle bayrağı yazmak YETMEZ.
+      final baby = await ensureExpectingBabyForPregnancy(ref, settings);
+      if (!context.mounted) return;
+      context.go(baby != null ? '/born-flow' : '/baby-add');
     } else if (choice == 'tracking') {
       await returnToTrackingFromLoss(ref);
       if (context.mounted) showAdToast(context, tr('Adet takibine dönüldü'));
@@ -94,14 +105,37 @@ Future<void> showCycleLossOrEnd(
   }
 }
 
+/// Gebelik kaybında bekleyen (expecting) bebek profilini sessizce kaldırır (T4).
+/// Baby'de "kayıp" durumu yok → kalıntı "expecting" bebek bırakmamak için silinir.
+/// Silme sonrası hiç bebek kalmazsa, router onboarding'e atmasın diye cycle-first
+/// bayrağı açılır (kullanıcı iyileşme moduyla Adet Takvimi'nde kalır).
+Future<void> _removeExpectingBabyForLoss(
+    WidgetRef ref, CycleSettings settings) async {
+  final babies = ref.read(babyControllerProvider).asData?.value ?? const [];
+  final expecting = <Baby>[
+    // Önce cycle'a bağlı bebek, sonra herhangi bir bekleyen bebek.
+    ...babies.where((b) => b.id == settings.babyId && b.status == BabyStatus.expecting),
+    ...babies.where((b) => b.status == BabyStatus.expecting && b.id != settings.babyId),
+  ];
+  if (expecting.isEmpty) return;
+  await ref.read(babyControllerProvider.notifier).deleteBaby(expecting.first.id);
+  final remaining = ref.read(babyControllerProvider).asData?.value ?? const [];
+  if (remaining.where((b) => b.id != expecting.first.id).isEmpty) {
+    await ref.read(cycleFirstProvider.notifier).set(true);
+  }
+}
+
 /// Kayıp onay ekranı — içerik uyarısı + şefkatli dil (Flo/NC deseni).
-Future<void> _confirmLoss(BuildContext context, WidgetRef ref) async {
+Future<void> _confirmLoss(
+    BuildContext context, WidgetRef ref, CycleSettings settings) async {
+  var lossDate = DateTime.now();
   final ok = await showModalBottomSheet<bool>(
     context: context,
     backgroundColor: Theme.of(context).colorScheme.surface,
     shape: adSheetShape,
     isScrollControlled: true,
-    builder: (ctx) => SafeArea(
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setSheet) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -122,7 +156,44 @@ Future<void> _confirmLoss(BuildContext context, WidgetRef ref) async {
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
                   color: AppColors.ink2)),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
+          // İsteğe bağlı tarih: varsayılan bugün; geçmişte olduysa düzeltilebilir.
+          GestureDetector(
+            onTap: () async {
+              final now = DateTime.now();
+              final picked = await showDatePicker(
+                context: ctx,
+                initialDate: lossDate,
+                firstDate: now.subtract(const Duration(days: 300)),
+                lastDate: now,
+                helpText: tr('Ne zaman oldu?'),
+              );
+              if (picked != null) setSheet(() => lossDate = picked);
+            },
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.line, width: 1.4),
+              ),
+              child: Row(children: [
+                Icon(Icons.calendar_today_rounded,
+                    size: 17, color: AppColors.muted),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                      '${tr('Ne zaman oldu?')} · ${fmtDayMonthYear(lossDate)}',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink2)),
+                ),
+                Icon(Icons.edit_outlined, size: 16, color: AppColors.muted2),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 14),
           Row(children: [
             Expanded(
               child: GestureDetector(
@@ -162,10 +233,14 @@ Future<void> _confirmLoss(BuildContext context, WidgetRef ref) async {
           ]),
         ]),
       ),
+      ),
     ),
   );
   if (ok != true) return;
-  await recordCycleLoss(ref);
+  // Bekleyen bebek profilini sessizce kaldır (kalıntı gebelik kalmasın), sonra
+  // cycle'ı şefkatli iyileşme moduna al.
+  await _removeExpectingBabyForLoss(ref, settings);
+  await recordCycleLoss(ref, date: lossDate);
   if (context.mounted) showAdToast(context, tr('Kaydedildi. Kendine iyi bak 💗'));
 }
 

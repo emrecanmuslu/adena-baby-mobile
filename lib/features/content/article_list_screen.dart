@@ -6,7 +6,6 @@ import '../../core/i18n.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../data/content_repository.dart';
-import '../../models/article.dart';
 import 'content_ui.dart';
 
 /// Makale listesi ekranı argümanları (GoRoute extra ile taşınır).
@@ -38,10 +37,10 @@ class ArticleListScreen extends ConsumerWidget {
         loading: () => ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           children: [
-            for (var i = 0; i < 5; i++)
+            for (var i = 0; i < 6; i++)
               const Padding(
                 padding: EdgeInsets.only(bottom: 14),
-                child: Skeleton(height: 280, radius: 18),
+                child: Skeleton(height: 118, radius: 18),
               ),
           ],
         ),
@@ -60,18 +59,21 @@ class ArticleListScreen extends ConsumerWidget {
                 16, 8, 16, 24 + MediaQuery.of(context).padding.bottom),
             itemCount: articles.length,
             separatorBuilder: (_, _) => const SizedBox(height: 14),
-            itemBuilder: (_, i) => ArticleCard(
-              article: articles[i],
-              categoryIcon: _iconFor(articles[i].categorySlug, cats),
-            ),
+            itemBuilder: (_, i) {
+              final cat = cats
+                  .where((c) => c.slug == articles[i].categorySlug)
+                  .firstOrNull;
+              return ArticleCard(
+                article: articles[i],
+                categoryIcon: cat?.icon ?? '',
+                accent: categoryColor(cat?.color),
+              );
+            },
           );
         },
       ),
     );
   }
-
-  String _iconFor(String slug, List<ArticleCategory> cats) =>
-      cats.where((c) => c.slug == slug).firstOrNull?.icon ?? '';
 }
 
 class _Empty extends StatelessWidget {

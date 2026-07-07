@@ -7,8 +7,10 @@ import '../../core/brand.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
+import '../../models/cycle.dart';
 import '../babies/baby_controller.dart';
 import 'cycle_calendar_screen.dart';
+import 'cycle_pregnancy_bridge.dart';
 import 'cycle_setup_screen.dart';
 import 'cycle_stats_screen.dart';
 import 'cycle_today_screen.dart';
@@ -78,11 +80,15 @@ class _CycleShellState extends ConsumerState<CycleShell>
       error: (e, _) => Scaffold(
           body: Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(apiErrorText(e))))),
       data: (settings) {
+        // Bebeği yoksa "adet & gebelik takibi" (bebeksiz) dalındayız → sihirbaz
+        // Flo-tarzı (hedef + son adet), alt menüde "Bebek" yerine "Bebek ekle".
+        final hasBaby = baby != null;
         // Kurulmamış → sihirbaz (nav yok, kabuk dışı tam ekran).
         if (settings.breastfeeding == null) {
           return CycleSetupView(
             initial: settings,
             babyBirthDate: baby?.birthDate,
+            cycleFirst: !hasBaby,
             onDone: () => ref.invalidate(cycleSettingsProvider),
           );
         }
@@ -95,10 +101,25 @@ class _CycleShellState extends ConsumerState<CycleShell>
               CycleStatsScreen(),
             ],
           ),
+          // Köprü slotu hedefe duyarlı: bebek varsa "Bebek"e dönüş; bebeksiz
+          // TTC'de doğal sonraki adım "Gebe kaldım" (yaşam-döngüsü köprüsü —
+          // /baby-add'e doğrudan gitmek lifecycleMode'u atlardı); bebeksiz
+          // yalnız-takipte slot GİZLİ ("Bebek ekle" ayarlara taşındı).
           bottomNavigationBar: CycleNav(
             active: _index,
             onTap: (i) => setState(() => _index = i),
-            onBaby: _back,
+            bridge: hasBaby
+                ? CycleNavBridge(
+                    icon: Icons.child_care_rounded,
+                    label: tr('Bebek'),
+                    onTap: _back)
+                : settings.lifecycleMode == CycleLifecycleMode.ttc
+                    ? CycleNavBridge(
+                        icon: Icons.pregnant_woman_rounded,
+                        label: tr('Gebe kaldım'),
+                        onTap: () =>
+                            startCyclePregnancy(context, ref, settings))
+                    : null,
           ),
         );
       },
@@ -144,14 +165,23 @@ class CycleHeader extends StatelessWidget {
       );
 }
 
-/// Pembe alt menü — yüzen ada (hap). Bugün · Takvim · Analiz │ Bebek (köprü).
-/// Ortada + FAB YOK; ekleme her ekranda bağlamsal.
+/// Köprü slotunun içeriği (ikon + etiket + aksiyon). null → slot gizlenir.
+class CycleNavBridge {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const CycleNavBridge(
+      {required this.icon, required this.label, required this.onTap});
+}
+
+/// Pembe alt menü — yüzen ada (hap). Bugün · Takvim · Analiz │ köprü (opsiyonel:
+/// "Bebek" dönüşü veya TTC'de "Gebe kaldım"). Ortada + FAB YOK; ekleme bağlamsal.
 class CycleNav extends StatelessWidget {
   final int active;
   final ValueChanged<int> onTap;
-  final VoidCallback onBaby;
+  final CycleNavBridge? bridge;
   const CycleNav(
-      {super.key, required this.active, required this.onTap, required this.onBaby});
+      {super.key, required this.active, required this.onTap, this.bridge});
 
   @override
   Widget build(BuildContext context) {
@@ -171,9 +201,10 @@ class CycleNav extends StatelessWidget {
             _item(0, Icons.favorite_rounded, tr('Bugün')),
             _item(1, Icons.calendar_month_rounded, tr('Takvim')),
             _item(2, Icons.insights_rounded, tr('Analiz')),
-            Container(
-                width: 1, height: 28, color: AppColors.line2),
-            _baby(),
+            if (bridge != null) ...[
+              Container(width: 1, height: 28, color: AppColors.line2),
+              _bridgeItem(bridge!),
+            ],
           ],
         ),
       ),
@@ -209,18 +240,18 @@ class CycleNav extends StatelessWidget {
     );
   }
 
-  Widget _baby() => Expanded(
+  Widget _bridgeItem(CycleNavBridge b) => Expanded(
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: onBaby,
+          onTap: b.onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.child_care_rounded, size: 22, color: AppColors.coralDd),
+                Icon(b.icon, size: 22, color: AppColors.coralDd),
                 const SizedBox(height: 3),
-                Text(tr('Bebek'),
+                Text(b.label,
                     style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w900,

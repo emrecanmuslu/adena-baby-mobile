@@ -207,8 +207,8 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     final today = DateTime.now();
     List<DateTime?> cells;
     if (_view == 'week') {
-      final start = _dOnly(_selected).subtract(Duration(days: _colOf(_selected, sunday)));
-      cells = [for (var i = 0; i < 7; i++) start.add(Duration(days: i))];
+      final start = cycleAddDays(_dOnly(_selected), -_colOf(_selected, sunday));
+      cells = [for (var i = 0; i < 7; i++) cycleAddDays(start, i)];
     } else {
       final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
       final lead = _colOf(_month, sunday);
@@ -395,13 +395,13 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
         final last = status.spans.last;
         if (last.length == null) {
           final ps = _dOnly(last.start);
-          final pe = ps.add(Duration(days: status.avgPeriodDays - 1));
+          final pe = cycleAddDays(ps, status.avgPeriodDays - 1);
           if (!d.isBefore(ps) && !d.isAfter(pe)) return 'pred';
         }
       }
       final np = status.nextPeriod;
       if (np != null) {
-        final predEnd = _dOnly(np).add(Duration(days: status.avgPeriodDays - 1));
+        final predEnd = cycleAddDays(_dOnly(np), status.avgPeriodDays - 1);
         if (!d.isBefore(_dOnly(np)) && !d.isAfter(predEnd)) return 'pred';
       }
       if (status.fertileStart != null &&
@@ -431,7 +431,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       final avg = status.avgCycleLength;
       var s = start;
       while (avg > 0 && dd.difference(s).inDays >= avg) {
-        s = s.add(Duration(days: avg));
+        s = cycleAddDays(s, avg);
       }
       final n = dd.difference(s).inDays + 1;
       return (n >= 1 && n <= avg + 4) ? n : null;
@@ -825,26 +825,15 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
   }
 
   /// Gebe kalma olasılığı (My Calendar "Chance of getting pregnant" pariteti).
-  /// Pencere içinde KADEMELİ: yumurtlama=çok yüksek, ovülasyona ±2 gün=yüksek,
-  /// pencere kenarları (ör. ovu−5..−3)=orta. (My Calendar pencere ilk günü "MEDIUM"
-  /// gösterir — düz "Yüksek" kalibrasyonu fazla iyimserdi, #5.)
+  /// Kademelendirme motorda ([conceptionChance]) — Bugün ekranıyla tek kaynak.
   (String, Color)? _pregChance(DateTime day, CycleStatus status) {
     if (status.mode != CycleMode.active) return null;
-    final d = _dOnly(day);
-    final ovu = status.ovulationDay;
-    if (ovu != null && _same(d, ovu)) {
-      return (tr('Çok yüksek'), AppColors.gold);
-    }
-    if (status.fertileStart != null &&
-        !d.isBefore(_dOnly(status.fertileStart!)) &&
-        !d.isAfter(_dOnly(status.fertileEnd!))) {
-      // Yumurtlamaya uzaklık: ±2 gün içi "Yüksek", dışı "Orta".
-      final near = ovu != null && (_dOnly(ovu).difference(d).inDays).abs() <= 2;
-      return near
-          ? (tr('Yüksek'), AppColors.sageD)
-          : (tr('Orta'), AppColors.sage);
-    }
-    return (tr('Düşük'), AppColors.muted);
+    return switch (conceptionChance(day, status)) {
+      ConceptionChance.veryHigh => (tr('Çok yüksek'), AppColors.gold),
+      ConceptionChance.high => (tr('Yüksek'), AppColors.sageD),
+      ConceptionChance.medium => (tr('Orta'), AppColors.sage),
+      ConceptionChance.low => (tr('Düşük'), AppColors.muted),
+    };
   }
 
   // ── My Calendar pariteli: takvimden adet başlat / burada bitir / kaldır ──
@@ -890,12 +879,12 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
 
   DateTime? _ongoingStart(DateTime sel, Map<String, CycleEntry> byDay) {
     for (var i = 1; i <= 12; i++) {
-      final d = sel.subtract(Duration(days: i));
+      final d = cycleAddDays(sel, -i);
       final e = byDay[_key(d)];
       if (e != null && e.isPeriod) {
         var s = d;
         while (true) {
-          final prev = s.subtract(const Duration(days: 1));
+          final prev = cycleAddDays(s, -1);
           final pe = byDay[_key(prev)];
           if (pe != null && pe.isPeriod) {
             s = prev;
@@ -937,7 +926,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       var d = start;
       while (!d.isAfter(end)) {
         await _savePeriod(d, byDay[_key(d)]);
-        d = d.add(const Duration(days: 1));
+        d = cycleAddDays(d, 1);
       }
       _afterEdit(tr('Adet günleri işaretlendi'));
     } catch (e) {
@@ -1069,7 +1058,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     for (var i = status.spans.length - 1; i >= 0; i--) {
       final s = status.spans[i];
       if (!d.isBefore(s.start) &&
-          (s.length == null || d.isBefore(s.start.add(Duration(days: s.length!))))) {
+          (s.length == null || d.isBefore(cycleAddDays(s.start, s.length!)))) {
         final dayIn = d.difference(s.start).inDays + 1;
         return trp('Döngü {c} · {d}. gün', {'c': i + 1, 'd': dayIn});
       }

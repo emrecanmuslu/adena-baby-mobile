@@ -8,18 +8,22 @@ import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/cycle_repository.dart';
 import '../../data/local_session.dart';
 import '../../models/baby.dart';
+import '../../models/cycle.dart';
 import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
-import '../babies/baby_switcher.dart';
 import '../babies/premature_section.dart';
 
-/// Bebek kurulumu: "Bebek doğdu mu?" → ad/tarih → oluştur.
-/// [onboarding] true → ilk kurulum (router yönlendirir); false → ek bebek (geri döner).
+/// Bebek kurulumu formu: ad/tarih → oluştur.
+/// [onboarding] true → ilk kurulum (WelcomeChoiceScreen'den gelinir; [initialStatus]
+/// seçilen hedefi taşır, "Doğdu/Bekliyoruz" anahtarı gizlenir); false → ek bebek
+/// (anahtar görünür, kayıt sonrası geri döner).
 class BabySetupScreen extends ConsumerStatefulWidget {
   final bool onboarding;
-  const BabySetupScreen({super.key, this.onboarding = true});
+  final BabyStatus? initialStatus;
+  const BabySetupScreen({super.key, this.onboarding = true, this.initialStatus});
 
   @override
   ConsumerState<BabySetupScreen> createState() => _BabySetupScreenState();
@@ -28,6 +32,16 @@ class BabySetupScreen extends ConsumerStatefulWidget {
 class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   final _name = TextEditingController();
   BabyStatus _status = BabyStatus.born;
+
+  @override
+  void initState() {
+    super.initState();
+    _status = widget.initialStatus ?? BabyStatus.born;
+    // Ad yazıldıkça rebuild → PopScope.canPop (_dirty) güncel kalsın.
+    _name.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
   BabyGender _gender = BabyGender.unknown;
   DateTime? _date; // doğmuşsa doğum tarihi, gebelikse tahmini doğum tarihi (TDT)
   bool _useLmp = false; // gebelik: TDT yerine SAT'tan hesapla
@@ -104,6 +118,29 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
             gestationalDays: _status == BabyStatus.born ? _gestDays : 0,
           );
       ref.read(activeBabyIdProvider.notifier).set(baby.id);
+      // İleri senkron: Adet Takvimi kuruluysa ve gebelik (bekleme) bebeği
+      // eklendiyse yaşam-döngüsü de gebeliğe geçer — aksi halde bebek tarafı
+      // gebelik gösterirken adet ekranı takip/TTC'de kalırdı (çift durum).
+      // SAT girildiyse çapa da güncellenir (gebelik özeti LMP'den hesaplanır).
+      if (_status == BabyStatus.expecting) {
+        try {
+          final repo = ref.read(cycleRepositoryProvider);
+          final cs = await repo.getSettings();
+          if (cs.breastfeeding != null &&
+              cs.lifecycleMode != CycleLifecycleMode.pregnant) {
+            await repo.patchSettings({
+              'lifecycle_mode': CycleLifecycleMode.pregnant.name,
+              'predictions_hidden': false,
+              'baby': baby.id,
+              if (_useLmp && _lmp != null)
+                'first_period_date': '${_lmp!.year.toString().padLeft(4, '0')}-'
+                    '${_lmp!.month.toString().padLeft(2, '0')}-'
+                    '${_lmp!.day.toString().padLeft(2, '0')}',
+            });
+            ref.invalidate(cycleSettingsProvider);
+          }
+        } catch (_) {}
+      }
       // Onboarding'de router redirect ana sayfaya götürür; ek bebekte elle dön.
       if (!widget.onboarding && mounted) context.go('/home');
     } catch (e) {
@@ -113,6 +150,33 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   }
 
   void _snack(String msg) => showAdToast(context, msg);
+
+  /// Kullanıcı forma veri girdi mi? (BACK'te onaysız veri kaybını önlemek için.)
+  bool get _dirty =>
+      _name.text.trim().isNotEmpty || _date != null || _gestWeeks != null;
+
+  Future<void> _confirmLeave() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: Text(tr('Formdan çıkılsın mı?')),
+        content: Text(tr('Girdiğin bilgiler kaydedilmeden silinecek.')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx, false),
+            child: Text(tr('Vazgeç')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx, true),
+            child: Text(tr('Çık'),
+                style: const TextStyle(
+                    color: AppColors.fever, fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+    if (leave == true && mounted && context.canPop()) context.pop();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -125,21 +189,21 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
     final isBorn = _status == BabyStatus.born;
 
     final onboarding = widget.onboarding;
-    return Scaffold(
+    // Onboarding'de durum ara ekranda (WelcomeChoiceScreen) seçildi → anahtar
+    // gizlenir; ek bebek eklerken görünür kalır.
+    final showStatusPicker = !onboarding || widget.initialStatus == null;
+    // Dolu form BACK ile onaysız atılmasın (yaşam-döngüsü testi gözlemi):
+    // veri girildiyse önce onay diyaloğu göster.
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: onboarding ? null : Text(tr('Bebek ekle')),
-        actions: [
-          // Çıkış yalnız oturum açıkken (hesapsız local-first kullanıcıda anlamsız).
-          if (onboarding && user != null)
-            TextButton(
-              onPressed: _saving
-                  ? null
-                  : () => ref.read(authControllerProvider.notifier).logout(),
-              child: Text(tr('Çıkış')),
-            ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -149,41 +213,46 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
             children: [
               Text(
                 onboarding
-                    ? trp('Merhaba{name} 👋',
-                        {'name': greetName.isNotEmpty ? ' $greetName' : ''})
+                    ? (isBorn
+                        ? tr('Bebeğini tanıyalım 🍼')
+                        : tr('Bekleme odası 🤰'))
                     : tr('Yeni bebek'),
                 style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 6),
               Text(
                 onboarding
-                    ? tr('Profili birlikte oluşturalım.')
+                    ? (greetName.isNotEmpty
+                        ? trp('{name}, profili birlikte oluşturalım.',
+                            {'name': greetName})
+                        : tr('Profili birlikte oluşturalım.'))
                     : tr('Bilgileri gir, ekleyelim.'),
                 style: TextStyle(
                     color: AppColors.muted, fontWeight: FontWeight.w700, fontSize: 13.5),
               ),
               const SizedBox(height: 22),
 
-              // Doğdu mu? seçimi
-              AdField(
-                label: tr('Bebek doğdu mu?'),
-                child: AdSides(
-                  selected: isBorn ? 'born' : 'expecting',
-                  onSelect: (v) => setState(() {
-                    _status = v == 'born' ? BabyStatus.born : BabyStatus.expecting;
-                    _date = null;
-                    // Bekleme moduna geçince prematüre girişini temizle.
-                    if (_status == BabyStatus.expecting) {
-                      _gestWeeks = null;
-                      _gestDays = 0;
-                    }
-                  }),
-                  items: [
-                    (key: 'born', label: tr('🎉 Doğdu'), small: tr('Hemen takip')),
-                    (key: 'expecting', label: tr('🤰 Bekliyoruz'), small: tr('Bekleme odası')),
-                  ],
+              // Doğdu mu? seçimi (onboarding'de ara ekranda seçildiği için gizli)
+              if (showStatusPicker)
+                AdField(
+                  label: tr('Bebek doğdu mu?'),
+                  child: AdSides(
+                    selected: isBorn ? 'born' : 'expecting',
+                    onSelect: (v) => setState(() {
+                      _status = v == 'born' ? BabyStatus.born : BabyStatus.expecting;
+                      _date = null;
+                      // Bekleme moduna geçince prematüre girişini temizle.
+                      if (_status == BabyStatus.expecting) {
+                        _gestWeeks = null;
+                        _gestDays = 0;
+                      }
+                    }),
+                    items: [
+                      (key: 'born', label: tr('🎉 Doğdu'), small: tr('Hemen takip')),
+                      (key: 'expecting', label: tr('🤰 Bekliyoruz'), small: tr('Bekleme odası')),
+                    ],
+                  ),
                 ),
-              ),
 
               AdField(
                 label: isBorn ? tr('Bebeğin adı') : tr('İsim (varsa)'),
@@ -302,66 +371,14 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                             strokeWidth: 2.5, color: Colors.white),
                       ),
                     )
-                  : AdSaveButton(label: tr('Devam et'), color: AppColors.coral, onTap: _save),
-
-              if (onboarding) ...[
-                const SizedBox(height: 22),
-                Row(
-                  children: [
-                    Expanded(child: Divider(color: AppColors.line, thickness: 1)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(tr('veya'),
-                          style: TextStyle(
-                              color: AppColors.muted,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11.5)),
-                    ),
-                    Expanded(child: Divider(color: AppColors.line, thickness: 1)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Oturum açıkken: davet koduyla paylaşımlı bebeğe katıl (cloud/hesap işi).
-                if (user != null) ...[
-                  AdSaveButton(
-                    label: tr('Davet kodum var'),
-                    color: AppColors.coralDark,
-                    ghost: true,
-                    onTap: () =>
-                        _saving ? null : showAcceptInviteDialog(context, ref),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    tr('Eşin veya bakıcın bebeği zaten eklediyse, paylaştığı kodla katıl.'),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600),
-                  ),
-                ] else ...[
-                  // Hesapsız: davet kodu yerine giriş seçeneği. Davetli/dönen
-                  // kullanıcı önce giriş yapar; davet kabulü oturum gerektirir.
-                  AdSaveButton(
-                    label: tr('Giriş yap / Hesap oluştur'),
-                    color: AppColors.coralDark,
-                    ghost: true,
-                    onTap: () => _saving ? null : context.push('/login'),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    tr('Zaten hesabın varsa veya bir bebeğe davet edildiysen giriş yap.'),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ],
+                  : AdSaveButton(
+                      label: onboarding ? tr('Başlayalım') : tr('Devam et'),
+                      color: AppColors.coral,
+                      onTap: _save),
             ],
           ),
         ),
+      ),
       ),
     );
   }

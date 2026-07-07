@@ -138,6 +138,12 @@ class _Today extends ConsumerWidget {
 
   bool get _ttc => settings.lifecycleMode == CycleLifecycleMode.ttc;
 
+  // BULGU-2: postpartum/emzirme metinleri yalnız doğum yapmış kullanıcıya.
+  // Bebeksiz kurulum birthDate=null + breastfeeding=none yazar (cycle_setup).
+  bool get _hadBirth => settings.birthDate != null;
+  bool get _bfActive =>
+      _hadBirth && settings.breastfeeding != Breastfeeding.none;
+
   /// TTC (gebe kalma) modunda üstte gösterilen vurgu şeridi.
   Widget _ttcBanner(BuildContext context) => Container(
         margin: const EdgeInsets.only(bottom: 12),
@@ -198,7 +204,7 @@ class _Today extends ConsumerWidget {
   List<Widget> _active(BuildContext context, WidgetRef ref) {
     final total = status.avgCycleLength;
     final np = status.nextPeriod;
-    final cycleStart = np == null ? null : _dOnly(np).subtract(Duration(days: total));
+    final cycleStart = np == null ? null : cycleAddDays(_dOnly(np), -total);
     int? cd(DateTime? d) => (d == null || cycleStart == null)
         ? null
         : _dOnly(d).difference(cycleStart).inDays + 1;
@@ -346,13 +352,15 @@ class _Today extends ConsumerWidget {
               ),
               cycPill(tr('~tahmini'), tone: CycTone.sage),
             ])),
-        const SizedBox(height: 12),
-        cycNote(context,
-            icon: Icons.favorite_rounded,
-            body: tr('Emziriyorsan ovülasyon ilk adetten önce dönebilir — korunma '
-                'gerekiyorsa doktoruna danış.'),
-            infoTitle: tr('LAM'),
-            info: CycleInfo.lam),
+        if (_bfActive) ...[
+          const SizedBox(height: 12),
+          cycNote(context,
+              icon: Icons.favorite_rounded,
+              body: tr('Emziriyorsan ovülasyon ilk adetten önce dönebilir — korunma '
+                  'gerekiyorsa doktoruna danış.'),
+              infoTitle: tr('LAM'),
+              info: CycleInfo.lam),
+        ],
       ]);
     } else {
       final (String l1, String v1, String l2, String v2) = switch (state) {
@@ -384,38 +392,110 @@ class _Today extends ConsumerWidget {
         ]),
       ]);
       if (state == 'late') {
+        // Bağlama duyarlı gecikme notu (BULGU-2): emziren lohusa / TTC /
+        // klasik takip aynı cümleyi paylaşamaz.
+        final lateBody = _bfActive
+            ? tr('Emzirme döneminde gecikme çok yaygındır. Endişe varsa test '
+                'yapabilir ya da doktoruna danışabilirsin.')
+            : _ttc
+                ? tr('Gecikme gebelik işareti olabilir — birkaç gün içinde test '
+                    'yapmayı düşünebilirsin.')
+                : tr('Gecikmeler stres, yolculuk veya hastalıkla da olabilir. '
+                    'Endişe varsa test yapabilir ya da doktoruna danışabilirsin.');
         out.addAll([
           const SizedBox(height: 12),
-          cycNote(context,
-              icon: Icons.favorite_rounded,
-              body: tr('Emzirme döneminde gecikme çok yaygındır. Endişe varsa test '
-                  'yapabilir ya da doktoruna danışabilirsin.')),
+          cycNote(context, icon: Icons.favorite_rounded, body: lateBody),
         ]);
       } else if (state == 'count') {
         out.addAll([
           const SizedBox(height: 12),
           cycNote(context,
               icon: Icons.notifications_none_rounded,
-              body: tr('Tahminler yaklaşıktır — doğum sonrası ilk döngüler değişebilir.'),
+              body: _hadBirth
+                  ? tr('Tahminler yaklaşıktır — doğum sonrası ilk döngüler değişebilir.')
+                  : tr('Tahminler yaklaşıktır — döngüler doğal olarak birkaç gün '
+                      'oynayabilir.'),
               infoTitle: tr('Tahmin'),
               info: CycleInfo.estimate),
         ]);
       } else if (state == 'fertile') {
         out.addAll([
           const SizedBox(height: 12),
-          cycNote(context,
-              icon: Icons.spa_rounded,
-              body: tr('Doğurganlık penceresindesin — gebelik şansı artıyor. '
-                  'Emziriyorsan ovülasyon ilk adetten önce dönebilir; korunma '
-                  'gerekiyorsa doktoruna danış.'),
-              infoTitle: tr('LAM'),
-              info: CycleInfo.lam),
+          if (_bfActive)
+            cycNote(context,
+                icon: Icons.spa_rounded,
+                body: tr('Doğurganlık penceresindesin — gebelik şansı artıyor. '
+                    'Emziriyorsan ovülasyon ilk adetten önce dönebilir; korunma '
+                    'gerekiyorsa doktoruna danış.'),
+                infoTitle: tr('LAM'),
+                info: CycleInfo.lam)
+          else
+            cycNote(context,
+                icon: Icons.spa_rounded,
+                body: tr('Doğurganlık penceresindesin — gebelik şansı artıyor.'),
+                infoTitle: tr('Doğurganlık'),
+                info: CycleInfo.fertileWindow),
         ]);
       }
     }
 
+    // ── TTC (gebe kalma) bölümü: bugünün olasılığı + ovülasyon geri sayımı +
+    // potansiyel doğum tarihi (bugün gebe kalınırsa, konsepsiyon+266g). ──
+    if (_ttc) out.addAll(_ttcSection(context, today));
+
     out.addAll([const SizedBox(height: 4), _feelPrompt(context, ref)]);
     return out;
+  }
+
+  List<Widget> _ttcSection(BuildContext context, DateTime today) {
+    final chance = conceptionChance(today, status);
+    final (chanceLabel, chanceColor) = switch (chance) {
+      ConceptionChance.veryHigh => (tr('Çok yüksek'), AppColors.gold),
+      ConceptionChance.high => (tr('Yüksek'), AppColors.sageD),
+      ConceptionChance.medium => (tr('Orta'), AppColors.sage),
+      ConceptionChance.low => (tr('Düşük'), AppColors.muted),
+    };
+    final inWindow = chance != ConceptionChance.low;
+    // Yaklaşan ovülasyona kalan gün (pencere geçtiyse sonraki döngünün penceresi).
+    final nextOvu = status.fertileWindowIsNextCycle
+        ? (status.upcomingFertileEnd == null
+            ? null
+            : cycleAddDays(status.upcomingFertileEnd!, -1))
+        : status.ovulationDay;
+    final toOvu = nextOvu == null ? null : _dOnly(nextOvu).difference(today).inDays;
+    // Naegele (konsepsiyondan): bugün gebe kalınırsa TDT ≈ bugün + 266 gün.
+    final potentialDue = cycleAddDays(today, 266);
+
+    return [
+      const SizedBox(height: 14),
+      CycEyebrow(tr('Gebe kalma'), suffix: inWindow ? tr('· pencere açık') : null),
+      Row(children: [
+        cycMini(context, label: tr('Bugün olasılık'), value: chanceLabel,
+            valueColor: chanceColor),
+        const SizedBox(width: 11),
+        cycMini(
+            context,
+            label: tr('Yumurtlama'),
+            value: toOvu == null
+                ? '—'
+                : toOvu == 0
+                    ? tr('Bugün')
+                    : toOvu > 0
+                        ? trp('{n} gün sonra', {'n': toOvu})
+                        : trp('{n} gün önce', {'n': -toOvu})),
+      ]),
+      if (inWindow) ...[
+        const SizedBox(height: 12),
+        cycNote(context,
+            icon: Icons.child_friendly_rounded,
+            body: trp(
+                'Bugün gebe kalırsan tahmini doğum tarihi: {d}. Bu bir '
+                    'tahmindir — döngüler oturdukça netleşir.',
+                {'d': fmtDayMonthYear(potentialDue)}),
+            infoTitle: tr('Doğurganlık penceresi'),
+            info: CycleInfo.fertileWindow),
+      ],
+    ];
   }
 
   // ════════ GEBELİK (yaşam-döngüsü köprüsü) ════════
@@ -459,7 +539,7 @@ class _Today extends ConsumerWidget {
               'ana gebelik ekranını kullan. Buradaki tarih son adetinden hesaplanır.')),
       const SizedBox(height: 14),
       cycCta(context, tr('Gebelik ekranına git'),
-          onTap: () => context.go('/')),
+          onTap: () => openPregnancyScreen(context, ref, settings)),
       const SizedBox(height: 10),
       Center(
         child: TextButton(
@@ -558,35 +638,43 @@ class _Today extends ConsumerWidget {
       cycCta(context, tr('İlk adetimi kaydet'),
           onTap: () => _quickStartPeriod(context, ref)),
       const SizedBox(height: 18),
-      cycNote(context,
-          icon: Icons.favorite_rounded,
-          body: tr('Emzirme döneminde adetin geç dönmesi tamamen normaldir. '
-              'Vücudun toparlanıyor.')),
-      CycEyebrow(tr('Emzirme & doğurganlık'),
-          link: tr('Daha fazla'), onLink: () => _openLearn(context)),
-      cycCard(context, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                  color: AppColors.roseBg, borderRadius: BorderRadius.circular(13)),
-              child: Icon(Icons.favorite_rounded, size: 18, color: AppColors.rose)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(tr('LAM · Laktasyonel amenore'),
-                style: cycTitleStyle(size: 14.5)),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        Text(tr('Düzenli emzirme adeti geciktirir; ancak ovülasyon adetten önce döner '
-            '— ilk adeti görmeden gebe kalınabilir (~%2 risk).'),
-            style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                height: 1.5,
-                color: AppColors.ink2)),
-      ])),
+      // BULGU-2: bekleme moduna bebeksiz kullanıcı da düşebilir (LMP girilmedi);
+      // emzirme/LAM içeriği yalnız doğum yapmış kullanıcıya gösterilir.
+      if (_hadBirth) ...[
+        cycNote(context,
+            icon: Icons.favorite_rounded,
+            body: tr('Emzirme döneminde adetin geç dönmesi tamamen normaldir. '
+                'Vücudun toparlanıyor.')),
+        CycEyebrow(tr('Emzirme & doğurganlık'),
+            link: tr('Daha fazla'), onLink: () => _openLearn(context)),
+        cycCard(context, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                    color: AppColors.roseBg, borderRadius: BorderRadius.circular(13)),
+                child: Icon(Icons.favorite_rounded, size: 18, color: AppColors.rose)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(tr('LAM · Laktasyonel amenore'),
+                  style: cycTitleStyle(size: 14.5)),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Text(tr('Düzenli emzirme adeti geciktirir; ancak ovülasyon adetten önce döner '
+              '— ilk adeti görmeden gebe kalınabilir (~%2 risk).'),
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.5,
+                  color: AppColors.ink2)),
+        ])),
+      ] else
+        cycNote(context,
+            icon: Icons.favorite_rounded,
+            body: tr('Son adetinin ilk gününü kaydettiğinde döngü takibi ve '
+                'tahminler burada başlar.')),
     ];
   }
 

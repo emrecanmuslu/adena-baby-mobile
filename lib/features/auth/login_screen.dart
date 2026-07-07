@@ -82,7 +82,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 9),
                     Center(
                       child: Text(
-                        tr('Tekrar hoş geldin 👋'),
+                        // İlk kurulumda da bu ekran açılır — "Tekrar" yeni
+                        // kullanıcıya yanlış (BULGU-3); nötr karşılama.
+                        tr('Hoş geldin 👋'),
                         style: TextStyle(
                             color: AppColors.muted,
                             fontWeight: FontWeight.w700,

@@ -128,10 +128,14 @@ Future<void> updateQuietHours(WidgetRef ref, String babyId, QuietHours q) async 
 
 /// Son (baz türü) beslenme kaydının zamanı (null = veri yok). nextFeedEstimate'in
 /// çapası; widget "son besleme" göstergesi bununla tutarlı olsun diye paylaşılır.
-/// Süren emzirme çapa oluşturmaz.
+/// Süren emzirme çapa oluşturmaz. GELECEK tarihli kayıt (yanlış girilmiş ya da
+/// saat değişimi artefaktı) çapa OLMAZ — yoksa hatırlatıcı günler sonraya
+/// kurulur (BULGU-9).
 DateTime? lastFeedAt(FeedReminderConfig cfg, List<Record> records) {
+  final now = DateTime.now();
   bool matches(Record r) {
     if (r.type != RecordType.feed || r.isOngoingBreast) return false;
+    if (r.ts.isAfter(now)) return false; // gelecek tarihli kayıt baz alınmaz
     return switch (cfg.baseType) {
       'breast' => r.data['sub'] == 'breast',
       'formula' => r.data['sub'] == 'formula',

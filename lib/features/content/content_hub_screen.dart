@@ -95,17 +95,21 @@ class _AgeStrip extends ConsumerWidget {
               ),
             ),
             SizedBox(
-              height: 274,
+              height: kArticleStripHeight,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 3),
                 itemCount: shown.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (_, i) => ArticleCard(
-                  article: shown[i],
-                  categoryIcon: _iconFor(shown[i].categorySlug, cats),
-                  width: 230,
-                ),
+                itemBuilder: (_, i) {
+                  final cat = _catFor(shown[i].categorySlug, cats);
+                  return ArticleCard(
+                    article: shown[i],
+                    categoryIcon: cat?.icon ?? '',
+                    accent: categoryColor(cat?.color),
+                    width: 230,
+                  );
+                },
               ),
             ),
           ],
@@ -114,8 +118,8 @@ class _AgeStrip extends ConsumerWidget {
     );
   }
 
-  String _iconFor(String slug, List<ArticleCategory> cats) =>
-      cats.where((c) => c.slug == slug).firstOrNull?.icon ?? '';
+  ArticleCategory? _catFor(String slug, List<ArticleCategory> cats) =>
+      cats.where((c) => c.slug == slug).firstOrNull;
 }
 
 /// Bekleme (gebelik) modu öneri şeridi — 'gebelik' kategorisi makaleleri.
@@ -156,21 +160,23 @@ class _PregnancyStrip extends ConsumerWidget {
               ),
             ),
             SizedBox(
-              height: 274,
+              height: kArticleStripHeight,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 3),
                 itemCount: shown.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (_, i) => ArticleCard(
-                  article: shown[i],
-                  categoryIcon: cats
-                          .where((c) => c.slug == shown[i].categorySlug)
-                          .firstOrNull
-                          ?.icon ??
-                      '',
-                  width: 230,
-                ),
+                itemBuilder: (_, i) {
+                  final cat = cats
+                      .where((c) => c.slug == shown[i].categorySlug)
+                      .firstOrNull;
+                  return ArticleCard(
+                    article: shown[i],
+                    categoryIcon: cat?.icon ?? '',
+                    accent: categoryColor(cat?.color),
+                    width: 230,
+                  );
+                },
               ),
             ),
           ],
@@ -238,13 +244,17 @@ class _StripSkeleton extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 18),
       child: SizedBox(
-        height: 274,
+        height: kArticleStripHeight,
         child: ListView(
           scrollDirection: Axis.horizontal,
           children: const [
-            SizedBox(width: 230, child: Skeleton(height: 274, radius: 18)),
+            SizedBox(
+                width: 230,
+                child: Skeleton(height: kArticleStripHeight, radius: 18)),
             SizedBox(width: 12),
-            SizedBox(width: 230, child: Skeleton(height: 274, radius: 18)),
+            SizedBox(
+                width: 230,
+                child: Skeleton(height: kArticleStripHeight, radius: 18)),
           ],
         ),
       ),

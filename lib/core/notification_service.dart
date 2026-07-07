@@ -358,9 +358,11 @@ class NotificationService {
   }
 
   /// Hatırlatıcı listesini bildirimlerle eşitler: yönetilen id'leri temizle (feed/
-  /// sayaç id'lerine dokunmadan), sonra schedule şekline göre kur. İki şekil:
+  /// sayaç id'lerine dokunmadan), sonra schedule şekline göre kur. Üç şekil:
   ///   • günlük:  {repeat:'daily', time:'HH:MM', title?}  → her gün o saatte
   ///   • tek-sefer: {repeat:'once', at:ISO8601, title?}   → o anda bir kez (geçmiş atlanır)
+  ///   • periyodik: {repeat:'interval', every_min:15|30|60, title?} → kapatılana
+  ///     dek her X dakikada bir (ateş takibi vb. için)
   /// Eski/uygulanmamış şekiller (vaccine days_before, nudge idle_hours) atlanır.
   Future<void> sync(List<Reminder> reminders) async {
     if (!_ready) await init();
@@ -376,7 +378,12 @@ class NotificationService {
     for (final r in active) {
       final s = r.schedule;
       final title = (s['title'] as String?)?.trim();
-      if (s['repeat'] == 'once' || s['at'] != null) {
+      if (s['repeat'] == 'interval' || s['every_min'] != null) {
+        // Periyodik: her X dakikada bir tekrar eden bildirim.
+        final every = s['every_min'] is num ? (s['every_min'] as num).toInt() : 0;
+        if (every < 1) continue;
+        await _scheduleInterval(r.id, every, title);
+      } else if (s['repeat'] == 'once' || s['at'] != null) {
         // Tek-seferlik: belirli tarih-saatte bir kez (geçmişse kurma).
         final at = DateTime.tryParse(s['at'] as String? ?? '');
         if (at == null || !at.isAfter(now)) continue;
@@ -391,6 +398,21 @@ class NotificationService {
         await _scheduleDaily(r.id, h, m, title);
       }
     }
+  }
+
+  /// Periyodik hatırlatıcı — ilk bildirim çağrıdan [everyMin] dk sonra, ardından
+  /// hatırlatıcı kapatılana/silinene dek her [everyMin] dakikada bir (ateş takibi
+  /// gibi kısa aralıklı kontroller için). Kesin alarm izni yoksa inexact kurulur.
+  Future<void> _scheduleInterval(int id, int everyMin, String? title) async {
+    await _ensureExactAlarm();
+    await _plugin.periodicallyShowWithDuration(
+      id: id,
+      title: title != null && title.isNotEmpty ? title : tr('Hatırlatıcı'),
+      body: tr('Hatırlatma zamanı ⏰'),
+      repeatDurationInterval: Duration(minutes: everyMin),
+      notificationDetails: _details,
+      androidScheduleMode: await _alarmMode(),
+    );
   }
 
   Future<void> _scheduleDaily(int id, int hour, int minute, [String? title]) async {

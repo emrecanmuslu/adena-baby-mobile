@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
@@ -8,6 +9,7 @@ import '../../core/notification_service.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
+import '../babies/baby_controller.dart';
 import 'cycle_engine.dart';
 import 'cycle_kit.dart';
 import 'cycle_lifecycle.dart';
@@ -318,10 +320,23 @@ class _BodyState extends ConsumerState<_Body> {
           meta: tr('Güncelle'),
           onTap: _editBreastfeeding,
         ),
+        // Bebeksiz dalda "Bebek ekle" burada yaşar (alt menüden kaldırıldı —
+        // henüz gebe olmayan kullanıcının ana menüsünde anlamı yoktu).
+        if (ref.watch(activeBabyProvider) == null) ...[
+          CycEyebrow(tr('Bebek')),
+          AdMenuItem(
+            icon: 'baby',
+            color: AppColors.coralDark,
+            bg: AppColors.peachLight,
+            title: tr('Bebek ekle'),
+            meta: tr('Bebeğin doğduysa veya gebeliğini eklemek istersen'),
+            onTap: () => context.push('/baby-add'),
+          ),
+        ],
         CycEyebrow(tr('Veri')),
         _card([
           InkWell(
-            onTap: _confirmDeleteAll,
+            onTap: _confirmResetAll,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
@@ -330,12 +345,12 @@ class _BodyState extends ConsumerState<_Body> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(tr('Tüm adet verilerini sil'),
+                        Text(tr('Adet takvimini sıfırla'),
                             style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
                                 color: AppColors.coralDd)),
-                        Text(tr('Geri alınamaz'),
+                        Text(tr('Tüm kayıtlar ve kurulum silinir — geri alınamaz'),
                             style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w700,
@@ -499,19 +514,50 @@ class _BodyState extends ConsumerState<_Body> {
     }
   }
 
-  Future<void> _confirmDeleteAll() async {
+  /// TAM sıfırlama: kayıtlar + kurulum/yaşam-döngüsü ayarları + bildirimler.
+  /// Eski davranış yalnız kayıtları siliyordu → modül "kurulu" kalıyor, sihirbaz
+  /// bir daha açılmıyordu ("sıfırlama işe yaramıyor" şikâyetinin sebebi).
+  Future<void> _confirmResetAll() async {
     final ok = await _confirm(
-        tr('Tüm adet verilerini sil'),
-        tr('Tüm adet/loşia kayıtların kalıcı olarak silinecek. Bu işlem geri '
-            'alınamaz.'));
+        tr('Adet takvimini sıfırla'),
+        tr('Tüm adet/loşia kayıtların ve adet takvimi kurulumun (hedef, tarihler, '
+            'hatırlatıcılar) kalıcı olarak silinecek. Bu işlem geri alınamaz.'));
     if (!ok) return;
     try {
-      final entries = await ref.read(cycleRepositoryProvider).listEntries();
+      final repo = ref.read(cycleRepositoryProvider);
+      final entries = await repo.listEntries();
       for (final e in entries) {
-        await ref.read(cycleRepositoryProvider).deleteEntry(e.id);
+        await repo.deleteEntry(e.id);
       }
+      // Ayarları fabrika durumuna çek: breastfeeding boş → kabuk kurulum
+      // sihirbazını yeniden gösterir; yaşam-döngüsü de başa döner.
+      await repo.patchSettings({
+        'birth_date': null,
+        'breastfeeding': '',
+        'first_period_date': null,
+        'reminders': <String, dynamic>{},
+        'show_fertility_warning': true,
+        'enabled': false,
+        'expected_cycle_length': null,
+        'period_length': null,
+        'luteal_phase_length': null,
+        'smart_prediction': true,
+        'week_starts_sunday': false,
+        'lifecycle_mode': CycleLifecycleMode.tracking.name,
+        'ttc_started_at': null,
+        'predictions_hidden': false,
+        'last_loss_date': null,
+        'learning_window': null,
+      });
+      // Planlı adet bildirimlerini de iptal et (boş yapı → yalnız cancel).
+      await NotificationService.instance.syncCycle(reminders: const {});
       ref.invalidate(cycleEntriesProvider);
-      if (mounted) showAdToast(context, tr('Silindi'));
+      ref.invalidate(cycleSettingsProvider);
+      if (mounted) {
+        showAdToast(context, tr('Adet takvimi sıfırlandı'));
+        // Ayarlar sayfası kurulumu silinen kabuğun üstünde kalmasın.
+        Navigator.of(context).maybePop();
+      }
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     }

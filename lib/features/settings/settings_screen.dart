@@ -299,9 +299,32 @@ class SettingsScreen extends ConsumerWidget {
               bg: AppColors.line,
               title: tr('Çıkış yap'),
               trailing: const SizedBox.shrink(),
+              // Tek dokunuşla anında çıkış yanlışlıkla oluyordu (BULGU-10) → önce onay.
               // Çıkış birkaç ağ çağrısı yapar (FCM kaydı sil + sunucu); loader olmadan
               // basılmamış gibi hissettiriyordu → engelleyici göstergeyle geri bildirim ver.
               onTap: () async {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (dCtx) => AlertDialog(
+                    title: Text(tr('Çıkış yap')),
+                    content: Text(tr('Çıkış yapılsın mı? Verilerin bu cihazda '
+                        'kalır; tekrar giriş yapınca kaldığın yerden devam edersin.')),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dCtx, false),
+                        child: Text(tr('Vazgeç')),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dCtx, true),
+                        child: Text(tr('Çıkış yap'),
+                            style: const TextStyle(
+                                color: AppColors.fever,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                    ],
+                  ),
+                );
+                if (ok != true || !context.mounted) return;
                 showDialog(
                   context: context,
                   barrierDismissible: false,

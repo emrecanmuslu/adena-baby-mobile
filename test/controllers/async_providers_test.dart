@@ -6,10 +6,12 @@ import 'package:adena_baby/data/community_repository.dart';
 import 'package:adena_baby/data/content_repository.dart';
 import 'package:adena_baby/data/cycle_repository.dart';
 import 'package:adena_baby/data/mom_repository.dart';
+import 'package:adena_baby/features/auth/auth_controller.dart';
 import 'package:adena_baby/models/article.dart';
 import 'package:adena_baby/models/community.dart';
 import 'package:adena_baby/models/cycle.dart';
 import 'package:adena_baby/models/mom_entry.dart';
+import 'package:adena_baby/models/user.dart';
 
 class MockCommunityRepository extends Mock implements CommunityRepository {}
 
@@ -18,6 +20,13 @@ class MockContentRepository extends Mock implements ContentRepository {}
 class MockCycleRepository extends Mock implements CycleRepository {}
 
 class MockMomRepository extends Mock implements MomRepository {}
+
+/// Oturumsuz auth stub'ı — cycle provider'ları auth çözülmesini beklediği için
+/// (açılış yarışı koruması) testte gerçek AuthController.build koşturulmaz.
+class _StubAuthController extends AuthController {
+  @override
+  Future<User?> build() async => null;
+}
 
 /// Polls a listened AsyncValue subscription until it leaves the loading state.
 /// Used for error paths where reading `.future` can hang instead of rejecting.
@@ -140,6 +149,7 @@ void main() {
     ProviderContainer make() {
       final c = ProviderContainer(overrides: [
         cycleRepositoryProvider.overrideWithValue(repo),
+        authControllerProvider.overrideWith(_StubAuthController.new),
       ]);
       addTearDown(c.dispose);
       return c;
