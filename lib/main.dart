@@ -414,15 +414,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   }
 
   /// Öne gelince: bebek listesini tazele (çıkarılan üyenin erişimi düşsün, yerel
-  /// verisi temizlensin) + drift stream'lerini yeniden okut.
+  /// verisi temizlensin).
   void _onForeground() {
-    // Warm-resume'da ön plan drift stream'lerini ANINDA yeniden okut: uygulama
-    // kapalı/arka plandayken arka plan isolate'i (bg sync / push handler) ayrı
-    // bağlantıyla yeni kayıtları dosyaya yazmış olabilir — bu bağlantının stream'leri
-    // o yazımdan habersizdir, Home bayat görünür (yalnız kapat-aç düzeltiyordu).
-    // Ağ sync'ini beklemeden dosyadaki güncel veriyi yansıt. Bkz syncAll() + drift
-    // cross-isolate notifyUpdates. [[bug-home-bayat-veri-warm-resume]]
-    ref.read(databaseProvider).refreshSyncedStreams();
     ref.read(babyControllerProvider.notifier).refresh();
     // Bildirim izni sistem ayarlarından sonradan açıldıysa, devam eden uyku/
     // emzirme sayacının bildirimini yeniden post et (reaktif sync tetiklenmez).

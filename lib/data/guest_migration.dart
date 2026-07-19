@@ -102,7 +102,6 @@ class GuestMigration {
     // hesaba geçmemişti. refresh() (=cloud pull) yerel stream'i yeniden kurmaz → tam
     // invalidate ile temiz yeniden kur; yeni watchAll güncel hesabı sorgular ve rebound
     // bebeği görür (aksi halde onboarding'de takılı kalır).
-    db.refreshSyncedStreams();
     ref.invalidate(babyControllerProvider);
 
     // Premium ise buluta tam yükleme (overlay ile). Free ise veri yerelde hesap
@@ -135,7 +134,6 @@ class GuestMigration {
         .go();
     await (db.delete(db.cycleSettingsTable)..where((s) => s.id.equals(guestId)))
         .go();
-    db.refreshSyncedStreams();
     ref.invalidate(babyControllerProvider);
   }
 }
