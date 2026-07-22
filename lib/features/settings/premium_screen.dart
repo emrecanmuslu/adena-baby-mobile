@@ -240,7 +240,31 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               ),
             ] else if (sub?.isLifetime ?? false)
               _InfoCard(tr('Ömür boyu premium — yenileme yok, iptal gerekmez 💛'))
-            else
+            // Mağazadan İPTAL EDİLMİŞ ama süresi dolmamış abonelik: kod/deneme
+            // değildir (store=play_store/app_store; kod/dev ise store=code/dev).
+            // Dönem sonuna kadar premium sürer; fikir değiştirilirse mağazadan
+            // yeniden açılabilsin diye yönetim butonu görünür kalır.
+            else if (sub != null &&
+                sub.store != null &&
+                sub.store != 'code' &&
+                sub.store != 'dev') ...[
+              _InfoCard(sub.expiresAt != null
+                  ? trp(
+                      'Aboneliğin iptal edildi — {d} tarihine kadar Premium açık '
+                      'kalır. Fikrini değiştirirsen mağazadan yeniden '
+                      'başlatabilirsin.',
+                      {'d': fmtDayMonthYear(sub.expiresAt!)})
+                  : tr('Aboneliğin iptal edildi — mevcut dönemin sonuna kadar '
+                      'Premium açık kalır. Fikrini değiştirirsen mağazadan '
+                      'yeniden başlatabilirsin.')),
+              const SizedBox(height: 8),
+              AdSaveButton(
+                label: tr('Aboneliği yönet'),
+                color: AppColors.muted,
+                ghost: true,
+                onTap: _manageSubscription,
+              ),
+            ] else
               _InfoCard(tr('Bu premium bir kod/deneme ile verildi; süresi dolunca '
                   'otomatik olarak ücretsiz katmana döner.')),
           ] else ...[
