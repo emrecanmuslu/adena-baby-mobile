@@ -1,7 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../core/analytics_service.dart';
 import '../core/api_client.dart';
@@ -120,6 +124,37 @@ class BabyRepository {
     );
     await (_db.update(_db.babies)..where((b) => b.id.equals(babyId))).write(c);
     return (await _byId(babyId))!;
+  }
+
+  /// Bebek fotoğrafını seçilen (image_picker geçici) yoldan kalıcı uygulama
+  /// dizinine kopyalar ve `photo` alanına yerel yol olarak yazar (dirty=true).
+  /// Bir sonraki `pushDirty` bunu bulutta varsa multipart yükler.
+  Future<Baby> updatePhoto(String babyId, String pickedPath) async {
+    final stored = await _persistPhoto(babyId, pickedPath);
+    await (_db.update(_db.babies)..where((b) => b.id.equals(babyId))).write(
+      BabiesCompanion(
+        photo: Value(stored),
+        clientUpdatedAt: Value(DateTime.now().toUtc()),
+        dirty: const Value(true),
+      ),
+    );
+    return (await _byId(babyId))!;
+  }
+
+  /// Foto'yu kalıcı uygulama dizinine kopyalar (bebek başına tek dosya,
+  /// değişince üstüne yazılır), kalıcı yolu döner.
+  Future<String> _persistPhoto(String babyId, String srcPath) async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final babiesDir = Directory(p.join(dir.path, 'babies'));
+      if (!await babiesDir.exists()) await babiesDir.create(recursive: true);
+      final ext = p.extension(srcPath);
+      final dest = p.join(babiesDir.path, '$babyId$ext');
+      await File(srcPath).copy(dest);
+      return dest;
+    } catch (_) {
+      return srcPath; // kopyalanamazsa orijinal (geçici) yolu kullan
+    }
   }
 
   Future<void> delete(String babyId) async {
@@ -248,10 +283,32 @@ class BabyRepository {
           await _api.dio.delete('/babies/${b.id}');
         } else {
           // İdempotent: id istemci-üretimli → POST upsert. Sunucu 200/201 döner.
-          await _api.dio.post('/babies', data: b.toCreateJson());
+          // `photo` yerel bir dosya yoluysa (henüz yüklenmemiş) multipart ekle;
+          // zaten sunucu URL'i (http) ise partial=True update'te dokunmadan
+          // bırakılsın diye gövdeye HİÇ eklenmez (yeniden yüklenmez).
+          final needsPhotoUpload =
+              b.photo != null && !b.photo!.startsWith('http');
+          final json = b.toCreateJson();
+          final resp = await _api.dio.post(
+            '/babies',
+            data: needsPhotoUpload
+                ? FormData.fromMap({
+                    for (final e in json.entries) e.key: '${e.value}',
+                    'photo': await MultipartFile.fromFile(b.photo!),
+                  })
+                : json,
+          );
           final settings = await familySettings(b.id);
           if (settings.isNotEmpty) {
             await _api.dio.patch('/babies/${b.id}/settings', data: settings);
+          }
+          if (needsPhotoUpload) {
+            // Sunucudan dönen imzalı foto URL'ini yerele yaz (yeniden yüklenmesin).
+            final srvPhoto = (resp.data as Map<String, dynamic>)['photo'] as String?;
+            if (srvPhoto != null) {
+              await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
+                  .write(BabiesCompanion(photo: Value(srvPhoto)));
+            }
           }
         }
         await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))

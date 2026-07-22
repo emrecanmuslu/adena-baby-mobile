@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
@@ -8,12 +9,14 @@ import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/baby_repository.dart';
 import '../../data/cycle_repository.dart';
 import '../../data/health_repository.dart';
 import '../../models/baby.dart';
 import '../../models/cycle.dart';
 import 'baby_actions.dart';
 import 'baby_controller.dart';
+import 'baby_photo.dart';
 import 'premature_section.dart';
 
 /// Aktif bebeğin bilgilerini düzenle / sil / "doğdu" geçişi.
@@ -32,6 +35,7 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
   int _gestDays = 0; // gebelik haftası üstüne gün (0..6)
   bool _saving = false;
   bool _init = false;
+  bool _photoBusy = false;
 
   @override
   void initState() {
@@ -76,6 +80,56 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
       helpText: isBorn ? tr('Doğum tarihi') : tr('Tahmini doğum tarihi'),
     );
     if (picked != null) setState(() => _date = picked);
+  }
+
+  Future<void> _pickPhoto(Baby b, ImageSource source) async {
+    try {
+      final x = await ImagePicker()
+          .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
+      if (x == null) return;
+      setState(() => _photoBusy = true);
+      await ref.read(babyRepositoryProvider).updatePhoto(b.id, x.path);
+      ref.invalidate(babyControllerProvider);
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e));
+    } finally {
+      if (mounted) setState(() => _photoBusy = false);
+    }
+  }
+
+  /// Kamera / galeri kaynağı seçtiren küçük sheet (anı fotoğrafıyla aynı desen).
+  void _choosePhotoSource(Baby b) {
+    showModalBottomSheet(
+      context: context,
+      shape: adSheetShape,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(child: adGrabHandle()),
+            ListTile(
+              leading: const AdenaIcon('camera', size: 22, color: AppColors.coralDd),
+              title: Text(tr('Kamera'),
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickPhoto(b, ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const AdenaIcon('charts', size: 22, color: AppColors.pump),
+              title: Text(tr('Galeri'),
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickPhoto(b, ImageSource.gallery);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _save(Baby b) async {
@@ -184,6 +238,64 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Center(
+              child: GestureDetector(
+                onTap: _photoBusy ? null : () => _choosePhotoSource(baby),
+                child: Stack(
+                  children: [
+                    BabyAvatar(
+                      photo: baby.photo,
+                      size: 92,
+                      placeholder: Container(
+                        width: 92,
+                        height: 92,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFFFE0D2), Color(0xFFFFC1AC)],
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: baby.isExpecting
+                            ? const Text('🤰', style: TextStyle(fontSize: 34))
+                            : AdenaIcon('baby', size: 38, color: Colors.white, sw: 1.8),
+                      ),
+                    ),
+                    if (_photoBusy)
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: const BoxDecoration(
+                              shape: BoxShape.circle, color: Colors.black26),
+                          child: const Center(
+                            child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2.5, color: Colors.white)),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.coral,
+                          border: Border.all(
+                              color: Theme.of(context).scaffoldBackgroundColor, width: 2),
+                        ),
+                        child: const AdenaIcon('camera', size: 14, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
             AdField(
               label: tr('Ad'),
               child: AdInput(
