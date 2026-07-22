@@ -174,10 +174,16 @@ class LeapHeroCard extends StatelessWidget {
       final nextIx = phases.indexWhere((p) => p == LeapPhase.future);
       kick = tr('Sakin dönem');
       headline = tr('Şu an atak penceresi görünmüyor');
-      body = nextIx >= 0
-          ? trp('Sıradaki atak ~{n}. haftada başlayabilir.',
-              {'n': leaps[nextIx].weekStart})
-          : tr('İlk 20 ayın büyük atakları geride kaldı.');
+      if (nextIx >= 0) {
+        final next = leaps[nextIx];
+        body = trp('{name} şu an ataklar arası sakin bir dönemde.',
+            {'name': babyName ?? tr('Bebeğin')});
+        wkChip = trp('Tahmini başlangıç: ~{n}. hafta', {'n': next.weekStart});
+        final left = next.weekStart - weeks!;
+        wkNote = trp('≈ {n} hafta kaldı', {'n': left < 1 ? 1 : left});
+      } else {
+        body = tr('İlk 20 ayın büyük atakları geride kaldı.');
+      }
     }
 
     final card = Container(

@@ -39,27 +39,3 @@ LeapPhase leapPhase(int weeks, int weekStart, double fussyWeeksBefore) {
   if (weeks <= peakEnd) return LeapPhase.peak;
   return LeapPhase.past;
 }
-
-/// Ana sayfa banner'ı için "şu an alakalı" atak var mı? fussy/peak fazındaki
-/// EN YAKIN atağı döner (yoksa null — banner gizlenir). Birden fazla aday
-/// varsa (nadiren üst üste binebilir) haftası daha yakın olan önceliklidir.
-T? relevantLeap<T>(
-  List<T> leaps, {
-  required int Function(T) index,
-  required int Function(T) weekStart,
-  required double Function(T) fussyWeeksBefore,
-  required int weeks,
-}) {
-  T? best;
-  int? bestDist;
-  for (final l in leaps) {
-    final phase = leapPhase(weeks, weekStart(l), fussyWeeksBefore(l));
-    if (phase != LeapPhase.fussy && phase != LeapPhase.peak) continue;
-    final dist = (weekStart(l) - weeks).abs();
-    if (bestDist == null || dist < bestDist) {
-      best = l;
-      bestDist = dist;
-    }
-  }
-  return best;
-}

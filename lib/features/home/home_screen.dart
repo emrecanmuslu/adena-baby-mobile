@@ -21,7 +21,6 @@ import '../../data/community_repository.dart';
 import '../../data/content_repository.dart';
 import '../../data/health_repository.dart';
 import '../../data/leap_repository.dart';
-import '../../data/leap_weeks.dart';
 import '../../data/local_session.dart';
 import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
@@ -1042,8 +1041,9 @@ class _MilestoneSection extends ConsumerWidget {
 }
 
 /// Ana sayfa "Gelişim Atağı" bölümü — bebeğin şu an huzursuz-öncesi/zirve
-/// fazında olduğu bir gelişim atağı varsa gösterir. Alakalı atak yoksa
-/// (çoğu zaman) tamamen gizlenir — sürekli görünen bir bölüm değildir.
+/// fazında olduğu bir gelişim atağı varsa onu, sakin bir aradaysa sıradaki
+/// atağa kalan süreyi gösterir. Yalnızca bebeğin önündeki hiçbir atak
+/// kalmadığında (tüm ataklar geride) tamamen gizlenir.
 class _LeapSection extends ConsumerWidget {
   final String babyId;
   const _LeapSection({required this.babyId});
@@ -1055,17 +1055,15 @@ class _LeapSection extends ConsumerWidget {
     if (weeks == null) return const SizedBox.shrink();
     final leaps = ref.watch(leapsProvider).asData?.value;
     if (leaps == null || leaps.isEmpty) return const SizedBox.shrink();
-    final leap = relevantLeap<LeapInfo>(
-      leaps,
-      index: (l) => l.index,
-      weekStart: (l) => l.weekStart,
-      fussyWeeksBefore: (l) => l.fussyWeeksBefore,
-      weeks: weeks,
-    );
-    if (leap == null) return const SizedBox.shrink();
     final phases = [
       for (final l in leaps) leapPhase(weeks, l.weekStart, l.fussyWeeksBefore),
     ];
+    final activeIx = phases.indexWhere((p) => p == LeapPhase.fussy || p == LeapPhase.peak);
+    final nextFutureIx = phases.indexWhere((p) => p == LeapPhase.future);
+    // Ne şu an alakalı bir atak var ne de önde bekleyen bir atak — gösterecek
+    // bir şey yok (ör. son atağın da geride kaldığı 20+ ay sonrası).
+    if (activeIx < 0 && nextFutureIx < 0) return const SizedBox.shrink();
+    final leap = activeIx >= 0 ? leaps[activeIx] : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1109,11 +1107,13 @@ class _LeapSection extends ConsumerWidget {
         LeapHeroCard(
           leaps: leaps,
           phases: phases,
-          activeIx: leaps.indexOf(leap),
+          activeIx: activeIx,
           pastCount: phases.where((p) => p == LeapPhase.past).length,
           weeks: weeks,
           babyName: baby?.name,
-          onTap: () => context.push('/leaps/${leap.index}'),
+          onTap: leap != null
+              ? () => context.push('/leaps/${leap.index}')
+              : () => context.push('/leaps'),
         ),
       ],
     );
