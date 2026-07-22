@@ -5,7 +5,8 @@ import 'theme.dart';
 /// Hafif, tema-duyarlı Markdown görüntüleyici. Uzman makaleleri admin-kontrollü
 /// olduğundan tam bir Markdown motoru yerine yalnız kullanılan blokları işler:
 /// `#`/`##`/`###` başlık · `-`/`*` madde · `1.` numaralı · `>` not/alıntı ·
-/// boş satır = paragraf · satır içi `**kalın**` ve `*italik*`.
+/// `| a | b |` tablo (GFM-basit, hizalama yok) · boş satır = paragraf ·
+/// satır içi `**kalın**` ve `*italik*`.
 ///
 /// Düz Material yerine [AppColors] tipografisini kullanır (uygulama diliyle
 /// tutarlı görünmesi için).
@@ -33,14 +34,36 @@ class AdMarkdown extends StatelessWidget {
       para.clear();
     }
 
-    for (final raw in lines) {
-      final line = raw.trimRight();
-      final t = line.trim();
-      if (t.isEmpty) {
+    bool isTableRow(String t) => t.startsWith('|') && t.endsWith('|') && t.length > 1;
+
+    var i = 0;
+    while (i < lines.length) {
+      final t = lines[i].trimRight().trim();
+
+      if (isTableRow(t)) {
         flushPara();
+        final rows = <List<String>>[];
+        while (i < lines.length) {
+          final rt = lines[i].trim();
+          if (!isTableRow(rt)) break;
+          final cells = rt
+              .substring(1, rt.length - 1)
+              .split('|')
+              .map((c) => c.trim())
+              .toList();
+          // Ayraç satırı (|---|---|) atlanır.
+          if (!cells.every((c) => RegExp(r'^:?-+:?$').hasMatch(c))) {
+            rows.add(cells);
+          }
+          i++;
+        }
+        if (rows.isNotEmpty) blocks.add(_TableBlock(rows));
         continue;
       }
-      if (t.startsWith('### ')) {
+
+      if (t.isEmpty) {
+        flushPara();
+      } else if (t.startsWith('### ')) {
         flushPara();
         blocks.add(_HeadingBlock(t.substring(4), 3));
       } else if (t.startsWith('## ')) {
@@ -62,6 +85,7 @@ class AdMarkdown extends StatelessWidget {
       } else {
         para.add(t);
       }
+      i++;
     }
     flushPara();
     return blocks;
@@ -205,6 +229,70 @@ class _QuoteBlock extends _Block {
             left: BorderSide(color: AppColors.coral, width: 3.5)),
       ),
       child: Text.rich(TextSpan(children: mdInlineSpans(text, base))),
+    );
+  }
+}
+
+/// Basit tablo — ilk satır başlık (mercan zeminde kalın), sonraki satırlar
+/// gövde (çizgiyle ayrılmış). Hizalama/rowspan yok, GFM'in en sık kullanılan
+/// alt kümesi (referans tabloları için yeterli).
+class _TableBlock extends _Block {
+  final List<List<String>> rows;
+  _TableBlock(this.rows);
+
+  @override
+  Widget build(BuildContext context) {
+    final cols = rows.first.length;
+    // Table widget tüm satırların hücre sayısı eşit olmasını ister — eksik/
+    // fazla hücreli (bozuk içerik) satırları normalize et.
+    List<String> fit(List<String> r) => List.generate(
+        cols, (c) => c < r.length ? r[c] : '');
+    final header = fit(rows.first);
+    final body = rows.skip(1).map(fit).toList();
+    final headerStyle = const TextStyle(
+        fontSize: 12.5,
+        height: 1.3,
+        fontWeight: FontWeight.w900,
+        color: AppColors.coralDd);
+    final cellStyle = TextStyle(
+        fontSize: 13,
+        height: 1.35,
+        fontWeight: FontWeight.w700,
+        color: AppColors.ink2);
+    Widget cell(String text, TextStyle style) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          child: Text(text, style: style),
+        );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.line, width: 1.2),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Table(
+        columnWidths: {
+          for (var c = 0; c < header.length; c++)
+            c: const IntrinsicColumnWidth(),
+        },
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+        children: [
+          TableRow(
+            decoration: BoxDecoration(color: AppColors.feedBg),
+            children: [for (final h in header) cell(h, headerStyle)],
+          ),
+          for (var r = 0; r < body.length; r++)
+            TableRow(
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.line, width: 1)),
+              ),
+              children: [
+                for (final c in body[r]) cell(c, cellStyle),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }
