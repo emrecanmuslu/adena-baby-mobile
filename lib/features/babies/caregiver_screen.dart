@@ -123,7 +123,7 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final letter = (user?.displayName.characters.firstOrNull ?? '?').toUpperCase();
+    final letter = (user?.displayName.characters.firstOrNull ?? '?').toUpperCaseTr();
     return Container(
       width: 18,
       height: 18,

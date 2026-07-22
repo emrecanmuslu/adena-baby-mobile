@@ -574,7 +574,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(tr('Sık sorulanlar').toUpperCase(),
+          child: Text(tr('Sık sorulanlar').toUpperCaseTr(),
               style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
@@ -797,7 +797,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr('Bu gündeki işaretler').toUpperCase(),
+          Text(tr('Bu gündeki işaretler').toUpperCaseTr(),
               style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w900,

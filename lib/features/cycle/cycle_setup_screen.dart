@@ -135,7 +135,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
               const SizedBox(height: 20),
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text(tr('Adet Takvimi · Kurulum').toUpperCase(),
+                child: Text(tr('Adet Takvimi · Kurulum').toUpperCaseTr(),
                     style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w900,

@@ -147,7 +147,7 @@ class _Header extends StatelessWidget {
             decoration: BoxDecoration(color: c, shape: BoxShape.circle),
             alignment: Alignment.center,
             child: Text(
-                (p.name.isNotEmpty ? p.name.characters.first : '?').toUpperCase(),
+                (p.name.isNotEmpty ? p.name.characters.first : '?').toUpperCaseTr(),
                 style: const TextStyle(
                     color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
           ),

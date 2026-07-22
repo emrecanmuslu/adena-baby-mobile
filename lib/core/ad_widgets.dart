@@ -33,7 +33,7 @@ class AdField extends StatelessWidget {
             padding: const EdgeInsets.only(left: 2, bottom: 7),
             child: Row(
               children: [
-                Text(label.toUpperCase(),
+                Text(label.toUpperCaseTr(),
                     style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w900,
@@ -536,7 +536,7 @@ class AdSides extends StatelessWidget {
                     color: on ? AppColors.coralDd : null)),
             if (reserveSmall) ...[
               const SizedBox(height: 3),
-              Text((it.small ?? '').toUpperCase(),
+              Text((it.small ?? '').toUpperCaseTr(),
                   style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
@@ -1083,7 +1083,7 @@ Widget adSec(String title, {Color? color, String? info}) => Padding(
       child: Row(
         children: [
           Text(
-            title.toUpperCase(),
+            title.toUpperCaseTr(),
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w900,

@@ -180,7 +180,7 @@ class RecordUi {
         // Hafif şiddeti gizleme; orta/şiddetli vurgula.
         return sev == SymptomSeverity.mild
             ? base
-            : trp('{name} · {sev}', {'name': base, 'sev': sev.label.toLowerCase()});
+            : trp('{name} · {sev}', {'name': base, 'sev': sev.label.toLowerCaseTr()});
     }
   }
 

@@ -41,7 +41,7 @@ class SettingsScreen extends ConsumerWidget {
     // Hesap zorunlu → profil her zaman hesaptan gelir.
     final profileName = user?.displayName ?? '—';
     final avatarInitial =
-        (profileName.characters.firstOrNull ?? '?').toUpperCase();
+        (profileName.characters.firstOrNull ?? '?').toUpperCaseTr();
     final profileSubtitle = user != null
         ? '${user.email}${role != null ? ' · $role' : ''}'
         : '';

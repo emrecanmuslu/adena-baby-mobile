@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import '../../core/i18n.dart';
 import '../../core/theme.dart';
 
 /// Adet Takvimi imza halkası ("Dial") — tasarım "Bloom" cycle-kit Dial'ının
@@ -86,7 +87,7 @@ class CycleDial extends StatelessWidget {
                           color: AppColors.ink)),
                 if (label != null) ...[
                   const SizedBox(height: 3),
-                  Text(label!.toUpperCase(),
+                  Text(label!.toUpperCaseTr(),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontSize: 12,

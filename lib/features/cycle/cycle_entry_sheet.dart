@@ -225,7 +225,7 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
         padding: const EdgeInsets.only(bottom: 10, top: 2),
         child: Row(
           children: [
-            Text(text.toUpperCase(),
+            Text(text.toUpperCaseTr(),
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w900,

@@ -163,7 +163,7 @@ class _DeleteRecordSheet extends ConsumerWidget {
     if (me != null && cb == me.id) {
       return (
         name: tr('Sen'),
-        initial: (me.displayName.characters.firstOrNull ?? 'S').toUpperCase(),
+        initial: (me.displayName.characters.firstOrNull ?? 'S').toUpperCaseTr(),
         color: _avatarColor(cb),
       );
     }
@@ -172,7 +172,7 @@ class _DeleteRecordSheet extends ConsumerWidget {
       if (m.user.id == cb) {
         return (
           name: m.user.displayName,
-          initial: (m.user.displayName.characters.firstOrNull ?? '?').toUpperCase(),
+          initial: (m.user.displayName.characters.firstOrNull ?? '?').toUpperCaseTr(),
           color: _avatarColor(cb),
         );
       }

@@ -342,7 +342,7 @@ class _QuestionBlock extends StatelessWidget {
                       decoration: BoxDecoration(
                           color: AppColors.peachLight,
                           borderRadius: BorderRadius.circular(999)),
-                      child: Text(q.categoryName!.toUpperCase(),
+                      child: Text(q.categoryName!.toUpperCaseTr(),
                           style: const TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.w900,

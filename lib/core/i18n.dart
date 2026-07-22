@@ -54,6 +54,21 @@ class I18n extends ChangeNotifier {
 /// Global kısayol — her yerden çağrılır.
 String tr(String source) => I18n.instance.tr(source);
 
+/// Türkçe-duyarlı büyük/küçük harf. Dart'ın `toUpperCase`'i locale bilmez:
+/// 'i' → 'I' üretir ("zirve" → "ZIRVE" olur, "ZİRVE" değil). Uygulama dili TR
+/// iken noktalı/noktasız i ayrımı korunur; diğer dillerde standart dönüşüm.
+/// Görüntülenen metinlerde her zaman bunları kullan (ülke kodu gibi ASCII
+/// makine değerlerinde gerekmez).
+extension TurkishCase on String {
+  String toUpperCaseTr() => I18n.instance.locale == 'tr'
+      ? replaceAll('i', 'İ').replaceAll('ı', 'I').toUpperCase()
+      : toUpperCase();
+
+  String toLowerCaseTr() => I18n.instance.locale == 'tr'
+      ? replaceAll('İ', 'i').replaceAll('I', 'ı').toLowerCase()
+      : toLowerCase();
+}
+
 /// Yer-tutuculu çeviri (interpolasyonlu metinler için). Kaynak anahtarı
 /// `'{n} gün sonra'`, args `{'n': n}` → çeviri alınır, sonra `{n}` değerle
 /// değiştirilir. (Kaynak=anahtar yöntemi interpolasyonla doğrudan çalışmaz,

@@ -301,7 +301,7 @@ class MomTrackingScreen extends ConsumerWidget {
         child: Row(
           children: [
             Expanded(
-              child: Text(title.toUpperCase(),
+              child: Text(title.toUpperCaseTr(),
                   style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w900,

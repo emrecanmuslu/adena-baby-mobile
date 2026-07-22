@@ -593,7 +593,7 @@ class _MomQuickBtn extends StatelessWidget {
 Widget _sec(String title) => Padding(
       padding: const EdgeInsets.fromLTRB(3, 20, 3, 10),
       child: Text(
-        title.toUpperCase(),
+        title.toUpperCaseTr(),
         style: TextStyle(
           fontSize: 11.5,
           fontWeight: FontWeight.w900,

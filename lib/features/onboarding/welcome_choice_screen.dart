@@ -181,7 +181,7 @@ class _WelcomeChoiceScreenState extends ConsumerState<WelcomeChoiceScreen>
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 14),
-                                    child: Text(tr('veya').toUpperCase(),
+                                    child: Text(tr('veya').toUpperCaseTr(),
                                         style: TextStyle(
                                             color: AppColors.ink2
                                                 .withValues(alpha: 0.6),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/ad_widgets.dart';
+import '../../core/i18n.dart';
 import '../../core/theme.dart';
 
 /// "Bloom" paylaşımlı bileşen kiti — tasarım cycle.css `.cy-*` sınıflarının
@@ -50,7 +51,7 @@ class CycEyebrow extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(4, first ? 10 : 22, 4, 13),
       child: Row(
         children: [
-          Text(text.toUpperCase(),
+          Text(text.toUpperCaseTr(),
               style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
@@ -211,7 +212,7 @@ Widget cycMini(BuildContext c,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Expanded(
-              child: Text(label.toUpperCase(),
+              child: Text(label.toUpperCaseTr(),
                   style: TextStyle(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w900,
@@ -253,7 +254,7 @@ Widget cycStat(BuildContext c, String n, String unit, String label) {
           ],
         )),
         const SizedBox(height: 7),
-        Text(label.toUpperCase(),
+        Text(label.toUpperCaseTr(),
             textAlign: TextAlign.center,
             style: TextStyle(
                 fontSize: 10,

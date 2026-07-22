@@ -284,7 +284,7 @@ class _MonthHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(2, 18, 2, 12),
       child: Row(
         children: [
-          Text(label.toUpperCase(),
+          Text(label.toUpperCaseTr(),
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w900,

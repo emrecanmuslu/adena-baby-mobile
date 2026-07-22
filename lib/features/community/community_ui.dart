@@ -56,7 +56,7 @@ class AuthorRow extends StatelessWidget {
           child: anonymous
               ? AdenaIcon('user', size: 11, color: AppColors.muted, sw: 2.4)
               : Text(
-                  (name.isNotEmpty ? name.characters.first : '?').toUpperCase(),
+                  (name.isNotEmpty ? name.characters.first : '?').toUpperCaseTr(),
                   style: const TextStyle(
                       color: Colors.white,
                       fontSize: 10,
@@ -449,7 +449,7 @@ class _CatTag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
           color: AppColors.peachLight, borderRadius: BorderRadius.circular(999)),
-      child: Text(text.toUpperCase(),
+      child: Text(text.toUpperCaseTr(),
           style: const TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w900,

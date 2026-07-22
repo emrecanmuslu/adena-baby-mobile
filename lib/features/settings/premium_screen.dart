@@ -738,7 +738,7 @@ class _PlanCard extends StatelessWidget {
       child: wide
           ? Row(
               children: [
-                Text(period.toUpperCase(),
+                Text(period.toUpperCaseTr(),
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -750,7 +750,7 @@ class _PlanCard extends StatelessWidget {
             )
           : Column(
               children: [
-                Text(period.toUpperCase(),
+                Text(period.toUpperCaseTr(),
                     style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w800,

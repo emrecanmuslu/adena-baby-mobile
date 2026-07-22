@@ -166,7 +166,7 @@ class _Today extends ConsumerWidget {
   // ── küçük başlık (Hero eyebrow, ortalı) ──
   Widget _heroEyebrow(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 14),
-        child: Text(text.toUpperCase(),
+        child: Text(text.toUpperCaseTr(),
             textAlign: TextAlign.center,
             style: TextStyle(
                 fontSize: 11.5,

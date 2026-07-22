@@ -326,7 +326,7 @@ class _MemberRow extends ConsumerWidget {
                   end: Alignment.bottomRight),
             ),
             alignment: Alignment.center,
-            child: Text((u.displayName.characters.firstOrNull ?? '?').toUpperCase(),
+            child: Text((u.displayName.characters.firstOrNull ?? '?').toUpperCaseTr(),
                 style: const TextStyle(
                     color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
           ),

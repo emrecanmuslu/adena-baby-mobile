@@ -99,7 +99,7 @@ class ArticleCard extends StatelessWidget {
             size: size * 0.48, color: a, sw: 1.9),
       );
 
-  Widget _categoryLabel() => Text(article.categoryName.toUpperCase(),
+  Widget _categoryLabel() => Text(article.categoryName.toUpperCaseTr(),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(

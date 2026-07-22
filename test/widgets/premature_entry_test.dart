@@ -70,7 +70,7 @@ void main() {
     testWidgets('kapalıyken gebelik haftası alanı gizli', (tester) async {
       await tester.pumpWidget(_wrap(const _Host(born: true)));
       // Stepper ("hf" birimi) henüz yok.
-      expect(find.text('GEBELIK HAFTASI'), findsNothing);
+      expect(find.text('GEBELİK HAFTASI'), findsNothing);
       expect(find.byType(AdStepper), findsNothing);
     });
 
@@ -81,7 +81,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Haftalar + gün stepperları belirir.
-      expect(find.text('GEBELIK HAFTASI'), findsOneWidget);
+      expect(find.text('GEBELİK HAFTASI'), findsOneWidget);
       expect(find.byType(AdStepper), findsNWidgets(2));
       // Hiç türetme yokken toggle açılınca varsayılan 38 hafta.
       expect(find.text('38'), findsOneWidget);
@@ -97,7 +97,7 @@ void main() {
       await tester.tap(find.text('Hayır'));
       await tester.pumpAndSettle();
       expect(find.byType(AdStepper), findsNothing);
-      expect(find.text('GEBELIK HAFTASI'), findsNothing);
+      expect(find.text('GEBELİK HAFTASI'), findsNothing);
     });
 
     testWidgets('ön-doldurulmuş haftalarla açık başlar (otomatik türetme)',

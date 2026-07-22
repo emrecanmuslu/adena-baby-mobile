@@ -208,8 +208,8 @@ void main() {
       ));
       expect(find.text('Sol'), findsOneWidget);
       expect(find.text('Sağ'), findsOneWidget);
-      // small etiketleri büyük harfe çevrilir
-      expect(find.text('SIRADAKI'), findsOneWidget);
+      // small etiketleri büyük harfe çevrilir (Türkçe-duyarlı: i→İ)
+      expect(find.text('SIRADAKİ'), findsOneWidget);
 
       await tester.tap(find.text('Sağ'));
       await tester.pump();

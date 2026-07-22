@@ -389,7 +389,7 @@ class _Stat extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 2),
-            Text(label.toUpperCase(),
+            Text(label.toUpperCaseTr(),
                 style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
@@ -908,7 +908,7 @@ class _BarCard extends StatelessWidget {
 Widget _sec(String title) => Padding(
       padding: const EdgeInsets.fromLTRB(3, 18, 3, 10),
       child: Text(
-        title.toUpperCase(),
+        title.toUpperCaseTr(),
         style: TextStyle(
           fontSize: 11.5,
           fontWeight: FontWeight.w900,

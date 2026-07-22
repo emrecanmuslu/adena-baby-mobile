@@ -286,7 +286,7 @@ class _GroupHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(3, 16, 3, 8),
       child: Row(
         children: [
-          Text(milestoneAgeLabel(month).toUpperCase(),
+          Text(milestoneAgeLabel(month).toUpperCaseTr(),
               style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w900,

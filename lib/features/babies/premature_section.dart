@@ -168,7 +168,7 @@ class _PrematureSectionState extends State<PrematureSection> {
   Widget _miniLabel(String s) => Padding(
         padding: const EdgeInsets.only(left: 2),
         child: Text(
-          s.toUpperCase(),
+          s.toUpperCaseTr(),
           style: TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w900,
