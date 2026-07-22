@@ -92,11 +92,15 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     _pushSoon();
   }
 
-  /// Premium'da yerel dirty bebekleri arka planda sunucuya gönderir.
+  /// Yerel dirty bebekleri arka planda sunucuya gönderir. Kendi (sahip) bebeklerimin
+  /// yüklenmesi KENDİ premium'uma bağlı (free = yerel-önce); paylaşımlı (myRole=
+  /// 'parent') bebeklerin profil/foto değişikliği ise sahibin bulutuna bağlı olduğundan
+  /// kendi premium'umdan BAĞIMSIZ her zaman gönderilir — aksi halde üye taraflı foto/ad
+  /// değişikliği hiç buluta çıkmaz, bir sonraki pull'da sessizce yerelden silinir.
   void _pushSoon() {
-    if (ref.read(cloudSyncEnabledProvider)) {
-      unawaited(_repo.pushDirty());
-    }
+    if (!ref.read(loggedInProvider)) return;
+    unawaited(
+        _repo.pushDirty(includeOwned: ref.read(cloudSyncEnabledProvider)));
   }
 
   /// Sunucudan çekip yereli reconcile eder; erişimi kaldırılan (paylaşımdan düşen)
@@ -110,11 +114,11 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     List<Baby> removed;
     try {
       // Kendi (sahip) bebeklerimi buluta yüklemek KENDİ premium'uma bağlı (local-first:
-      // free'de kendi verim telefonda kalır). pullFromServer ise her oturumda koşar →
-      // paylaşılan bebek profilini/üyeliği tazeler.
-      if (ref.read(cloudSyncEnabledProvider)) {
-        await _repo.pushDirty(accountId: acct);
-      }
+      // free'de kendi verim telefonda kalır); paylaşımlı (parent) bebeğin profil/foto
+      // değişikliği ise sahibin bulutuna bağlı → oturum yeterli, premium'um şart değil.
+      // pullFromServer her oturumda koşar → paylaşılan bebek profilini/üyeliği tazeler.
+      await _repo.pushDirty(
+          accountId: acct, includeOwned: ref.read(cloudSyncEnabledProvider));
       removed = await _repo.pullFromServer(accountId: acct);
     } catch (_) {
       return; // çevrimdışı/hata → yerel korunur

@@ -287,39 +287,51 @@ class BabyRepository {
   }
 
   /// Yerel dirty bebekleri sunucuya gönderir (premium push). Migrasyon/edit sonrası.
-  /// YALNIZ aktif hesabın SAHİP olduğu bebekler — çoklu yerel hesapta başka hesabın
-  /// verisini yüklememek + paylaşımlı (sahibi başkası) bebeği POST'layıp 403 almamak için.
-  Future<void> pushDirty({String? accountId}) async {
+  /// Aktif hesabın SAHİP olduğu bebekler + paylaşımlı (myRole='parent') bebekler —
+  /// üye tam-yazma yetkiliyse (owner/parent, backend FULL_WRITE_ROLES) profil/foto
+  /// değişikliğini de göndermeli, yoksa üye tarafında yapılan değişiklik (ör. foto)
+  /// hiç buluta çıkmaz ve bir sonraki pull'da sessizce yerelden silinir.
+  /// [includeOwned] false ise yalnız paylaşımlı (parent) bebekler gönderilir — kendi
+  /// premium'u olmayan üye kendi SAHİP olduğu bebeği buluta yüklemez (ücretsiz katman
+  /// yerel-önce kalır), ama paylaşılan bebek sahibin premium'una bağlı olduğundan
+  /// bağımsız senkronlanır.
+  Future<void> pushDirty({String? accountId, bool includeOwned = true}) async {
     final acct = accountId ?? LocalSession.activeAccountId;
     if (acct == null) return;
+    final ownerCond = _db.babies.myRole.equals('owner') | _db.babies.myRole.isNull();
+    final roleCond =
+        includeOwned ? (ownerCond | _db.babies.myRole.equals('parent')) : _db.babies.myRole.equals('parent');
     final dirty = await (_db.select(_db.babies)
-          ..where((b) =>
-              b.dirty.equals(true) &
-              b.accountId.equals(acct) &
-              (b.myRole.equals('owner') | b.myRole.isNull())))
+          ..where((b) => b.dirty.equals(true) & b.accountId.equals(acct) & roleCond))
         .get();
     for (final r in dirty) {
       try {
         final b = _toModel(r);
+        final isOwner = r.myRole == null || r.myRole == 'owner';
         if (r.isDeleted) {
+          // Yalnız sahip silebilir (backend 403 döner değilse) — üyenin "ayrılma"sı
+          // ayrı bir akıştır (removeMember), buradan sunucuya silme gönderilmez.
+          if (!isOwner) continue;
           await _api.dio.delete('/babies/${b.id}');
         } else {
-          // İdempotent: id istemci-üretimli → POST upsert. Sunucu 200/201 döner.
           // `photo` yerel bir dosya yoluysa (henüz yüklenmemiş) multipart ekle;
           // zaten sunucu URL'i (http) ise partial=True update'te dokunmadan
           // bırakılsın diye gövdeye HİÇ eklenmez (yeniden yüklenmez).
           final needsPhotoUpload =
               b.photo != null && !b.photo!.startsWith('http');
           final json = b.toCreateJson();
-          final resp = await _api.dio.post(
-            '/babies',
-            data: needsPhotoUpload
-                ? FormData.fromMap({
-                    for (final e in json.entries) e.key: '${e.value}',
-                    'photo': await MultipartFile.fromFile(b.photo!),
-                  })
-                : json,
-          );
+          final body = needsPhotoUpload
+              ? FormData.fromMap({
+                  for (final e in json.entries) e.key: '${e.value}',
+                  'photo': await MultipartFile.fromFile(b.photo!),
+                })
+              : json;
+          // Sahip: id istemci-üretimli → POST idempotent upsert (200/201).
+          // Paylaşımlı üye (parent): POST her zaman 403 döner (sahiplik başkasına
+          // ait) — PATCH /babies/{id} kullanılmalı (backend owner+parent'a izin verir).
+          final resp = isOwner
+              ? await _api.dio.post('/babies', data: body)
+              : await _api.dio.patch('/babies/${b.id}', data: body);
           final settings = await familySettings(b.id);
           if (settings.isNotEmpty) {
             await _api.dio.patch('/babies/${b.id}/settings', data: settings);

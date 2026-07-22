@@ -83,6 +83,13 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
   }
 
   Future<void> _pickPhoto(Baby b, ImageSource source) async {
+    // Sağlık/profil düzenlemesiyle aynı kural: yalnız owner/parent yazabilir —
+    // bakıcı (caregiver) değiştirse de sunucu PATCH'i 403 döner, hiç yükleniyormuş
+    // gibi görünüp restart'ta sessizce kaybolurdu.
+    if (!b.canFullWrite) {
+      showAdToast(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
+      return;
+    }
     try {
       final x = await ImagePicker()
           .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
