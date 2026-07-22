@@ -40,10 +40,12 @@ class NotificationService {
   // iki bebeğin bildirimi çakışmaz. Taban + slot; türler arası 10000 boşluk.
   static const _feedMainBase = 800000;
   static const _feedPreBase = 810000;
+  static const _feedForgotBase = 820000;
   static const _sleepBase = 900000;
   static const _breastBase = 910000;
   static int feedMainIdFor(int slot) => _feedMainBase + slot;
   static int feedPreIdFor(int slot) => _feedPreBase + slot;
+  static int feedForgotIdFor(int slot) => _feedForgotBase + slot;
   static int sleepIdFor(int slot) => _sleepBase + slot;
   static int breastIdFor(int slot) => _breastBase + slot;
   static const snoozeAction = 'snooze_feed';
@@ -265,6 +267,7 @@ class NotificationService {
     if (!_ready) await init();
     await _plugin.cancel(id: feedMainIdFor(slot));
     await _plugin.cancel(id: feedPreIdFor(slot));
+    await _plugin.cancel(id: feedForgotIdFor(slot));
     if (!enabled || nextTime == null) return;
     await _ensurePermission();
     await _ensureExactAlarm();
@@ -289,6 +292,18 @@ class NotificationService {
             withSnooze: false, sound: sound && !(quiet?.covers(pre) ?? false),
             slot: slot, babyName: babyName);
       }
+    }
+    // "Unutmuş olabilir misin?" dürtmesi — tahmini saatten 30 dk sonra, HÂLÂ yeni
+    // bir kayıt yoksa (yeni kayıt gelince zaten bu fonksiyon yeniden çağrılıp eski
+    // planlama iptal edilir, bkz. yukarıdaki cancel'lar) tetiklenir.
+    final forgot = nextTime.add(const Duration(minutes: 30));
+    if (forgot.isAfter(now)) {
+      await _zonedFeed(feedForgotIdFor(slot),
+          forgot,
+          '$prefix${tr('Kaydı unuttun mu?')}',
+          tr('Beslenme saatinin üzerinden 30 dk geçti, henüz kayıt eklenmedi 🍼'),
+          withSnooze: true, sound: sound && !(quiet?.covers(forgot) ?? false),
+          slot: slot, babyName: babyName);
     }
   }
 
