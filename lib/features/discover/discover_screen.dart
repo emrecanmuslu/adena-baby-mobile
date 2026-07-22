@@ -30,17 +30,49 @@ class DiscoverScreen extends ConsumerWidget {
             16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
         children: [
           // Bebeğin Sağlığı — bekleme modunda aşı/ateş/ilaç anlamsız → gizli.
+          // Sağlık (aşı/gelişim/diş) local-first: katalog anonim erişilebilir,
+          // veri telefonda tutulur → misafir dahil hesapsız çalışır.
           if (!expecting) ...[
             adSec(tr('Bebeğin sağlığı')),
             AdMenuItem(
-              icon: 'heart',
-              color: AppColors.fever,
-              bg: AppColors.feverBg,
-              title: tr('Bebeğin Sağlığı'),
-              meta: tr('Aşı · randevu · ateş & ilaç · diş · gelişim'),
-              // Sağlık (aşı/gelişim/diş) local-first: katalog anonim erişilebilir,
-              // veri telefonda tutulur → misafir dahil hesapsız çalışır.
-              onTap: () => context.push('/health'),
+              icon: 'syringe',
+              color: AppColors.med,
+              bg: AppColors.medBg,
+              title: tr('Aşı Takvimi'),
+              meta: tr('Doğum tarihinden otomatik · yapıldıkça işaretle'),
+              onTap: () => context.push('/vaccines'),
+            ),
+            AdMenuItem(
+              icon: 'growth',
+              color: AppColors.growth,
+              bg: AppColors.growthBg,
+              title: tr('Gelişim / Kilometre Taşları'),
+              meta: tr('Yaşa göre beklenen gelişim basamakları'),
+              onTap: () => context.push('/milestones'),
+            ),
+            AdMenuItem(
+              icon: 'tooth',
+              color: AppColors.pump,
+              bg: AppColors.pumpBg,
+              title: tr('Diş Gelişimi'),
+              meta: tr('Süt dişleri haritası — çıkanları işaretle'),
+              onTap: () => context.push('/teeth'),
+            ),
+            AdMenuItem(
+              icon: 'star',
+              color: AppColors.coralDd,
+              bg: AppColors.feedBg,
+              title: tr('Gelişim Atakları'),
+              meta: tr('Huzursuz dönemler ve yeni beceriler'),
+              onTap: () => context.push('/leaps'),
+            ),
+            AdMenuItem(
+              icon: 'bell',
+              color: AppColors.coralDd,
+              bg: AppColors.feedBg,
+              title: tr('Hatırlatıcılar'),
+              meta: tr('Vitamin · beslenme · aşı · dürtükleme'),
+              onTap: () => context.push('/reminders'),
             ),
           ],
 

@@ -27,11 +27,12 @@ import 'features/cycle/cycle_settings_screen.dart';
 import 'features/cycle/cycle_shell.dart';
 import 'features/cycle/cycle_stats_screen.dart';
 import 'features/discover/discover_screen.dart';
-import 'features/health/health_screen.dart';
 import 'features/health/reminders_screen.dart';
 import 'features/health/vaccines_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/mom_tracking_screen.dart';
+import 'features/development/leap_detail_screen.dart';
+import 'features/development/leaps_screen.dart';
 import 'features/development/milestones_screen.dart';
 import 'features/development/teeth_screen.dart';
 import 'features/memories/memories_screen.dart';
@@ -129,10 +130,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) =>
               const TourMount(tourKey: 'babyedit', child: BabyEditScreen())),
       GoRoute(
-          path: '/health',
-          builder: (_, _) =>
-              const TourMount(tourKey: 'health', child: HealthScreen())),
-      GoRoute(
           path: '/vaccines',
           builder: (_, _) =>
               const TourMount(tourKey: 'vaccines', child: VaccinesScreen())),
@@ -200,6 +197,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/teeth',
           builder: (_, _) =>
               const TourMount(tourKey: 'teeth', child: TeethScreen())),
+      GoRoute(
+          path: '/leaps',
+          builder: (_, _) => const TourMount(tourKey: 'leaps', child: LeapsScreen())),
+      GoRoute(
+        path: '/leaps/:index',
+        builder: (_, state) => LeapDetailScreen(
+            index: int.tryParse(state.pathParameters['index'] ?? '') ?? 1),
+      ),
       GoRoute(path: '/born-flow', builder: (_, _) => const BornFlowScreen()),
       // Adet Takvimi (doğum sonrası anne — kişisel). Keşfet'ten açılır.
       GoRoute(
