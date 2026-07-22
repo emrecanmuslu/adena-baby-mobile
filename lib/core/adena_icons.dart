@@ -57,6 +57,14 @@ class AdenaIcons {
     'user': '<circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0115 0"/>',
     'download': '<path d="M12 4v10M8 11l4 4 4-4"/><path d="M5 19h14"/>',
     'logout': '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
+    // gelişim atakları (design/Gelişim Atakları.html ikonları)
+    'eye': '<path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/>',
+    'ear': '<path d="M6 9a6 6 0 1112 0c0 4-3 4.5-3.5 7a3 3 0 01-5.9.5"/><path d="M9.5 9a2.5 2.5 0 015 0c0 1.6-1.2 2-1.7 3.2"/>',
+    'hand': '<path d="M7 11V6.5a1.5 1.5 0 013 0V11m0-5.5v-1a1.5 1.5 0 013 0V11m0-5v1a1.5 1.5 0 013 0v5.5"/><path d="M16 12.5a1.5 1.5 0 013 0c0 5-2 9-6.5 9S6 18 5 15c-.6-1.8-1.5-3.4-1.5-3.4a1.4 1.4 0 012.4-1.3L7 12"/>',
+    'sun': '<circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M22 12h-2.5M4.5 12H2M18.7 5.3L17 7M7 17l-1.7 1.7M18.7 18.7L17 17M7 7L5.3 5.3"/>',
+    'search': '<circle cx="11" cy="11" r="7.5"/><path d="M20.5 20.5L16.5 16.5"/>',
+    'quote': '<path d="M10 7H6a3 3 0 00-3 3v1a3 3 0 003 3h1.2A5.8 5.8 0 013 17.5V19a7.3 7.3 0 007-7.3zM21 7h-4a3 3 0 00-3 3v1a3 3 0 003 3h1.2a5.8 5.8 0 01-4.2 3.5V19a7.3 7.3 0 007-7.3z" fill="currentColor" stroke="none"/>',
+    'userHeart': '<circle cx="9" cy="7" r="3.2"/><path d="M3.5 21c0-3.5 2.5-5.8 5.5-5.8s5.5 2.3 5.5 5.8"/><path d="M17.5 3.5a3 3 0 012.7 4.4c-.6 1.3-2.7 2.9-2.7 2.9s-2.1-1.6-2.7-2.9a3 3 0 012.7-4.4z"/>',
   };
 
   static String svg(String name, Color color, double sw) {

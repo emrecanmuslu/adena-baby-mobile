@@ -11,6 +11,7 @@ import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/leaps.dart';
 import '../../core/ring.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
@@ -19,6 +20,8 @@ import '../../core/units.dart';
 import '../../data/community_repository.dart';
 import '../../data/content_repository.dart';
 import '../../data/health_repository.dart';
+import '../../data/leap_repository.dart';
+import '../../data/leap_weeks.dart';
 import '../../data/local_session.dart';
 import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
@@ -27,10 +30,12 @@ import '../../models/milestone.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
+import '../babies/baby_photo.dart';
 import '../babies/baby_switcher.dart';
 import '../babies/family_settings.dart';
 import '../charts/charts_view.dart';
 import '../content/content_ui.dart';
+import '../development/leaps_screen.dart' show LeapHeroCard;
 import 'expecting_home.dart';
 import 'home_layout.dart';
 import 'home_layout_editor.dart';
@@ -346,7 +351,7 @@ class _HeaderAvatar extends ConsumerWidget {
     // Local-first: hesapsız kullanıcıda baş harf yerel addan gelir (hesap yok).
     final account = user?.displayName ?? '';
     final name = account.isNotEmpty ? account : ref.watch(localNameProvider);
-    final initial = (name.characters.firstOrNull ?? '?').toUpperCase();
+    final initial = (name.characters.firstOrNull ?? '?').toUpperCaseTr();
     final online = ref.watch(onlineProvider).asData?.value ?? true;
     final ring = Theme.of(context).scaffoldBackgroundColor;
 
@@ -471,28 +476,33 @@ class _BabyTab extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Avatar — aktif: şeftali gradyan + beyaz ikon; diğer: uyku-bg + mor ikon.
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: selected ? null : AppColors.sleepBg,
-                  gradient: selected
-                      ? const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFFFFE0D2), Color(0xFFFFC1AC)],
-                        )
-                      : null,
+              // Avatar — foto varsa gösterir; yoksa aktif: şeftali gradyan +
+              // beyaz ikon, diğer: uyku-bg + mor ikon.
+              BabyAvatar(
+                photo: baby.photo,
+                size: 24,
+                placeholder: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: selected ? null : AppColors.sleepBg,
+                    gradient: selected
+                        ? const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFFFE0D2), Color(0xFFFFC1AC)],
+                          )
+                        : null,
+                  ),
+                  alignment: Alignment.center,
+                  child: baby.isExpecting
+                      ? const Text('🤰', style: TextStyle(fontSize: 13))
+                      : AdenaIcon('baby',
+                          size: 14,
+                          color: selected ? Colors.white : AppColors.sleep,
+                          sw: 2.0),
                 ),
-                alignment: Alignment.center,
-                child: baby.isExpecting
-                    ? const Text('🤰', style: TextStyle(fontSize: 13))
-                    : AdenaIcon('baby',
-                        size: 14,
-                        color: selected ? Colors.white : AppColors.sleep,
-                        sw: 2.0),
               ),
               const SizedBox(width: 7),
               Text(baby.name.isNotEmpty ? baby.name : tr('Bebeğim'),
@@ -586,7 +596,7 @@ String _babyAgeShort(Baby b) => correctedAgeShort(b);
 Widget _sec(String title, {double top = 18}) => Padding(
       padding: EdgeInsets.fromLTRB(3, top, 3, 10),
       child: Text(
-        title.toUpperCase(),
+        title.toUpperCaseTr(),
         style: TextStyle(
           fontSize: 11.5,
           fontWeight: FontWeight.w900,
@@ -611,7 +621,7 @@ class _EditableSec extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(3, top, 0, 10),
       child: Row(
         children: [
-          Text(title.toUpperCase(),
+          Text(title.toUpperCaseTr(),
               style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w900,
@@ -703,6 +713,7 @@ class _HomeTab extends ConsumerWidget {
           _PredictSection(babyId: babyId),
           _LastActivitySection(babyId: babyId, units: units),
           _DaySummarySection(babyId: babyId),
+          _LeapSection(babyId: babyId),
           _UpcomingSection(babyId: babyId),
           _MilestoneSection(babyId: babyId),
           _ForYouSection(babyId: babyId),
@@ -1028,6 +1039,85 @@ class _MilestoneSection extends ConsumerWidget {
   }
 
   static int? _ageMonths(Baby? b) => ageInMonths(b);
+}
+
+/// Ana sayfa "Gelişim Atağı" bölümü — bebeğin şu an huzursuz-öncesi/zirve
+/// fazında olduğu bir gelişim atağı varsa gösterir. Alakalı atak yoksa
+/// (çoğu zaman) tamamen gizlenir — sürekli görünen bir bölüm değildir.
+class _LeapSection extends ConsumerWidget {
+  final String babyId;
+  const _LeapSection({required this.babyId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final baby = ref.watch(activeBabyProvider);
+    final weeks = correctedAgeWeeks(baby);
+    if (weeks == null) return const SizedBox.shrink();
+    final leaps = ref.watch(leapsProvider).asData?.value;
+    if (leaps == null || leaps.isEmpty) return const SizedBox.shrink();
+    final leap = relevantLeap<LeapInfo>(
+      leaps,
+      index: (l) => l.index,
+      weekStart: (l) => l.weekStart,
+      fussyWeeksBefore: (l) => l.fussyWeeksBefore,
+      weeks: weeks,
+    );
+    if (leap == null) return const SizedBox.shrink();
+    final phases = [
+      for (final l in leaps) leapPhase(weeks, l.weekStart, l.fussyWeeksBefore),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(3, 18, 3, 10),
+          child: Row(
+            children: [
+              Text(tr('GELİŞİM ATAĞI'),
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.muted,
+                      letterSpacing: 0.7)),
+              const SizedBox(width: 6),
+              AdInfoDot(
+                title: tr('Gelişim atakları nedir?'),
+                body: tr('Bebekler ilk aylarda/yıllarda tekrarlayan, huzursuz/'
+                    'ağlamaklı bir öncesi dönemle gelen zihinsel-motor sıçramalar '
+                    'yaşayabilir. Haftalar yaklaşık referans noktalarıdır — her '
+                    'bebek kendi temposunda gelişir, bu tıbbi bir tanı değildir.'),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => context.push('/leaps'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(tr('Tümü'),
+                        style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.coralDark)),
+                    const AdenaIcon('chevR', size: 15, color: AppColors.coralDark),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        LeapHeroCard(
+          leaps: leaps,
+          phases: phases,
+          activeIx: leaps.indexOf(leap),
+          pastCount: phases.where((p) => p == LeapPhase.past).length,
+          weeks: weeks,
+          babyName: baby?.name,
+          onTap: () => context.push('/leaps/${leap.index}'),
+        ),
+      ],
+    );
+  }
 }
 
 class _MilestoneRow extends StatelessWidget {
@@ -1400,7 +1490,7 @@ class _LastCard extends StatelessWidget {
                 size: 17, color: RecordUi.color(type)),
           ),
           const SizedBox(height: 9),
-          Text(RecordUi.label(type).toUpperCase(),
+          Text(RecordUi.label(type).toUpperCaseTr(),
               style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
@@ -1532,7 +1622,7 @@ class _DayCol extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(label.toUpperCase(),
+        Text(label.toUpperCaseTr(),
             style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w800,
