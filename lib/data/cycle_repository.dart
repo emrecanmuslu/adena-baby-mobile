@@ -197,19 +197,26 @@ class CycleRepository {
     // My Calendar pariteti: ilk gerçek adet loglandığında döngü takibi OTOMATİK
     // başlar. Mod `firstPeriodDate`'e bağlı (entry'e değil) → boşsa bu kaydın
     // tarihine set et: bekleme/loşia → aktif geçişi (yoksa log girilse de bekleme).
+    // Yalnız sıfırlama olayından (doğum/kayıp) SONRAKİ günler "ilk adet döndü"
+    // sayılır: lohusa/kayıp kullanıcı geçmiş bir adetini sonradan işlerse
+    // (backfill) bu dönüş değildir — çapa yanlış Gün 1'e kurulur ve istenmeden
+    // aktif takibe geçilirdi. Olay gününün kendisi de hariç (o günkü kanama
+    // doğum/kayıp kanamasıdır, adet değil).
     if (entry.isPeriod) {
       final s = await getSettings();
-      if (s.firstPeriodDate == null) {
-        await patchSettings({'first_period_date': _isoDate(entry.date)});
-      } else if (s.predictionsHidden) {
-        // Onarım: çapa dolu ama tahminler gizli kalmış (ör. eski sürümden gelen
-        // tutarsız durum). Kullanıcı adet logluyorsa takibe dönmek istiyor.
-        await patchSettings({
-          'predictions_hidden': false,
-          if (s.lifecycleMode == CycleLifecycleMode.postpartum ||
-              s.lifecycleMode == CycleLifecycleMode.loss)
-            'lifecycle_mode': CycleLifecycleMode.tracking.name,
-        });
+      if (_afterLatestReset(entry.date, s)) {
+        if (s.firstPeriodDate == null) {
+          await patchSettings({'first_period_date': _isoDate(entry.date)});
+        } else if (s.predictionsHidden) {
+          // Onarım: çapa dolu ama tahminler gizli kalmış (ör. eski sürümden gelen
+          // tutarsız durum). Kullanıcı adet logluyorsa takibe dönmek istiyor.
+          await patchSettings({
+            'predictions_hidden': false,
+            if (s.lifecycleMode == CycleLifecycleMode.postpartum ||
+                s.lifecycleMode == CycleLifecycleMode.loss)
+              'lifecycle_mode': CycleLifecycleMode.tracking.name,
+          });
+        }
       }
     }
     if (_cloudEnabled()) {
@@ -345,6 +352,19 @@ class CycleRepository {
         }
       });
     } catch (_) {}
+  }
+
+  /// Verilen gün, son sıfırlama olayının (doğum/kayıp) gününden SONRA mı?
+  /// Olay yoksa her gün geçerlidir. Olay günü dahil öncesi geçersizdir —
+  /// bkz. saveEntry'deki çapa kancası (backfill koruması).
+  static bool _afterLatestReset(DateTime day, CycleSettings s) {
+    final resets = [
+      if (s.birthDate != null) _dayOnly(s.birthDate!),
+      if (s.lastLossDate != null) _dayOnly(s.lastLossDate!),
+    ];
+    if (resets.isEmpty) return true;
+    final latest = resets.reduce((a, b) => b.isAfter(a) ? b : a);
+    return _dayOnly(day).isAfter(latest);
   }
 
   static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
