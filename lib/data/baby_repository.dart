@@ -141,16 +141,30 @@ class BabyRepository {
     return (await _byId(babyId))!;
   }
 
-  /// Foto'yu kalıcı uygulama dizinine kopyalar (bebek başına tek dosya,
-  /// değişince üstüne yazılır), kalıcı yolu döner.
+  /// Foto'yu kalıcı uygulama dizinine kopyalar, kalıcı yolu döner. Dosya adı
+  /// HER güncellemede benzersiz üretilir (babyId+zaman damgası): sabit bir ad
+  /// (yalnız babyId+ext) yeniden kullanılsaydı, Flutter'ın ImageCache'i
+  /// FileImage'ı yalnızca YOLA göre anahtarladığından (mtime'a bakmadan)
+  /// dosya içeriği değişse bile eski baytları göstermeye devam ediyordu —
+  /// ikinci kez foto değiştirildiğinde ekranda hiç güncellenmiyormuş gibi
+  /// görünüyordu. Yol her seferinde farklı olunca bu önbellek sorunu kökten
+  /// ortadan kalkıyor. Eski dosya artık gereksiz — silinir.
   Future<String> _persistPhoto(String babyId, String srcPath) async {
     try {
       final dir = await getApplicationSupportDirectory();
       final babiesDir = Directory(p.join(dir.path, 'babies'));
       if (!await babiesDir.exists()) await babiesDir.create(recursive: true);
       final ext = p.extension(srcPath);
-      final dest = p.join(babiesDir.path, '$babyId$ext');
+      final dest = p.join(
+          babiesDir.path, '$babyId-${DateTime.now().microsecondsSinceEpoch}$ext');
       await File(srcPath).copy(dest);
+      final oldPhoto = (await _byIdRow(babyId))?.photo;
+      if (oldPhoto != null && oldPhoto != dest && !oldPhoto.startsWith('http')) {
+        try {
+          final oldFile = File(oldPhoto);
+          if (await oldFile.exists()) await oldFile.delete();
+        } catch (_) {}
+      }
       return dest;
     } catch (_) {
       return srcPath; // kopyalanamazsa orijinal (geçici) yolu kullan

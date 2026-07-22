@@ -88,8 +88,13 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
           .pickImage(source: source, maxWidth: 1200, imageQuality: 85);
       if (x == null) return;
       setState(() => _photoBusy = true);
+      // NOT: invalidate(babyControllerProvider) ÇAĞRILMAZ — updatePhoto zaten
+      // yerel drift'e yazıyor, controller'ın canlı stream'i bunu reaktif
+      // olarak yansıtır. invalidate tüm provider'ı yeniden kurup
+      // activeBabyProvider'ı anlık null'a düşürüyordu, bu da tüm ekranın kısa
+      // süre yükleniyor ekranına dönüp geri gelmesine (görsel "flaş") sebep
+      // oluyordu.
       await ref.read(babyRepositoryProvider).updatePhoto(b.id, x.path);
-      ref.invalidate(babyControllerProvider);
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     } finally {
