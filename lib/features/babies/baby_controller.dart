@@ -44,7 +44,7 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     // free üye de bunu çekmeli (Seçenek 2). Kendi bebeklerimi YÜKLEMEK ise _pull
     // içinde kendi premium'uma bağlı kalır.
     if (ref.watch(loggedInProvider)) {
-      unawaited(_pull());
+      unawaited(_pull(acct));
     }
     return _repo.getAll(accountId: acct);
   }
@@ -101,7 +101,11 @@ class BabyController extends AsyncNotifier<List<Baby>> {
 
   /// Sunucudan çekip yereli reconcile eder; erişimi kaldırılan (paylaşımdan düşen)
   /// bebeklerin yerel verisini temizler + bildirim. Oturum açıkken anlamlı.
-  Future<void> _pull() async {
+  ///
+  /// [acct] build()'ın reaktif `activeAccountIdProvider` değeri — repo'ya AÇIKÇA
+  /// geçirilir çünkü statik `LocalSession.activeAccountId` login geçişinde bu
+  /// çağrıdan sonra set edilebilir (bkz. BabyRepository.pullFromServer dokümanı).
+  Future<void> _pull(String? acct) async {
     if (!ref.read(loggedInProvider)) return;
     List<Baby> removed;
     try {
@@ -109,9 +113,9 @@ class BabyController extends AsyncNotifier<List<Baby>> {
       // free'de kendi verim telefonda kalır). pullFromServer ise her oturumda koşar →
       // paylaşılan bebek profilini/üyeliği tazeler.
       if (ref.read(cloudSyncEnabledProvider)) {
-        await _repo.pushDirty();
+        await _repo.pushDirty(accountId: acct);
       }
-      removed = await _repo.pullFromServer();
+      removed = await _repo.pullFromServer(accountId: acct);
     } catch (_) {
       return; // çevrimdışı/hata → yerel korunur
     }
@@ -140,7 +144,7 @@ class BabyController extends AsyncNotifier<List<Baby>> {
   }
 
   /// Öne gelince/açılışta çağrılır. Premium'da sunucuyla reconcile; free'de no-op.
-  Future<void> refresh() => _pull();
+  Future<void> refresh() => _pull(ref.read(activeAccountIdProvider));
 }
 
 final babyControllerProvider =

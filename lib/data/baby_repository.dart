@@ -211,8 +211,16 @@ class BabyRepository {
 
   /// Sunucudan bebek listesini çekip yerele yansıtır (premium pull). Erişimi
   /// kaldırılan (sunucuda olmayan) yerel-temiz bebekleri döner (çağıran temizler).
-  Future<List<Baby>> pullFromServer() async {
-    final acct = LocalSession.activeAccountId;
+  ///
+  /// [accountId] verilmezse statik `LocalSession.activeAccountId`'e düşer.
+  /// KRİTİK: login/logout geçişinde bu statik `_postLogin()` içinde asenkron
+  /// set edilir; `activeAccountIdProvider`'ı izleyen reaktif çağıranlar (ör.
+  /// BabyController._pull) statik henüz güncellenmeden tetiklenebilir ve acct
+  /// null gelip pull'u sessizce boş listeyle sonuçlandırabilir (bebek "kayıp"
+  /// görünüp onboarding'e atar). Böyle çağıranlar reaktif değeri BURADA açıkça
+  /// geçirmeli.
+  Future<List<Baby>> pullFromServer({String? accountId}) async {
+    final acct = accountId ?? LocalSession.activeAccountId;
     if (acct == null) return const [];
     final resp = await _api.dio.get('/babies');
     final data = resp.data as List<dynamic>;
@@ -281,8 +289,8 @@ class BabyRepository {
   /// Yerel dirty bebekleri sunucuya gönderir (premium push). Migrasyon/edit sonrası.
   /// YALNIZ aktif hesabın SAHİP olduğu bebekler — çoklu yerel hesapta başka hesabın
   /// verisini yüklememek + paylaşımlı (sahibi başkası) bebeği POST'layıp 403 almamak için.
-  Future<void> pushDirty() async {
-    final acct = LocalSession.activeAccountId;
+  Future<void> pushDirty({String? accountId}) async {
+    final acct = accountId ?? LocalSession.activeAccountId;
     if (acct == null) return;
     final dirty = await (_db.select(_db.babies)
           ..where((b) =>
