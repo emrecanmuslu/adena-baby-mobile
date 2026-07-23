@@ -148,8 +148,11 @@ class _BodyState extends ConsumerState<_Body> {
           16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
       children: [
         CycEyebrow(tr('Hedefim'),
-            info: tr('Adet takibini gebe kalmaya çalışma (ovülasyon planlama) veya '
-                'gebelik moduna geçirebilirsin. Tümü aynı verini kullanır.')),
+            info: widget.settings.lifecycleMode == CycleLifecycleMode.postpartum
+                ? tr('Doğum sonrası takip aktif. İlk adetin gelene kadar seçim '
+                    'gerekmez, mod otomatik güncellenir.')
+                : tr('Adet takibini gebe kalmaya çalışma (ovülasyon planlama) veya '
+                    'gebelik moduna geçirebilirsin. Tümü aynı verini kullanır.')),
         CycleModeSwitcher(
           settings: widget.settings,
           onPregnant: () => startCyclePregnancy(context, ref, widget.settings),

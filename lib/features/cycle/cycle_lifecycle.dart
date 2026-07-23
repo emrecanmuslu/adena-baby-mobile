@@ -7,6 +7,7 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
+import 'cycle_kit.dart';
 import 'cycle_loss.dart';
 
 /// Yaşam-döngüsü (Flo-tarzı) mod yönetimi — tek merkez.
@@ -93,15 +94,31 @@ class CycleModeSwitcher extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final active = settings.lifecycleMode;
+    // Postpartum'dan çıkış olay-tetikli (ilk adet loglanınca otomatik) —
+    // tracking/ttc/hamileyim seçeneklerini burada seçilebilir göstermek
+    // lohusa kullanıcıyı karıştırıyordu ve akışın tek-kapı kuralını (bkz
+    // ADET_DAVRANIS_MATRISI.md §4) delip elle erken çıkışa izin veriyordu.
+    if (active == CycleLifecycleMode.postpartum) {
+      return Column(
+        children: [
+          _tile(context, ref, active, true, readOnly: true),
+          const SizedBox(height: 10),
+          cycNote(context,
+              clay: true,
+              icon: Icons.auto_awesome_rounded,
+              body: tr('İlk adetini kaydettiğinde adet takibine otomatik geçilir. '
+                  'O zamana kadar burada seçim yapmana gerek yok.')),
+        ],
+      );
+    }
     return Column(
       children: [
         for (final m in selectableModes) ...[
           if (m != selectableModes.first) const SizedBox(height: 8),
           _tile(context, ref, m, active == m),
         ],
-        // Kayıp/postpartum aktifse ayrıca göster (bilgi amaçlı, seçilemez satır).
-        if (active == CycleLifecycleMode.postpartum ||
-            active == CycleLifecycleMode.loss) ...[
+        // Kayıp aktifse ayrıca göster (bilgi amaçlı, seçilemez satır).
+        if (active == CycleLifecycleMode.loss) ...[
           const SizedBox(height: 8),
           _tile(context, ref, active, true, readOnly: true),
         ],
