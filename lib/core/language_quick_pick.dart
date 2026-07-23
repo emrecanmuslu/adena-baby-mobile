@@ -8,7 +8,15 @@ import 'i18n.dart';
 import 'restart_widget.dart';
 import 'theme.dart';
 
-const _flags = {'tr': '🇹🇷', 'en': '🇬🇧'};
+const _flags = {
+  'tr': '🇹🇷',
+  'en': '🇬🇧',
+  'zh': '🇨🇳',
+  'hi': '🇮🇳',
+  'es': '🇪🇸',
+  'fr': '🇫🇷',
+  'ar': '🇸🇦',
+};
 
 /// Kompakt dil seçici — açılış/rıza/welcome ekranlarının altına konur. Kullanıcı
 /// diller arasında geçiş yapabilir; seçince dil kaydedilir ve uygulama yeniden

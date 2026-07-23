@@ -4,12 +4,24 @@ import 'i18n.dart';
 
 /// Locale-duyarlı tarih/saat biçimlendirme. Tüm ekranlar sabit 'tr_TR' yerine
 /// bu yardımcıları kullanır; aktif uygulama diline (I18n.instance.locale) göre
-/// Türkçe (gg AAA · 24s) veya Amerikan İngilizcesi (AAA gg · 12s AM/PM) verir.
+/// ay adı doğru dilde basılır. Amerikan İngilizcesi (AAA gg · 12s AM/PM),
+/// diğer tüm diller (tr/zh/hi/es/fr/ar) gg AAA · 24s kullanır.
+
+/// I18n kodu → intl locale etiketi (ay adları/hafta günleri bundan gelir).
+const _intlLocales = {
+  'tr': 'tr_TR',
+  'en': 'en_US',
+  'zh': 'zh_CN',
+  'hi': 'hi_IN',
+  'es': 'es_ES',
+  'fr': 'fr_FR',
+  'ar': 'ar_SA',
+};
 
 bool get _en => I18n.instance.locale == 'en';
 
 /// DateFormat için aktif intl locale etiketi.
-String dfLocale() => _en ? 'en_US' : 'tr_TR';
+String dfLocale() => _intlLocales[I18n.instance.locale] ?? 'en_US';
 
 /// Saat: tr → 14:30, en → 2:30 PM.
 String fmtTime(DateTime dt) =>

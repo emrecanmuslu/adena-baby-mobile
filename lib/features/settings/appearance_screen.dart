@@ -17,6 +17,7 @@ import 'theme_controller.dart';
 const _localeFlags = {
   'tr': '🇹🇷', 'en': '🇬🇧', 'de': '🇩🇪', 'fr': '🇫🇷', 'es': '🇪🇸',
   'it': '🇮🇹', 'ar': '🇸🇦', 'ru': '🇷🇺', 'pt': '🇵🇹', 'nl': '🇳🇱',
+  'zh': '🇨🇳', 'hi': '🇮🇳',
 };
 
 /// Görünüm (design 28 · ScrAppearance): tema seçimi + birimler (aile geneli)

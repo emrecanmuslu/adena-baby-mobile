@@ -136,7 +136,7 @@ Future<void> main() async {
   });
 
   await _step<Object?>('intl', () async {
-    await initializeDateFormatting(); // tüm locale tarih biçimleri (tr + en)
+    await initializeDateFormatting(); // tüm locale tarih biçimleri (tr, en, zh, hi, es, fr, ar, ...)
     return null;
   }, null);
 

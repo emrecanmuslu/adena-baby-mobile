@@ -347,7 +347,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                     price: _price('yearly', pricing['yearly'], '₺590', '\$39.99'),
                     originalPrice: _orig(pricing['yearly']),
                     sub: tr('/yıl'),
-                    tag: _badge(pricing['yearly']) ?? tr('2 ay bedava'),
+                    tag: _badge(pricing['yearly']),
                     onTap: () => setState(() => _plan = 'yearly'),
                   ),
                 ),
