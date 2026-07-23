@@ -278,38 +278,97 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 }
 
 /// Ana Sayfa sekmesi: uyku banner + hızlı kayıt kartları + son kayıtlar.
-/// Üst bardaki eşitlenme rozeti (çevrimiçi/çevrimdışı).
+/// Üst bardaki eşitlenme rozeti (çevrimiçi/çevrimdışı/senkron sorunu).
 class _SyncBadge extends ConsumerWidget {
   const _SyncBadge();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final online = ref.watch(onlineProvider).asData?.value ?? true;
-    // Eşitliyken gizli; yalnız çevrimdışında uyarı göster.
-    if (online) return const SizedBox.shrink();
-    const c = Color(0xFFD6604A);
+    if (!online) return _badge(context, tr('Çevrimdışı'), const Color(0xFFD6604A));
+    // Cihaz çevrimiçi görünse bile gerçek sync isteği sessizce başarısız olabilir
+    // (bkz syncStatusProvider) — bunu kullanıcıya görünür kılmak asıl amaç: aksi
+    // halde bir aile üyesi diğerinin kaydı eklemediğini sanabiliyordu.
+    final status = ref.watch(syncStatusProvider);
+    if (!status.lastSyncFailed) return const SizedBox.shrink();
+    const c = Color(0xFFB8860B);
+    return GestureDetector(
+      onTap: () => _showRetrySheet(context, ref, status),
+      child: _badge(context, tr('Senkron sorunu'), c),
+    );
+  }
+
+  Widget _badge(BuildContext context, String label, Color c) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
-            color: const Color(0xFFFBEAE6), borderRadius: BorderRadius.circular(999)),
+            color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(
+            SizedBox(
                 width: 6,
                 height: 6,
                 child: DecoratedBox(
                     decoration: BoxDecoration(shape: BoxShape.circle, color: c))),
             const SizedBox(width: 5),
-            Text(tr('Çevrimdışı'),
-                style: const TextStyle(color: c, fontSize: 10.5, fontWeight: FontWeight.w800)),
+            Text(label,
+                style: TextStyle(color: c, fontSize: 10.5, fontWeight: FontWeight.w800)),
           ],
         ),
       ),
     );
   }
+
+  void _showRetrySheet(BuildContext context, WidgetRef ref, SyncStatus status) {
+    showModalBottomSheet(
+      context: context,
+      shape: adSheetShape,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            adGrabHandle(),
+            const SizedBox(height: 12),
+            Text(tr('Senkron sorunu'),
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Text(
+              status.lastSyncedAt != null
+                  ? trp('Son değişiklikler sunucuya gönderilemedi. Son başarılı '
+                      'senkron: {t}.', {'t': _hhmm(status.lastSyncedAt!)})
+                  : tr('Son değişiklikler sunucuya gönderilemedi.'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.muted),
+            ),
+            const SizedBox(height: 6),
+            Text(tr('Kayıtların cihazında güvende — bağlantı düzelince otomatik '
+                    'gönderilecek.'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.muted2)),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  ref.read(syncServiceProvider).syncAll();
+                },
+                child: Text(tr('Şimdi yeniden dene')),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  String _hhmm(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 }
 
 /// Header'daki bildirim ikonu — beyaz daire içinde zil → Hatırlatıcılar.

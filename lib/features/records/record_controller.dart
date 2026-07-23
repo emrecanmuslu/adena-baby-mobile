@@ -26,6 +26,25 @@ final onlineProvider = StreamProvider<bool>(
       .map((r) => !r.contains(ConnectivityResult.none)),
 );
 
+/// Son senkron turunun sonucu — cihaz "çevrimiçi" görünse bile gerçek
+/// sync isteği sessizce başarısız olabiliyordu (bkz [[sunucuya-baglanamama-senkron-gorunurlugu]]
+/// hafıza notu), kullanıcının bunu fark etmesinin hiçbir yolu yoktu. Bu state
+/// üst bar rozetinin "senkron sorunu" uyarısını göstermesini sağlar.
+class SyncStatus {
+  final DateTime? lastSyncedAt; // son TAM BAŞARILI turun bitiş zamanı
+  final bool lastSyncFailed; // en son turda en az bir bebek için gerçek hata oldu mu
+  const SyncStatus({this.lastSyncedAt, this.lastSyncFailed = false});
+}
+
+class SyncStatusNotifier extends Notifier<SyncStatus> {
+  @override
+  SyncStatus build() => const SyncStatus();
+  void set(SyncStatus s) => state = s;
+}
+
+final syncStatusProvider =
+    NotifierProvider<SyncStatusNotifier, SyncStatus>(SyncStatusNotifier.new);
+
 /// Bir bebeğin TÜM kayıtları (grafik agregasyonları için). Büyük olabilir.
 final recordsProvider = StreamProvider.family<List<Record>, String>(
   (ref, babyId) => ref.watch(recordRepositoryProvider).watch(babyId),
@@ -157,6 +176,7 @@ class SyncService with WidgetsBindingObserver {
       return;
     }
     _running = true;
+    var hadError = false; // gerçek sync hatası (403/izin dışı) — kullanıcıya gösterilir
     try {
       final babies = _ref.read(babyControllerProvider).asData?.value ?? [];
       final repo = _ref.read(recordRepositoryProvider);
@@ -180,12 +200,21 @@ class SyncService with WidgetsBindingObserver {
             // gerçekten kalktıysa pull bebeği düşürüp yerel verisini temizler.
             _ref.read(cloudReadonlyBabiesProvider.notifier).add(b.id);
             unawaited(_ref.read(babyControllerProvider.notifier).refresh());
+          } else {
+            // 403 dışı (çevrimdışı/5xx) → yerel korunur, sonra tekrar denenir;
+            // ama kullanıcıya görünür olsun diye işaretlenir (bkz syncStatusProvider).
+            hadError = true;
           }
-          // 403 dışı (çevrimdışı/5xx) → yerel korunur, sonra tekrar denenir.
         } catch (_) {
           // Çevrimdışı/sunucu hatası — yerel veri korunur, sonra tekrar denenir.
+          hadError = true;
         }
       }
+      _ref.read(syncStatusProvider.notifier).set(hadError
+          ? SyncStatus(
+              lastSyncedAt: _ref.read(syncStatusProvider).lastSyncedAt,
+              lastSyncFailed: true)
+          : SyncStatus(lastSyncedAt: DateTime.now(), lastSyncFailed: false));
     } finally {
       _running = false;
     }
