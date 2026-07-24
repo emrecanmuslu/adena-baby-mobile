@@ -299,6 +299,8 @@ class _BabyNotifSync extends ConsumerWidget {
       mainBody: tr('Tahmini beslenme vakti geldi 🍼'),
       preTitle: trp('Beslenmeye {n} dk kaldı', {'n': cfg.preMin}),
       preBody: trp('Yaklaşık {n} dk sonra beslenme zamanı', {'n': cfg.preMin}),
+      forgotTitle: tr('Kaydı unuttun mu?'),
+      forgotBody: tr('Beslenme saatinin üzerinden 30 dk geçti, henüz kayıt eklenmedi 🍼'),
     );
     if (!cfg.enabled) {
       NotificationService.instance.scheduleFeedReminder(

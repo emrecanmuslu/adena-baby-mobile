@@ -108,10 +108,12 @@ class NotificationService: UNNotificationServiceExtension {
 
     let center = UNUserNotificationCenter.current()
     // flutter_local_notifications id biçimi = tamsayı id'nin string'i.
-    // feedMainBase=800000, feedPreBase=810000 (Dart NotificationService ile aynı).
+    // feedMainBase=800000, feedPreBase=810000, feedForgotBase=820000 (Dart
+    // NotificationService ile aynı).
     let mainId = String(800000 + slot)
     let preId = String(810000 + slot)
-    center.removePendingNotificationRequests(withIdentifiers: [mainId, preId])
+    let forgotId = String(820000 + slot)
+    center.removePendingNotificationRequests(withIdentifiers: [mainId, preId, forgotId])
 
     let prefix = name.isEmpty ? "" : "\(name) · "
     let mainTitle = defaults.string(forKey: "fr_main_title") ?? "Beslenme zamanı"
@@ -135,6 +137,22 @@ class NotificationService: UNNotificationServiceExtension {
           sound: soundOn && !quietCovers(pre, babyId: babyId, defaults: defaults),
           category: nil)
       }
+    }
+    // "Kaydı unuttun mu?" dürtmesi — tahmini beslenme saatinden 30 dk sonra.
+    // Dart tarafı (notification_service.dart scheduleFeedReminder) bunu her
+    // zaman iptal edip yeniden kurar; NSE bunu YAPMIYORDU (yalnız main+pre'yi
+    // yeniden planlıyordu) → uygulama force-quit iken başka üye kayıt girse
+    // bile eski "unuttun mu" bildirimi ESKİ (kayıttan ÖNCEKİ) tahmini zamana
+    // göre ateşleniyordu. Artık main/pre ile birebir aynı şekilde yeniden kurulur.
+    let forgot = next.addingTimeInterval(30 * 60)
+    if forgot > now {
+      let forgotTitle = defaults.string(forKey: "fr_forgot_title") ?? "Kaydı unuttun mu?"
+      let forgotBody = defaults.string(forKey: "fr_forgot_body") ?? ""
+      scheduleLocal(
+        center, id: forgotId, fireDate: forgot,
+        title: prefix + forgotTitle, body: forgotBody,
+        sound: soundOn && !quietCovers(forgot, babyId: babyId, defaults: defaults),
+        category: "feed_snooze")
     }
   }
 

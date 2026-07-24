@@ -116,6 +116,8 @@ class WidgetService {
     required String mainBody,
     required String preTitle,
     required String preBody,
+    required String forgotTitle,
+    required String forgotBody,
   }) async {
     try {
       await _ensureInit();
@@ -135,6 +137,9 @@ class WidgetService {
       // Ana uyarı metni bebekten bağımsız (yalnız dile bağlı) → ortak anahtar.
       await HomeWidget.saveWidgetData<String>('fr_main_title', mainTitle);
       await HomeWidget.saveWidgetData<String>('fr_main_body', mainBody);
+      // "Kaydı unuttun mu?" dürtmesi de bebekten bağımsız → ortak anahtar.
+      await HomeWidget.saveWidgetData<String>('fr_forgot_title', forgotTitle);
+      await HomeWidget.saveWidgetData<String>('fr_forgot_body', forgotBody);
     } catch (_) {}
   }
 
