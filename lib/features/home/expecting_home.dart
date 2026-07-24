@@ -15,6 +15,7 @@ import '../../data/pregnancy_weeks.dart';
 import '../../models/baby.dart';
 import '../../models/mom_entry.dart';
 import '../babies/baby_actions.dart';
+import '../settings/backup_nag.dart';
 import 'mom_tracking_screen.dart';
 
 /// Bekleme (gebelik) modu ana ekran — design ScrWaiting: meyve boyut sahnesi +
@@ -46,6 +47,8 @@ class ExpectingHome extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
       children: [
+        // Çevrimdışı / senkron hatası — header'dan taşındı (bkz. SyncStatusBanner).
+        const SyncStatusBanner(),
         // Gelişim görseli sahnesi (fetus görseli + boyut karşılaştırması)
         _FruitStage(daysPregnant: daysPregnant, data: pw),
         const SizedBox(height: 18),
