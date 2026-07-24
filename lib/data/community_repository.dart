@@ -85,6 +85,21 @@ class CommunityRepository {
         data: {'answer_id': answerId});
   }
 
+  /// Bir kullanıcıyı engelle — soru/cevapları akışta ve soru detayında gizlenir.
+  Future<void> blockUser(String userId) async {
+    await _api.dio.post('/community/block', data: {'user_id': userId});
+  }
+
+  Future<void> unblockUser(String userId) async {
+    await _api.dio.delete('/community/block/$userId');
+  }
+
+  /// Engellenen kullanıcılar — {id, name, color} listesi.
+  Future<List<Map<String, dynamic>>> blockedUsers() async {
+    final resp = await _api.dio.get('/community/block');
+    return (resp.data as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
   Future<void> report(
       {required String targetType,
       required String targetId,

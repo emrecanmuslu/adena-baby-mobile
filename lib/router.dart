@@ -17,6 +17,7 @@ import 'features/babies/born_flow_screen.dart';
 import 'features/babies/caregiver_screen.dart';
 import 'features/babies/members_screen.dart';
 import 'features/community/community_feed_screen.dart';
+import 'features/community/blocked_users_screen.dart';
 import 'features/community/community_profile_screen.dart';
 import 'features/community/question_detail_screen.dart';
 import 'features/content/article_detail_screen.dart';
@@ -189,6 +190,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) =>
             CommunityProfileScreen(userId: state.pathParameters['id']!),
       ),
+      GoRoute(
+          path: '/community/blocked',
+          builder: (_, _) => const BlockedUsersScreen()),
       GoRoute(
           path: '/milestones',
           builder: (_, _) =>

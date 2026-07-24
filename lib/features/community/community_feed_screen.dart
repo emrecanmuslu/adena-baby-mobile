@@ -145,8 +145,10 @@ class _CommunityFeedScreenState extends ConsumerState<CommunityFeedScreen> {
               title: tr('Ebeveyn Topluluğu'),
               body: tr('Diğer ebeveynlere soru sor, deneyim paylaş. Yanıtları '
                   'oyla, soruna gelen en iyi cevabı işaretle. Saygılı ol; '
-                  'uygunsuz içeriği şikayet edebilirsin. Tıbbi konularda '
-                  'doktoruna danışmayı unutma.'),
+                  'uygunsuz içeriği şikayet edebilir, kötüye kullanan '
+                  'kullanıcıları engelleyebilirsin. Tıbbi konularda '
+                  'doktoruna danışmayı unutma.\n\nŞikayet/soru için: '
+                  'emrecan.muslu@gmail.com'),
               size: 16,
             ),
           ],

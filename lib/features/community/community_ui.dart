@@ -508,7 +508,17 @@ Future<String?> showReportSheet(BuildContext context) async {
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               onTap: () => Navigator.pop(ctx, code),
             ),
-          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+            child: Text(
+                tr('Acil/ciddi bir durum mu? Doğrudan bize yaz: '
+                    'emrecan.muslu@gmail.com'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.muted)),
+          ),
         ],
       ),
     ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
 import '../../core/skeleton.dart';
@@ -41,6 +42,38 @@ class _CommunityProfileScreenState extends ConsumerState<CommunityProfileScreen>
     }
   }
 
+  Future<void> _block() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text(tr('Kullanıcıyı engelle')),
+        content: Text(tr(
+            'Bu kullanıcının soru ve cevapları akışında ve soru '
+            'detaylarında artık görünmeyecek.')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: Text(tr('Vazgeç'))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.fever),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: Text(tr('Engelle')),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await ref.read(communityRepositoryProvider).blockUser(widget.userId);
+      if (mounted) {
+        showAdToast(context, tr('Kullanıcı engellendi'));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -48,6 +81,20 @@ class _CommunityProfileScreenState extends ConsumerState<CommunityProfileScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(tr('Profil')),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (v) {
+              if (v == 'block') _block();
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'block',
+                child: Text(tr('Kullanıcıyı engelle')),
+              ),
+            ],
+          ),
+        ],
       ),
       body: _error != null
           ? Center(
