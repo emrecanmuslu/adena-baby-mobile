@@ -41,9 +41,6 @@
 			<string>cstr6suwn9.skadnetwork</string>
 		</dict>
 	</array>
-	<!-- AdMob/UMP izleme izni istediğinde bu açıklama yoksa iOS uygulamayı öldürür. -->
-	<key>NSUserTrackingUsageDescription</key>
-	<string>Used to show you more relevant ads.</string>
 	<!-- Google ile Giriş iOS redirect'i: GOOGLE_IOS_CLIENT_ID'nin ters (reversed)
 	     biçimi URL scheme olmalı, yoksa iOS'ta giriş akışı geri dönemez. -->
 	<key>CFBundleURLTypes</key>

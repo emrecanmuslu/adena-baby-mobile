@@ -10,7 +10,6 @@ import '../../core/legal_links.dart';
 import '../../core/providers.dart';
 import '../../core/restart_widget.dart';
 import '../../core/theme.dart';
-import '../../data/auth_repository.dart';
 import '../../data/local_session.dart';
 import '../records/record_controller.dart';
 import '../../data/sync_gate.dart';
@@ -28,45 +27,6 @@ class PrivacyScreen extends ConsumerStatefulWidget {
 
 class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
   bool _exporting = false;
-  bool _anon = false; // topluluk anonimliği (community_display == 'anon')
-  bool _savingAnon = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCommunityPref();
-  }
-
-  Future<void> _loadCommunityPref() async {
-    // Hesapsız (local-first): topluluk ayarı yok → sunucuya gitme (401 olmaz).
-    if (ref.read(authControllerProvider).asData?.value == null) return;
-    try {
-      final s = await ref.read(authRepositoryProvider).settings();
-      if (mounted) {
-        setState(() => _anon = (s['community_display'] as String?) == 'anon');
-      }
-    } catch (_) {
-      // sessiz geç — varsayılan gerçek isim
-    }
-  }
-
-  Future<void> _setAnon(bool value) async {
-    setState(() {
-      _anon = value;
-      _savingAnon = true;
-    });
-    try {
-      await ref.read(authRepositoryProvider).updateSettings(
-          {'community_display': value ? 'anon' : 'name'});
-    } catch (e) {
-      if (mounted) {
-        setState(() => _anon = !value); // geri al
-        showAdError(context, apiErrorText(e));
-      }
-    } finally {
-      if (mounted) setState(() => _savingAnon = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,36 +89,15 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                 : const AdProBadge(withChevron: true),
             onTap: cloudBackup ? null : () => context.push('/premium'),
           ),
-          // Topluluk hesap gerektirir → anonimlik ayarı yalnız oturum açıkken.
           if (loggedIn) ...[
-            adSec(tr('Topluluk'),
-                info: tr('Ebeveyn topluluğunda soru/cevap paylaşırken nasıl '
-                    'görüneceğini belirler. Anonim açıkken adın yerine "Anonim" '
-                    'görünür; bebek bilgilerin paylaşılmaz.')),
+            adSec(tr('Topluluk')),
             AdMenuItem(
               icon: 'user',
               color: AppColors.sleep,
               bg: AppColors.sleepBg,
-              title: tr('Toplulukta anonim görün'),
-              meta: _anon
-                  ? tr('Gönderilerin "Anonim" olarak görünür')
-                  : tr('Gönderilerin gerçek adınla görünür'),
-              trailing: _savingAnon
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.sleep))
-                  : Switch.adaptive(
-                      value: _anon,
-                      activeThumbColor: AppColors.coral,
-                      onChanged: _setAnon,
-                    ),
-              onTap: () => _setAnon(!_anon),
-            ),
-            _Note(
-              tr('Not: Anonimlik her gönderi için o anki ayarına göre belirlenir; '
-                  'sonradan değiştirsen eski gönderiler aynı kalır.'),
+              title: tr('Engellenen kullanıcılar'),
+              meta: tr('Toplulukta engellediğin kullanıcıları yönet'),
+              onTap: () => context.push('/community/blocked'),
             ),
           ],
           adSec(tr('Şeffaflık')),

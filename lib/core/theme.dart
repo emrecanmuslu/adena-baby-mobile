@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Onaylanmış sıcak/mercan palet — design/AdenaBaby/adena.css ile birebir.
 /// Marka/kategori renkleri her iki temada sabit; semantik nötrler (ink/muted/
@@ -127,6 +128,15 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: bg,
+      // Ekranlardaki AppBar'lar şeffaf zeminli (arkalarındaki gövde rengini
+      // gösterir) — bu, kontrast bazlı otomatik hesaplamayı yanıltıp durum
+      // çubuğu ikonlarını (saat/pil) arkaplanla aynı renkte, görünmez
+      // bırakıyordu. Temaya göre sabit bir stil vererek düzeltiyoruz.
+      appBarTheme: AppBarTheme(
+        systemOverlayStyle: scheme.brightness == Brightness.dark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
+      ),
       fontFamily: 'Nunito',
       textTheme: Typography.material2021().black.apply(
             bodyColor: fg,

@@ -19,6 +19,7 @@ import '../../core/analytics_service.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/legal_links.dart';
 import '../../core/revenuecat_service.dart';
 import '../../core/theme.dart';
 import '../../data/migration_service.dart';
@@ -406,6 +407,36 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               child: Text(tr('İstediğin zaman iptal et · baskı yok 💛'),
                   style: TextStyle(
                       fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
+            ),
+            const SizedBox(height: 4),
+            // Apple Guideline 3.1.2(c): satın alma akışında EULA + Gizlilik
+            // Politikası'na fonksiyonel link zorunlu.
+            Center(
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () => openLegalDoc(context, LegalDoc.terms),
+                    child: Text(tr('Kullanım Şartları'),
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.muted,
+                            decoration: TextDecoration.underline)),
+                  ),
+                  Text(' · ',
+                      style: TextStyle(color: AppColors.muted, fontSize: 11.5)),
+                  TextButton(
+                    onPressed: () => openLegalDoc(context, LegalDoc.privacy),
+                    child: Text(tr('Gizlilik Politikası'),
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.muted,
+                            decoration: TextDecoration.underline)),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
