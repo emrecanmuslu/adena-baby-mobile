@@ -389,11 +389,14 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                TextButton(
-                  onPressed: _saving ? null : _redeem,
-                  child: Text(tr('Kodum var'),
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
-                ),
+                // Apple guideline 3.1.1: IAP-dışı içerik açma mekanizması iOS'ta
+                // gösterilemez. Android'de aynen kalır.
+                if (!Platform.isIOS)
+                  TextButton(
+                    onPressed: _saving ? null : _redeem,
+                    child: Text(tr('Kodum var'),
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ),
                 if (_rc)
                   TextButton(
                     onPressed: _saving ? null : _restore,

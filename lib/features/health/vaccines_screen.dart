@@ -6,6 +6,7 @@ import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/source_citation.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
 import '../../models/vaccine.dart';
@@ -65,6 +66,19 @@ class VaccinesScreen extends ConsumerWidget {
                       ),
                   ],
                 ),
+              ),
+              // Apple guideline 1.4.1 — tıbbi bilgi (aşı takvimi) kaynak atfı.
+              // Takvim locale'e göre değişir (TR: Sağlık Bakanlığı, diğer: CDC).
+              Padding(
+                padding: const EdgeInsets.only(left: 4, top: 4),
+                child: I18n.instance.locale == 'tr'
+                    ? const SourceCitation(
+                        label: 'Kaynak: T.C. Sağlık Bakanlığı Aşı Takvimi',
+                        url: 'https://asi.saglik.gov.tr')
+                    : SourceCitation(
+                        label: tr('Kaynak: ABD CDC Aşı Takvimi (bilgilendirme amaçlıdır)'),
+                        url:
+                            'https://www.cdc.gov/vaccines/imz-schedules/child-easyread.html'),
               ),
             ],
           );

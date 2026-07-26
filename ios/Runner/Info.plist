@@ -58,6 +58,8 @@
 	<string>Used to take photos to add to your baby's memories.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Lets you choose photos from your library to add to memories.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Used to show you more relevant ads.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

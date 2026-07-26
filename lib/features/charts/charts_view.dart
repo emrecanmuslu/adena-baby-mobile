@@ -12,6 +12,7 @@ import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/premium_gate.dart';
 import '../../core/skeleton.dart';
+import '../../core/source_citation.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../../core/who_growth.dart';
@@ -520,6 +521,10 @@ class _ChartCard extends StatelessWidget {
               _legend(AppColors.feedBg, tr('3–97 aralığı'), block: true),
             ],
           ),
+          // Apple guideline 1.4.1 — büyüme eğrisi (WHO persentilleri) kaynak atfı.
+          SourceCitation(
+              label: tr('Kaynak: Dünya Sağlık Örgütü (WHO) Büyüme Standartları'),
+              url: 'https://www.who.int/tools/child-growth-standards'),
           if (pct != null) ...[
             const SizedBox(height: 12),
             Container(
