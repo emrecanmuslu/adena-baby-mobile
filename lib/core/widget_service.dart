@@ -118,6 +118,7 @@ class WidgetService {
     required String preBody,
     required String forgotTitle,
     required String forgotBody,
+    required bool forgotEnabled,
   }) async {
     try {
       await _ensureInit();
@@ -140,6 +141,10 @@ class WidgetService {
       // "Kaydı unuttun mu?" dürtmesi de bebekten bağımsız → ortak anahtar.
       await HomeWidget.saveWidgetData<String>('fr_forgot_title', forgotTitle);
       await HomeWidget.saveWidgetData<String>('fr_forgot_body', forgotBody);
+      // Aç/kapa BEBEK BAŞINA (ayar bebek başına tutuluyor) → NSE force-quit'te
+      // yeniden planlarken bu bayrağa bakar.
+      await HomeWidget.saveWidgetData<String>(
+          'fr_forgot_$babyId', forgotEnabled ? '1' : '0');
     } catch (_) {}
   }
 

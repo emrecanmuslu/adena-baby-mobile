@@ -22,6 +22,7 @@ class FeedReminderSnapshot {
   final int preMin;
   final bool sound;
   final QuietHours quiet;
+  final bool forgot; // "Kaydı unuttun mu?" dürtmesi açık mı
 
   const FeedReminderSnapshot({
     required this.slot,
@@ -31,6 +32,7 @@ class FeedReminderSnapshot {
     required this.preMin,
     required this.sound,
     required this.quiet,
+    this.forgot = true,
   });
 
   /// Eklenen beslenmenin alt türü ([sub]) bu hatırlatıcının baz türüyle uyuşuyor
@@ -49,6 +51,7 @@ class FeedReminderSnapshot {
         'pre_min': preMin,
         'sound': sound,
         'quiet': quiet.toMap(),
+        'forgot': forgot,
       };
 
   factory FeedReminderSnapshot.fromJson(Map<String, dynamic> m) =>
@@ -60,6 +63,7 @@ class FeedReminderSnapshot {
         preMin: (m['pre_min'] as num?)?.toInt() ?? 0,
         sound: m['sound'] as bool? ?? false,
         quiet: QuietHours.fromMap((m['quiet'] as Map?)?.cast<String, dynamic>()),
+        forgot: m['forgot'] as bool? ?? true, // eski snapshot → AÇIK
       );
 }
 

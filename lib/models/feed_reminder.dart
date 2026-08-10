@@ -12,6 +12,9 @@ class FeedReminderConfig {
   final String baseType; // 'all' | 'breast' | 'formula' — baz alınan beslenme türü
   final int preMin; // ön-hatırlatma dk (0 = kapalı)
   final bool soundEnabled; // sesli/heads-up alarm (varsayılan kapalı = sessiz bildirim)
+  // "Kaydı unuttun mu?" dürtmesi (tahmini saatten 30 dk sonra, kayıt hâlâ yoksa).
+  // Varsayılan AÇIK → güncelleyen mevcut kullanıcının davranışı değişmez.
+  final bool forgotEnabled;
 
   const FeedReminderConfig({
     this.enabled = false,
@@ -19,6 +22,7 @@ class FeedReminderConfig {
     this.baseType = 'all',
     this.preMin = 30,
     this.soundEnabled = false,
+    this.forgotEnabled = true,
   });
 
   factory FeedReminderConfig.fromMap(Map<String, dynamic>? m) {
@@ -30,6 +34,8 @@ class FeedReminderConfig {
       baseType: m['base_type'] as String? ?? 'all',
       preMin: asInt(m['pre_min'], 30),
       soundEnabled: m['sound'] as bool? ?? false,
+      // Eski kayıtlarda/sunucu tohumunda yok → AÇIK (mevcut davranış).
+      forgotEnabled: m['forgot'] as bool? ?? true,
     );
   }
 
@@ -39,6 +45,7 @@ class FeedReminderConfig {
         'base_type': baseType,
         'pre_min': preMin,
         'sound': soundEnabled,
+        'forgot': forgotEnabled,
       };
 
   FeedReminderConfig copyWith({
@@ -47,6 +54,7 @@ class FeedReminderConfig {
     String? baseType,
     int? preMin,
     bool? soundEnabled,
+    bool? forgotEnabled,
   }) =>
       FeedReminderConfig(
         enabled: enabled ?? this.enabled,
@@ -54,6 +62,7 @@ class FeedReminderConfig {
         baseType: baseType ?? this.baseType,
         preMin: preMin ?? this.preMin,
         soundEnabled: soundEnabled ?? this.soundEnabled,
+        forgotEnabled: forgotEnabled ?? this.forgotEnabled,
       );
 
   /// Kısa Türkçe özet (hatırlatıcı kartı için).

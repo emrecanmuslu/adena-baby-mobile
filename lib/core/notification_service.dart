@@ -1,5 +1,9 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -139,6 +143,66 @@ class NotificationService {
     await ios?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
+  /// Cihaz (sistem) düzeyinde bildirim izni açık mı? Bildirimler ayar sayfası
+  /// bunu gösterir: uygulama içi anahtarlar açık olsa bile sistem izni kapalıysa
+  /// HİÇBİR bildirim gelmez — kullanıcı sebebini göremeden "bozuk" sanıyordu.
+  /// Okunamayan/desteklenmeyen platformda `true` döner (yanlış alarm vermeyelim).
+  Future<bool> systemEnabled() async {
+    try {
+      if (!_ready) await init();
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (android != null) return await android.areNotificationsEnabled() ?? true;
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      if (ios != null) {
+        final p = await ios.checkPermissions();
+        return p?.isEnabled ?? true;
+      }
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Sistem bildirim iznini AÇIKÇA ister (ayar sayfasındaki "İzin ver" düğmesi).
+  /// [_ensurePermission]'ın aksine "bir kez sor" kilidine takılmaz — kullanıcı
+  /// bilerek istediği için tekrar denenir.
+  ///
+  /// Dönüş: istek SONRASINDA izin açık mı. `false` → OS diyaloğu ya hiç
+  /// gösterilmedi (kalıcı red / Android 12 ve altı: çalışma-zamanı izni yok) ya
+  /// da kullanıcı reddetti. Çağıran bu durumda [openSystemSettings]'e yönlendirir;
+  /// aksi halde düğme "hiçbir şey yapmıyor" gibi hissettiriyordu.
+  Future<bool> requestPermission() async {
+    try {
+      if (!_ready) await init();
+      _permissionAsked = true;
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await android?.requestNotificationsPermission();
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      await ios?.requestPermissions(alert: true, badge: true, sound: true);
+    } catch (_) {}
+    return systemEnabled();
+  }
+
+  /// Uygulamanın SİSTEM bildirim ayarları sayfasını açar (izin kalıcı olarak
+  /// reddedildiyse tek çıkış yolu). Android: MainActivity'deki 'adena/settings'
+  /// kanalı. iOS: `app-settings:` = UIApplication.openSettingsURLString.
+  Future<void> openSystemSettings() async {
+    try {
+      if (Platform.isIOS) {
+        await launchUrl(Uri.parse('app-settings:'));
+        return;
+      }
+      await const MethodChannel('adena/settings')
+          .invokeMethod<bool>('openNotificationSettings');
+    } catch (_) {
+      // Ayar sayfası açılamazsa sessiz kal — kart uyarı metniyle zaten duruyor.
+    }
+  }
+
   NotificationDetails get _details => NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
@@ -263,6 +327,7 @@ class NotificationService {
     String babyName = '',
     bool sound = false,
     QuietHours? quiet,
+    bool forgot = true,
   }) async {
     if (!_ready) await init();
     await _plugin.cancel(id: feedMainIdFor(slot));
@@ -295,14 +360,15 @@ class NotificationService {
     }
     // "Unutmuş olabilir misin?" dürtmesi — tahmini saatten 30 dk sonra, HÂLÂ yeni
     // bir kayıt yoksa (yeni kayıt gelince zaten bu fonksiyon yeniden çağrılıp eski
-    // planlama iptal edilir, bkz. yukarıdaki cancel'lar) tetiklenir.
-    final forgot = nextTime.add(const Duration(minutes: 30));
-    if (forgot.isAfter(now)) {
+    // planlama iptal edilir, bkz. yukarıdaki cancel'lar) tetiklenir. Kullanıcı
+    // Bildirimler ayarından kapatabilir ([forgot]=false) → hiç planlanmaz.
+    final forgotAt = nextTime.add(const Duration(minutes: 30));
+    if (forgot && forgotAt.isAfter(now)) {
       await _zonedFeed(feedForgotIdFor(slot),
-          forgot,
+          forgotAt,
           '$prefix${tr('Kaydı unuttun mu?')}',
           tr('Beslenme saatinin üzerinden 30 dk geçti, henüz kayıt eklenmedi 🍼'),
-          withSnooze: true, sound: sound && !(quiet?.covers(forgot) ?? false),
+          withSnooze: true, sound: sound && !(quiet?.covers(forgotAt) ?? false),
           slot: slot, babyName: babyName);
     }
   }

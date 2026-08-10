@@ -30,8 +30,16 @@ void main() {
     watchCtrl = StreamController<List<Baby>>.broadcast();
     when(() => repo.watchAll()).thenAnswer((_) => watchCtrl.stream);
     when(() => repo.getAll()).thenAnswer((_) async => const <Baby>[]);
-    when(() => repo.pushDirty()).thenAnswer((_) async {});
-    when(() => repo.pullFromServer()).thenAnswer((_) async => const <Baby>[]);
+    // DİKKAT: named argümanlı stub'ları `any(named:)` ile kur. Argümansız yazılan
+    // `when(() => repo.pushDirty())` mocktail'de VARSAYILANLARLA (includeOwned:true)
+    // kaydolur; free+oturumlu yol `includeOwned:false` çağırdığı için eşleşmez,
+    // mocktail null döner, `await` TypeError atar ve _pull'un catch'i yutar →
+    // pullFromServer hiç koşmaz (testler sessizce yanlış şeyi doğrular).
+    when(() => repo.pushDirty(
+        accountId: any(named: 'accountId'),
+        includeOwned: any(named: 'includeOwned'))).thenAnswer((_) async {});
+    when(() => repo.pullFromServer(accountId: any(named: 'accountId')))
+        .thenAnswer((_) async => const <Baby>[]);
     // Active account must be set so the controller is scoped to a session.
     LocalSession.setActiveAccount('acct1');
   });
@@ -72,7 +80,7 @@ void main() {
       await c.read(babyControllerProvider.future);
       await Future<void>.delayed(Duration.zero);
 
-      verifyNever(() => repo.pullFromServer());
+      verifyNever(() => repo.pullFromServer(accountId: any(named: 'accountId')));
     });
 
     test('cloudSync ON → pulls (reconcile) in background', () async {
@@ -80,20 +88,34 @@ void main() {
       await c.read(babyControllerProvider.future);
       await Future<void>.delayed(Duration.zero);
 
-      verify(() => repo.pushDirty()).called(greaterThanOrEqualTo(1));
-      verify(() => repo.pullFromServer()).called(1);
+      // Premium → kendi (sahip) bebeklerim de buluta yüklenir.
+      verify(() => repo.pushDirty(
+              accountId: any(named: 'accountId'), includeOwned: true))
+          .called(greaterThanOrEqualTo(1));
+      verify(() => repo.pullFromServer(accountId: any(named: 'accountId')))
+          .called(1);
     });
 
-    test('logged in + free → pulls (paylaşılan bebek tazelemesi) ama pushDirty YOK',
-        () async {
+    test(
+        'logged in + free → pulls (paylaşılan bebek tazelemesi) + pushDirty '
+        'includeOwned:false (yalnız paylaşımlı bebek)', () async {
       // Seçenek 2: free üye de oturum açıksa sunucudan çeker (paylaşılan bebeğin
-      // gebelik→doğdu/üyelik değişikliği gelsin) — ama kendi verisini yüklemez.
+      // gebelik→doğdu/üyelik değişikliği gelsin). Push da YAPILIR ama yalnız
+      // PAYLAŞIMLI (myRole=parent) bebekler için — kendi bebeğim free'de yerelde
+      // kalır. Aksi halde üye taraflı foto/ad değişikliği hiç buluta çıkmıyordu
+      // (v1.4.5 paylaşılan bebek foto sync bug'ı).
       final c = makeContainer(loggedIn: true, cloudSync: false);
       await c.read(babyControllerProvider.future);
       await Future<void>.delayed(Duration.zero);
 
-      verify(() => repo.pullFromServer()).called(1);
-      verifyNever(() => repo.pushDirty());
+      verify(() => repo.pullFromServer(accountId: any(named: 'accountId')))
+          .called(1);
+      verify(() => repo.pushDirty(
+              accountId: any(named: 'accountId'), includeOwned: false))
+          .called(greaterThanOrEqualTo(1));
+      // Kendi bebeklerim free'de ASLA yüklenmez.
+      verifyNever(() => repo.pushDirty(
+          accountId: any(named: 'accountId'), includeOwned: true));
     });
 
     test('local watch stream updates state', () async {
@@ -139,7 +161,9 @@ void main() {
       await ctrlOf(c).create(name: 'N', status: BabyStatus.born);
       await Future<void>.delayed(Duration.zero);
 
-      verifyNever(() => repo.pushDirty());
+      verifyNever(() => repo.pushDirty(
+          accountId: any(named: 'accountId'),
+          includeOwned: any(named: 'includeOwned')));
     });
 
     test('cloudSync ON → pushDirty after create', () async {
@@ -155,7 +179,13 @@ void main() {
       await ctrlOf(c).create(name: 'N', status: BabyStatus.born);
       await Future<void>.delayed(Duration.zero);
 
-      verify(() => repo.pushDirty()).called(1);
+      // NOT: bu test daha önce çıplak `pushDirty()` ile doğruluyordu — o da aynı
+      // mocktail varsayılan-argüman tuzağına düşüyordu, sadece cloudSync:true
+      // TESADÜFEN includeOwned'ın varsayılanıyla (true) eşleştiği için "geçiyordu".
+      // _pushSoon() accountId GEÇMEZ (yalnız includeOwned) → any(named:) burada da şart.
+      verify(() => repo.pushDirty(
+              accountId: any(named: 'accountId'), includeOwned: true))
+          .called(1);
     });
   });
 
@@ -192,14 +222,15 @@ void main() {
       final c = makeContainer(cloudSync: true);
       await c.read(babyControllerProvider.future);
       await Future<void>.delayed(Duration.zero);
-      clearInteractions(repo);
-      when(() => repo.pushDirty()).thenAnswer((_) async {});
-      when(() => repo.pullFromServer()).thenAnswer((_) async => const []);
+      clearInteractions(repo); // stub'lar setUp'ta any(named:) ile kuruldu
 
       await ctrlOf(c).refresh();
 
-      verify(() => repo.pushDirty()).called(1);
-      verify(() => repo.pullFromServer()).called(1);
+      verify(() => repo.pushDirty(
+              accountId: any(named: 'accountId'), includeOwned: true))
+          .called(1);
+      verify(() => repo.pullFromServer(accountId: any(named: 'accountId')))
+          .called(1);
     });
 
     test('cloudSync OFF → no-op (no network)', () async {
@@ -210,7 +241,7 @@ void main() {
 
       await ctrlOf(c).refresh();
 
-      verifyNever(() => repo.pullFromServer());
+      verifyNever(() => repo.pullFromServer(accountId: any(named: 'accountId')));
     });
   });
 

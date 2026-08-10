@@ -687,6 +687,7 @@ class _FeedReminderSheetState extends State<_FeedReminderSheet> {
   late String _base = widget.initial.baseType;
   late int _pre = widget.initial.preMin;
   late bool _sound = widget.initial.soundEnabled;
+  late bool _forgot = widget.initial.forgotEnabled;
   bool _saving = false;
 
   @override
@@ -755,6 +756,17 @@ class _FeedReminderSheetState extends State<_FeedReminderSheet> {
                   options: {'0': tr('Kapalı'), '5': tr('5 dk'), '15': tr('15 dk'), '30': tr('30 dk')},
                   selected: _pre.toString(),
                   onSelect: (v) => setState(() => _pre = int.parse(v)),
+                ),
+              ),
+              AdField(
+                label: tr('"Kaydı unuttun mu?" dürtmesi'),
+                info: tr('Tahmini beslenme saatinin üzerinden 30 dk geçtiği hâlde '
+                    'hâlâ kayıt eklenmediyse nazik bir hatırlatma gönderir. Kayıt '
+                    'girdiğinde bu uyarı otomatik iptal olur.'),
+                child: AdTabs(
+                  options: {'on': tr('Açık'), 'off': tr('Kapalı')},
+                  selected: _forgot ? 'on' : 'off',
+                  onSelect: (v) => setState(() => _forgot = v == 'on'),
                 ),
               ),
               AdField(
@@ -837,6 +849,7 @@ class _FeedReminderSheetState extends State<_FeedReminderSheet> {
           baseType: _base,
           preMin: _pre,
           soundEnabled: _sound,
+          forgotEnabled: _forgot,
         ),
       );
       if (mounted) {

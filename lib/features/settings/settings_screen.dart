@@ -249,6 +249,16 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           adSec(tr('Uygulama')),
+          // Tüm bildirimler (yerel hatırlatıcılar + aile/topluluk push) tek
+          // merkezden; ayrıntılı ayarlar kendi ekranlarında da durmaya devam eder.
+          AdMenuItem(
+            icon: 'bell',
+            color: AppColors.med,
+            bg: AppColors.medBg,
+            title: tr('Bildirimler'),
+            meta: tr('Hatırlatıcılar · aile · topluluk'),
+            onTap: () => context.push('/notifications'),
+          ),
           AdMenuItem(
             icon: 'moon',
             color: AppColors.sleep,

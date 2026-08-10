@@ -7,12 +7,14 @@ import '../../core/notification_service.dart';
 import '../../core/widget_service.dart';
 import '../../data/feed_reminder_cache.dart';
 import '../../data/health_repository.dart';
+import '../../data/notification_prefs.dart';
 import '../../models/baby.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
 import '../babies/family_settings.dart';
 import '../records/record_controller.dart';
+import '../settings/notification_prefs_controller.dart';
 import 'baby_controller.dart';
 
 /// TÜM bebekler için süren sayaç (uyku/emzirme) + beslenme hatırlatıcısı
@@ -142,9 +144,11 @@ class _LiveActivitySync extends ConsumerWidget {
 
 /// Süren uyku sayacının cihaz bildirimini eşitler ([r] yoksa iptal eder).
 /// Üst seviye → hem reaktif sync hem resume'da yeniden-post aynı mantığı kullanır.
-void syncSleepTimer(Baby baby, Record? r) {
+/// [enabled] false (Bildirimler ayarından kapatıldı) → sayaç bildirimi hiç
+/// gösterilmez; sayacın KENDİSİ çalışmaya devam eder (yalnız görünürlük kapanır).
+void syncSleepTimer(Baby baby, Record? r, {bool enabled = true}) {
   final slot = baby.notifSlot;
-  if (r == null) {
+  if (r == null || !enabled) {
     NotificationService.instance.cancelTimer(NotificationService.sleepIdFor(slot));
     return;
   }
@@ -160,9 +164,10 @@ void syncSleepTimer(Baby baby, Record? r) {
 }
 
 /// Süren emzirme sayacının cihaz bildirimini eşitler ([r] yoksa iptal eder).
-void syncBreastTimer(Baby baby, Record? r) {
+/// [enabled] için bkz. [syncSleepTimer].
+void syncBreastTimer(Baby baby, Record? r, {bool enabled = true}) {
   final slot = baby.notifSlot;
-  if (r == null) {
+  if (r == null || !enabled) {
     NotificationService.instance.cancelTimer(NotificationService.breastIdFor(slot));
     return;
   }
@@ -196,10 +201,11 @@ void syncBreastTimer(Baby baby, Record? r) {
 /// `showTimer` sessizce no-op olur — zararsız ve tekrar etmesi güvenli (onlyAlertOnce).
 void repostActiveTimers(WidgetRef ref) {
   final babies = ref.read(babyControllerProvider).asData?.value ?? const [];
+  final timersOn = ref.read(notifPrefProvider(NotificationPrefs.timers));
   for (final b in babies) {
     if (b.isExpecting) continue;
-    syncSleepTimer(b, ref.read(ongoingSleepProvider(b.id)));
-    syncBreastTimer(b, ref.read(ongoingBreastProvider(b.id)));
+    syncSleepTimer(b, ref.read(ongoingSleepProvider(b.id)), enabled: timersOn);
+    syncBreastTimer(b, ref.read(ongoingBreastProvider(b.id)), enabled: timersOn);
   }
 }
 
@@ -248,10 +254,15 @@ class _BabyNotifSync extends ConsumerWidget {
           () => ref.read(feedReminderStoreProvider.notifier).set(baby.id, seeded));
     }
 
+    // Süren sayaç bildirimi kullanıcı tercihiyle kapatılabilir (cihaz-yerel).
+    final timersOn = ref.watch(notifPrefProvider(NotificationPrefs.timers));
+
     // Bekleme (gebelik) modunda kayıt/sayaç/beslenme uyarısı yok.
     if (!baby.isExpecting) {
-      syncSleepTimer(baby, ref.watch(ongoingSleepProvider(baby.id)));
-      syncBreastTimer(baby, ref.watch(ongoingBreastProvider(baby.id)));
+      syncSleepTimer(baby, ref.watch(ongoingSleepProvider(baby.id)),
+          enabled: timersOn);
+      syncBreastTimer(baby, ref.watch(ongoingBreastProvider(baby.id)),
+          enabled: timersOn);
       _syncFeed(
         ref.watch(feedReminderProvider(baby.id)),
         ref.watch(recentRecordsProvider(baby.id)).asData?.value ?? const [],
@@ -282,6 +293,7 @@ class _BabyNotifSync extends ConsumerWidget {
         preMin: cfg.preMin,
         sound: cfg.soundEnabled,
         quiet: quiet,
+        forgot: cfg.forgotEnabled,
       ),
     );
     // iOS force-quit'te NSE'nin bildirimi yeniden planlayabilmesi için aynı
@@ -301,6 +313,7 @@ class _BabyNotifSync extends ConsumerWidget {
       preBody: trp('Yaklaşık {n} dk sonra beslenme zamanı', {'n': cfg.preMin}),
       forgotTitle: tr('Kaydı unuttun mu?'),
       forgotBody: tr('Beslenme saatinin üzerinden 30 dk geçti, henüz kayıt eklenmedi 🍼'),
+      forgotEnabled: cfg.forgotEnabled,
     );
     if (!cfg.enabled) {
       NotificationService.instance.scheduleFeedReminder(
@@ -315,6 +328,7 @@ class _BabyNotifSync extends ConsumerWidget {
       babyName: baby.name,
       sound: cfg.soundEnabled,
       quiet: quiet,
+      forgot: cfg.forgotEnabled,
     );
   }
 }

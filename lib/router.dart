@@ -43,6 +43,7 @@ import 'models/baby.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/dev_settings_screen.dart';
 import 'features/settings/feedback_screen.dart';
+import 'features/settings/notifications_screen.dart';
 import 'features/settings/premium_screen.dart';
 import 'features/settings/privacy_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -139,6 +140,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) =>
               const TourMount(tourKey: 'reminders', child: RemindersScreen())),
       GoRoute(path: '/appearance', builder: (_, _) => const AppearanceScreen()),
+      // Tüm bildirimlerin (yerel + push) tek merkezden yönetildiği sayfa.
+      GoRoute(
+          path: '/notifications', builder: (_, _) => const NotificationsScreen()),
       // Yalnız debug: Geliştirici ayarları (API ortamı vb.). Release'te menü
       // öğesi gizli olduğundan buraya gidilmez.
       GoRoute(path: '/dev', builder: (_, _) => const DevSettingsScreen()),

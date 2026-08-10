@@ -29,6 +29,7 @@ import 'core/revenuecat_service.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_controller.dart';
 import 'data/activity_notif_cache.dart';
+import 'data/notification_prefs.dart';
 import 'data/env_cache.dart';
 import 'data/feed_input_cache.dart';
 import 'data/guest_migration.dart';
@@ -321,8 +322,18 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     final eventId = data['event_id']?.toString() ?? '';
     if (eventId.isNotEmpty && eventId == _lastBannerEventId) return;
     if (eventId.isNotEmpty) _lastBannerEventId = eventId;
+    // Uygulama-içi banner tamamen kapatılabilir (Bildirimler ayarı) — push yine
+    // gelir ve sessizce işlenir (senkron/widget bozulmaz), yalnız banner çıkmaz.
+    if (!await NotificationPrefs.instance.enabled(NotificationPrefs.inAppBanner)) {
+      return;
+    }
     // Aile etkinliği tercihi kapalıysa gösterme (sunucu push görünürlüğüyle tutarlı).
     if (type == 'family_activity' && !await ActivityNotifCache().enabled()) return;
+    // Topluluk bildirimleri tercihi (cevap/en iyi cevap) — OS bildirimiyle aynı kapı.
+    if ((type ?? '').startsWith('community') &&
+        !await NotificationPrefs.instance.enabled(NotificationPrefs.community)) {
+      return;
+    }
     final title =
         data['title']?.toString() ?? data['baby_name']?.toString() ?? 'Adena Baby';
     showInAppNotification(title: title, body: body);

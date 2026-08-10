@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../data/activity_notif_cache.dart';
 import '../data/feed_reminder_cache.dart';
+import '../data/notification_prefs.dart';
 import '../data/slot_registry.dart';
 import '../models/feed_reminder.dart';
 import 'api_client.dart';
@@ -119,7 +120,11 @@ Future<void> handlePushMessage(RemoteMessage message) async {
       await NotificationService.instance.showActivity(title: title, body: body);
     }
   } else if (type.startsWith('community')) {
-    await NotificationService.instance.showActivity(title: title, body: body);
+    // Topluluk bildirimleri (cevap geldi / cevabın en iyi seçildi) — kullanıcı
+    // tercihi (varsayılan açık, cihaz-yerel) yönetir.
+    if (await NotificationPrefs.instance.enabled(NotificationPrefs.community)) {
+      await NotificationService.instance.showActivity(title: title, body: body);
+    }
   }
 }
 
@@ -146,6 +151,7 @@ Future<void> _rescheduleFeedReminder(
     babyName: babyName,
     sound: snap.sound,
     quiet: snap.quiet,
+    forgot: snap.forgot,
   );
 }
 

@@ -152,6 +152,15 @@ class MembersScreen extends ConsumerWidget {
                             fontSize: 12, height: 1.35, color: AppColors.muted),
                       ),
                     ),
+                  // Diğer tüm bildirimler (beslenme, sayaç, topluluk…) tek merkezde.
+                  AdMenuItem(
+                    icon: 'gear',
+                    color: AppColors.med,
+                    bg: AppColors.medBg,
+                    title: tr('Tüm bildirim ayarları'),
+                    meta: tr('Hatırlatıcılar · sayaçlar · topluluk'),
+                    onTap: () => context.push('/notifications'),
+                  ),
                 ],
               );
             }),

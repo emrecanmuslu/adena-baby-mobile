@@ -144,8 +144,11 @@ class NotificationService: UNNotificationServiceExtension {
     // yeniden planlıyordu) → uygulama force-quit iken başka üye kayıt girse
     // bile eski "unuttun mu" bildirimi ESKİ (kayıttan ÖNCEKİ) tahmini zamana
     // göre ateşleniyordu. Artık main/pre ile birebir aynı şekilde yeniden kurulur.
+    // Kullanıcı bu dürtmeyi Bildirimler ayarından kapatabilir (fr_forgot_<babyId>
+    // = "0"). Anahtar yoksa (eski kurulum) AÇIK kabul edilir — mevcut davranış.
+    let forgotOn = defaults.string(forKey: "fr_forgot_\(babyId)") != "0"
     let forgot = next.addingTimeInterval(30 * 60)
-    if forgot > now {
+    if forgotOn && forgot > now {
       let forgotTitle = defaults.string(forKey: "fr_forgot_title") ?? "Kaydı unuttun mu?"
       let forgotBody = defaults.string(forKey: "fr_forgot_body") ?? ""
       scheduleLocal(
