@@ -24,18 +24,16 @@ flutter run -d <device>
 flutter build apk --debug  # Android hattını doğrula
 ```
 
-### Cihaz — MuMuPlayer (AVD yavaş kaldı)
+### Cihaz — standart adb/AVD emülatörü
 ```bash
 # adb: ~/AppData/Local/Android/Sdk/platform-tools/adb.exe
-adb connect 127.0.0.1:7555     # veya 16416 → cihaz "emulator-5556" (SM-A5560, Android 12, x86_64)
-adb devices
-flutter run -d emulator-5556
+adb devices                 # bağlı emülatörü listeler (id değişebilir, ör. emulator-5554)
+flutter run -d <device-id>
 ```
-Ekran görüntüsü ile UI doğrulama: `adb -s emulator-5556 exec-out screencap -p > /tmp/s.png` sonra oku.
+Ekran görüntüsü ile UI doğrulama: `adb -s <device-id> exec-out screencap -p > /tmp/s.png` sonra oku.
 
 ### ⚠️ Backend'e bağlanırken (KRİTİK)
-- **MuMu host PC'ye `10.0.2.2` ile ULAŞAMAZ** (o sadece AOSP/AVD emülatörü için). MuMu → `lib/core/config.dart` `apiBaseUrl` = **PC'nin LAN IP'si** (`ipconfig` → IPv4, ör. `http://192.168.1.X:8000/api/v1`).
-- **AVD** kullanılırsa `http://10.0.2.2:8000/api/v1` doğru.
+- **AVD** emülatöründe `lib/core/config.dart` `apiBaseUrl` = `http://10.0.2.2:8000/api/v1` doğru (host PC'ye AVD'nin özel loopback'i).
 - `--dart-define=API_BASE_URL=...` ile override edilebilir.
 - http:// kullandığımız için **Android cleartext izni** gerekir (debug manifest `usesCleartextTraffic=true` veya network_security_config).
 - Backend açık olmalı: `cd ../api && ./.venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000`.

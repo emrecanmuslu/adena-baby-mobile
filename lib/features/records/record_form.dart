@@ -12,6 +12,7 @@ import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../../data/feed_input_cache.dart';
 import '../../data/health_repository.dart';
+import '../../data/record_repository.dart';
 import '../../models/record.dart';
 import '../../models/symptom.dart';
 import '../auth/auth_controller.dart';
@@ -21,6 +22,56 @@ import 'record_controller.dart';
 import 'record_ui.dart';
 
 const _uuid = Uuid();
+
+/// Randevu hatırlatıcısını ekle/güncelle/kaldır — kayıt yerele yazıldıktan
+/// SONRA, arkaplanda çağrılır (local-first: ağ, kayıt/kapanma/toast'ı asla
+/// bloklamaz). [container] `_save()` içinde sheet kapanmadan önce yakalanır,
+/// böylece bu State dispose olsa bile (kullanıcı sheet'i kapatıp gitmiş olsa
+/// bile) hatırlatıcı isteği güvenle tamamlanabilir.
+Future<void> _syncApptReminderBg({
+  required ProviderContainer container,
+  required String babyId,
+  required Record record,
+  required int? oldReminderId,
+  required bool remind,
+  required int leadMin,
+}) async {
+  // Misafir (oturumsuz) kullanıcıda hatırlatıcı kurulmaz.
+  if (container.read(authControllerProvider).asData?.value == null) return;
+  final repo = container.read(healthRepositoryProvider);
+  if (oldReminderId != null) {
+    try {
+      await repo.deleteReminder(oldReminderId);
+      await NotificationService.instance.cancelReminder(oldReminderId);
+    } catch (_) {}
+  }
+  if (!remind) return;
+  final at = DateTime.tryParse(record.data['datetime'] as String? ?? '') ?? record.ts;
+  final fireAt = at.toLocal().subtract(Duration(minutes: leadMin));
+  if (!fireAt.isAfter(DateTime.now())) return; // hatırlatma anı geçmiş → kurma
+  try {
+    final title = record.data['title'] as String? ?? '';
+    final rem = await repo.createReminder(babyId, type: 'appt', schedule: {
+      'repeat': 'once',
+      'at': fireAt.toUtc().toIso8601String(),
+      'title': trp('Randevu: {title}', {'title': title}),
+      'lead_min': leadMin,
+    });
+    // Kayda reminder bilgisini işle: yerel-önce upsert (dirty kalır, sonraki
+    // sync'te sunucuya gider) — kullanıcı zaten sheet'ten çıkmış olabilir.
+    final updated = record.copyWith(data: {
+      ...record.data,
+      'reminder_id': rem.id,
+      'reminder_lead_min': leadMin,
+    });
+    await container.read(recordRepositoryProvider).upsertLocal(updated);
+    final list = await repo.reminders(babyId);
+    await NotificationService.instance.sync(list);
+    container.invalidate(remindersProvider(babyId));
+  } catch (_) {
+    // Hatırlatıcı kurulamazsa kayıt yine de kaydedilmiş kalır (sessiz geç).
+  }
+}
 
 /// Tüm kayıt tipleri için tek form — yeni ekleme veya [existing] düzenleme.
 /// Zaman seçici dahil (geçmişe dönük kayıt için).
@@ -85,6 +136,11 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
   bool _manualSleep = false; // başlatmak yerine elle başlangıç/bitiş girişi
   bool _sleepEditDurations = false; // bitirirken süreyi elle düzenleme
   Timer? _tick; // çalışan sayaç için saniyelik yeniden çizim (uyku/emzirme)
+
+  // _save() sürerken buton spinner gösterip devre dışı kalır — çift-basmayı
+  // önler + "hiçbir tepki yok" hissini engeller (zayıf ağda bile: yerel yazım
+  // her zaman hızlıdır, ama bu bayrak olmadan kullanıcı bundan emin olamaz).
+  bool _saving = false;
 
   final _c = <String, TextEditingController>{};
 
@@ -213,128 +269,121 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
   num? _num(String k) => num.tryParse(ctl(k).text.trim().replaceAll(',', '.'));
 
   Future<void> _save() async {
-    Map<String, dynamic> data;
-    switch (widget.type) {
-      case RecordType.diaper:
-        data = {'sub': _sub};
-        if (_sub != 'pee' && _diaperDetail && _stool.isNotEmpty) data['stool'] = _stool;
-      case RecordType.feed:
-        data = {'sub': _sub};
-        switch (_sub) {
-          case 'breast':
-            data['left_min'] = _num('left_min') ?? 0;
-            data['right_min'] = _num('right_min') ?? 0;
-          case 'formula':
-          case 'pumped':
-            final ml = _num('ml');
-            if (ml == null) return _warn(trp('Miktarı ({unit}) gir', {'unit': _units.volumeLabel}));
-            data['ml'] = _units.volumeToCanonical(ml.toDouble());
-            unawaited(FeedInputCache.put(_sub, {'ml': ctl('ml').text.trim()}));
-          case 'solid':
-            if (ctl('food_name').text.trim().isEmpty) {
-              return _warn(tr('Yiyecek adını gir'));
-            }
-            data['food_name'] = ctl('food_name').text.trim();
-            final amt = _num('amount');
-            if (amt != null && amt > 0) data['amount'] = amt;
-            final reaction = ctl('reaction').text.trim();
-            if (reaction.isNotEmpty) data['reaction'] = reaction;
-            unawaited(FeedInputCache.put('solid', {
-              'food_name': ctl('food_name').text.trim(),
-              if (amt != null && amt > 0) 'amount': ctl('amount').text.trim(),
-            }));
-        }
-      case RecordType.pumping:
-        final ml = _num('ml');
-        if (ml == null) return _warn(trp('Miktarı ({unit}) gir', {'unit': _units.volumeLabel}));
-        data = {'ml': _units.volumeToCanonical(ml.toDouble()), 'timing': _timing};
-        _addNote(data);
-      case RecordType.sleep:
-        if (_endTs == null) return _warn(tr('Bitiş zamanını seç'));
-        data = {
-          'start_ts': _ts.toUtc().toIso8601String(),
-          'end_ts': _endTs!.toUtc().toIso8601String(),
-          'duration': _endTs!.difference(_ts).inMinutes,
-        };
-      case RecordType.growth:
-        final w = _num('weight'), h = _num('height'), hc = _num('head_circ');
-        data = {
-          if (w != null) 'weight': _units.weightToCanonical(w.toDouble()),
-          if (h != null) 'height': _units.lengthToCanonical(h.toDouble()),
-          if (hc != null) 'head_circ': _units.lengthToCanonical(hc.toDouble()),
-        };
-        if (data.isEmpty) return _warn(tr('En az bir ölçüm gir'));
-      case RecordType.temperature:
-        final v = _num('value');
-        if (v == null) return _warn(tr('Ateş değerini gir'));
-        data = {'value': v, 'unit': _unit};
-      case RecordType.medication:
-        if (ctl('name').text.trim().isEmpty) return _warn(tr('İlaç adını gir'));
-        data = {'name': ctl('name').text.trim(), 'dose': ctl('dose').text.trim(), 'given': true};
-      case RecordType.bath:
-        data = {};
-        _addNote(data);
-      case RecordType.appointment:
-        if (ctl('title').text.trim().isEmpty) return _warn(tr('Başlık gir'));
-        data = {'title': ctl('title').text.trim(), 'datetime': _ts.toUtc().toIso8601String()};
-        _addNote(data);
-        await _syncApptReminder(data); // data['reminder_id'] / reminder_lead_min ayarlar
-      case RecordType.symptom:
-        if (_symptomKey.isEmpty) return _warn(tr('Bir belirti seç'));
-        data = {'key': _symptomKey, 'severity': _severity};
-        _addNote(data);
-    }
+    if (_saving) return; // çift-basma koruması
+    setState(() => _saving = true);
+    try {
+      Map<String, dynamic> data;
+      // Randevuda hatırlatıcı KAYITTAN SONRA arkaplanda kurulur (aşağıda) —
+      // burada yalnız isteği not ederiz; ağ çağrısı yerel yazımı bloklamaz.
+      var wantsApptReminder = false;
+      switch (widget.type) {
+        case RecordType.diaper:
+          data = {'sub': _sub};
+          if (_sub != 'pee' && _diaperDetail && _stool.isNotEmpty) data['stool'] = _stool;
+        case RecordType.feed:
+          data = {'sub': _sub};
+          switch (_sub) {
+            case 'breast':
+              data['left_min'] = _num('left_min') ?? 0;
+              data['right_min'] = _num('right_min') ?? 0;
+            case 'formula':
+            case 'pumped':
+              final ml = _num('ml');
+              if (ml == null) {
+                return _warn(trp('Miktarı ({unit}) gir', {'unit': _units.volumeLabel}));
+              }
+              data['ml'] = _units.volumeToCanonical(ml.toDouble());
+              unawaited(FeedInputCache.put(_sub, {'ml': ctl('ml').text.trim()}));
+            case 'solid':
+              if (ctl('food_name').text.trim().isEmpty) {
+                return _warn(tr('Yiyecek adını gir'));
+              }
+              data['food_name'] = ctl('food_name').text.trim();
+              final amt = _num('amount');
+              if (amt != null && amt > 0) data['amount'] = amt;
+              final reaction = ctl('reaction').text.trim();
+              if (reaction.isNotEmpty) data['reaction'] = reaction;
+              unawaited(FeedInputCache.put('solid', {
+                'food_name': ctl('food_name').text.trim(),
+                if (amt != null && amt > 0) 'amount': ctl('amount').text.trim(),
+              }));
+          }
+        case RecordType.pumping:
+          final ml = _num('ml');
+          if (ml == null) return _warn(trp('Miktarı ({unit}) gir', {'unit': _units.volumeLabel}));
+          data = {'ml': _units.volumeToCanonical(ml.toDouble()), 'timing': _timing};
+          _addNote(data);
+        case RecordType.sleep:
+          if (_endTs == null) return _warn(tr('Bitiş zamanını seç'));
+          data = {
+            'start_ts': _ts.toUtc().toIso8601String(),
+            'end_ts': _endTs!.toUtc().toIso8601String(),
+            'duration': _endTs!.difference(_ts).inMinutes,
+          };
+        case RecordType.growth:
+          final w = _num('weight'), h = _num('height'), hc = _num('head_circ');
+          data = {
+            if (w != null) 'weight': _units.weightToCanonical(w.toDouble()),
+            if (h != null) 'height': _units.lengthToCanonical(h.toDouble()),
+            if (hc != null) 'head_circ': _units.lengthToCanonical(hc.toDouble()),
+          };
+          if (data.isEmpty) return _warn(tr('En az bir ölçüm gir'));
+        case RecordType.temperature:
+          final v = _num('value');
+          if (v == null) return _warn(tr('Ateş değerini gir'));
+          data = {'value': v, 'unit': _unit};
+        case RecordType.medication:
+          if (ctl('name').text.trim().isEmpty) return _warn(tr('İlaç adını gir'));
+          data = {'name': ctl('name').text.trim(), 'dose': ctl('dose').text.trim(), 'given': true};
+        case RecordType.bath:
+          data = {};
+          _addNote(data);
+        case RecordType.appointment:
+          if (ctl('title').text.trim().isEmpty) return _warn(tr('Başlık gir'));
+          data = {'title': ctl('title').text.trim(), 'datetime': _ts.toUtc().toIso8601String()};
+          _addNote(data);
+          wantsApptReminder = true;
+        case RecordType.symptom:
+          if (_symptomKey.isEmpty) return _warn(tr('Bir belirti seç'));
+          data = {'key': _symptomKey, 'severity': _severity};
+          _addNote(data);
+      }
 
-    final record = Record(
-      id: widget.existing?.id ?? _uuid.v4(),
-      baby: widget.babyId,
-      type: widget.type,
-      ts: _ts,
-      data: data,
-    );
-    await ref.read(recordActionsProvider).upsert(record);
-    if (!mounted) return;
-    // Toast kök overlay'e eklenir → sheet kapansa da görünür kalır.
-    showAdToast(context, _editing ? tr('Güncellendi') : tr('Kaydedildi'));
-    Navigator.pop(context);
+      final record = Record(
+        id: widget.existing?.id ?? _uuid.v4(),
+        baby: widget.babyId,
+        type: widget.type,
+        ts: _ts,
+        data: data,
+      );
+      // container'ı ilk await'ten ÖNCE yakala (context hâlâ kesin geçerliyken):
+      // hatırlatıcı ağ isteği arkaplanda sürerken bu State dispose olsa bile
+      // (kullanıcı sheet'i kapatıp gitmiş olsa bile) güvenle çalışmaya devam eder.
+      final container =
+          wantsApptReminder ? ProviderScope.containerOf(context, listen: false) : null;
+      // Yerele anında yaz (local-first) — ağ burada YOK, kayıt her zaman hızlı biter.
+      await ref.read(recordActionsProvider).upsert(record);
+      if (wantsApptReminder) {
+        unawaited(_syncApptReminderBg(
+          container: container!,
+          babyId: widget.babyId,
+          record: record,
+          oldReminderId: widget.existing?.data['reminder_id'] as int?,
+          remind: _apptRemind,
+          leadMin: _apptLeadMin,
+        ));
+      }
+      if (!mounted) return;
+      // Toast kök overlay'e eklenir → sheet kapansa da görünür kalır.
+      showAdToast(context, _editing ? tr('Güncellendi') : tr('Kaydedildi'));
+      Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   void _addNote(Map<String, dynamic> data) {
     if (ctl('note').text.trim().isNotEmpty) data['note'] = ctl('note').text.trim();
-  }
-
-  /// Randevu hatırlatıcısını ekle/güncelle/kaldır. Düzenlemede bu kayda bağlı eski
-  /// hatırlatıcıyı siler; açıksa ve hatırlatma anı gelecekteyse yeni tek-seferlik
-  /// hatırlatıcı kurar, id'sini [data]'ya yazar (sonraki düzenlemede bulunsun).
-  Future<void> _syncApptReminder(Map<String, dynamic> data) async {
-    // Misafir (oturumsuz) kullanıcıda hatırlatıcı kurulmaz — alan da gizli.
-    if (ref.read(authControllerProvider).asData?.value == null) return;
-    final repo = ref.read(healthRepositoryProvider);
-    final oldId = widget.existing?.data['reminder_id'];
-    if (oldId is int) {
-      try {
-        await repo.deleteReminder(oldId);
-        await NotificationService.instance.cancelReminder(oldId);
-      } catch (_) {}
-    }
-    if (!_apptRemind) return;
-    final fireAt = _ts.subtract(Duration(minutes: _apptLeadMin));
-    if (!fireAt.isAfter(DateTime.now())) return; // hatırlatma anı geçmiş → kurma
-    try {
-      final rem = await repo.createReminder(widget.babyId, type: 'appt', schedule: {
-        'repeat': 'once',
-        'at': fireAt.toUtc().toIso8601String(),
-        'title': trp('Randevu: {title}', {'title': data['title']}),
-        'lead_min': _apptLeadMin,
-      });
-      data['reminder_id'] = rem.id;
-      data['reminder_lead_min'] = _apptLeadMin;
-      final list = await repo.reminders(widget.babyId);
-      await NotificationService.instance.sync(list);
-      ref.invalidate(remindersProvider(widget.babyId));
-    } catch (_) {
-      // Hatırlatıcı kurulamazsa kayıt yine de kaydedilir (sessiz geç).
-    }
   }
 
   void _warn(String msg) => showAdToast(context, msg);
@@ -392,7 +441,8 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
                       AdSaveButton(
                           label: _editing ? tr('Güncelle') : tr('Kaydet'),
                           color: accent,
-                          onTap: _save),
+                          onTap: _save,
+                          loading: _saving),
                     ],
                   ],
                 ),
@@ -1134,7 +1184,10 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
         ..._sleepChips(),
         const SizedBox(height: 8),
         AdSaveButton(
-            label: _editing ? tr('Güncelle') : tr('Kaydet'), color: accent, onTap: _save),
+            label: _editing ? tr('Güncelle') : tr('Kaydet'),
+            color: accent,
+            onTap: _save,
+            loading: _saving),
         if (!_editing)
           _linkButton(tr('Kronometreye dön'), () => setState(() => _manualSleep = false)),
       ],

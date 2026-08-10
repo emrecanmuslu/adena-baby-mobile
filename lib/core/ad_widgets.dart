@@ -660,27 +660,40 @@ class AdTimeChip extends StatelessWidget {
 }
 
 /// .ad-save — tam genişlik kategori-renkli kaydet (veya ghost ikincil).
+/// [loading] true iken buton devre dışı + spinner gösterir: kayıt yerele
+/// anında yazılsa da, dokunuşun görmezden gelinmediğini (çift-basmayı da
+/// önleyerek) kullanıcıya anında belli eder — ağ yavaş/kesikken bile.
 class AdSaveButton extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
   final bool ghost;
+  final bool loading;
   const AdSaveButton(
       {super.key,
       required this.label,
       required this.color,
       required this.onTap,
-      this.ghost = false});
+      this.ghost = false,
+      this.loading = false});
 
   @override
   Widget build(BuildContext context) {
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
-    final child = Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16));
+    final spinnerColor = ghost ? color : Colors.white;
+    final child = loading
+        ? SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2.4, color: spinnerColor),
+          )
+        : Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16));
+    final handler = loading ? null : onTap;
     return SizedBox(
       width: double.infinity,
       child: ghost
           ? OutlinedButton(
-              onPressed: onTap,
+              onPressed: handler,
               style: OutlinedButton.styleFrom(
                 foregroundColor: color,
                 padding: const EdgeInsets.symmetric(vertical: 15),
@@ -690,7 +703,7 @@ class AdSaveButton extends StatelessWidget {
               child: child,
             )
           : FilledButton(
-              onPressed: onTap,
+              onPressed: handler,
               style: FilledButton.styleFrom(
                 backgroundColor: color,
                 foregroundColor: Colors.white,

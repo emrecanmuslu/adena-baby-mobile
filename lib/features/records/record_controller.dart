@@ -33,7 +33,12 @@ final onlineProvider = StreamProvider<bool>(
 class SyncStatus {
   final DateTime? lastSyncedAt; // son TAM BAŞARILI turun bitiş zamanı
   final bool lastSyncFailed; // en son turda en az bir bebek için gerçek hata oldu mu
-  const SyncStatus({this.lastSyncedAt, this.lastSyncFailed = false});
+  // Bir tur şu an sürüyor mu — yavaş ağda kullanıcıya "kaydedildi, gönderiliyor"
+  // gibi nötr bir ara-durum göstermek için (ne hata ne "her şey tamam" — henüz
+  // belirsiz). Bkz [[header-senkron-durumu]] UI'da SyncStatusBanner.
+  final bool isSyncing;
+  const SyncStatus(
+      {this.lastSyncedAt, this.lastSyncFailed = false, this.isSyncing = false});
 }
 
 class SyncStatusNotifier extends Notifier<SyncStatus> {
@@ -176,6 +181,14 @@ class SyncService with WidgetsBindingObserver {
       return;
     }
     _running = true;
+    // Tur başladı → UI'ya "senkronize ediliyor" ara-durumunu bildir (önceki
+    // sonucu koruyarak). Yavaş ağda banner bunu bir gecikmeden sonra gösterir
+    // (bkz SyncStatusBanner) — hızlı turlarda flicker olmaz.
+    final prevStatus = _ref.read(syncStatusProvider);
+    _ref.read(syncStatusProvider.notifier).set(SyncStatus(
+        lastSyncedAt: prevStatus.lastSyncedAt,
+        lastSyncFailed: prevStatus.lastSyncFailed,
+        isSyncing: true));
     var hadError = false; // gerçek sync hatası (403/izin dışı) — kullanıcıya gösterilir
     try {
       final babies = _ref.read(babyControllerProvider).asData?.value ?? [];
@@ -217,6 +230,13 @@ class SyncService with WidgetsBindingObserver {
           : SyncStatus(lastSyncedAt: DateTime.now(), lastSyncFailed: false));
     } finally {
       _running = false;
+      // Güvenlik ağı: beklenmedik bir hata yukarıdaki status.set'e ulaşmadan
+      // turu bitirmiş olsa bile isSyncing takılı kalmasın.
+      final s = _ref.read(syncStatusProvider);
+      if (s.isSyncing) {
+        _ref.read(syncStatusProvider.notifier).set(SyncStatus(
+            lastSyncedAt: s.lastSyncedAt, lastSyncFailed: s.lastSyncFailed));
+      }
     }
     // Tur sırasında istek geldiyse bir kez daha (tam) çek → kaçan değişiklik kalmasın.
     if (_pending) {
@@ -264,10 +284,17 @@ class RecordActions {
     _ref.invalidate(presentTypesProvider(r.baby)); // yeni tip → filtre tazelensin
     unawaited(_ref.read(syncServiceProvider).syncAll());
     if (ad) {
-      unawaited(AdService.instance.onRecordSaved(
-        isPremium: _ref.read(isPremiumProvider),
-        suppress: _suppressAd(r),
-      ));
+      final isPremium = _ref.read(isPremiumProvider);
+      final suppress = _suppressAd(r);
+      // Reklam tetikleyicisini bir sonraki frame'e ertele: kayıt zaten yerele
+      // yazıldı, sheet kapanıp toast gösterildi (kritik yol bitti) — reklam
+      // SDK'sının zayıf ağda olası kısa süreli senkron gecikmesi (consent/
+      // preload kontrolü) bu anı ASLA paylaşmasın, kullanıcı "tepki yok" hissi
+      // yaşamasın.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(
+            AdService.instance.onRecordSaved(isPremium: isPremium, suppress: suppress));
+      });
       // İçeriksiz analitik: yalnız kayıt türü (bebek adı/değer/tarih GÖNDERME).
       unawaited(AnalyticsService.instance.log('record_added', {
         'record_type': r.type.name,

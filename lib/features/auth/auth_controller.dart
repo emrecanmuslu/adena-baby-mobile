@@ -25,36 +25,53 @@ class AuthController extends AsyncNotifier<User?> {
     if (!await storage.hasSession) return null;
     // Gerçek oturum var → misafir ("kayıt olmadan devam et") bayrağını kapat.
     unawaited(LocalSession.exitGuest());
+    // Local-first: önbellekte kullanıcı varsa AĞI BEKLEMEDEN hemen onunla dön —
+    // splash/router bu future'ı bekliyor (bkz router.dart auth.isLoading), yavaş
+    // ağda /auth/me'nin (15-20s timeout) bitmesini beklemek kullanıcıyı splash'te
+    // gereksiz yere kilitliyordu. Doğrulama/güncelleme arkaplanda devam eder.
+    final cached = await LocalSession.cachedAuthUser();
+    if (cached != null) {
+      final user = User.fromJson(cached);
+      _syncRevenueCat(user);
+      LocalSession.setActiveAccount(user.id);
+      unawaited(_refreshInBackground());
+      return user;
+    }
+    // Önbellek yok (ilk açılış / farklı cihaz) → gösterecek yerel veri
+    // olmadığından burada ağı beklemek zorundayız.
     try {
       final user = await _repo.me();
       await LocalSession.cacheAuthUser(user.toJson()); // offline açılış yedeği
       _syncRevenueCat(user);
-      // Yerel veri izolasyonu: aktif hesabı set et (repo'lar buna göre kapsamlar).
       LocalSession.setActiveAccount(user.id);
-      // Bu hesabın sunucu verisini bir kez yerele indir (local-first geçişi /
-      // farklı cihaz). Hesap-bazlı bayrakla bir kez koşar.
       await ref.read(initialImportProvider).runIfNeeded();
       return user;
     } catch (_) {
-      // /auth/me başarısız. Token silme kararı TEK yerde: api_client._refresh
-      // refresh token'ı yalnız sunucu AÇIKÇA reddederse siler. Buraya gelince:
-      //  • token'lar HÂLÂ duruyorsa → yalnız GEÇİCİ ağ/sunucu hatası → oturumu
-      //    KORU (offline-first): önbellekteki kullanıcıyla devam et.
-      //  • token'lar GİTMİŞSE → refresh gerçek reddi gördü → gerçek çıkış.
-      if (await storage.hasSession) {
-        final cached = await LocalSession.cachedAuthUser();
-        if (cached != null) {
-          final user = User.fromJson(cached);
-          _syncRevenueCat(user);
-          LocalSession.setActiveAccount(user.id);
-          return user; // çevrimdışı/geçici hata — kullanıcı login'e düşmez
-        }
-        // Önbellek yok ama token duruyor → login göster ama token'ı SİLME;
-        // bir sonraki açılış internet/sunucu gelince normal akışla düzelir.
-        return null;
-      }
+      // /auth/me başarısız, önbellek de yok. Token silme kararı TEK yerde:
+      // api_client._refresh refresh token'ı yalnız sunucu AÇIKÇA reddederse
+      // siler — token duruyorsa yalnız geçici hata demektir, SİLME; login
+      // göster, bir sonraki açılışta internet/sunucu gelince düzelir.
+      if (await storage.hasSession) return null;
       await LocalSession.clearCachedAuthUser();
       return null;
+    }
+  }
+
+  /// build() önbellekli kullanıcıyla anında dönünce, gerçek doğrulama/güncellemeyi
+  /// arkaplanda tamamlar: /auth/me başarırsa taze veriyle state'i günceller +
+  /// bir-kez cloud import'u tetikler; geçici ağ/sunucu hatasında SESSİZCE yutar
+  /// (kullanıcı önbellekli veriyle kalmaya devam eder — gerçek red zaten
+  /// api_client._refresh tarafından ele alınır).
+  Future<void> _refreshInBackground() async {
+    try {
+      final user = await _repo.me();
+      await LocalSession.cacheAuthUser(user.toJson());
+      _syncRevenueCat(user);
+      LocalSession.setActiveAccount(user.id);
+      await ref.read(initialImportProvider).runIfNeeded();
+      if (ref.mounted) state = AsyncData(user);
+    } catch (_) {
+      // Geçici hata — önbellekli kullanıcıyla devam edilir, sessizce geç.
     }
   }
 

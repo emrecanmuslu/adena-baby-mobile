@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -181,16 +183,61 @@ class SharedReadonlyBanner extends ConsumerWidget {
   }
 }
 
-/// Ana Sayfa / Bekleme modu üst şeridi — çevrimdışı ya da senkron hatası uyarısı.
-/// Önceden AppBar actions'ta küçük bir rozetti; Premium rozetiyle aynı satırda
-/// sıkışıp üst üste biniyor ve overflow'a yol açıyordu — bu yüzden tam genişlikte,
-/// header'ın altına (bu banner listesine) taşındı.
-class SyncStatusBanner extends ConsumerWidget {
+/// Ana Sayfa / Bekleme modu üst şeridi — çevrimdışı, senkron hatası ya da (yavaş
+/// ağda) "senkronize ediliyor" ara-durumu uyarısı. Önceden AppBar actions'ta
+/// küçük bir rozetti; Premium rozetiyle aynı satırda sıkışıp üst üste biniyor ve
+/// overflow'a yol açıyordu — bu yüzden tam genişlikte, header'ın altına (bu
+/// banner listesine) taşındı.
+class SyncStatusBanner extends ConsumerStatefulWidget {
   const SyncStatusBanner({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SyncStatusBanner> createState() => _SyncStatusBannerState();
+}
+
+class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
+  // isSyncing anlık true/false titreşse de banner hemen flicker'lamaz: yalnız
+  // bu süre KESİNTİSİZ sürerse gösterilir — iyi ağdaki hızlı turlarda kullanıcı
+  // hiç fark etmez, yalnız gerçekten yavaşsa görünür.
+  static const _syncingShowDelay = Duration(milliseconds: 900);
+
+  Timer? _debounce;
+  bool _showSyncing = false;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  /// setState'i yalnız build SONRASI (ref.listen/Timer callback'i içinden)
+  /// çağırır — build() sırasında senkron çağrılmaz.
+  void _setSyncing(bool syncing) {
+    if (syncing) {
+      _debounce ??= Timer(_syncingShowDelay, () {
+        if (mounted) setState(() => _showSyncing = true);
+      });
+    } else {
+      _debounce?.cancel();
+      _debounce = null;
+      if (_showSyncing) setState(() => _showSyncing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final online = ref.watch(onlineProvider).asData?.value ?? true;
+    final status = ref.watch(syncStatusProvider);
+    // Durum ya da bağlantı değişince "senkronize ediliyor" göstergesini
+    // yeniden değerlendir (her ikisi de tetikleyebilir).
+    ref.listen<SyncStatus>(syncStatusProvider,
+        (_, next) => _setSyncing(online && !next.lastSyncFailed && next.isSyncing));
+    ref.listen<AsyncValue<bool>>(onlineProvider, (_, next) {
+      final isOnline = next.asData?.value ?? true;
+      final st = ref.read(syncStatusProvider);
+      _setSyncing(isOnline && !st.lastSyncFailed && st.isSyncing);
+    });
+
     if (!online) {
       return _banner(
         context,
@@ -205,19 +252,31 @@ class SyncStatusBanner extends ConsumerWidget {
     // Cihaz çevrimiçi görünse bile gerçek sync isteği sessizce başarısız olabilir
     // (bkz syncStatusProvider) — bunu kullanıcıya görünür kılmak asıl amaç: aksi
     // halde bir aile üyesi diğerinin kaydı eklemediğini sanabiliyordu.
-    final status = ref.watch(syncStatusProvider);
-    if (!status.lastSyncFailed) return const SizedBox.shrink();
+    if (status.lastSyncFailed) {
+      return _banner(
+        context,
+        icon: Icons.sync_problem_rounded,
+        color: const Color(0xFFB8860B),
+        title: tr('Senkron sorunu'),
+        body: status.lastSyncedAt != null
+            ? trp(
+                'Son değişiklikler sunucuya gönderilemedi. Son başarılı senkron: {t}.',
+                {'t': _hhmm(status.lastSyncedAt!)})
+            : tr('Son değişiklikler sunucuya gönderilemedi.'),
+        onTap: () => _showRetrySheet(context, ref, status),
+      );
+    }
+    // Ne çevrimdışı ne hata var — ama tur hâlâ (yavaş ağda) sürüyorsa nötr bir
+    // "gönderiliyor" göstergesi ver: aksi halde kaydın az önce yerele yazıldığını
+    // ama henüz bulutta olmadığını fark etmezdi.
+    if (!_showSyncing) return const SizedBox.shrink();
     return _banner(
       context,
-      icon: Icons.sync_problem_rounded,
-      color: const Color(0xFFB8860B),
-      title: tr('Senkron sorunu'),
-      body: status.lastSyncedAt != null
-          ? trp(
-              'Son değişiklikler sunucuya gönderilemedi. Son başarılı senkron: {t}.',
-              {'t': _hhmm(status.lastSyncedAt!)})
-          : tr('Son değişiklikler sunucuya gönderilemedi.'),
-      onTap: () => _showRetrySheet(context, ref, status),
+      icon: Icons.sync_rounded,
+      color: AppColors.muted,
+      title: tr('Senkronize ediliyor…'),
+      body: tr('Kayıtların gönderiliyor, birazdan tamamlanacak.'),
+      onTap: null,
     );
   }
 
