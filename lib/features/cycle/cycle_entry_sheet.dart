@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_service.dart';
+import '../../core/review_service.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
@@ -116,6 +117,7 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
         // limitleri AdService'te).
         unawaited(AdService.instance
             .onRecordSaved(isPremium: ref.read(isPremiumProvider)));
+        unawaited(ReviewService.instance.onRecordSaved());
       }
     } catch (e) {
       if (mounted) {

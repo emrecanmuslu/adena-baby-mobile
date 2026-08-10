@@ -143,6 +143,21 @@ class AdService {
 
   bool get _adsAvailable => _unitId.isNotEmpty;
 
+  /// Bir tam-ekran reklam o an gösteriliyor mu — [[ReviewService]] üst üste
+  /// sistem dialogu bindirmemek için bunu kontrol eder.
+  bool get isShowingAd => _showingAd;
+
+  /// Son gösterilen reklamın zamanı (interstitial ya da app-open, hangisi daha
+  /// yeniyse) — [[ReviewService]] kısa süre önce reklam görmüş kullanıcıya
+  /// hemen ardından puanlama dialogu bindirmesin diye.
+  DateTime? get lastAdShownAt {
+    final a = _lastShown;
+    final b = _lastAppOpenShown;
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isAfter(b) ? a : b;
+  }
+
   /// Bir sonraki gösterim için interstitial'ı ön-yükle (idempotent).
   void _preload() {
     if (!_adsAvailable || _loading || _ad != null) return;

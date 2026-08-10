@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/ad_service.dart';
+import '../../core/review_service.dart';
 import '../../core/analytics_service.dart';
 import '../../data/record_repository.dart';
 import '../../data/subscription_repository.dart';
@@ -294,6 +295,7 @@ class RecordActions {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(
             AdService.instance.onRecordSaved(isPremium: isPremium, suppress: suppress));
+        if (!suppress) unawaited(ReviewService.instance.onRecordSaved());
       });
       // İçeriksiz analitik: yalnız kayıt türü (bebek adı/değer/tarih GÖNDERME).
       unawaited(AnalyticsService.instance.log('record_added', {

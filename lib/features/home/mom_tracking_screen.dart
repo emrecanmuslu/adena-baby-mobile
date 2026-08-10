@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_service.dart';
+import '../../core/review_service.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
@@ -103,6 +104,7 @@ class _MomEntrySheetState extends ConsumerState<_MomEntrySheet> {
       // da reklam görsün); frekans/grace/premium limitleri AdService'te.
       unawaited(AdService.instance
           .onRecordSaved(isPremium: ref.read(isPremiumProvider)));
+      unawaited(ReviewService.instance.onRecordSaved());
       if (!mounted) return;
       showAdToast(context, tr('Kaydedildi'));
       Navigator.pop(context);
