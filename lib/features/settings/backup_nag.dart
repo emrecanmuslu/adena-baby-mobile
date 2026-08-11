@@ -239,13 +239,25 @@ class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
     });
 
     if (!online) {
+      // "Bağlantı gelince gönderilecek" YALNIZ bulut yedeği olan kullanıcı için
+      // doğru. Free kullanıcının kaydı hiçbir zaman gönderilmez (bulut yedeği
+      // premium) → ona karşılıksız söz vermeyen bir metin göster; aksi halde bu
+      // şerit hemen altındaki "Verilerin yalnız bu telefonda" uyarısıyla da
+      // çelişiyordu. Paylaşılan bebeğe üye olan free kullanıcı İSTİSNA: veri
+      // sahibin bulutuna gider, yani onun kaydı gerçekten gönderilir.
+      final baby = ref.watch(activeBabyProvider);
+      final syncsToCloud = ref.watch(cloudSyncEnabledProvider) ||
+          (baby != null && ref.watch(babyCloudSyncedProvider(baby.id)));
       return _banner(
         context,
         icon: Icons.cloud_off_rounded,
         color: const Color(0xFFD6604A),
         title: tr('Çevrimdışı'),
-        body: tr('Kayıtların cihazında birikiyor — bağlantı gelince otomatik '
-            'gönderilecek.'),
+        body: syncsToCloud
+            ? tr('Kayıtların cihazında birikiyor — bağlantı gelince otomatik '
+                'gönderilecek.')
+            : tr('Kayıtların telefonuna kaydediliyor — çevrimdışıyken de her şeyi '
+                'normal şekilde ekleyebilirsin.'),
         onTap: null,
       );
     }
