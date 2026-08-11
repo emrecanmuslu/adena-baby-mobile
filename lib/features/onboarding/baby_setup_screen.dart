@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/onboarding_paywall.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../data/local_session.dart';
@@ -141,6 +144,10 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
           }
         } catch (_) {}
       }
+      // İlk bebek kurulduysa Premium Karşılama Ekranı'nı sıraya al — ana sayfa
+      // ilk kareyi çizince bir kez açılır (buradan push etmek router
+      // redirect'iyle yarışırdı). Tek-kez garantisi OnboardingPaywall'da.
+      if (widget.onboarding) unawaited(OnboardingPaywall.markPending());
       // Onboarding'de router redirect ana sayfaya götürür; ek bebekte elle dön.
       if (!widget.onboarding && mounted) context.go('/home');
     } catch (e) {

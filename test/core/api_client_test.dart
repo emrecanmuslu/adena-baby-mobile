@@ -358,4 +358,110 @@ void main() {
       expect(retryCaptured!.headers['Authorization'], 'Bearer NEWACCESS');
     });
   });
+
+  group('ApiClient onError — tek-uçuş (single-flight) refresh', () {
+    test('aynı anda 401 alan 3 istek → /auth/refresh YALNIZ BİR KEZ çağrılır',
+        () async {
+      // Regresyon: token ömrü dolduğunda açılış turundaki tüm istekler birden
+      // 401 alır. Kilit yokken her biri ayrı refresh atıyordu (sunucuda saniyede
+      // 3-4 refresh) ve yarışı kaybeden istek düşüp sahte "Senkron sorunu"
+      // banner'ını tetikliyordu.
+      final tokens = _FakeTokens(access: 'OLD', refresh: 'REF');
+
+      final refreshDio = Dio(BaseOptions(baseUrl: 'https://test.local'));
+      DioAdapter(dio: refreshDio).onPost(
+        '/auth/refresh',
+        (server) => server.reply(200, {'access': 'NEWACCESS', 'refresh': 'NEWREF'}),
+        data: {'refresh': 'REF'},
+      );
+      // Refresh POST sayacı.
+      var refreshCalls = 0;
+      refreshDio.interceptors.add(InterceptorsWrapper(
+        onRequest: (options, handler) {
+          refreshCalls++;
+          handler.next(options);
+        },
+      ));
+
+      final api = ApiClient(tokens, refreshClient: refreshDio);
+      final adapter = DioAdapter(dio: api.dio);
+      // Eski token → 401, yeni token → 200 (üç uç nokta için de).
+      for (final path in ['/babies', '/sync', '/me']) {
+        adapter
+          ..onGet(
+            path,
+            (server) => server.reply(401, {'detail': 'expired'}),
+            headers: {'Authorization': 'Bearer OLD'},
+          )
+          ..onGet(
+            path,
+            (server) => server.reply(200, {'ok': true}),
+            headers: {'Authorization': 'Bearer NEWACCESS'},
+          );
+      }
+
+      final results = await Future.wait([
+        api.dio.get('/babies'),
+        api.dio.get('/sync'),
+        api.dio.get('/me'),
+      ]);
+
+      // Üçü de başarıyla tamamlanmalı — hiçbiri yarışta düşmemeli.
+      expect(results.map((r) => r.statusCode), everyElement(200));
+      expect(refreshCalls, 1,
+          reason: 'paralel 401\'ler tek bir refresh turunu paylaşmalı');
+      expect(tokens.saveCount, 1, reason: 'token bir kez kaydedilmeli');
+    });
+
+    test('refresh turu bittikten sonraki 401 yeni tur açar (kilit takılı kalmaz)',
+        () async {
+      // Tek-uçuş kilidi tur bitince serbest bırakılmalı; aksi halde ilerideki
+      // gerçek bir token yenileme hiç yapılamaz ve oturum ölür.
+      final tokens = _FakeTokens(access: 'OLD', refresh: 'REF');
+
+      final refreshDio = Dio(BaseOptions(baseUrl: 'https://test.local'));
+      final refreshAdapter = DioAdapter(dio: refreshDio);
+      refreshAdapter.onPost(
+        '/auth/refresh',
+        (server) => server.reply(200, {'access': 'A2', 'refresh': 'R2'}),
+        data: {'refresh': 'REF'},
+      );
+      var refreshCalls = 0;
+      refreshDio.interceptors.add(InterceptorsWrapper(
+        onRequest: (options, handler) {
+          refreshCalls++;
+          handler.next(options);
+        },
+      ));
+
+      final api = ApiClient(tokens, refreshClient: refreshDio);
+      final adapter = DioAdapter(dio: api.dio);
+      adapter
+        ..onGet('/secure', (server) => server.reply(401, {'detail': 'expired'}),
+            headers: {'Authorization': 'Bearer OLD'})
+        ..onGet('/secure', (server) => server.reply(200, {'ok': true}),
+            headers: {'Authorization': 'Bearer A2'});
+
+      final first = await api.dio.get('/secure');
+      expect(first.statusCode, 200);
+      expect(refreshCalls, 1);
+
+      // İkinci tur: A2 de dolsun (401), refresh R2 ile A3 versin.
+      refreshAdapter.onPost(
+        '/auth/refresh',
+        (server) => server.reply(200, {'access': 'A3', 'refresh': 'R3'}),
+        data: {'refresh': 'R2'},
+      );
+      adapter
+        ..onGet('/secure2', (server) => server.reply(401, {'detail': 'expired'}),
+            headers: {'Authorization': 'Bearer A2'})
+        ..onGet('/secure2', (server) => server.reply(200, {'ok': true}),
+            headers: {'Authorization': 'Bearer A3'});
+
+      final second = await api.dio.get('/secure2');
+      expect(second.statusCode, 200);
+      expect(refreshCalls, 2, reason: 'kilit serbest kalmalı, yeni tur açılmalı');
+      expect(tokens.saveCount, 2);
+    });
+  });
 }

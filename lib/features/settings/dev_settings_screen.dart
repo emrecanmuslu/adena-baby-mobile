@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/config.dart';
+import '../../core/onboarding_paywall.dart';
 import '../../core/providers.dart';
 import '../../core/restart_widget.dart';
 import '../../core/theme.dart';
@@ -75,6 +77,34 @@ class DevSettingsScreen extends ConsumerWidget {
           Text(
             'Yalnız test amaçlı: backend dev-activate ile premium aç/kapa '
             '(prod backend 403 döner). Gerçek satın alma premium sayfasındadır.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+
+          const SizedBox(height: 20),
+          adSec('🎁 Premium Karşılama Ekranı'),
+          AdSaveButton(
+            label: 'Karşılama ekranını şimdi aç',
+            color: AppColors.coral,
+            ghost: true,
+            onTap: () => context.push('/premium-welcome'),
+          ),
+          const SizedBox(height: 8),
+          AdSaveButton(
+            label: 'Tek-kez bayrağını sıfırla',
+            color: AppColors.muted,
+            ghost: true,
+            onTap: () async {
+              await OnboardingPaywall.reset();
+              if (context.mounted) {
+                showAdToast(context,
+                    'Sıfırlandı — ana sayfaya dönünce bir kez daha açılır');
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Ekran normalde yalnız bebek kurulumundan sonra BİR KEZ açılır. '
+            'Sıfırla → ana sayfa ilk kareyi çizince tekrar tetiklenir.',
             style: TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
           ),
         ],

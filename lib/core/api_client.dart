@@ -39,7 +39,7 @@ class ApiClient {
         final shouldRetry = e.response?.statusCode == 401 &&
             e.requestOptions.extra['retried'] != true &&
             e.requestOptions.extra['noAuth'] != true;
-        if (shouldRetry && await _refresh()) {
+        if (shouldRetry && await _refreshIfNeeded(e.requestOptions)) {
           final opts = e.requestOptions..extra['retried'] = true;
           final token = await _tokens.accessToken;
           opts.headers['Authorization'] = 'Bearer $token';
@@ -50,6 +50,26 @@ class ApiClient {
         handler.next(e);
       },
     ));
+  }
+
+  /// Devam eden refresh turu — **tek-uçuş (single-flight) kilidi**.
+  /// Access token'ın ömrü dolduğunda uygulama aynı anda onlarca istek atar
+  /// (açılış turu: babies + sync + content + me...); hepsi birden 401 alır.
+  /// Kilit olmadan her biri ayrı ayrı `/auth/refresh` çağırıyordu: sunucu
+  /// loglarında aynı saniyede 3-4 refresh, rotasyon yarışı ve yarışı kaybeden
+  /// isteğin (çoğu kez `/sync`) sessizce düşmesi → sahte "Senkron sorunu".
+  Future<bool>? _refreshing;
+
+  /// 401 alan istek için token tazeleme kararı:
+  /// - Bu arada BAŞKA bir istek token'ı yenilediyse (istekteki Bearer artık
+  ///   güncel değilse) refresh'e hiç gerek yok → doğrudan retry.
+  /// - Yenilenmediyse: turu başlat ya da devam eden tura katıl (tek-uçuş).
+  Future<bool> _refreshIfNeeded(RequestOptions failed) async {
+    final current = await _tokens.accessToken;
+    if (current != null && failed.headers['Authorization'] != 'Bearer $current') {
+      return true; // token değişmiş → yeni token'la bir kez daha dene
+    }
+    return _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
   }
 
   /// Refresh token ile yeni access (ve dönerse refresh) alır.

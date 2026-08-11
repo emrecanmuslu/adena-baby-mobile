@@ -38,6 +38,7 @@ import 'features/development/milestones_screen.dart';
 import 'features/development/teeth_screen.dart';
 import 'features/memories/memories_screen.dart';
 import 'features/onboarding/baby_setup_screen.dart';
+import 'features/onboarding/premium_welcome_screen.dart';
 import 'features/onboarding/welcome_choice_screen.dart';
 import 'models/baby.dart';
 import 'features/settings/appearance_screen.dart';
@@ -112,6 +113,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             BabySetupScreen(initialStatus: state.extra as BabyStatus?),
       ),
       GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
+      // Premium Karşılama Ekranı — bebek kurulumundan sonra ana sayfanın
+      // üstüne bir kez push edilir. Yol BİLEREK '/onboarding' altında DEĞİL:
+      // bebek varken '/onboarding*' redirect'i anında '/home'a atardı.
+      GoRoute(
+          path: '/premium-welcome',
+          builder: (_, _) => const PremiumWelcomeScreen()),
       GoRoute(
           path: '/baby-add',
           builder: (_, _) => const BabySetupScreen(onboarding: false)),

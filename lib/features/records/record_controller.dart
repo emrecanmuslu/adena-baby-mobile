@@ -21,11 +21,56 @@ import '../babies/family_settings.dart';
 const _uuid = Uuid();
 
 /// Çevrimiçi/çevrimdışı durumu (üst bar sync rozeti için).
-final onlineProvider = StreamProvider<bool>(
-  (ref) => Connectivity()
-      .onConnectivityChanged
-      .map((r) => !r.contains(ConnectivityResult.none)),
-);
+///
+/// ⚠️ `onConnectivityChanged` YALNIZ DEĞİŞİMDE yayın yapar — ilk durumu vermez.
+/// Sadece ona bağlanınca provider ilk değişime kadar `AsyncLoading`'de kalıyordu
+/// ve tüketiciler `?? true` ile "çevrimiçi" varsayıyordu. İki gerçek bug:
+/// 1. Uçak modu AÇIKKEN uygulamayı açınca "Çevrimdışı" şeridi hiç görünmüyordu.
+/// 2. Uygulama arka plandayken yapılan geçiş kaçırılınca, bir sonraki değişime
+///    kadar bayat "çevrimiçi" kalıyordu.
+/// Çözüm: akışa abone olduktan SONRA mevcut durumu bir kez oku (seed) + uygulama
+/// öne gelince yeniden oku.
+final onlineProvider = StreamProvider<bool>((ref) {
+  final conn = Connectivity();
+  bool isOnline(List<ConnectivityResult> r) =>
+      !r.contains(ConnectivityResult.none);
+
+  final ctrl = StreamController<bool>();
+  var gotEvent = false; // gerçek bir değişim olayı geldi mi?
+
+  // Önce abone ol: seed okumasını beklerken gelen olay kaçmasın.
+  final sub = conn.onConnectivityChanged.listen(
+    (r) {
+      gotEvent = true;
+      if (!ctrl.isClosed) ctrl.add(isOnline(r));
+    },
+    onError: (_) {},
+  );
+
+  /// Mevcut durumu oku. [seed] true ise bu ilk okumadır: araya gerçek bir olay
+  /// girdiyse ONU ezme (bayat değer yazmayalım).
+  Future<void> check({bool seed = false}) async {
+    try {
+      final r = await conn.checkConnectivity();
+      if (ctrl.isClosed || (seed && gotEvent)) return;
+      ctrl.add(isOnline(r));
+    } catch (_) {
+      // Platform kanalı cevap vermezse eski davranış: çevrimiçi say.
+      if (!ctrl.isClosed && !gotEvent) ctrl.add(true);
+    }
+  }
+
+  check(seed: true);
+  // Arka planda kaçan geçişleri öne gelince yakala (bkz. 2. bug).
+  final lifecycle = AppLifecycleListener(onResume: () => check());
+
+  ref.onDispose(() {
+    lifecycle.dispose();
+    sub.cancel();
+    ctrl.close();
+  });
+  return ctrl.stream;
+});
 
 /// Son senkron turunun sonucu — cihaz "çevrimiçi" görünse bile gerçek
 /// sync isteği sessizce başarısız olabiliyordu (bkz [[sunucuya-baglanamama-senkron-gorunurlugu]]

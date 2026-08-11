@@ -45,6 +45,10 @@ class AdenaIcons {
     'send': '<path d="M21 3L10.5 13.5"/><path d="M21 3l-6.8 17-3.7-6.5L4 9.8 21 3z"/>',
     'shieldAlert': '<path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="M12 8.5V12"/><path d="M12 15h.01"/>',
     'check': '<path d="M5 12.5l4.5 4.5L19 6.5"/>',
+    'close': '<path d="M6 6l12 12M18 6L6 18"/>',
+    // bulut yedekleme + belge/rapor (Premium Karşılama Ekranı tasarımı)
+    'cloud': '<path d="M7 18a4 4 0 01-.4-8A5.5 5.5 0 0117.4 11H18a3.5 3.5 0 010 7H7z"/><path d="M12 15.5v-4M10 13l2-2 2 2"/>',
+    'doc': '<path d="M6 3h7l5 5v13H6z"/><path d="M13 3v5h5"/><path d="M9.5 13h5M9.5 16.5h3.5"/>',
     'clock': '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     'edit': '<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M14 6l4 4"/>',
     'trash': '<path d="M4 7h16M9 7V5a1.5 1.5 0 013 0v2M6 7l1 13h10l1-13"/>',

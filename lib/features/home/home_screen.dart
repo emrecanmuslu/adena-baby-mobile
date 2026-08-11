@@ -12,6 +12,8 @@ import '../../core/brand.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/leaps.dart';
+import '../../core/modal_gate.dart';
+import '../../core/onboarding_paywall.dart';
 import '../../core/ring.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
@@ -58,6 +60,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Ana sayfa sekmesi scroll'u — alt menüde zaten Ana sayfadayken tekrar
   // dokununca en üste kaydırmak için (yaygın "geri başa dön" davranışı).
   final _homeScroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Bebek kurulumundan sonra bir kez: Premium Karşılama Ekranı.
+    // Kapıyı SENKRON tut: paywall gerekip gerekmediği ancak async prefs
+    // okumasından sonra belli olur, oysa tanıtım turu bu karede açılmak ister.
+    // Kapı tutuluyken tur ertelenir; kararı verince (ya da ekran kapanınca)
+    // bırakılır → ikisi üst üste binmez.
+    ModalGate.acquire();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeWelcomePaywall());
+  }
+
+  /// Sırada bekleyen karşılama paywall'ını (varsa) açar. Premium kullanıcıya
+  /// asla gösterilmez — bayrak sessizce kapatılır. Tek-kez garantisi ve
+  /// tüketim [OnboardingPaywall] tarafında.
+  Future<void> _maybeWelcomePaywall() async {
+    try {
+      if (!mounted) return;
+      if (ref.read(isPremiumProvider)) {
+        unawaited(OnboardingPaywall.markShown());
+        return;
+      }
+      if (!await OnboardingPaywall.consume()) return;
+      if (!mounted) return;
+      // Ekran kapanana kadar bekle — tur ancak ondan sonra açılabilsin.
+      await context.push('/premium-welcome');
+    } finally {
+      ModalGate.release();
+    }
+  }
 
   @override
   void dispose() {

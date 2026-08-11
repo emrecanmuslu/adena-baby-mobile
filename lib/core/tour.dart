@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/tour_cache.dart';
 import 'ad_widgets.dart';
 import 'i18n.dart';
+import 'modal_gate.dart';
 import 'theme.dart';
 
 /// Tek tanıtım kartı (emoji + başlık + kısa açıklama).
@@ -126,6 +127,23 @@ class _TourMountState extends ConsumerState<TourMount> {
   bool _showing = false; // dialog açık mı (çift tetiklemeyi önler)
 
   @override
+  void initState() {
+    super.initState();
+    // Öncelikli modal (karşılama paywall'ı) kapıyı bırakınca turu tekrar dene.
+    ModalGate.listenable.addListener(_onGateChanged);
+  }
+
+  @override
+  void dispose() {
+    ModalGate.listenable.removeListener(_onGateChanged);
+    super.dispose();
+  }
+
+  void _onGateChanged() {
+    if (mounted && !ModalGate.isBlocked) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     final seen = ref.watch(tourControllerProvider).maybeWhen(
           data: (s) => s.contains(widget.tourKey),
@@ -135,10 +153,16 @@ class _TourMountState extends ConsumerState<TourMount> {
     // Kalıcı latch YOK: sıfırlama sonrası (seen tekrar false) yeniden gösterilebilsin.
     // `seen` markSeen ile true olunca tekrar tetiklenmez; `_showing` aradaki
     // rebuild'lerde ikinci dialogu engeller.
-    if (!seen && !_showing && steps != null && steps.isNotEmpty) {
+    // ModalGate: öncelikli bir modal (karşılama paywall'ı) sırada/açıkken tur
+    // ERTELENİR — markSeen çağrılmaz, kapı açılınca _onGateChanged tekrar dener.
+    if (!seen && !_showing && !ModalGate.isBlocked && steps != null && steps.isNotEmpty) {
       _showing = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
+        // Kapı build ile bu kare arasında tutulmuş olabilir → son bir kontrol.
+        if (!mounted || ModalGate.isBlocked) {
+          if (mounted) setState(() => _showing = false);
+          return;
+        }
         await _showTour(context, ref, widget.tourKey, steps);
         if (mounted) _showing = false;
       });
