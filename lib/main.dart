@@ -179,6 +179,13 @@ Future<void> main() async {
     ]);
     return null;
   }, null, timeout: const Duration(seconds: 5));
+  // Adım timeout'a düştüyse yükleme arka planda SÜRER; router misafir/rıza
+  // bayraklarını bekler (LocalSession.loaded) ve bitince tazeler. Yükleme hiç
+  // tamamlanmazsa (platform kanalı kalıcı takıldı) kullanıcı splash'te kalmasın:
+  // 8 sn sonra varsayılanlarla devam et.
+  if (!LocalSession.loaded) {
+    Timer(const Duration(seconds: 8), LocalSession.markLoaded);
+  }
   // İlk açılışta (dil cache yokken) cihaz dili TR değilse çeviri bundle'ını
   // splash öncesi getir → İLK ekran doğru dilde açılsın. Cache varsa anında.
   await _step<Object?>('locale-bundle', () async {

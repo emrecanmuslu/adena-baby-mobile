@@ -64,7 +64,13 @@ bool _cycleFirstAllows(String loc) =>
 
 /// Riverpod değişimlerini go_router'a köprüler (provider değişince redirect tetiklenir).
 class _RouterRefresh extends ChangeNotifier {
-  _RouterRefresh(Ref ref) {
+  _RouterRefresh(this._ref) {
+    final ref = _ref;
+    // Yerel oturum (LocalSession) yavaş cihazda açılış timeout'una düşerse
+    // misafir/rıza bayrakları varsayılanda (false) kalır ve aşağıdaki provider'lar
+    // bunu ÖNBELLEKLER → misafir kullanıcı yanlışlıkla giriş ekranına düşerdi.
+    // Yükleme tamamlanınca bayrakları tazele + redirect'i yeniden çalıştır.
+    LocalSession.loadedTick.addListener(_onSessionLoaded);
     ref.listen(authControllerProvider, (_, _) => notifyListeners());
     ref.listen(babyControllerProvider, (_, _) => notifyListeners());
     ref.listen(localConsentProvider, (_, _) => notifyListeners());
@@ -77,11 +83,22 @@ class _RouterRefresh extends ChangeNotifier {
     I18n.instance.addListener(_onI18n);
   }
 
+  final Ref _ref;
+
   void _onI18n() => notifyListeners();
+
+  void _onSessionLoaded() {
+    _ref.invalidate(guestModeProvider);
+    _ref.invalidate(localConsentProvider);
+    _ref.invalidate(cycleFirstProvider);
+    _ref.invalidate(localNameProvider);
+    notifyListeners();
+  }
 
   @override
   void dispose() {
     I18n.instance.removeListener(_onI18n);
+    LocalSession.loadedTick.removeListener(_onSessionLoaded);
     super.dispose();
   }
 }
@@ -254,6 +271,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         return loc == '/' ? null : '/';
       }
       final user = auth.asData?.value;
+
+      // Yerel oturum henüz belleğe alınmadıysa misafir/rıza bayrakları BİLİNMİYOR
+      // (varsayılan false, "misafir değil" DEMEK DEĞİL) → kullanıcıyı giriş
+      // ekranına atma, splash'te bekle. Yükleme bitince _onSessionLoaded
+      // redirect'i tetikler; hiç bitmezse main() güvenlik ağı kilidi açar.
+      if (user == null && !LocalSession.loaded && !onAuthPage) {
+        return loc == '/' ? null : '/';
+      }
 
       // 1) Gerçek oturum yok.
       if (user == null) {

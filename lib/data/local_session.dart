@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -48,11 +49,30 @@ class LocalSession {
   /// [LocalPrefs.migrateString] ile tek seferlik göç eder. KRİTİK: localUserId
   /// Keychain'den OKUNAMAZSA (hata/timeout) YENİ UUID ÜRETİLMEZ — mevcut kullanıcının
   /// yerel verisi yetim kalmasın; bir sonraki açılış göçü yeniden dener.
+  ///
+  /// Tüm anahtarlar PARALEL okunur: sıralı okumada tek bir yavaş anahtar (Keychain
+  /// göçü) kendinden SONRAKİ tüm alanları geciktiriyordu; adım 5 sn'lik sınıra
+  /// dayınca `_guest`/`_activeAccountId` gibi alanlar varsayılanda kalıp router'ı
+  /// yanlış yöne (giriş ekranı) sürüklüyordu (Crashlytics: `startup_timeout:
+  /// session+slots`). Paralel okumada en yavaş anahtar kadar beklenir.
   static Future<void> ensureLoaded() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final (existingId, idFailed) =
-          await LocalPrefs.migrateString(prefs, _kUserId);
+      Future<(String?, bool)> read(String k) =>
+          LocalPrefs.migrateString(prefs, k);
+      final results = await Future.wait([
+        read(_kUserId),
+        read(_kConsent),
+        read(_kAnalyticsConsent),
+        read(_kName),
+        read(_kGuest),
+        read(_kGuestMigResolved),
+        read(_kCycleFirst),
+        read(_kImportedAccts),
+        read(_kPremiumSynced),
+        read(_kPurgeHandled),
+      ]);
+      final (existingId, idFailed) = results[0];
       if (existingId != null && existingId.isNotEmpty) {
         _userId = existingId;
       } else if (!idFailed) {
@@ -64,31 +84,23 @@ class LocalSession {
         // Keychain okunamadı → ÜRETME (yetim veri riski). Bu açılış geçici boş.
         _userId = null;
       }
-      final (consent, _) = await LocalPrefs.migrateString(prefs, _kConsent);
-      _consent = consent == '1';
-      final (ac, _) = await LocalPrefs.migrateString(prefs, _kAnalyticsConsent);
-      _analyticsConsent = ac == '1';
-      final (nm, _) = await LocalPrefs.migrateString(prefs, _kName);
-      _name = nm ?? '';
-      final (g, _) = await LocalPrefs.migrateString(prefs, _kGuest);
-      _guest = g == '1';
-      final (gmr, _) = await LocalPrefs.migrateString(prefs, _kGuestMigResolved);
-      _guestMigResolved = gmr == '1';
-      final (cf, _) = await LocalPrefs.migrateString(prefs, _kCycleFirst);
-      _cycleFirst = cf == '1';
+      _consent = results[1].$1 == '1';
+      _analyticsConsent = results[2].$1 == '1';
+      _name = results[3].$1 ?? '';
+      _guest = results[4].$1 == '1';
+      _guestMigResolved = results[5].$1 == '1';
+      _cycleFirst = results[6].$1 == '1';
       // Misafir oturumu açıksa + gerçek oturum yoksa: yerel veri kapsamını
       // localUserId'ye bağla (repo'lar bunu account anahtarı gibi kullanır).
       // Gerçek oturum varsa AuthController.build bunu kendi user.id'siyle ezer.
       if (_guest == true && (_userId ?? '').isNotEmpty) {
         _activeAccountId = _userId;
       }
-      final (csv, _) = await LocalPrefs.migrateString(prefs, _kImportedAccts);
       _importedAccounts =
-          (csv ?? '').split(',').where((s) => s.isNotEmpty).toSet();
-      final (psv, _) = await LocalPrefs.migrateString(prefs, _kPremiumSynced);
+          (results[7].$1 ?? '').split(',').where((s) => s.isNotEmpty).toSet();
       _premiumSyncedAccounts =
-          (psv ?? '').split(',').where((s) => s.isNotEmpty).toSet();
-      final (ph, _) = await LocalPrefs.migrateString(prefs, _kPurgeHandled);
+          (results[8].$1 ?? '').split(',').where((s) => s.isNotEmpty).toSet();
+      final ph = results[9].$1;
       _purgeHandled = {
         for (final p in (ph ?? '').split(';').where((s) => s.contains('=')))
           p.substring(0, p.indexOf('=')): p.substring(p.indexOf('=') + 1)
@@ -102,7 +114,26 @@ class LocalSession {
       _guest ??= false;
       _guestMigResolved ??= false;
       _cycleFirst ??= false;
+    } finally {
+      markLoaded();
     }
+  }
+
+  /// Yerel oturum belleğe alındı mı. false iken `guest`/`consent` gibi bayraklar
+  /// HENÜZ BİLİNMİYOR demektir (varsayılan `false` ≠ "kapalı") — router bunu
+  /// bekler, yoksa misafiri yanlışlıkla giriş ekranına atar.
+  static bool loaded = false;
+
+  /// Yükleme tamamlandığında artan sayaç — router bunu dinleyip yerel bayrak
+  /// provider'larını tazeler (adım timeout'a düşüp arkadan tamamlansa bile).
+  static final ValueNotifier<int> loadedTick = ValueNotifier<int>(0);
+
+  /// Yüklendi işaretle + dinleyicileri uyandır. [ensureLoaded] sonunda çağrılır;
+  /// main() ayrıca güvenlik ağı olarak çağırır (yükleme hiç tamamlanmazsa
+  /// kullanıcı splash'te sonsuza kadar kalmasın).
+  static void markLoaded() {
+    loaded = true;
+    loadedTick.value++;
   }
 
   static String get userId => _userId ?? '';
