@@ -11,6 +11,7 @@ import '../features/babies/family_settings.dart';
 import '../models/baby.dart';
 import '../models/feed_reminder.dart';
 import '../models/record.dart';
+import 'db_watchdog.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
 
@@ -41,7 +42,16 @@ void callbackDispatcher() {
 /// `ProviderContainer` ile repo.sync doğrudan sürülür.
 Future<void> runBackgroundSync() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Turun başladığını KALICI olarak işaretle: bu isolate ön planla bellek
+  // paylaşmadığı için, ön plandaki [DbWatchdog] raporuna "son BGTask turu ne
+  // zaman/nasıl bitti" bilgisini ancak böyle taşıyabiliyoruz. Tur ortada
+  // kalırsa değer 'başladı' olarak kalır → arıza ile turun bağı görünür.
+  await DbWatchdog.markBackgroundSync('başladı');
+  // NOT: Bu isolate'in AppDatabase'i KENDİ sqlite bağlantısını açar
+  // (shareAcrossIsolates kapalı) → aşağıdaki container.dispose() → db.close()
+  // ön plandaki bağlantıya ARTIK dokunmaz. Bkz. AppDatabase._open.
   final container = ProviderContainer();
+  var outcome = 'bitti';
   try {
     // Oturum çözülene kadar bekle; yoksa hiç senkron yok (saf local-first).
     await container.read(authControllerProvider.future);
@@ -63,8 +73,10 @@ Future<void> runBackgroundSync() async {
     }
   } catch (_) {
     // Auth/baby çözülemedi → sessiz; bir sonraki turda tekrar denenir.
+    outcome = 'hata';
   } finally {
     container.dispose();
+    await DbWatchdog.markBackgroundSync(outcome);
   }
 }
 

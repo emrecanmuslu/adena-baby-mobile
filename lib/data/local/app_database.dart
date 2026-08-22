@@ -310,6 +310,31 @@ class AppDatabase extends _$AppDatabase {
         'CREATE INDEX IF NOT EXISTS idx_cycle_date ON cycle_entries (date)');
   }
 
+  /// Ön plan stream sorgularını ZORLA yeniden çalıştırır (drift `notifyUpdates`).
+  ///
+  /// Drift stream'leri yalnız KENDİ bağlantısındaki yazımları izler. Arka plan
+  /// isolate'i (workmanager bg sync) ayrı bir bağlantıyla aynı SQLite dosyasına
+  /// kayıt yazıp cursor'ı ilerletince, ön plandaki bu bağlantının stream'leri o
+  /// yazımdan HABERSİZ kalır → warm-resume'da Home bayat görünür, pull-refresh
+  /// no-op olur (cursor ilerlemiş, sunucu boş döner → ön plan da yazmaz → emit
+  /// yok) ve yalnız tam kapat-aç düzeltir. Öne gelişte + her sync turundan sonra
+  /// çağrılır: tüm sync'li tablo stream'leri dosyayı yeniden okur.
+  ///
+  /// NOT: `shareAcrossIsolates` denemesi bunu gereksiz kılıyordu ama çok daha
+  /// kötü bir hataya yol açtı (bkz. [_open]) — bilinçli olarak geri getirildi.
+  void refreshSyncedStreams() {
+    notifyUpdates({
+      TableUpdate.onTable(records),
+      TableUpdate.onTable(babies),
+      TableUpdate.onTable(memories),
+      TableUpdate.onTable(momEntries),
+      TableUpdate.onTable(cycleSettingsTable),
+      TableUpdate.onTable(cycleEntries),
+      TableUpdate.onTable(healthStatuses),
+      TableUpdate.onTable(localReminders),
+    });
+  }
+
   /// Tüm yerel verileri siler (hesapsız "yerel verileri sil" / GDPR). Şema kalır,
   /// satırlar gider — kullanıcı sıfırdan başlar.
   Future<void> wipeAllData() async {
@@ -320,20 +345,39 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// `shareAcrossIsolates`: aynı isimdeki DB'yi açan tüm isolate'ler (ör.
-  /// `background_sync.dart`'taki workmanager isolate'i) drift'in kendi
-  /// isolate-server'ı üzerinden TEK gerçek bağlantıya yönlendirilir — hem
-  /// eşzamanlı erişimde "database is locked" (Crashlytics'te görülen
-  /// PRAGMA user_version / babies SELECT çökmeleri) engellenir, hem de
-  /// stream'ler isolate'ler arası otomatik senkron kalır (eskiden elle
-  /// `refreshSyncedStreams()` çağrılarak düzeltiliyordu, artık gerek yok).
-  /// `busy_timeout` ek güvenlik ağı: paylaşılan
-  /// bağlantı dışında kalan kısa süreli kilitlerde crash yerine bekler.
+  /// Her isolate KENDİ sqlite bağlantısını açar (`shareAcrossIsolates` KAPALI).
+  ///
+  /// ⚠️ Bir dönem `shareAcrossIsolates: true` kullanıldı (bkz. 2a3a218) — ön plan
+  /// ile workmanager arka plan isolate'i drift'in spawn ettiği TEK sunucu
+  /// isolate'ini paylaşıyordu. iOS'ta BGTask'ı işletim sistemi başlatıp aniden
+  /// yıkıyor; o sunucu isolate'i (ve process-global `IsolateNameServer` kayıtları)
+  /// tutarsız kalınca drift_flutter'ın yeniden-bağlanma döngüsü (`while (true)`,
+  /// toplam timeout'u YOK) ve drift'in timeout'suz remote sorguları yüzünden
+  /// **tüm `watch()` stream'leri sessizce sonsuza kadar loading'de kalıyordu**:
+  /// uygulama açılıyor ama Son Aktivite/Bugün/Günlük Akış hep skeleton, sync
+  /// şeridi hiç kapanmıyor, yalnız uygulamayı öldürüp açmak düzeltiyordu.
+  /// Bebek listesi görünmeye devam ettiği için (tek-seferlik `getAll()` ile
+  /// state'e girmiş) bug "veri kayboldu" gibi değil "her yer skeleton" gibi
+  /// görünüyordu. Bkz. [[drift-shareacrossisolates-skeleton-bugu]].
+  ///
+  /// O commit'in ASIL çözdüğü "database is locked" çökmesi `shareAcrossIsolates`
+  /// değil `busy_timeout` sayesindeydi; burada onu koruyup üstüne **WAL** ekliyoruz:
+  /// WAL'da okuyucular yazarı bloklamaz, busy_timeout da kalan kısa kilitlerde
+  /// crash yerine bekletir. Bağlantılar bağımsız olduğu için arka plan
+  /// isolate'inin yaşam döngüsü ön planı ARTIK ETKİLEYEMEZ.
+  ///
+  /// Bedeli: ayrı bağlantıların stream'leri birbirinin yazımını duymaz →
+  /// [refreshSyncedStreams] (öne gelişte + sync sonrası) bunu telafi eder.
   static QueryExecutor _open() => driftDatabase(
         name: 'adena',
         native: DriftNativeOptions(
-          shareAcrossIsolates: true,
-          setup: (db) => db.execute('PRAGMA busy_timeout = 5000;'),
+          setup: (db) {
+            // WAL kalıcıdır (dosyaya yazılır); her açılışta idempotent.
+            db.execute('PRAGMA journal_mode = WAL;');
+            // Isolate'ler artık drift tarafından serileştirilmediği için kilit
+            // çakışması yeniden mümkün → 5s yerine 8s tolerans.
+            db.execute('PRAGMA busy_timeout = 8000;');
+          },
         ),
       );
 }

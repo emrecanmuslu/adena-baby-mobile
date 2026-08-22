@@ -25,6 +25,7 @@ import 'core/providers.dart';
 import 'core/push_service.dart';
 import 'core/restart_widget.dart';
 import 'core/config.dart';
+import 'core/db_watchdog.dart';
 import 'core/revenuecat_service.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_controller.dart';
@@ -259,6 +260,11 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     // Uygulama ön planda başlar → push OS bildirimi yerine in-app banner göstersin.
     appInForeground = true;
+    // Yerel DB nabzı: açılışta bir kez + ön planda periyodik. Sessiz "her yer
+    // skeleton" arızası (bkz. DbWatchdog) nüksederse Crashlytics'e non-fatal düşer.
+    final db = ref.read(databaseProvider);
+    unawaited(DbWatchdog.instance.check(db, 'startup'));
+    DbWatchdog.instance.startPulse(db);
     // Push: ön plan mesaj dinleyicisi (oturum gerektirmez).
     PushService.instance.startForeground();
     // Ön planda aile-etkinlik push'u gelince yerel kayıtları HEMEN çek → ana
@@ -316,7 +322,14 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // Ön plan/arka plan bayrağı: ön planda push OS bildirimi yerine in-app banner
     // gösterir (handlePushMessage appInForeground'a bakar).
     appInForeground = state == AppLifecycleState.resumed;
-    if (state == AppLifecycleState.resumed) _onForeground();
+    if (state == AppLifecycleState.resumed) {
+      _onForeground();
+      DbWatchdog.instance.startPulse(ref.read(databaseProvider));
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      // Arka planda nabız atmaya gerek yok (pil) — öne gelişte yeniden kurulur.
+      DbWatchdog.instance.stopPulse();
+    }
   }
 
   /// Ön plan push'u için in-app üst banner göster. Yalnız GÖRÜNÜR body taşıyan
@@ -431,9 +444,18 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     }
   }
 
-  /// Öne gelince: bebek listesini tazele (çıkarılan üyenin erişimi düşsün, yerel
-  /// verisi temizlensin).
+  /// Öne gelince: drift stream'lerini yeniden okut + bebek listesini tazele
+  /// (çıkarılan üyenin erişimi düşsün, yerel verisi temizlensin).
   void _onForeground() {
+    // Warm-resume'da ön plan drift stream'lerini ANINDA yeniden okut: uygulama
+    // arka plandayken workmanager bg sync isolate'i AYRI bağlantıyla yeni
+    // kayıtları dosyaya yazmış olabilir — bu bağlantının stream'leri o yazımdan
+    // habersizdir, Home bayat görünür (yalnız kapat-aç düzeltirdi). Ağ sync'ini
+    // beklemeden dosyadaki güncel veriyi yansıt. Bkz. AppDatabase._open.
+    ref.read(databaseProvider).refreshSyncedStreams();
+    // DB yanıt veriyor mu? (paylaşılan-isolate bug'ının nüksetme kanıtı için
+    // Crashlytics'e non-fatal düşer — sessiz "her yer skeleton" hâli görünür olsun.)
+    unawaited(DbWatchdog.instance.check(ref.read(databaseProvider), 'resume'));
     ref.read(babyControllerProvider.notifier).refresh();
     // Bildirim izni sistem ayarlarından sonradan açıldıysa, devam eden uyku/
     // emzirme sayacının bildirimini yeniden post et (reaktif sync tetiklenmez).
