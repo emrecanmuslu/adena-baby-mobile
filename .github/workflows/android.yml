@@ -94,6 +94,12 @@ jobs:
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           track: ${{ github.event.inputs.track || 'alpha' }}
           status: completed
+          # Play API, uygulamada incelemeye gonderilmemis bekleyen degisiklik
+          # varken edit'i otomatik incelemeye yollayamiyor ve commit'i reddediyor
+          # ("Changes cannot be sent for review automatically" — v1.4.16 boyle
+          # patladi). Bu bayrakla surum commit edilir; incelemeye gonderme islemi
+          # Play Console UI'dan ELLE yapilir.
+          changesNotSentForReview: true
 
       - name: AAB'yi artifact olarak da sakla
         uses: actions/upload-artifact@v4
