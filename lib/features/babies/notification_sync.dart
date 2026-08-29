@@ -60,8 +60,7 @@ class _WidgetSync extends ConsumerWidget {
     final widgetBabies = <WidgetBaby>[];
     for (final b in born) {
       final recs = ref.watch(recentRecordsProvider(b.id)).asData?.value ?? const [];
-      final cfg = ref.watch(feedReminderProvider(b.id));
-      final effCfg = cfg.enabled ? cfg : const FeedReminderConfig();
+      final effCfg = ref.watch(feedReminderProvider(b.id)).effectiveForEstimate;
       final next = nextFeedEstimate(effCfg, recs);
       final last = lastFeedAt(effCfg, recs);
       widgetBabies
@@ -241,17 +240,19 @@ class _BabyNotifSync extends ConsumerWidget {
     // (feedReminderStoreProvider). Eski PAYLAŞIMLI sunucu değeri (familySettings)
     // yüklenince, yerelde bu bebek için kayıt YOKSA bir kez yerele yaz. Böylece
     // sonraki açılışlarda provider sunucuyu beklemeden yerelden döner ve _syncFeed
-    // snapshot/App Group/widget/hatırlatıcıyı İLK ön planda doğru aralıkla yazar —
-    // arka plan push (kapalı uygulama) asla 120 dk=2 saat varsayılanına düşmez.
+    // snapshot/App Group/widget/hatırlatıcıyı İLK ön planda doğru aralıkla yazar.
     final loadedFs = ref.watch(familySettingsProvider(baby.id)).asData?.value;
-    if (loadedFs != null &&
-        !ref.read(feedReminderStoreProvider).containsKey(baby.id)) {
+    if (loadedFs != null) {
       final feed = loadedFs['feed_reminder'];
       final seeded = FeedReminderConfig.fromMap(
           feed is Map ? Map<String, dynamic>.from(feed) : null);
+      // "Yerelde kayıt var mı?" kontrolü notifier'ın İÇİNDE, yerel yükleme
+      // bittikten SONRA yapılır — burada `containsKey` ile bakmak yarış
+      // oluşturuyor ve cihazın kendi ayarını diskte eziyordu (bkz. seedIfMissing).
       // build sırasında provider durumu değiştirme → microtask'a ertele.
-      Future.microtask(
-          () => ref.read(feedReminderStoreProvider.notifier).set(baby.id, seeded));
+      Future.microtask(() => ref
+          .read(feedReminderStoreProvider.notifier)
+          .seedIfMissing(baby.id, seeded));
     }
 
     // Süren sayaç bildirimi kullanıcı tercihiyle kapatılabilir (cihaz-yerel).

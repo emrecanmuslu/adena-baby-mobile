@@ -396,6 +396,35 @@ void main() {
         expect(s.matchesBase(null), isTrue);
       });
     });
+
+    // Arka plan yolları (push handler / bg sync) tahmini bu config üzerinden
+    // hesaplar; ön planla aynı kuralları kullanabilmeleri için snapshot'ın TÜM
+    // alanları eksiksiz taşınmalı.
+    group('FeedReminderSnapshot.toConfig', () {
+      test('tüm alanlar config\'e taşınır', () {
+        final c = snap(
+                enabled: true,
+                intervalMin: 180,
+                baseType: 'formula',
+                preMin: 15,
+                sound: true)
+            .toConfig();
+        expect(c.enabled, isTrue);
+        expect(c.intervalMin, 180);
+        expect(c.baseType, 'formula');
+        expect(c.preMin, 15);
+        expect(c.soundEnabled, isTrue);
+        expect(c.forgotEnabled, isTrue);
+      });
+
+      test('hatırlatıcı kapalı → effectiveForEstimate varsayılana düşer', () {
+        final c = snap(enabled: false, intervalMin: 180, baseType: 'formula')
+            .toConfig()
+            .effectiveForEstimate;
+        expect(c.intervalMin, 120);
+        expect(c.baseType, 'all');
+      });
+    });
   });
 
   // ---------------------------------------------------------------------------

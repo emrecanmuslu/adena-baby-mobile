@@ -85,9 +85,14 @@ class WidgetService {
       await HomeWidget.saveWidgetData<String>('last_$babyId', _ms(lastFeed));
       // iOS Notification Service Extension (uygulama KAPALIYKEN) sonraki beslenmeyi
       // last_feed_ts + bu aralıktan hesaplar — App Group'a önbelleğe al.
+      //
+      // NOT: Eskiden bebekten BAĞIMSIZ bir `feed_interval_default` de yazılıyor ve
+      // NSE, bebeğe özel anahtar yoksa ona düşüyordu. Çok-bebekte bu "başka bebeğin
+      // aralığı" demekti; dahası aralığı bilmediğimiz bir turda buraya varsayılan
+      // 120 yazılınca NSE'nin push yolu da kalıcı olarak 2 saate kayıyordu. Artık
+      // yalnız bebeğe özel anahtar yazılır; NSE onu bulamazsa widget'a hiç dokunmaz.
       if (intervalMin != null) {
         await HomeWidget.saveWidgetData<int>('feed_interval_$babyId', intervalMin);
-        await HomeWidget.saveWidgetData<int>('feed_interval_default', intervalMin);
       }
       await HomeWidget.saveWidgetData<String>('locale', I18n.instance.locale);
       await _refresh();

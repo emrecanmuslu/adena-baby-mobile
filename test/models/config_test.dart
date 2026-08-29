@@ -130,6 +130,51 @@ void main() {
     });
   });
 
+  // Bu iki kural "sonraki beslenme"yi yazan BEŞ yolun (ana sayfa kartı, ana ekran
+  // widget'ı, arka plan sync, FCM push işleyicisi, iOS NSE) ortak sözleşmesidir.
+  // Yollardan biri farklı davranınca widget her push'ta ileri, her arka plan
+  // turunda geri zıplıyordu.
+  group('FeedReminderConfig.matchesBase — çapayı kim oynatabilir', () {
+    test('baz=formula → yalnız mama çapayı oynatır', () {
+      const c = FeedReminderConfig(baseType: 'formula');
+      expect(c.matchesBase('formula'), isTrue);
+      expect(c.matchesBase('breast'), isFalse);
+      expect(c.matchesBase('pumped'), isFalse);
+      expect(c.matchesBase('solid'), isFalse);
+      expect(c.matchesBase(null), isFalse);
+    });
+
+    test('baz=breast → yalnız anne sütü çapayı oynatır', () {
+      const c = FeedReminderConfig(baseType: 'breast');
+      expect(c.matchesBase('breast'), isTrue);
+      expect(c.matchesBase('formula'), isFalse);
+      expect(c.matchesBase(null), isFalse);
+    });
+
+    test('baz=all → her beslenme çapayı oynatır (bilinmeyen tür dahil)', () {
+      const c = FeedReminderConfig();
+      expect(c.matchesBase('breast'), isTrue);
+      expect(c.matchesBase('formula'), isTrue);
+      expect(c.matchesBase(null), isTrue);
+    });
+  });
+
+  group('FeedReminderConfig.effectiveForEstimate', () {
+    test('hatırlatıcı AÇIK → kullanıcının kendi aralığı/bazı korunur', () {
+      const c = FeedReminderConfig(
+          enabled: true, intervalMin: 180, baseType: 'formula');
+      expect(c.effectiveForEstimate.intervalMin, 180);
+      expect(c.effectiveForEstimate.baseType, 'formula');
+    });
+
+    test('hatırlatıcı KAPALI → tahmin varsayılana düşer (2 saat · tüm beslenmeler)',
+        () {
+      const c = FeedReminderConfig(intervalMin: 180, baseType: 'formula');
+      expect(c.effectiveForEstimate.intervalMin, 120);
+      expect(c.effectiveForEstimate.baseType, 'all');
+    });
+  });
+
   group('Reminder.fromJson', () {
     test('tam payload okunur', () {
       final r = Reminder.fromJson({

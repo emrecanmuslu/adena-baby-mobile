@@ -73,9 +73,12 @@ final feedReminderStoreProvider =
         FeedReminderNotifier.new);
 
 class FeedReminderNotifier extends Notifier<Map<String, FeedReminderConfig>> {
+  /// Yerel depodan ilk yükleme — [seedIfMissing] bunu BEKLER (bkz. aşağıdaki not).
+  Future<void>? _loading;
+
   @override
   Map<String, FeedReminderConfig> build() {
-    _load();
+    _loading = _load();
     return const {};
   }
 
@@ -86,6 +89,21 @@ class FeedReminderNotifier extends Notifier<Map<String, FeedReminderConfig>> {
   Future<void> set(String babyId, FeedReminderConfig cfg) async {
     state = {...state, babyId: cfg};
     await FeedReminderStore().write(babyId, cfg);
+  }
+
+  /// Eski PAYLAŞIMLI sunucu değerini yerele BİR KEZ tohumlar — yalnız bu bebek
+  /// için yerelde gerçekten kayıt yoksa.
+  ///
+  /// ⚠️ Çağıran taraf `state.containsKey` ile kontrol EDEMEZ: `build()` sırasında
+  /// state boş `{}` olur ve `_load()` asenkron biter. Çağıran ilk build'de kontrol
+  /// edince "yerelde kayıt yok" sanıp tohumu yazıyor ve **cihazın kendi ayarını
+  /// sunucudaki bayat değerle diskte eziyordu** (bellekteki değer doğru kaldığı
+  /// için sorun ancak bir sonraki açılışta ortaya çıkıyordu). Kontrol bu yüzden
+  /// yüklemeyi bekleyerek BURADA yapılır.
+  Future<void> seedIfMissing(String babyId, FeedReminderConfig fromServer) async {
+    await _loading;
+    if (state.containsKey(babyId)) return;
+    await set(babyId, fromServer);
   }
 }
 
@@ -140,11 +158,10 @@ DateTime? lastFeedAt(FeedReminderConfig cfg, List<Record> records) {
   bool matches(Record r) {
     if (r.type != RecordType.feed || r.isOngoingBreast) return false;
     if (r.ts.isAfter(cutoff)) return false; // ciddi gelecek tarihli kayıt baz alınmaz
-    return switch (cfg.baseType) {
-      'breast' => r.data['sub'] == 'breast',
-      'formula' => r.data['sub'] == 'formula',
-      _ => true,
-    };
+    // Baz türü filtresi TEK yerde ([FeedReminderConfig.matchesBase]): push
+    // işleyicisi, arka plan sync ve iOS NSE de aynı kuralı kullanır. Kopyalanan
+    // filtreler ayrışınca widget her push'ta ileri, her bg turunda geri zıplıyordu.
+    return cfg.matchesBase(r.data['sub'] as String?);
   }
 
   final feeds = records.where(matches).toList()

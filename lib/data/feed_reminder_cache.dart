@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/feed_reminder.dart';
 import '../models/quiet_hours.dart';
 import 'local_prefs.dart';
 
@@ -35,13 +36,20 @@ class FeedReminderSnapshot {
     this.forgot = true,
   });
 
+  /// Snapshot'ın taşıdığı ayarın kendisi — arka plan yolları (push işleyicisi,
+  /// bg sync) tahmini bu config üzerinden, ön planla AYNI kurallarla hesaplar.
+  FeedReminderConfig toConfig() => FeedReminderConfig(
+        enabled: enabled,
+        intervalMin: intervalMin,
+        baseType: baseType,
+        preMin: preMin,
+        soundEnabled: sound,
+        forgotEnabled: forgot,
+      );
+
   /// Eklenen beslenmenin alt türü ([sub]) bu hatırlatıcının baz türüyle uyuşuyor
   /// mu? nextFeedEstimate'teki filtreyle birebir aynı mantık.
-  bool matchesBase(String? sub) => switch (baseType) {
-        'breast' => sub == 'breast',
-        'formula' => sub == 'formula',
-        _ => true,
-      };
+  bool matchesBase(String? sub) => toConfig().matchesBase(sub);
 
   Map<String, dynamic> toJson() => {
         'slot': slot,

@@ -56,18 +56,31 @@ class NotificationService: UNNotificationServiceExtension {
     // yazmazsa BAYAT kalıyordu — bu, "push dolu geldi ama widget güncellenmedi"nin
     // başlıca cihaz-tarafı nedeni. Çok-bebekte (active_id dolu, başka bebek) dokunmaz.
     let writeFallback = isActive || (activeId?.isEmpty ?? true)
-    if let nextMs = nextFeedMs(info, babyId: babyId, defaults: defaults) {
-      defaults.set(String(nextMs), forKey: "next_\(babyId)")
-      if writeFallback {
-        defaults.set(name, forKey: "baby_name")
-        defaults.set(String(nextMs), forKey: "next_feed_ms")
+
+    // Ön planın App Group'a aynaladığı tahmin ayarı (aralık + baz türü). nil ise
+    // BİLMİYORUZ → widget'a tahmin YAZMA (eskiden 120 dk'ya düşülüyordu; 3 saatlik
+    // ayarı olan kullanıcıda widget sessizce "son beslenme + 2 saat"e kayıyordu).
+    // Baz türü filtresi Dart nextFeedEstimate/lastFeedAt ile birebir: hatırlatıcı
+    // "son MAMA sonrası" ise eklenen ANNE SÜTÜ kaydı çapayı OYNATMAMALI — bu dal
+    // eskiden filtrelemiyordu, ön plan/bg sync filtreliyordu; widget her push'ta
+    // ileri, her arka plan turunda geri zıplıyordu.
+    if let est = feedEstimate(babyId, defaults),
+       matchesBase(est.base, info["feed_sub"] as? String) {
+      if let nextMs = nextFeedMs(info, est: est) {
+        defaults.set(String(nextMs), forKey: "next_\(babyId)")
+        if writeFallback {
+          defaults.set(name, forKey: "baby_name")
+          defaults.set(String(nextMs), forKey: "next_feed_ms")
+        }
       }
-    }
-    // Widget "Son besleme HH:MM" gösterir → push'taki last_feed_ts'i de yaz.
-    if let ts = info["last_feed_ts"] as? String, let last = parseDate(ts) {
-      let lastMs = Int64(last.timeIntervalSince1970 * 1000)
-      defaults.set(String(lastMs), forKey: "last_\(babyId)")
-      if writeFallback { defaults.set(String(lastMs), forKey: "last_feed_ms") }
+      // Widget "Son besleme HH:MM" gösterir → push'taki last_feed_ts'i de yaz.
+      // Ön planda `lastFeedAt` de baz türüyle filtrelenir; bu yüzden "son besleme"
+      // de yalnız çapayı oynatan türde güncellenir (iki gösterge tutarlı kalsın).
+      if let ts = info["last_feed_ts"] as? String, let last = parseDate(ts) {
+        let lastMs = Int64(last.timeIntervalSince1970 * 1000)
+        defaults.set(String(lastMs), forKey: "last_\(babyId)")
+        if writeFallback { defaults.set(String(lastMs), forKey: "last_feed_ms") }
+      }
     }
 
     // Cross-process FLUSH: NSE yazıp hemen reload edince widget eski veriyi
@@ -92,14 +105,14 @@ class NotificationService: UNNotificationServiceExtension {
     _ info: [AnyHashable: Any], babyId: String, defaults: UserDefaults, name: String
   ) {
     guard defaults.string(forKey: "fr_enabled_\(babyId)") == "1" else { return }
+    // Hatırlatıcı AÇIK olduğu için [feedEstimate] burada kullanıcının kendi
+    // aralığını + baz türünü döndürür (varsayılana düşmez).
+    guard let est = feedEstimate(babyId, defaults) else { return }
     // baseType filtresi (nextFeedEstimate/_rescheduleFeedReminder ile birebir):
     // hatırlatıcı türü ile eklenen beslenmenin türü uyuşmuyorsa plana dokunma.
-    let base = defaults.string(forKey: "fr_base_\(babyId)") ?? "all"
-    let sub = info["feed_sub"] as? String
-    if base == "breast" && sub != "breast" { return }
-    if base == "formula" && sub != "formula" { return }
+    guard matchesBase(est.base, info["feed_sub"] as? String) else { return }
 
-    guard let nextMs = nextFeedMs(info, babyId: babyId, defaults: defaults) else { return }
+    guard let nextMs = nextFeedMs(info, est: est) else { return }
     let next = Date(timeIntervalSince1970: Double(nextMs) / 1000.0)
     let now = Date()
     let slot = readInt(defaults, "fr_slot_\(babyId)")
@@ -192,16 +205,45 @@ class NotificationService: UNNotificationServiceExtension {
     return defaults.integer(forKey: key)
   }
 
-  /// next = last_feed_ts + interval(dk). interval App Group'tan okunur (Dart yazar);
-  /// yoksa kullanıcı varsayılanı; o da yoksa 120 dk. Tarih ayrıştırılamazsa nil.
-  private func nextFeedMs(
-    _ info: [AnyHashable: Any], babyId: String, defaults: UserDefaults
-  ) -> Int64? {
+  /// "Sonraki beslenme" tahmini için efektif ayar (aralık + çapa türü).
+  private struct FeedEstimate {
+    let intervalMin: Double
+    let base: String // 'all' | 'breast' | 'formula'
+  }
+
+  /// Bu bebek için ön planın App Group'a aynaladığı ayar (bkz. Dart
+  /// `WidgetService.publishFeedReminderConfig`). Ayar HİÇ yazılmamışsa nil döner —
+  /// çağıran taraf o zaman widget'a tahmin yazmaz. Eskiden burada 120 dk'lık
+  /// varsayılana düşülüyordu; kullanıcının aralığı 3 saat olsa bile widget "son
+  /// beslenme + 2 saat" gösteriyordu.
+  ///
+  /// Hatırlatıcı KAPALIYKEN Dart `FeedReminderConfig.effectiveForEstimate` ile
+  /// birebir aynı kural uygulanır: tahmin varsayılana düşer (2 saat · tüm beslenmeler).
+  private func feedEstimate(_ babyId: String, _ defaults: UserDefaults) -> FeedEstimate? {
+    let interval = defaults.double(forKey: "feed_interval_\(babyId)")
+    guard interval > 0 else { return nil }
+    guard defaults.string(forKey: "fr_enabled_\(babyId)") == "1" else {
+      return FeedEstimate(intervalMin: 120, base: "all")
+    }
+    return FeedEstimate(
+      intervalMin: interval,
+      base: defaults.string(forKey: "fr_base_\(babyId)") ?? "all")
+  }
+
+  /// Eklenen beslenmenin alt türü çapa türüyle uyuşuyor mu? Dart
+  /// `FeedReminderConfig.matchesBase` ile BİREBİR aynı.
+  private func matchesBase(_ base: String, _ sub: String?) -> Bool {
+    switch base {
+    case "breast": return sub == "breast"
+    case "formula": return sub == "formula"
+    default: return true
+    }
+  }
+
+  /// next = last_feed_ts + interval(dk). Tarih ayrıştırılamazsa nil.
+  private func nextFeedMs(_ info: [AnyHashable: Any], est: FeedEstimate) -> Int64? {
     guard let ts = info["last_feed_ts"] as? String, let last = parseDate(ts) else { return nil }
-    var interval = defaults.double(forKey: "feed_interval_\(babyId)")
-    if interval <= 0 { interval = defaults.double(forKey: "feed_interval_default") }
-    if interval <= 0 { interval = 120 }
-    let next = last.addingTimeInterval(interval * 60)
+    let next = last.addingTimeInterval(est.intervalMin * 60)
     return Int64(next.timeIntervalSince1970 * 1000)
   }
 

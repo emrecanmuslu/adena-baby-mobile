@@ -9,7 +9,6 @@ import '../features/auth/auth_controller.dart';
 import '../features/babies/baby_controller.dart';
 import '../features/babies/family_settings.dart';
 import '../models/baby.dart';
-import '../models/feed_reminder.dart';
 import '../models/record.dart';
 import 'db_watchdog.dart';
 import 'notification_service.dart';
@@ -93,20 +92,18 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
     return; // yerel kayıt okunamadı → bu turda dokunma
   }
   final snap = await FeedReminderCache().read(b.id);
-  final cfg = snap == null
-      ? const FeedReminderConfig()
-      : FeedReminderConfig(
-          enabled: snap.enabled,
-          intervalMin: snap.intervalMin,
-          baseType: snap.baseType,
-          preMin: snap.preMin,
-          soundEnabled: snap.sound,
-        );
-  // nextFeedEstimate hatırlatıcı kapalıyken de varsayılan aralıkla widget için
-  // hesaplar (ana sayfa kartı/_WidgetSync ile aynı mantık).
-  final effCfg = cfg.enabled ? cfg : const FeedReminderConfig();
-  final next = nextFeedEstimate(effCfg, recs);
-  final last = lastFeedAt(effCfg, recs);
+  // Snapshot okunamadıysa kullanıcının aralığını/baz türünü BİLMİYORUZ. Eskiden
+  // burada varsayılana (her 2 saat · tüm beslenmeler) düşülüyor ve bu değer hem
+  // widget'a hem App Group'a (`feed_interval_default`) yazılıyordu → 3 saatlik
+  // ayarı olan kullanıcıda widget sessizce 2 saate kayıyordu. Artık dokunmuyoruz:
+  // widget ön planda yazılan son (doğru) değerinde kalır.
+  if (snap == null) return;
+  // Ön planla (_WidgetSync / ana sayfa kartı) BİREBİR aynı kural: hatırlatıcı
+  // kapalıysa tahmin varsayılana düşer. nextFeedEstimate/lastFeedAt zaten baz
+  // türü filtresini uygular (son MAMA / son anne sütü çapası).
+  final cfg = snap.toConfig().effectiveForEstimate;
+  final next = nextFeedEstimate(cfg, recs);
+  final last = lastFeedAt(cfg, recs);
   // Yalnız per-baby anahtarları yaz (publishOne); kullanıcının aktif-bebek seçimini
   // (active_id/baby_name/next_feed_ms) EZME — onu yalnız ön plan publishAll yönetir.
   await WidgetService.publishOne(
@@ -117,7 +114,7 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
       intervalMin: cfg.intervalMin);
   // Bildirim yalnız hatırlatıcı açıksa yeniden planlanır (scheduleFeedReminder
   // aynı id'yi iptal edip yeniden kurar → çift olmaz, idempotent).
-  if (snap != null && snap.enabled) {
+  if (snap.enabled) {
     await NotificationService.instance.scheduleFeedReminder(
       enabled: true,
       nextTime: next,
@@ -126,6 +123,9 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
       babyName: b.name,
       sound: snap.sound,
       quiet: snap.quiet,
+      // Eskiden geçilmiyordu → varsayılan `true` ile, kullanıcı "Kaydı unuttun mu?"
+      // dürtmesini KAPATMIŞ olsa bile her bg turunda yeniden kuruluyordu.
+      forgot: snap.forgot,
     );
   }
 }

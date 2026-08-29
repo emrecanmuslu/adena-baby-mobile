@@ -7,7 +7,6 @@ import '../data/activity_notif_cache.dart';
 import '../data/feed_reminder_cache.dart';
 import '../data/notification_prefs.dart';
 import '../data/slot_registry.dart';
-import '../models/feed_reminder.dart';
 import 'api_client.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
@@ -75,25 +74,39 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   final lastFeed = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
   if (data['widget_update'] == 'feed') {
     // Widget artık SONRAKİ beslenmeyi gösterir → son beslenme + aralıktan hesapla.
-    // Aralık: bebeğin hatırlatıcı snapshot'ı (FeedReminderCache), yoksa varsayılan 120 dk.
     // Çok-bebek: bu bebeğin verisini per-baby anahtarına yaz (o bebeği seçen widget tazelenir).
     final babyId = data['baby_id'];
     if (babyId is String && babyId.isNotEmpty) {
-      // Aralığı lastFeed'den bağımsız hesapla → kapalıyken çalışacak iOS NSE için
-      // App Group'a da yazılsın (publishOne intervalMin'i önbelleğe alır).
-      var interval = const FeedReminderConfig().intervalMin; // 120
       final snap = await FeedReminderCache().read(babyId);
-      if (snap != null) interval = snap.intervalMin;
-      final next = lastFeed?.add(Duration(minutes: interval));
-      // Bebek adı backend data'sında 'baby_name' ile gelir (sessiz iOS push'unda
-      // notification/title yok → title 'Adena Baby'ye düşerdi). title yedek.
-      final babyName = (data['baby_name'] as String?) ?? title;
-      await WidgetService.publishOne(
-          babyId: babyId,
-          babyName: babyName,
-          nextFeed: next,
-          lastFeed: lastFeed,
-          intervalMin: interval);
+      // Snapshot YOKSA aralığı da baz türünü de BİLMİYORUZ. Eskiden burada
+      // varsayılan 120 dk'ya düşülüyordu; kullanıcının aralığı 3 saat olsa bile
+      // widget "son beslenme + 2 saat" yazıyordu (ve publishOne bunu App Group'a
+      // `feed_interval_default` olarak kalıcılaştırıp iOS NSE'yi de zehirliyordu).
+      // Bayat ama DOĞRU veri, taze ama yanlış veriden iyidir → hiç dokunma.
+      // (Snapshot'ı ön plandaki _syncFeed her oturumda yazar; doğmuş bebeği olan
+      // bir kullanıcıda pratikte hep vardır.)
+      if (snap != null) {
+        // Ön planla (_WidgetSync / ana sayfa kartı) BİREBİR aynı kural: hatırlatıcı
+        // kapalıysa tahmin varsayılana düşer.
+        final cfg = snap.toConfig().effectiveForEstimate;
+        // KRİTİK: baz türü filtresi. Hatırlatıcı "son MAMA sonrası" ise eşin
+        // eklediği ANNE SÜTÜ kaydı çapayı oynatmamalı — ön plan/bg sync zaten
+        // filtreliyordu, yalnız bu dal filtrelemiyordu. Sonuç: push widget'a
+        // "anne sütü + 3 sa" yazıyor, 30 dk sonraki bg sync "son mama + 3 sa"ya
+        // geri çekiyor, widget ileri-geri zıplıyordu.
+        if (cfg.matchesBase(data['feed_sub'] as String?)) {
+          final next = lastFeed?.add(Duration(minutes: cfg.intervalMin));
+          // Bebek adı backend data'sında 'baby_name' ile gelir (sessiz iOS push'unda
+          // notification/title yok → title 'Adena Baby'ye düşerdi). title yedek.
+          final babyName = (data['baby_name'] as String?) ?? title;
+          await WidgetService.publishOne(
+              babyId: babyId,
+              babyName: babyName,
+              nextFeed: next,
+              lastFeed: lastFeed,
+              intervalMin: cfg.intervalMin);
+        }
+      }
     }
   }
   // Hatırlatıcı yeniden planlaması aile-etkinlik bildirimi tercihinden BAĞIMSIZ:

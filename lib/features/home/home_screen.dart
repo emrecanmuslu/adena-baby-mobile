@@ -26,7 +26,6 @@ import '../../data/leap_repository.dart';
 import '../../data/local_session.dart';
 import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
-import '../../models/feed_reminder.dart';
 import '../../models/milestone.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
@@ -1243,7 +1242,7 @@ class _PredictSectionState extends ConsumerState<_PredictSection>
     final cfg = ref.watch(feedReminderProvider(babyId));
     // Hatırlatıcı açıksa kendi ayarıyla; kapalıysa varsayılan (her 2 saat, tüm
     // beslenmeler) ile aynı tahmin. Çapa = son (baz türü) beslemesi.
-    final next = nextFeedEstimate(cfg.enabled ? cfg : const FeedReminderConfig(), recent);
+    final next = nextFeedEstimate(cfg.effectiveForEstimate, recent);
     if (next == null) return const SizedBox.shrink(); // hiç besleme yok
     final feeds = recent.where((r) => r.type == RecordType.feed).toList()
       ..sort((a, b) => b.ts.compareTo(a.ts));

@@ -65,6 +65,24 @@ class FeedReminderConfig {
         forgotEnabled: forgotEnabled ?? this.forgotEnabled,
       );
 
+  /// Eklenen beslenmenin alt türü ([sub]) bu ayarın baz türüyle uyuşuyor mu?
+  /// [lastFeedAt]/[nextFeedEstimate] filtresiyle BİREBİR aynı mantık — çapayı
+  /// kimin oynatabileceğine karar veren tek kural burasıdır.
+  bool matchesBase(String? sub) => switch (baseType) {
+        'breast' => sub == 'breast',
+        'formula' => sub == 'formula',
+        _ => true,
+      };
+
+  /// "Sonraki beslenme" TAHMİNİ için efektif ayar: hatırlatıcı kapalıyken tahmin
+  /// varsayılana düşer (her 2 saat · tüm beslenmeler).
+  ///
+  /// Ana sayfa kartı, ana ekran widget'ı, arka plan sync'i, push işleyicisi ve
+  /// iOS NSE'nin HEPSİ bu tek kuralı kullanmalı; aksi halde aynı widget'ı farklı
+  /// yazıcılar farklı aralık/baz ile yazıp değeri ileri-geri zıplatıyor.
+  FeedReminderConfig get effectiveForEstimate =>
+      enabled ? this : const FeedReminderConfig();
+
   /// Kısa Türkçe özet (hatırlatıcı kartı için).
   String get summary {
     if (!enabled) return tr('Kapalı');
