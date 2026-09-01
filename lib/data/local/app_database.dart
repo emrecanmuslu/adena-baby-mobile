@@ -370,14 +370,35 @@ class AppDatabase extends _$AppDatabase {
   /// [refreshSyncedStreams] (öne gelişte + sync sonrası) bunu telafi eder.
   static QueryExecutor _open() => driftDatabase(
         name: 'adena',
-        native: DriftNativeOptions(
-          setup: (db) {
-            // WAL kalıcıdır (dosyaya yazılır); her açılışta idempotent.
-            db.execute('PRAGMA journal_mode = WAL;');
-            // Isolate'ler artık drift tarafından serileştirilmediği için kilit
-            // çakışması yeniden mümkün → 5s yerine 8s tolerans.
-            db.execute('PRAGMA busy_timeout = 8000;');
-          },
-        ),
+        native: DriftNativeOptions(setup: (db) => applyPragmas(db.execute)),
       );
+
+  /// Açılışta uygulanan PRAGMA'lar. `exec` üzerinden çalışır (sqlite3 tipine
+  /// bağlanmadan test edilebilsin diye — bkz. `test/data/db_pragmas_test.dart`).
+  ///
+  /// ⚠️ SIRA ÖNEMLİ ve testle korunuyor: `busy_timeout` YALNIZ kendisinden
+  /// sonraki işlemlere uygulanır. v1.4.16–v1.4.17'de WAL pragma'sı önce
+  /// geliyordu; WAL'a geçiş kısa bir özel kilit istediği ve o an yürürlükteki
+  /// timeout 0 olduğu için, arka plan isolate'i dosyaya dokunuyorken açılan ön
+  /// plan bağlantısı BEKLEMEDEN düşüyordu:
+  /// `SqliteException(261): database is locked ... PRAGMA journal_mode = WAL`
+  /// (iOS 1.4.17'de 30 olay). İstisna `setup`tan kaçınca DB hiç açılmıyor ve
+  /// fatal FlutterError'a dönüşüyordu.
+  static void applyPragmas(void Function(String sql) exec) {
+    // Isolate'ler artık drift tarafından serileştirilmediği (shareAcrossIsolates
+    // KAPALI) için kilit çakışması mümkün → 5s yerine 8s tolerans. İLK sırada
+    // olmalı ki bundan sonraki her ifade bu toleranstan yararlansın.
+    exec('PRAGMA busy_timeout = 8000;');
+    // WAL kalıcıdır (dosyaya yazılır); her açılışta idempotent.
+    //
+    // Hatası YUTULUR çünkü WAL bir optimizasyondur, zorunluluk değil: dosya
+    // hangi journal modundaysa DB çalışmaya devam eder. Buraya düşmek için
+    // kilidin 8 sn boyunca açılmaması gerekir; o hâlde de doğru davranış
+    // "mevcut modda devam et", uygulamayı açılışta düşürmek değil.
+    try {
+      exec('PRAGMA journal_mode = WAL;');
+    } catch (_) {
+      // Bilinçli sessiz: bkz. yukarıdaki not. DB kullanılabilir kalır.
+    }
+  }
 }

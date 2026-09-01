@@ -26,7 +26,14 @@ class DbWatchdog {
 
   /// Sağlıklı DB'de `SELECT 1` milisaniyeler sürer. Bu süre aşılırsa bağlantı
   /// ölmüş/askıda demektir (bug hâlinde sorgu ASLA dönmüyordu).
-  static const _probeTimeout = Duration(seconds: 6);
+  ///
+  /// ⚠️ `AppDatabase.applyPragmas`'taki `busy_timeout`tan (8 sn) UZUN olmalı.
+  /// Kısa olursa kilit üzerinde MEŞRU şekilde bekleyen (ve birazdan dönecek)
+  /// bir sorgu "DB ölmüş" diye raporlanır: 1.4.16–1.4.17'de `db_unresponsive:
+  /// reason=startup ms=6560` alarmlarının kaynağı buydu — 6 sn'de kesiyorduk,
+  /// oysa SQLite 8 sn'ye kadar beklemeye yetkiliydi. Artık timeout'a düşmek
+  /// "kilit sırası" değil, gerçekten yanıtsız bağlantı demek.
+  static const _probeTimeout = Duration(seconds: 12);
 
   /// Bu süreden yavaş ama başarılı probe → erken uyarı olarak loglanır.
   static const _slowProbe = Duration(seconds: 2);
