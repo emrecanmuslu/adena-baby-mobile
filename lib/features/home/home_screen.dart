@@ -1242,11 +1242,16 @@ class _PredictSectionState extends ConsumerState<_PredictSection>
     final cfg = ref.watch(feedReminderProvider(babyId));
     // Hatırlatıcı açıksa kendi ayarıyla; kapalıysa varsayılan (her 2 saat, tüm
     // beslenmeler) ile aynı tahmin. Çapa = son (baz türü) beslemesi.
-    final next = nextFeedEstimate(cfg.effectiveForEstimate, recent);
-    if (next == null) return const SizedBox.shrink(); // hiç besleme yok
-    final feeds = recent.where((r) => r.type == RecordType.feed).toList()
-      ..sort((a, b) => b.ts.compareTo(a.ts));
-    final last = feeds.first.ts;
+    final effCfg = cfg.effectiveForEstimate;
+    final next = nextFeedEstimate(effCfg, recent);
+    // Alt satır + ilerleme çubuğu, `next`'in ÇAPASIYLA aynı kayıttan gelmeli.
+    // Eskiden burada filtresiz "son beslenme" alınıyordu: ayar "son mama sonrası
+    // her 3 saat" iken eş ANNE SÜTÜ girince kart "Son 13:00 (anne sütü) · 2 saat
+    // sonra" gösteriyordu — çapa 12:00'deki mamada olduğu hâlde. Hem kendi içinde
+    // tutarsız, hem de aynı çapayı kullanan ana ekran widget'ıyla çelişkiliydi.
+    final anchor = lastFeedRecord(effCfg, recent);
+    if (next == null || anchor == null) return const SizedBox.shrink(); // besleme yok
+    final last = anchor.ts;
     final now = DateTime.now();
     final totalMin = next.difference(last).inMinutes;
     final pct =
@@ -1262,7 +1267,7 @@ class _PredictSectionState extends ConsumerState<_PredictSection>
     final sinceMin = now.difference(last).inMinutes;
     final subtitle = trp('Son {t} ({type}) · {ago} önce', {
       't': lastStr,
-      'type': _feedSubLabel(feeds.first),
+      'type': _feedSubLabel(anchor),
       'ago': _humanDur(sinceMin),
     });
 

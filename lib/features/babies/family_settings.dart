@@ -75,15 +75,25 @@ final feedReminderStoreProvider =
 class FeedReminderNotifier extends Notifier<Map<String, FeedReminderConfig>> {
   /// Yerel depodan ilk yükleme — [seedIfMissing] bunu BEKLER (bkz. aşağıdaki not).
   Future<void>? _loading;
+  bool _loaded = false;
+
+  /// Yerel depo diskten okundu mu? `build()` boş `{}` döndürüp yüklemeyi ASENKRON
+  /// yaptığı için, bu bayrak olmadan "yerelde kayıt yok" ile "henüz okumadık"
+  /// ayırt edilemiyor ve arka plan aynaları geçici olarak VARSAYILAN ayarla
+  /// (kapalı · 120 dk) yazılabiliyordu — bkz. [feedReminderKnownProvider].
+  bool get loaded => _loaded;
 
   @override
   Map<String, FeedReminderConfig> build() {
+    _loaded = false;
     _loading = _load();
     return const {};
   }
 
   Future<void> _load() async {
-    state = await FeedReminderStore().readAll();
+    final m = await FeedReminderStore().readAll();
+    _loaded = true; // state atamasından ÖNCE: dinleyiciler bayrağı güncel görsün
+    state = m;
   }
 
   Future<void> set(String babyId, FeedReminderConfig cfg) async {
@@ -122,6 +132,24 @@ final feedReminderProvider = Provider.family<FeedReminderConfig, String>((ref, b
       feed is Map ? Map<String, dynamic>.from(feed) : null);
 });
 
+/// Bu bebeğin hatırlatıcı ayarı KESİN olarak bilinir hâlde mi?
+///
+/// `false` iken [feedReminderProvider] gerçek ayarı değil VARSAYILANI (kapalı →
+/// tahmin 2 saat · tüm türler) döndürür. Açılışta yerel depo diskten okunana
+/// kadar bu böyle; o pencerede ayna yazıcıları (prefs snapshot + App Group
+/// `fr_enabled`/`feed_interval`) çalışırsa arka plan yolları (FCM push, bg sync,
+/// iOS NSE) kullanıcının 3 saatlik ayarı yerine 120 dk okur ve widget "son
+/// beslenme + 2 saat"e düşer. Bu yüzden aynalar bu kapıdan geçer.
+final feedReminderKnownProvider = Provider.family<bool, String>((ref, babyId) {
+  final local = ref.watch(feedReminderStoreProvider);
+  if (!ref.read(feedReminderStoreProvider.notifier).loaded) return false;
+  if (local.containsKey(babyId)) return true;
+  // Yerelde kayıt yok → geçiş tohumu sunucudan gelecek; `isLoading` bitene kadar
+  // (veri VEYA hata) ayarı bilmiyoruz. Hata da "bilinir" sayılır: o durumda
+  // varsayılan kalıcıdır, sonsuza kadar beklemeyiz (çevrimdışı ilk kurulum).
+  return !ref.watch(familySettingsProvider(babyId)).isLoading;
+});
+
 /// Beslenme hatırlatıcı ayarını CİHAZA-YEREL kaydeder (sunucuya gitmez).
 Future<void> updateFeedReminder(
     WidgetRef ref, String babyId, FeedReminderConfig cfg) async {
@@ -152,7 +180,16 @@ Future<void> updateQuietHours(WidgetRef ref, String babyId, QuietHours q) async 
 /// manuel saat girişi, cihaz saat farkı) tolere edilir — yoksa "az önce, biraz
 /// ileri saatle" eklenen normal bir kayıt çapa OLMAZ ve "sonraki beslenme"
 /// eski (artık geçmiş) tahminde donup kalır.
-DateTime? lastFeedAt(FeedReminderConfig cfg, List<Record> records) {
+DateTime? lastFeedAt(FeedReminderConfig cfg, List<Record> records) =>
+    lastFeedRecord(cfg, records)?.ts;
+
+/// Çapayı oluşturan son beslenme KAYDI ([lastFeedAt] bunun `ts`'idir).
+/// Ana sayfa kartı "Son 14:20 (mama)" satırını da bundan üretmeli: eskiden kart
+/// `next`'i FİLTRELİ çapadan, alt satırı/ilerleme çubuğunu ise FİLTRESİZ son
+/// beslenmeden alıyordu → "son mama sonrası 3 saat" ayarında eş anne sütü
+/// girince kart "Son 13:00 · 2 saat sonra" gibi kendi içinde tutarsız (ve
+/// widget'la uyumsuz) görünüyordu.
+Record? lastFeedRecord(FeedReminderConfig cfg, List<Record> records) {
   final now = DateTime.now();
   final cutoff = now.add(const Duration(hours: 1));
   bool matches(Record r) {
@@ -166,7 +203,7 @@ DateTime? lastFeedAt(FeedReminderConfig cfg, List<Record> records) {
 
   final feeds = records.where(matches).toList()
     ..sort((a, b) => b.ts.compareTo(a.ts));
-  return feeds.isEmpty ? null : feeds.first.ts;
+  return feeds.isEmpty ? null : feeds.first;
 }
 
 /// Config + kayıtlardan bir sonraki beslenme zamanını kestirir (null = veri yok).

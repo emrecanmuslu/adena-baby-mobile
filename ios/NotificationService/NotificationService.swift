@@ -64,14 +64,23 @@ class NotificationService: UNNotificationServiceExtension {
     // "son MAMA sonrası" ise eklenen ANNE SÜTÜ kaydı çapayı OYNATMAMALI — bu dal
     // eskiden filtrelemiyordu, ön plan/bg sync filtreliyordu; widget her push'ta
     // ileri, her arka plan turunda geri zıplıyordu.
-    if let est = feedEstimate(babyId, defaults),
-       matchesBase(est.base, info["feed_sub"] as? String) {
+    // 🧹 TANI-GEÇİCİ (kaldırılacak): NSE'nin App Group'tan OKUDUĞU efektif ayar +
+    // yazıp yazmadığı. `enabled=false`/`interval=120` satırı, "3 saatlik ayar 2
+    // saate düştü"nün; `skip_*` satırı ise widget'ın bayat kalmasının kanıtıdır.
+    let est0 = feedEstimate(babyId, defaults)
+    let subSeen = info["feed_sub"] as? String
+    if let est = est0, matchesBase(est.base, subSeen) {
       if let nextMs = nextFeedMs(info, est: est) {
         defaults.set(String(nextMs), forKey: "next_\(babyId)")
         if writeFallback {
           defaults.set(name, forKey: "baby_name")
           defaults.set(String(nextMs), forKey: "next_feed_ms")
         }
+        appendTrace(defaults, babyId: babyId, info: info, est: est,
+                    action: "write", nextMs: nextMs)
+      } else {
+        appendTrace(defaults, babyId: babyId, info: info, est: est,
+                    action: "skip_nolast", nextMs: nil)
       }
       // Widget "Son besleme HH:MM" gösterir → push'taki last_feed_ts'i de yaz.
       // Ön planda `lastFeedAt` de baz türüyle filtrelenir; bu yüzden "son besleme"
@@ -81,6 +90,11 @@ class NotificationService: UNNotificationServiceExtension {
         defaults.set(String(lastMs), forKey: "last_\(babyId)")
         if writeFallback { defaults.set(String(lastMs), forKey: "last_feed_ms") }
       }
+    } else {
+      // 🧹 TANI-GEÇİCİ (kaldırılacak): est0 == nil → ayar aynası App Group'ta YOK
+      // (ön plan hiç yazmamış); aksi halde baz türü filtresi kaydı elemiş.
+      appendTrace(defaults, babyId: babyId, info: info, est: est0,
+                  action: est0 == nil ? "skip_nocfg" : "skip_base", nextMs: nil)
     }
 
     // Cross-process FLUSH: NSE yazıp hemen reload edince widget eski veriyi
@@ -237,6 +251,48 @@ class NotificationService: UNNotificationServiceExtension {
     case "breast": return sub == "breast"
     case "formula": return sub == "formula"
     default: return true
+    }
+  }
+
+  /// 🧹 TANI-GEÇİCİ (sorun çözülünce bu fonksiyon + çağrıları silinecek):
+  /// NSE'nin ne okuyup ne yazdığını App Group'taki halkaya (en fazla 40 satır)
+  /// yazar. Uygulama ön plana gelince Dart tarafı (`FwTrace.upload`) bunu
+  /// backend'e boşaltır — prod cihazda başka türlü görünmüyor. Dart yolları AYRI
+  /// bir anahtara yazar (`fw_trace_app`) → aynı anda koşarsak birbirimizi ezmeyiz.
+  private func appendTrace(_ defaults: UserDefaults, babyId: String,
+                           info: [AnyHashable: Any], est: FeedEstimate?,
+                           action: String, nextMs: Int64?) {
+    var row: [String: Any] = [
+      "ran_at": ISO8601DateFormatter().string(from: Date()),
+      "source": "nse",
+      "action": action,
+      "baby_id": babyId,
+    ]
+    if let e = info["event_id"] as? String { row["event_id"] = e }
+    if let sub = info["feed_sub"] as? String { row["feed_sub"] = sub }
+    if let est = est {
+      row["interval"] = Int(est.intervalMin)
+      row["base"] = est.base
+      // NSE'nin gördüğü aç/kapa bayrağı — feedEstimate'in varsayılana düşme koşulu.
+      row["enabled"] = defaults.string(forKey: "fr_enabled_\(babyId)") == "1"
+    }
+    if let ts = info["last_feed_ts"] as? String, let last = parseDate(ts) {
+      row["last_ms"] = String(Int64(last.timeIntervalSince1970 * 1000))
+    }
+    if let n = nextMs { row["next_ms"] = String(n) }
+
+    var list: [[String: Any]] = []
+    if let raw = defaults.string(forKey: "fw_trace_nse"), !raw.isEmpty,
+       let data = raw.data(using: .utf8),
+       let obj = try? JSONSerialization.jsonObject(with: data),
+       let parsed = obj as? [[String: Any]] {
+      list = parsed
+    }
+    list.append(row)
+    if list.count > 40 { list.removeFirst(list.count - 40) }
+    if let out = try? JSONSerialization.data(withJSONObject: list),
+       let str = String(data: out, encoding: .utf8) {
+      defaults.set(str, forKey: "fw_trace_nse")
     }
   }
 

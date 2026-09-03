@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n.dart';
 import '../../core/live_activity_service.dart';
+import '../../core/fw_trace.dart'; // 🧹 TANI-GEÇİCİ (sorun çözülünce kaldır)
 import '../../core/notification_service.dart';
 import '../../core/widget_service.dart';
 import '../../data/feed_reminder_cache.dart';
@@ -58,8 +59,12 @@ class _WidgetSync extends ConsumerWidget {
     final born = babies.where((b) => !b.isExpecting).toList();
     if (born.isEmpty) return const SizedBox.shrink();
     final widgetBabies = <WidgetBaby>[];
+    var allKnown = true;
     for (final b in born) {
       final recs = ref.watch(recentRecordsProvider(b.id)).asData?.value ?? const [];
+      // Ayar henüz yerelden okunmadıysa `effectiveForEstimate` VARSAYILANA (2 saat)
+      // düşer; o tahmini widget'a yazmak "3 saat yerine 2 saat"in ta kendisidir.
+      if (!ref.watch(feedReminderKnownProvider(b.id))) allKnown = false;
       final effCfg = ref.watch(feedReminderProvider(b.id)).effectiveForEstimate;
       final next = nextFeedEstimate(effCfg, recs);
       final last = lastFeedAt(effCfg, recs);
@@ -68,7 +73,9 @@ class _WidgetSync extends ConsumerWidget {
     }
     final activeId = ref.watch(activeBabyProvider)?.id ?? born.first.id;
     // build içinde yan-etki: bu ekran zaten görünmez senkron katmanı.
-    WidgetService.publishAll(widgetBabies, activeId);
+    // Bayat ama DOĞRU değer, taze ama yanlış değerden iyidir → ayar bilinene dek
+    // widget'a dokunma (bir sonraki build'de, ms'ler içinde, doğrusuyla yazılır).
+    if (allKnown) WidgetService.publishAll(widgetBabies, activeId);
     return const SizedBox.shrink();
   }
 }
@@ -264,11 +271,22 @@ class _BabyNotifSync extends ConsumerWidget {
           enabled: timersOn);
       syncBreastTimer(baby, ref.watch(ongoingBreastProvider(baby.id)),
           enabled: timersOn);
-      _syncFeed(
-        ref.watch(feedReminderProvider(baby.id)),
-        ref.watch(recentRecordsProvider(baby.id)).asData?.value ?? const [],
-        ref.watch(quietHoursProvider(baby.id)),
-      );
+      // Provider'ları KOŞULSUZ izle (Riverpod bağımlılıkları sabit kalsın), sonra
+      // aynayı yalnız ayar KESİN bilinirken yaz. Açılışta yerel depo diskten
+      // okunana kadar `feedReminderProvider` VARSAYILANI (kapalı · 120 dk)
+      // döndürüyor; o pencerede snapshot + App Group'a bunu yazarsak arka plan
+      // yolları (push/bg sync/iOS NSE) 3 saatlik ayar yerine 2 saati okur.
+      final frKnown = ref.watch(feedReminderKnownProvider(baby.id));
+      final frCfg = ref.watch(feedReminderProvider(baby.id));
+      final frRecs =
+          ref.watch(recentRecordsProvider(baby.id)).asData?.value ?? const <Record>[];
+      final frQuiet = ref.watch(quietHoursProvider(baby.id));
+      if (frKnown) {
+        _syncFeed(frCfg, frRecs, frQuiet);
+      } else {
+        // 🧹 TANI-GEÇİCİ (kaldırılacak): aynanın atlandığı pencerenin izi.
+        FwTrace.add(source: 'fg', action: 'skip_unknown', babyId: baby.id);
+      }
     } else {
       // Bebek bekleme moduna alındıysa eski planları/sayacı temizle.
       final slot = baby.notifSlot;
@@ -297,6 +315,17 @@ class _BabyNotifSync extends ConsumerWidget {
         forgot: cfg.forgotEnabled,
       ),
     );
+    // 🧹 TANI-GEÇİCİ (kaldırılacak): AYNAYA ne yazdığımızın izi. Arka plan yolları
+    // (push/bg sync/NSE) yalnız bu aynayı okur; buraya enabled=false / 120 dk
+    // yazıldığı an widget "son beslenme + 2 saat"e düşer. Açılışta yerel ayar
+    // yüklenmeden koşan bir tur bu satırı bırakır → sorunun kaynağını kanıtlar.
+    FwTrace.add(
+        source: 'fg',
+        action: 'mirror',
+        babyId: baby.id,
+        enabled: cfg.enabled,
+        interval: cfg.intervalMin,
+        base: cfg.baseType);
     // iOS force-quit'te NSE'nin bildirimi yeniden planlayabilmesi için aynı
     // parametreleri (locale'e çözülmüş metinlerle) App Group'a da aynala.
     WidgetService.publishFeedReminderConfig(

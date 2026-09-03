@@ -9,6 +9,7 @@ import '../features/auth/auth_controller.dart';
 import '../features/babies/baby_controller.dart';
 import '../features/babies/family_settings.dart';
 import '../models/baby.dart';
+import 'fw_trace.dart'; // 🧹 TANI-GEÇİCİ (sorun çözülünce kaldır)
 import '../models/record.dart';
 import 'db_watchdog.dart';
 import 'notification_service.dart';
@@ -97,13 +98,28 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
   // widget'a hem App Group'a (`feed_interval_default`) yazılıyordu → 3 saatlik
   // ayarı olan kullanıcıda widget sessizce 2 saate kayıyordu. Artık dokunmuyoruz:
   // widget ön planda yazılan son (doğru) değerinde kalır.
-  if (snap == null) return;
+  if (snap == null) {
+    // 🧹 TANI-GEÇİCİ (kaldırılacak): bu tur widget'a dokunmadı → değer bayat kalır.
+    await FwTrace.add(source: 'bgsync', action: 'skip_nosnap', babyId: b.id);
+    return;
+  }
   // Ön planla (_WidgetSync / ana sayfa kartı) BİREBİR aynı kural: hatırlatıcı
   // kapalıysa tahmin varsayılana düşer. nextFeedEstimate/lastFeedAt zaten baz
   // türü filtresini uygular (son MAMA / son anne sütü çapası).
   final cfg = snap.toConfig().effectiveForEstimate;
   final next = nextFeedEstimate(cfg, recs);
   final last = lastFeedAt(cfg, recs);
+  // 🧹 TANI-GEÇİCİ (kaldırılacak): bu turun KULLANDIĞI efektif ayar. interval=120 +
+  // enabled=false satırı, "3 saatlik ayar 2 saate düştü"nün doğrudan kanıtıdır.
+  await FwTrace.add(
+      source: 'bgsync',
+      action: next == null ? 'skip_nolast' : 'write',
+      babyId: b.id,
+      enabled: snap.enabled,
+      interval: cfg.intervalMin,
+      base: cfg.baseType,
+      last: last,
+      next: next);
   // Yalnız per-baby anahtarları yaz (publishOne); kullanıcının aktif-bebek seçimini
   // (active_id/baby_name/next_feed_ms) EZME — onu yalnız ön plan publishAll yönetir.
   await WidgetService.publishOne(

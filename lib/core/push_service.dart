@@ -8,6 +8,7 @@ import '../data/feed_reminder_cache.dart';
 import '../data/notification_prefs.dart';
 import '../data/slot_registry.dart';
 import 'api_client.dart';
+import 'fw_trace.dart'; // 🧹 TANI-GEÇİCİ (sorun çözülünce kaldır)
 import 'notification_service.dart';
 import 'widget_service.dart';
 
@@ -85,6 +86,16 @@ Future<void> handlePushMessage(RemoteMessage message) async {
       // Bayat ama DOĞRU veri, taze ama yanlış veriden iyidir → hiç dokunma.
       // (Snapshot'ı ön plandaki _syncFeed her oturumda yazar; doğmuş bebeği olan
       // bir kullanıcıda pratikte hep vardır.)
+      // 🧹 TANI-GEÇİCİ (kaldırılacak): snapshot yoksa bu yol widget'a HİÇ yazmaz
+      // (v1.4.17 kuralı) → widget bayat kalır ve bu da "2 saat" gibi okunur.
+      if (snap == null) {
+        await FwTrace.add(
+            source: 'push',
+            action: 'skip_nosnap',
+            babyId: babyId,
+            eventId: data['event_id'] as String?,
+            feedSub: data['feed_sub'] as String?);
+      }
       if (snap != null) {
         // Ön planla (_WidgetSync / ana sayfa kartı) BİREBİR aynı kural: hatırlatıcı
         // kapalıysa tahmin varsayılana düşer.
@@ -94,8 +105,24 @@ Future<void> handlePushMessage(RemoteMessage message) async {
         // filtreliyordu, yalnız bu dal filtrelemiyordu. Sonuç: push widget'a
         // "anne sütü + 3 sa" yazıyor, 30 dk sonraki bg sync "son mama + 3 sa"ya
         // geri çekiyor, widget ileri-geri zıplıyordu.
-        if (cfg.matchesBase(data['feed_sub'] as String?)) {
+        // 🧹 TANI-GEÇİCİ (kaldırılacak): bu yolun O AN okuduğu efektif ayar.
+        // enabled=false → cfg varsayılana (120 dk · tüm türler) düşmüştür; aranan
+        // "2 saat" hatasının imzası tam olarak budur.
+        final subSeen = data['feed_sub'] as String?;
+        final matches = cfg.matchesBase(subSeen);
+        if (matches) {
           final next = lastFeed?.add(Duration(minutes: cfg.intervalMin));
+          await FwTrace.add(
+              source: 'push',
+              action: next == null ? 'skip_nolast' : 'write',
+              babyId: babyId,
+              eventId: data['event_id'] as String?,
+              feedSub: subSeen,
+              enabled: snap.enabled,
+              interval: cfg.intervalMin,
+              base: cfg.baseType,
+              last: lastFeed,
+              next: next);
           // Bebek adı backend data'sında 'baby_name' ile gelir (sessiz iOS push'unda
           // notification/title yok → title 'Adena Baby'ye düşerdi). title yedek.
           final babyName = (data['baby_name'] as String?) ?? title;
@@ -105,6 +132,16 @@ Future<void> handlePushMessage(RemoteMessage message) async {
               nextFeed: next,
               lastFeed: lastFeed,
               intervalMin: cfg.intervalMin);
+        } else {
+          await FwTrace.add(
+              source: 'push',
+              action: 'skip_base',
+              babyId: babyId,
+              eventId: data['event_id'] as String?,
+              feedSub: subSeen,
+              enabled: snap.enabled,
+              interval: cfg.intervalMin,
+              base: cfg.baseType);
         }
       }
     }

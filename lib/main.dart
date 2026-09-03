@@ -15,6 +15,7 @@ import 'core/ad_service.dart';
 import 'core/analytics_service.dart';
 import 'core/api_client.dart';
 import 'core/background_sync.dart';
+import 'core/fw_trace.dart'; // 🧹 TANI-GEÇİCİ (sorun çözülünce kaldır)
 import 'core/i18n.dart';
 import 'core/in_app_notification.dart';
 import 'core/locale_util.dart';
@@ -464,6 +465,10 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // kaydını yeniden dene (token artık hazırsa /me/devices'a düşer). Güvence.
     if (ref.read(authControllerProvider).asData?.value != null) {
       PushService.instance.registerToken(ref.read(apiClientProvider));
+      // 🧹 TANI-GEÇİCİ (sorun çözülünce bu satır + fw_trace import'u silinecek):
+      // widget'a yazan yolların (ön plan/push/bg sync/iOS NSE) biriken izlerini
+      // backend'e boşalt — prod cihazda başka türlü görünmüyor.
+      unawaited(FwTrace.upload(ref.read(apiClientProvider)));
     }
     // App-Open reklamı: ilk çağrı (cold start) yalnız ön-yükler; sonraki
     // resume'larda limitler uygunsa gösterir (premium muaf). Hiç bebek yokken
@@ -488,6 +493,9 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
       final user = next.asData?.value;
       if (user != null) {
         PushService.instance.registerToken(ref.read(apiClientProvider));
+        // 🧹 TANI-GEÇİCİ (kaldırılacak): SOĞUK açılış da izleri boşaltsın —
+        // resume dinleyicisi cold start'ta tetiklenmiyor.
+        unawaited(FwTrace.upload(ref.read(apiClientProvider)));
         // Misafirken (çıkış/oturum-yok) giriş/kayıt yapıldıysa: yereldeki misafir
         // verisini hesaba aktarmayı bir kez teklif et.
         if (prev?.asData?.value == null) {
