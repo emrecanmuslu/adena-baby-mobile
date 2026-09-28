@@ -21,6 +21,12 @@ import '../babies/family_settings.dart';
 
 const _uuid = Uuid();
 
+/// Tamamlanmış bir beslenme kaydından sonra sunucu onayını bekleme üst sınırı
+/// (bkz. RecordActions._saveAndSync). dio connectTimeout(15s)+receiveTimeout(20s)
+/// toplamının çok altında — "Kaydet" spinner'ı zayıf/yalancı-çevrimiçi ağda
+/// makul sürede local-first'e düşsün.
+const _feedSyncAwaitTimeout = Duration(seconds: 10);
+
 /// Çevrimiçi/çevrimdışı durumu (üst bar sync rozeti için).
 ///
 /// ⚠️ `onConnectivityChanged` YALNIZ DEĞİŞİMDE yayın yapar — ilk durumu vermez.
@@ -335,7 +341,25 @@ class RecordActions {
   Future<void> _saveAndSync(Record r, {bool ad = false}) async {
     await _repo.upsertLocal(r);
     _ref.invalidate(presentTypesProvider(r.baby)); // yeni tip → filtre tazelensin
-    unawaited(_ref.read(syncServiceProvider).syncAll());
+    final syncFuture = _ref.read(syncServiceProvider).syncAll();
+    // TAMAMLANMIŞ (ad=true) bir BESLENME kaydı "sonraki beslenme" tahminini ve
+    // aile paylaşımındaki diğer üyelerin gördüğü veriyi etkiler. İnternet varsa
+    // sunucu onayını bekle — kullanıcı kaydeder kaydetmez uygulamayı kapatsa bile
+    // veri sync olmuş olsun. Süren sayaç mutasyonları (başlat/duraklat/meme
+    // değiştir, ad=false) BURAYA girmez — her tık ağı beklerse sayaç kullanılamaz
+    // hale gelirdi. Çevrimdışıyken hiç denemeyiz (dio 15-20 sn timeout'a kadar
+    // bekletirdi) → local-first devam. Sunucu hata dönerse de (syncAll hatayı
+    // zaten yutar, bkz. SyncService.syncAll) yine local-first'e düşülür.
+    if (ad &&
+        r.type == RecordType.feed &&
+        (_ref.read(onlineProvider).asData?.value ?? true)) {
+      // Üst sınır: "bağlı ama internetsiz" wifi gibi uç durumlarda kullanıcıyı
+      // dio'nun 15-20 sn timeout'una kadar bekletmeyelim — tur arka planda
+      // sürmeye devam eder (future iptal edilmez), yalnız burada beklemeyi bırakırız.
+      await syncFuture.timeout(_feedSyncAwaitTimeout, onTimeout: () {});
+    } else {
+      unawaited(syncFuture);
+    }
     if (ad) {
       final isPremium = _ref.read(isPremiumProvider);
       final suppress = _suppressAd(r);

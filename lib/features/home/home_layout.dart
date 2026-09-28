@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/auth_repository.dart';
+import '../../data/home_layout_cache.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
 
@@ -56,25 +59,38 @@ List<RecordType> _parse(dynamic v) {
   return _defaultTypes;
 }
 
+/// Açılışta cache'ten okunan yerleşim (main.dart bu provider'ı override eder).
+/// homeLayoutController henüz sunucudan yüklenmeden ilk frame'de kullanıcının
+/// SON BİLİNEN özelleştirmesi görünsün diye fallback olarak bunu kullanırız —
+/// sabit varsayılan (beslenme·bez·uyku) yerine.
+final cachedHomeLayoutProvider = Provider<HomeLayout>((_) => HomeLayout.fallback);
+
 class HomeLayoutController extends AsyncNotifier<HomeLayout> {
   @override
   Future<HomeLayout> build() async {
+    // Oturum yoksa/yüklenmeden önce son bilinen yerel yerleşimi kullan (sabit
+    // varsayılana düşme → ana sayfa açılışta flaş'lamaz).
+    final cached = ref.read(cachedHomeLayoutProvider);
     final user = ref.watch(authControllerProvider).asData?.value;
-    if (user == null) return HomeLayout.fallback;
+    if (user == null) return cached;
     try {
       final s = await ref.read(authRepositoryProvider).settings();
-      return HomeLayout(
+      final layout = HomeLayout(
         quick: _parse(s['quick_actions']),
         lastActivity: _parse(s['home_cards']),
       );
+      unawaited(HomeLayoutCache().writeQuick(layout.quick));
+      unawaited(HomeLayoutCache().writeLastActivity(layout.lastActivity));
+      return layout;
     } catch (_) {
-      return HomeLayout.fallback;
+      return cached;
     }
   }
 
   Future<void> setQuick(List<RecordType> types) async {
-    final cur = state.asData?.value ?? HomeLayout.fallback;
+    final HomeLayout cur = state.asData?.value ?? ref.read(cachedHomeLayoutProvider);
     state = AsyncData(cur.copyWith(quick: types));
+    unawaited(HomeLayoutCache().writeQuick(types)); // açılışta flaş'sız okunsun
     try {
       await ref.read(authRepositoryProvider).updateSettings(
           {'quick_actions': types.map((t) => t.name).toList()});
@@ -84,8 +100,9 @@ class HomeLayoutController extends AsyncNotifier<HomeLayout> {
   }
 
   Future<void> setLastActivity(List<RecordType> types) async {
-    final cur = state.asData?.value ?? HomeLayout.fallback;
+    final HomeLayout cur = state.asData?.value ?? ref.read(cachedHomeLayoutProvider);
     state = AsyncData(cur.copyWith(lastActivity: types));
+    unawaited(HomeLayoutCache().writeLastActivity(types));
     try {
       await ref.read(authRepositoryProvider).updateSettings(
           {'home_cards': types.map((t) => t.name).toList()});

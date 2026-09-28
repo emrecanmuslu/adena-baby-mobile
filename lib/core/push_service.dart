@@ -8,7 +8,7 @@ import '../data/feed_reminder_cache.dart';
 import '../data/notification_prefs.dart';
 import '../data/slot_registry.dart';
 import 'api_client.dart';
-import 'fw_trace.dart'; // 🧹 TANI-GEÇİCİ (sorun çözülünce kaldır)
+import 'background_sync.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
 
@@ -40,117 +40,66 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   final title = data['title'] ?? message.notification?.title ?? 'Adena Baby';
   final body = data['body'] ?? message.notification?.body ?? '';
 
-  // sync_nudge (sessiz güncelleme/silme) ve baby_update (profil değişimi) widget/
-  // hatırlatıcı yeniden planlamayı TETİKLEMEMELİ: silinen/güncellenen kayda ait
-  // last_feed_ts yanlış zamana hatırlatıcı kurabilirdi. En BAŞTA ele al ve dön.
+  // sync_nudge = başka üye bir kaydı GÜNCELLEDİ ya da SİLDİ (bkz. push_sync_nudge
+  // backend'te). family_activity'nin (EKLEME) tersine hangi kayıt değiştiğini
+  // TEK başına bilmeyiz — kendi widget/hatırlatıcı mantığı _handleSyncNudge'de.
   if (type == 'sync_nudge') {
-    final cancel = (data['cancel'] as String?) ?? '';
-    final babyId = (data['baby_id'] as String?) ?? '';
-    if (cancel.isNotEmpty && babyId.isNotEmpty) {
-      // Slot = SlotRegistry (Baby.notifSlot ile AYNI kaynak). Arka plan isolate →
-      // depodan oku; yoksa bu bebeğe dair zamanlanmış sayaç bildirimi de yok.
-      final slot = await SlotRegistry.instance.slotForStored(babyId);
-      if (slot != null) {
-        if (cancel.contains('sleep')) {
-          await NotificationService.instance
-              .cancelTimer(NotificationService.sleepIdFor(slot));
-        }
-        if (cancel.contains('breast')) {
-          await NotificationService.instance
-              .cancelTimer(NotificationService.breastIdFor(slot));
+    await _handleSyncNudge(data, title);
+    // Bildirim gösterme adımına (aşağı) DÜŞER — family_activity ile aynı yoldan.
+  } else if (type == 'baby_update') {
+    // baby_update = sahip bebek profilini değiştirdi (gebelik→doğdu vb). Sessiz;
+    // ön plan/öne geliş bebek listesini tazeler (main.dart).
+    return;
+  } else {
+    // 1) Beslenme EKLEME olayı: widget + yerel hatırlatıcı güncellemesi. last_feed_ts
+    //    süren emzirme dahil her beslenmede gelir; widget_update yalnız TAMAMLANMIŞ
+    //    beslenmede (widget süren emzirmeyi "son beslenme" saymaz).
+    final lastFeed = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
+    if (data['widget_update'] == 'feed') {
+      // Widget artık SONRAKİ beslenmeyi gösterir → son beslenme + aralıktan hesapla.
+      // Çok-bebek: bu bebeğin verisini per-baby anahtarına yaz (o bebeği seçen widget tazelenir).
+      final babyId = data['baby_id'];
+      if (babyId is String && babyId.isNotEmpty) {
+        final snap = await FeedReminderCache().read(babyId);
+        // Snapshot YOKSA aralığı da baz türünü de BİLMİYORUZ. Eskiden burada
+        // varsayılan 120 dk'ya düşülüyordu; kullanıcının aralığı 3 saat olsa bile
+        // widget "son beslenme + 2 saat" yazıyordu (ve publishOne bunu App Group'a
+        // `feed_interval_default` olarak kalıcılaştırıp iOS NSE'yi de zehirliyordu).
+        // Bayat ama DOĞRU veri, taze ama yanlış veriden iyidir → hiç dokunma.
+        // (Snapshot'ı ön plandaki _syncFeed her oturumda yazar; doğmuş bebeği olan
+        // bir kullanıcıda pratikte hep vardır.)
+        if (snap != null) {
+          // Ön planla (_WidgetSync / ana sayfa kartı) BİREBİR aynı kural: hatırlatıcı
+          // kapalıysa tahmin varsayılana düşer.
+          final cfg = snap.toConfig().effectiveForEstimate;
+          // KRİTİK: baz türü filtresi. Hatırlatıcı "son MAMA sonrası" ise eşin
+          // eklediği ANNE SÜTÜ kaydı çapayı oynatmamalı — ön plan/bg sync zaten
+          // filtreliyordu, yalnız bu dal filtrelemiyordu. Sonuç: push widget'a
+          // "anne sütü + 3 sa" yazıyor, 30 dk sonraki bg sync "son mama + 3 sa"ya
+          // geri çekiyor, widget ileri-geri zıplıyordu.
+          final subSeen = data['feed_sub'] as String?;
+          final matches = cfg.matchesBase(subSeen);
+          if (matches) {
+            final next = lastFeed?.add(Duration(minutes: cfg.intervalMin));
+            // Bebek adı backend data'sında 'baby_name' ile gelir (sessiz iOS push'unda
+            // notification/title yok → title 'Adena Baby'ye düşerdi). title yedek.
+            final babyName = (data['baby_name'] as String?) ?? title;
+            await WidgetService.publishOne(
+                babyId: babyId,
+                babyName: babyName,
+                nextFeed: next,
+                lastFeed: lastFeed,
+                intervalMin: cfg.intervalMin);
+          }
         }
       }
     }
-    return;
-  }
-  // baby_update = sahip bebek profilini değiştirdi (gebelik→doğdu vb). Sessiz; ön
-  // plan/öne geliş bebek listesini tazeler (main.dart).
-  if (type == 'baby_update') {
-    return;
-  }
-
-  // 1) Beslenme olayı: widget + yerel hatırlatıcı güncellemesi. last_feed_ts
-  //    süren emzirme dahil her beslenmede gelir; widget_update yalnız TAMAMLANMIŞ
-  //    beslenmede (widget süren emzirmeyi "son beslenme" saymaz).
-  final lastFeed = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
-  if (data['widget_update'] == 'feed') {
-    // Widget artık SONRAKİ beslenmeyi gösterir → son beslenme + aralıktan hesapla.
-    // Çok-bebek: bu bebeğin verisini per-baby anahtarına yaz (o bebeği seçen widget tazelenir).
-    final babyId = data['baby_id'];
-    if (babyId is String && babyId.isNotEmpty) {
-      final snap = await FeedReminderCache().read(babyId);
-      // Snapshot YOKSA aralığı da baz türünü de BİLMİYORUZ. Eskiden burada
-      // varsayılan 120 dk'ya düşülüyordu; kullanıcının aralığı 3 saat olsa bile
-      // widget "son beslenme + 2 saat" yazıyordu (ve publishOne bunu App Group'a
-      // `feed_interval_default` olarak kalıcılaştırıp iOS NSE'yi de zehirliyordu).
-      // Bayat ama DOĞRU veri, taze ama yanlış veriden iyidir → hiç dokunma.
-      // (Snapshot'ı ön plandaki _syncFeed her oturumda yazar; doğmuş bebeği olan
-      // bir kullanıcıda pratikte hep vardır.)
-      // 🧹 TANI-GEÇİCİ (kaldırılacak): snapshot yoksa bu yol widget'a HİÇ yazmaz
-      // (v1.4.17 kuralı) → widget bayat kalır ve bu da "2 saat" gibi okunur.
-      if (snap == null) {
-        await FwTrace.add(
-            source: 'push',
-            action: 'skip_nosnap',
-            babyId: babyId,
-            eventId: data['event_id'] as String?,
-            feedSub: data['feed_sub'] as String?);
-      }
-      if (snap != null) {
-        // Ön planla (_WidgetSync / ana sayfa kartı) BİREBİR aynı kural: hatırlatıcı
-        // kapalıysa tahmin varsayılana düşer.
-        final cfg = snap.toConfig().effectiveForEstimate;
-        // KRİTİK: baz türü filtresi. Hatırlatıcı "son MAMA sonrası" ise eşin
-        // eklediği ANNE SÜTÜ kaydı çapayı oynatmamalı — ön plan/bg sync zaten
-        // filtreliyordu, yalnız bu dal filtrelemiyordu. Sonuç: push widget'a
-        // "anne sütü + 3 sa" yazıyor, 30 dk sonraki bg sync "son mama + 3 sa"ya
-        // geri çekiyor, widget ileri-geri zıplıyordu.
-        // 🧹 TANI-GEÇİCİ (kaldırılacak): bu yolun O AN okuduğu efektif ayar.
-        // enabled=false → cfg varsayılana (120 dk · tüm türler) düşmüştür; aranan
-        // "2 saat" hatasının imzası tam olarak budur.
-        final subSeen = data['feed_sub'] as String?;
-        final matches = cfg.matchesBase(subSeen);
-        if (matches) {
-          final next = lastFeed?.add(Duration(minutes: cfg.intervalMin));
-          await FwTrace.add(
-              source: 'push',
-              action: next == null ? 'skip_nolast' : 'write',
-              babyId: babyId,
-              eventId: data['event_id'] as String?,
-              feedSub: subSeen,
-              enabled: snap.enabled,
-              interval: cfg.intervalMin,
-              base: cfg.baseType,
-              last: lastFeed,
-              next: next);
-          // Bebek adı backend data'sında 'baby_name' ile gelir (sessiz iOS push'unda
-          // notification/title yok → title 'Adena Baby'ye düşerdi). title yedek.
-          final babyName = (data['baby_name'] as String?) ?? title;
-          await WidgetService.publishOne(
-              babyId: babyId,
-              babyName: babyName,
-              nextFeed: next,
-              lastFeed: lastFeed,
-              intervalMin: cfg.intervalMin);
-        } else {
-          await FwTrace.add(
-              source: 'push',
-              action: 'skip_base',
-              babyId: babyId,
-              eventId: data['event_id'] as String?,
-              feedSub: subSeen,
-              enabled: snap.enabled,
-              interval: cfg.intervalMin,
-              base: cfg.baseType);
-        }
-      }
+    // Hatırlatıcı yeniden planlaması aile-etkinlik bildirimi tercihinden BAĞIMSIZ:
+    // beslenme hatırlatıcısı ayrı bir özelliktir, kullanıcı aktivite bildirimini
+    // kapatmış olsa bile çalışmalı (widget güncellemesi gibi koşulsuz).
+    if (lastFeed != null) {
+      await _rescheduleFeedReminder(data, lastFeed, title);
     }
-  }
-  // Hatırlatıcı yeniden planlaması aile-etkinlik bildirimi tercihinden BAĞIMSIZ:
-  // beslenme hatırlatıcısı ayrı bir özelliktir, kullanıcı aktivite bildirimini
-  // kapatmış olsa bile çalışmalı (widget güncellemesi gibi koşulsuz).
-  if (lastFeed != null) {
-    await _rescheduleFeedReminder(data, lastFeed, title);
   }
 
   // 2) Bildirimi göster — YALNIZ uygulama ön planda DEĞİLKEN (arka plan/kapalı).
@@ -164,9 +113,11 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   // her zaman yerel basılır.
   if (Platform.isIOS && message.notification != null) return;
 
-  if (type == 'family_activity') {
-    // Kullanıcı tercihi (varsayılan açık) bunu da yönetir.
-    if (await ActivityNotifCache().enabled()) {
+  if (type == 'family_activity' || type == 'sync_nudge') {
+    // Kullanıcı tercihi (varsayılan açık) bunu da yönetir. Sessiz push'larda
+    // (aile etkinliği tercihi kapalı üye) body zaten boştur → gösterilecek bir
+    // şey olmaz, showActivity çağrısı görünürde bir etki yapmaz.
+    if (body.isNotEmpty && await ActivityNotifCache().enabled()) {
       await NotificationService.instance.showActivity(title: title, body: body);
     }
   } else if (type.startsWith('community')) {
@@ -175,6 +126,73 @@ Future<void> handlePushMessage(RemoteMessage message) async {
     if (await NotificationPrefs.instance.enabled(NotificationPrefs.community)) {
       await NotificationService.instance.showActivity(title: title, body: body);
     }
+  }
+}
+
+/// sync_nudge (başka üye bir kaydı GÜNCELLEDİ/SİLDİ) → timer iptali + (arka
+/// plandaysak) tam senkron + widget/hatırlatıcı güncellemesi.
+///
+/// family_activity'nin (EKLEME) last_feed_ts + feed_sub ikilisinden FARKLI: orada
+/// "hangi kayıt eklendi" bellidir, burada değil — sunucu bu yüzden ÜÇ baz-türü
+/// karşılığını gönderir (last_feed_all/breast/formula, bkz. _feed_anchors
+/// backend'te); cihaz KENDİ baz-türü ayarına uyanı doğrudan seçer.
+Future<void> _handleSyncNudge(Map<String, dynamic> data, String babyNameFallback) async {
+  final cancel = (data['cancel'] as String?) ?? '';
+  final babyId = (data['baby_id'] as String?) ?? '';
+  if (cancel.isNotEmpty && babyId.isNotEmpty) {
+    // Slot = SlotRegistry (Baby.notifSlot ile AYNI kaynak). Arka plan isolate →
+    // depodan oku; yoksa bu bebeğe dair zamanlanmış sayaç bildirimi de yok.
+    final slot = await SlotRegistry.instance.slotForStored(babyId);
+    if (slot != null) {
+      if (cancel.contains('sleep')) {
+        await NotificationService.instance
+            .cancelTimer(NotificationService.sleepIdFor(slot));
+      }
+      if (cancel.contains('breast')) {
+        await NotificationService.instance
+            .cancelTimer(NotificationService.breastIdFor(slot));
+      }
+    }
+  }
+  if (data['widget_update'] == 'feed' && babyId.isNotEmpty) {
+    final snap = await FeedReminderCache().read(babyId);
+    // Snapshot yoksa (bkz. family_activity dalındaki AYNI gerekçe) bayat ama
+    // DOĞRU veride kal — dokunma.
+    if (snap != null) {
+      final cfg = snap.toConfig().effectiveForEstimate;
+      final tsStr = data['last_feed_${cfg.baseType}'] as String?;
+      final lastFeed = tsStr != null ? DateTime.tryParse(tsStr)?.toLocal() : null;
+      if (lastFeed != null) {
+        final next = lastFeed.add(Duration(minutes: cfg.intervalMin));
+        final babyName = (data['baby_name'] as String?) ?? babyNameFallback;
+        await WidgetService.publishOne(
+            babyId: babyId,
+            babyName: babyName,
+            nextFeed: next,
+            lastFeed: lastFeed,
+            intervalMin: cfg.intervalMin);
+        if (snap.enabled) {
+          await NotificationService.instance.scheduleFeedReminder(
+            enabled: true,
+            nextTime: next,
+            preMin: snap.preMin,
+            slot: snap.slot,
+            babyName: babyName,
+            sound: snap.sound,
+            quiet: snap.quiet,
+            forgot: snap.forgot,
+          );
+        }
+      }
+    }
+  }
+  // Ön plandaysak dokunma: main.dart'taki canlı Riverpod ağacı bu push'u AYRICA
+  // görüp requestSyncSoon() ile aynı işi yapıyor — burada da senkronlarsak aynı
+  // bebeğe iki eşzamanlı bağlantı (bu isolate + canlı uygulama) açılırdı. Widget'ı
+  // YUKARIDA zaten (network'süz, anında) tazeledik; bu TAM senkron yerel drift
+  // DB'yi (kayıt listesi, ana sayfa kartı) doğru veriyle hizalar.
+  if (!appInForeground && babyId.isNotEmpty) {
+    await refreshBabyFeedStateFromPush(babyId);
   }
 }
 

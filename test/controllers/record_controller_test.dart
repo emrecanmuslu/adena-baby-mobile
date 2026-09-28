@@ -55,15 +55,27 @@ void main() {
         .thenAnswer((_) async {});
   });
 
-  ProviderContainer makeContainer({bool premium = true}) {
+  ProviderContainer makeContainer({bool premium = true, bool? online}) {
     final c = ProviderContainer(overrides: [
       recordRepositoryProvider.overrideWithValue(repo),
       babyRepositoryProvider.overrideWithValue(babyRepo),
       syncServiceProvider.overrideWithValue(sync),
       // premium → AdService.onRecordSaved is a no-op (keeps native ad code out).
       isPremiumProvider.overrideWithValue(premium),
+      if (online != null)
+        onlineProvider.overrideWith((ref) {
+          final ctrl = StreamController<bool>()..add(online);
+          ref.onDispose(ctrl.close);
+          return ctrl.stream;
+        }),
     ]);
     addTearDown(c.dispose);
+    // Prod'da onlineProvider üst bar rozeti tarafından sürekli izlenir (bu yüzden
+    // _saveAndSync okuduğunda zaten çözülmüştür). Testte de bir dinleyici olmadan
+    // `.future` riverpod'da sonsuza kadar 'loading'de kalıyor (bkz. probe) — bu
+    // yüzden burada aynı şekilde canlı tutuyoruz; testler bir microtask pump'ı
+    // bekleyip devam eder.
+    if (online != null) c.listen(onlineProvider, (prev, next) {});
     return c;
   }
 
@@ -88,6 +100,76 @@ void main() {
       expect(captured.id, 'r1');
       expect(captured.data['weight'], 5.2);
       verify(() => sync.syncAll()).called(1);
+    });
+  });
+
+  group('beslenme — online/offline sync bekleme', () {
+    Record feed({String id = 'f1'}) => Record(
+          id: id,
+          baby: 'b1',
+          type: RecordType.feed,
+          ts: DateTime(2026, 6, 1),
+          data: const {'sub': 'formula', 'ml': 100},
+        );
+
+    test('tamamlanmış beslenme + online → upsert syncAll bitmeden dönmez', () async {
+      final c = makeContainer(online: true);
+      await Future<void>.delayed(Duration.zero); // çevrimiçi durum yerleşsin
+
+      final syncCompleter = Completer<void>();
+      when(() => sync.syncAll(sharedOnly: any(named: 'sharedOnly')))
+          .thenAnswer((_) => syncCompleter.future);
+
+      var upsertDone = false;
+      final future = actions(c).upsert(feed()).then((_) => upsertDone = true);
+
+      await Future<void>.delayed(Duration.zero);
+      expect(upsertDone, isFalse); // syncAll henüz bitmedi → upsert de dönmedi
+
+      syncCompleter.complete();
+      await future;
+      expect(upsertDone, isTrue);
+    });
+
+    test('tamamlanmış beslenme + offline → syncAll beklenmeden döner', () async {
+      final c = makeContainer(online: false);
+      await Future<void>.delayed(Duration.zero);
+
+      final syncCompleter = Completer<void>(); // hiç complete edilmeyecek
+      when(() => sync.syncAll(sharedOnly: any(named: 'sharedOnly')))
+          .thenAnswer((_) => syncCompleter.future);
+
+      await actions(c).upsert(feed()).timeout(const Duration(seconds: 2));
+    });
+
+    test('süren sayaç mutasyonu (ad=false) beslenme türünde olsa da beklenmez',
+        () async {
+      final c = makeContainer(online: true);
+      await Future<void>.delayed(Duration.zero);
+
+      final syncCompleter = Completer<void>(); // hiç complete edilmeyecek
+      when(() => sync.syncAll(sharedOnly: any(named: 'sharedOnly')))
+          .thenAnswer((_) => syncCompleter.future);
+
+      await actions(c).startBreast('b1', 'left').timeout(const Duration(seconds: 2));
+    });
+
+    test('online ama beslenme DIŞI tamamlanmış kayıt beklenmez', () async {
+      final c = makeContainer(online: true);
+      await Future<void>.delayed(Duration.zero);
+
+      final syncCompleter = Completer<void>(); // hiç complete edilmeyecek
+      when(() => sync.syncAll(sharedOnly: any(named: 'sharedOnly')))
+          .thenAnswer((_) => syncCompleter.future);
+
+      final rec = Record(
+        id: 'g1',
+        baby: 'b1',
+        type: RecordType.growth,
+        ts: DateTime(2026, 6, 1),
+        data: const {'weight': 5.0},
+      );
+      await actions(c).upsert(rec).timeout(const Duration(seconds: 2));
     });
   });
 

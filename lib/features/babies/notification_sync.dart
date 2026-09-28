@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n.dart';
 import '../../core/live_activity_service.dart';
-import '../../core/fw_trace.dart'; // 🧹 TANI-GEÇİCİ (sorun çözülünce kaldır)
 import '../../core/notification_service.dart';
 import '../../core/widget_service.dart';
 import '../../data/feed_reminder_cache.dart';
@@ -283,9 +282,6 @@ class _BabyNotifSync extends ConsumerWidget {
       final frQuiet = ref.watch(quietHoursProvider(baby.id));
       if (frKnown) {
         _syncFeed(frCfg, frRecs, frQuiet);
-      } else {
-        // 🧹 TANI-GEÇİCİ (kaldırılacak): aynanın atlandığı pencerenin izi.
-        FwTrace.add(source: 'fg', action: 'skip_unknown', babyId: baby.id);
       }
     } else {
       // Bebek bekleme moduna alındıysa eski planları/sayacı temizle.
@@ -315,17 +311,6 @@ class _BabyNotifSync extends ConsumerWidget {
         forgot: cfg.forgotEnabled,
       ),
     );
-    // 🧹 TANI-GEÇİCİ (kaldırılacak): AYNAYA ne yazdığımızın izi. Arka plan yolları
-    // (push/bg sync/NSE) yalnız bu aynayı okur; buraya enabled=false / 120 dk
-    // yazıldığı an widget "son beslenme + 2 saat"e düşer. Açılışta yerel ayar
-    // yüklenmeden koşan bir tur bu satırı bırakır → sorunun kaynağını kanıtlar.
-    FwTrace.add(
-        source: 'fg',
-        action: 'mirror',
-        babyId: baby.id,
-        enabled: cfg.enabled,
-        interval: cfg.intervalMin,
-        base: cfg.baseType);
     // iOS force-quit'te NSE'nin bildirimi yeniden planlayabilmesi için aynı
     // parametreleri (locale'e çözülmüş metinlerle) App Group'a da aynala.
     WidgetService.publishFeedReminderConfig(

@@ -9,7 +9,6 @@ import '../features/auth/auth_controller.dart';
 import '../features/babies/baby_controller.dart';
 import '../features/babies/family_settings.dart';
 import '../models/baby.dart';
-import 'fw_trace.dart'; // 🧹 TANI-GEÇİCİ (sorun çözülünce kaldır)
 import '../models/record.dart';
 import 'db_watchdog.dart';
 import 'notification_service.dart';
@@ -98,28 +97,13 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
   // widget'a hem App Group'a (`feed_interval_default`) yazılıyordu → 3 saatlik
   // ayarı olan kullanıcıda widget sessizce 2 saate kayıyordu. Artık dokunmuyoruz:
   // widget ön planda yazılan son (doğru) değerinde kalır.
-  if (snap == null) {
-    // 🧹 TANI-GEÇİCİ (kaldırılacak): bu tur widget'a dokunmadı → değer bayat kalır.
-    await FwTrace.add(source: 'bgsync', action: 'skip_nosnap', babyId: b.id);
-    return;
-  }
+  if (snap == null) return;
   // Ön planla (_WidgetSync / ana sayfa kartı) BİREBİR aynı kural: hatırlatıcı
   // kapalıysa tahmin varsayılana düşer. nextFeedEstimate/lastFeedAt zaten baz
   // türü filtresini uygular (son MAMA / son anne sütü çapası).
   final cfg = snap.toConfig().effectiveForEstimate;
   final next = nextFeedEstimate(cfg, recs);
   final last = lastFeedAt(cfg, recs);
-  // 🧹 TANI-GEÇİCİ (kaldırılacak): bu turun KULLANDIĞI efektif ayar. interval=120 +
-  // enabled=false satırı, "3 saatlik ayar 2 saate düştü"nün doğrudan kanıtıdır.
-  await FwTrace.add(
-      source: 'bgsync',
-      action: next == null ? 'skip_nolast' : 'write',
-      babyId: b.id,
-      enabled: snap.enabled,
-      interval: cfg.intervalMin,
-      base: cfg.baseType,
-      last: last,
-      next: next);
   // Yalnız per-baby anahtarları yaz (publishOne); kullanıcının aktif-bebek seçimini
   // (active_id/baby_name/next_feed_ms) EZME — onu yalnız ön plan publishAll yönetir.
   await WidgetService.publishOne(
@@ -143,6 +127,44 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
       // dürtmesini KAPATMIŞ olsa bile her bg turunda yeniden kuruluyordu.
       forgot: snap.forgot,
     );
+  }
+}
+
+/// 'sync_nudge' push'u geldiğinde (başka üye kaydı GÜNCELLEDİ/SİLDİ) uygulama
+/// arka plandayken/kapalıyken TEK bebeği hemen senkronlar + widget/hatırlatıcıyı
+/// tazeler — 30 dk'lık periyodik turu beklemeden. `runBackgroundSync` ile AYNI
+/// güvenli desen: push payload'ındaki zamanlamaya GÜVENMEZ (sync_nudge'da zaten
+/// yok), yerelde TAZE senkronladıktan sonra drift'ten yeniden hesaplar — "yanlış
+/// kayda göre hatırlatıcı kurulur" riski olmaz. `push_service.dart`'ın FCM arka
+/// plan işleyicisinden çağrılır; ön plandayken çağrılmaz (orada canlı Riverpod
+/// ağacı zaten `requestSyncSoon()` ile aynı işi yapıyor, bkz. main.dart).
+Future<void> refreshBabyFeedStateFromPush(String babyId) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final container = ProviderContainer();
+  try {
+    await container.read(authControllerProvider.future);
+    if (!container.read(loggedInProvider)) return;
+    final babies = await container.read(babyControllerProvider.future);
+    Baby? baby;
+    for (final b in babies) {
+      if (b.id == babyId) {
+        baby = b;
+        break;
+      }
+    }
+    if (baby == null || baby.isExpecting) return;
+    final repo = container.read(recordRepositoryProvider);
+    try {
+      await repo.sync(babyId);
+    } catch (_) {
+      // Çevrimdışı/sunucu hatası — yereldeki (bayat olabilir) veriyle yine de
+      // tazele; zararsız, idempotent, bir sonraki tur düzeltir.
+    }
+    await _refreshFeedState(repo, baby);
+  } catch (_) {
+    // Auth/bebek çözülemedi — sessiz; foreground açılışta veya periyodik turda düzelir.
+  } finally {
+    container.dispose();
   }
 }
 

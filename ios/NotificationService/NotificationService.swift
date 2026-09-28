@@ -64,37 +64,23 @@ class NotificationService: UNNotificationServiceExtension {
     // "son MAMA sonrası" ise eklenen ANNE SÜTÜ kaydı çapayı OYNATMAMALI — bu dal
     // eskiden filtrelemiyordu, ön plan/bg sync filtreliyordu; widget her push'ta
     // ileri, her arka plan turunda geri zıplıyordu.
-    // 🧹 TANI-GEÇİCİ (kaldırılacak): NSE'nin App Group'tan OKUDUĞU efektif ayar +
-    // yazıp yazmadığı. `enabled=false`/`interval=120` satırı, "3 saatlik ayar 2
-    // saate düştü"nün; `skip_*` satırı ise widget'ın bayat kalmasının kanıtıdır.
     let est0 = feedEstimate(babyId, defaults)
-    let subSeen = info["feed_sub"] as? String
-    if let est = est0, matchesBase(est.base, subSeen) {
-      if let nextMs = nextFeedMs(info, est: est) {
+    if let est = est0, let lastTs = resolveLastFeedTs(info, est: est) {
+      if let nextMs = nextFeedMs(lastTs: lastTs, est: est) {
         defaults.set(String(nextMs), forKey: "next_\(babyId)")
         if writeFallback {
           defaults.set(name, forKey: "baby_name")
           defaults.set(String(nextMs), forKey: "next_feed_ms")
         }
-        appendTrace(defaults, babyId: babyId, info: info, est: est,
-                    action: "write", nextMs: nextMs)
-      } else {
-        appendTrace(defaults, babyId: babyId, info: info, est: est,
-                    action: "skip_nolast", nextMs: nil)
       }
-      // Widget "Son besleme HH:MM" gösterir → push'taki last_feed_ts'i de yaz.
+      // Widget "Son besleme HH:MM" gösterir → çözülen last_feed'i de yaz.
       // Ön planda `lastFeedAt` de baz türüyle filtrelenir; bu yüzden "son besleme"
       // de yalnız çapayı oynatan türde güncellenir (iki gösterge tutarlı kalsın).
-      if let ts = info["last_feed_ts"] as? String, let last = parseDate(ts) {
+      if let last = parseDate(lastTs) {
         let lastMs = Int64(last.timeIntervalSince1970 * 1000)
         defaults.set(String(lastMs), forKey: "last_\(babyId)")
         if writeFallback { defaults.set(String(lastMs), forKey: "last_feed_ms") }
       }
-    } else {
-      // 🧹 TANI-GEÇİCİ (kaldırılacak): est0 == nil → ayar aynası App Group'ta YOK
-      // (ön plan hiç yazmamış); aksi halde baz türü filtresi kaydı elemiş.
-      appendTrace(defaults, babyId: babyId, info: info, est: est0,
-                  action: est0 == nil ? "skip_nocfg" : "skip_base", nextMs: nil)
     }
 
     // Cross-process FLUSH: NSE yazıp hemen reload edince widget eski veriyi
@@ -123,10 +109,10 @@ class NotificationService: UNNotificationServiceExtension {
     // aralığını + baz türünü döndürür (varsayılana düşmez).
     guard let est = feedEstimate(babyId, defaults) else { return }
     // baseType filtresi (nextFeedEstimate/_rescheduleFeedReminder ile birebir):
-    // hatırlatıcı türü ile eklenen beslenmenin türü uyuşmuyorsa plana dokunma.
-    guard matchesBase(est.base, info["feed_sub"] as? String) else { return }
+    // hatırlatıcı türü ile değişen beslenmenin türü uyuşmuyorsa plana dokunma.
+    guard let lastTs = resolveLastFeedTs(info, est: est) else { return }
 
-    guard let nextMs = nextFeedMs(info, est: est) else { return }
+    guard let nextMs = nextFeedMs(lastTs: lastTs, est: est) else { return }
     let next = Date(timeIntervalSince1970: Double(nextMs) / 1000.0)
     let now = Date()
     let slot = readInt(defaults, "fr_slot_\(babyId)")
@@ -254,51 +240,26 @@ class NotificationService: UNNotificationServiceExtension {
     }
   }
 
-  /// 🧹 TANI-GEÇİCİ (sorun çözülünce bu fonksiyon + çağrıları silinecek):
-  /// NSE'nin ne okuyup ne yazdığını App Group'taki halkaya (en fazla 40 satır)
-  /// yazar. Uygulama ön plana gelince Dart tarafı (`FwTrace.upload`) bunu
-  /// backend'e boşaltır — prod cihazda başka türlü görünmüyor. Dart yolları AYRI
-  /// bir anahtara yazar (`fw_trace_app`) → aynı anda koşarsak birbirimizi ezmeyiz.
-  private func appendTrace(_ defaults: UserDefaults, babyId: String,
-                           info: [AnyHashable: Any], est: FeedEstimate?,
-                           action: String, nextMs: Int64?) {
-    var row: [String: Any] = [
-      "ran_at": ISO8601DateFormatter().string(from: Date()),
-      "source": "nse",
-      "action": action,
-      "baby_id": babyId,
-    ]
-    if let e = info["event_id"] as? String { row["event_id"] = e }
-    if let sub = info["feed_sub"] as? String { row["feed_sub"] = sub }
-    if let est = est {
-      row["interval"] = Int(est.intervalMin)
-      row["base"] = est.base
-      // NSE'nin gördüğü aç/kapa bayrağı — feedEstimate'in varsayılana düşme koşulu.
-      row["enabled"] = defaults.string(forKey: "fr_enabled_\(babyId)") == "1"
+  /// Bu push'ta hangi last_feed zaman damgasının kullanılacağını çözer — iki farklı
+  /// push şekli var:
+  /// - EKLEME (family_activity): TEK aday `last_feed_ts` + `feed_sub` gelir;
+  ///   `feed_sub` hatırlatıcının baz türüyle (est.base) uyuşmuyorsa kullanılmaz
+  ///   (eklenen kayıt çapayı oynatmıyor demektir).
+  /// - GÜNCELLEME/SİLME (sync_nudge): "hangi kayıt değişti" tek başına yetmez —
+  ///   sunucu ÜÇ baz-türü ('all'/'breast'/'formula') karşılığını gönderir
+  ///   (bkz. api _feed_anchors); burada doğrudan est.base'e karşılık geleni okuruz.
+  private func resolveLastFeedTs(_ info: [AnyHashable: Any], est: FeedEstimate) -> String? {
+    if let anchor = info["last_feed_\(est.base)"] as? String, !anchor.isEmpty {
+      return anchor
     }
-    if let ts = info["last_feed_ts"] as? String, let last = parseDate(ts) {
-      row["last_ms"] = String(Int64(last.timeIntervalSince1970 * 1000))
-    }
-    if let n = nextMs { row["next_ms"] = String(n) }
-
-    var list: [[String: Any]] = []
-    if let raw = defaults.string(forKey: "fw_trace_nse"), !raw.isEmpty,
-       let data = raw.data(using: .utf8),
-       let obj = try? JSONSerialization.jsonObject(with: data),
-       let parsed = obj as? [[String: Any]] {
-      list = parsed
-    }
-    list.append(row)
-    if list.count > 40 { list.removeFirst(list.count - 40) }
-    if let out = try? JSONSerialization.data(withJSONObject: list),
-       let str = String(data: out, encoding: .utf8) {
-      defaults.set(str, forKey: "fw_trace_nse")
-    }
+    guard let ts = info["last_feed_ts"] as? String,
+          matchesBase(est.base, info["feed_sub"] as? String) else { return nil }
+    return ts
   }
 
-  /// next = last_feed_ts + interval(dk). Tarih ayrıştırılamazsa nil.
-  private func nextFeedMs(_ info: [AnyHashable: Any], est: FeedEstimate) -> Int64? {
-    guard let ts = info["last_feed_ts"] as? String, let last = parseDate(ts) else { return nil }
+  /// next = lastTs + interval(dk). Tarih ayrıştırılamazsa nil.
+  private func nextFeedMs(lastTs: String, est: FeedEstimate) -> Int64? {
+    guard let last = parseDate(lastTs) else { return nil }
     let next = last.addingTimeInterval(est.intervalMin * 60)
     return Int64(next.timeIntervalSince1970 * 1000)
   }

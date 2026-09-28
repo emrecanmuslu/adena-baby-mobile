@@ -15,7 +15,6 @@ import 'core/ad_service.dart';
 import 'core/analytics_service.dart';
 import 'core/api_client.dart';
 import 'core/background_sync.dart';
-import 'core/fw_trace.dart'; // 🧹 TANI-GEÇİCİ (sorun çözülünce kaldır)
 import 'core/i18n.dart';
 import 'core/in_app_notification.dart';
 import 'core/locale_util.dart';
@@ -35,6 +34,7 @@ import 'data/notification_prefs.dart';
 import 'data/env_cache.dart';
 import 'data/feed_input_cache.dart';
 import 'data/guest_migration.dart';
+import 'data/home_layout_cache.dart';
 import 'data/i18n_repository.dart';
 import 'data/local_session.dart';
 import 'data/migration_service.dart';
@@ -44,6 +44,7 @@ import 'data/subscription_repository.dart';
 import 'data/theme_cache.dart';
 import 'features/babies/baby_controller.dart';
 import 'features/babies/notification_sync.dart';
+import 'features/home/home_layout.dart';
 import 'features/records/record_controller.dart';
 import 'features/settings/locale_controller.dart';
 import 'features/settings/migration_overlay.dart';
@@ -204,6 +205,17 @@ Future<void> main() async {
   // Son seçilen temayı cache'ten oku → splash/ilk frame doğru temada açılsın.
   final cachedTheme = await _step<ThemeMode>(
       'theme-cache', () => ThemeCache().read(), ThemeMode.system);
+  // Ana sayfa "Hızlı Giriş"/"Son Aktivite" özelleştirmesini cache'ten oku → ilk
+  // frame'de sabit varsayılan (beslenme·bez·uyku) yerine son seçim görünsün.
+  final cachedHomeLayout = await _step<HomeLayout>('home-layout-cache', () async {
+    final cache = HomeLayoutCache();
+    final (quick, lastActivity) =
+        await (cache.readQuick(), cache.readLastActivity()).wait;
+    return HomeLayout(
+      quick: quick ?? HomeLayout.fallback.quick,
+      lastActivity: lastActivity ?? HomeLayout.fallback.lastActivity,
+    );
+  }, HomeLayout.fallback);
   _startupStep = 'runApp';
   _uiStarted = true;
   runApp(RestartWidget(
@@ -211,6 +223,7 @@ Future<void> main() async {
       overrides: [
         cachedPremiumProvider.overrideWithValue(cachedPremium),
         cachedThemeProvider.overrideWithValue(cachedTheme),
+        cachedHomeLayoutProvider.overrideWithValue(cachedHomeLayout),
       ],
       child: const AdenaApp(),
     ),
@@ -349,7 +362,12 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
       return;
     }
     // Aile etkinliği tercihi kapalıysa gösterme (sunucu push görünürlüğüyle tutarlı).
-    if (type == 'family_activity' && !await ActivityNotifCache().enabled()) return;
+    // sync_nudge = başka üye kaydı güncelledi/sildi — family_activity (ekleme)
+    // ile AYNI tercih kapısından geçer (tutarlı, tek "aile etkinliği" ayarı).
+    if ((type == 'family_activity' || type == 'sync_nudge') &&
+        !await ActivityNotifCache().enabled()) {
+      return;
+    }
     // Topluluk bildirimleri tercihi (cevap/en iyi cevap) — OS bildirimiyle aynı kapı.
     if ((type ?? '').startsWith('community') &&
         !await NotificationPrefs.instance.enabled(NotificationPrefs.community)) {
@@ -465,10 +483,6 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // kaydını yeniden dene (token artık hazırsa /me/devices'a düşer). Güvence.
     if (ref.read(authControllerProvider).asData?.value != null) {
       PushService.instance.registerToken(ref.read(apiClientProvider));
-      // 🧹 TANI-GEÇİCİ (sorun çözülünce bu satır + fw_trace import'u silinecek):
-      // widget'a yazan yolların (ön plan/push/bg sync/iOS NSE) biriken izlerini
-      // backend'e boşalt — prod cihazda başka türlü görünmüyor.
-      unawaited(FwTrace.upload(ref.read(apiClientProvider)));
     }
     // App-Open reklamı: ilk çağrı (cold start) yalnız ön-yükler; sonraki
     // resume'larda limitler uygunsa gösterir (premium muaf). Hiç bebek yokken
@@ -493,9 +507,6 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
       final user = next.asData?.value;
       if (user != null) {
         PushService.instance.registerToken(ref.read(apiClientProvider));
-        // 🧹 TANI-GEÇİCİ (kaldırılacak): SOĞUK açılış da izleri boşaltsın —
-        // resume dinleyicisi cold start'ta tetiklenmiyor.
-        unawaited(FwTrace.upload(ref.read(apiClientProvider)));
         // Misafirken (çıkış/oturum-yok) giriş/kayıt yapıldıysa: yereldeki misafir
         // verisini hesaba aktarmayı bir kez teklif et.
         if (prev?.asData?.value == null) {

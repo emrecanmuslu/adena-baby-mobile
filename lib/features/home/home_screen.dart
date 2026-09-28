@@ -669,8 +669,8 @@ class _HomeTab extends ConsumerWidget {
     final ongoing = ref.watch(ongoingSleepProvider(babyId));
     final ongoingBreast = ref.watch(ongoingBreastProvider(babyId));
     final units = ref.watch(activeUnitsProvider);
-    final layout =
-        ref.watch(homeLayoutControllerProvider).asData?.value ?? HomeLayout.fallback;
+    final HomeLayout layout = ref.watch(homeLayoutControllerProvider).asData?.value ??
+        ref.watch(cachedHomeLayoutProvider);
 
     return RefreshIndicator(
       color: AppColors.coral,
@@ -1420,7 +1420,7 @@ class _LastActivitySectionState extends ConsumerState<_LastActivitySection> {
   Widget build(BuildContext context) {
     final async = ref.watch(latestByTypeProvider(widget.babyId));
     final types = ref.watch(homeLayoutControllerProvider).asData?.value.lastActivity ??
-        HomeLayout.fallback.lastActivity;
+        ref.watch(cachedHomeLayoutProvider).lastActivity;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

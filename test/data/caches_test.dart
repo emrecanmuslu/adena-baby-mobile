@@ -12,8 +12,10 @@ import 'package:adena_baby/data/subscription_cache.dart';
 import 'package:adena_baby/data/activity_notif_cache.dart';
 import 'package:adena_baby/data/feed_reminder_cache.dart';
 import 'package:adena_baby/data/feed_input_cache.dart';
+import 'package:adena_baby/data/home_layout_cache.dart';
 import 'package:adena_baby/data/tour_cache.dart';
 import 'package:adena_baby/models/quiet_hours.dart';
+import 'package:adena_baby/models/record.dart';
 
 /// In-memory backing store for the flutter_secure_storage method channel.
 /// All cache classes have been migrated to SharedPreferences (NSUserDefaults);
@@ -550,6 +552,52 @@ void main() {
       expect(await cache.read(), {'home', 'charts'});
       expect(await pref('tour_seen_v1'), 'home,charts');
       expect(_store.containsKey('tour_seen_v1'), isFalse);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  group('HomeLayoutCache', () {
+    final cache = HomeLayoutCache();
+
+    test('unset → null (her iki alan)', () async {
+      expect(await cache.readQuick(), isNull);
+      expect(await cache.readLastActivity(), isNull);
+    });
+
+    test('writeQuick → readQuick round-trip', () async {
+      await cache.writeQuick([RecordType.feed, RecordType.sleep]);
+      expect(await pref('home_layout_quick'), jsonEncode(['feed', 'sleep']));
+      expect(await cache.readQuick(), [RecordType.feed, RecordType.sleep]);
+    });
+
+    test('writeLastActivity → readLastActivity round-trip, ayrı anahtar', () async {
+      await cache.writeQuick([RecordType.feed]);
+      await cache.writeLastActivity([RecordType.growth, RecordType.bath]);
+      expect(await cache.readQuick(), [RecordType.feed]); // quick etkilenmez
+      expect(await cache.readLastActivity(), [RecordType.growth, RecordType.bath]);
+    });
+
+    test('bilinmeyen tür adı atlanır, geçerliler korunur', () async {
+      await setPref('home_layout_quick', jsonEncode(['feed', 'bogus', 'sleep']));
+      expect(await cache.readQuick(), [RecordType.feed, RecordType.sleep]);
+    });
+
+    test('tümü geçersiz/boş liste → null', () async {
+      await setPref('home_layout_quick', jsonEncode(<String>[]));
+      expect(await cache.readQuick(), isNull);
+      await setPref('home_layout_quick', jsonEncode(['bogus']));
+      expect(await cache.readQuick(), isNull);
+    });
+
+    test('bozuk JSON → null', () async {
+      await setPref('home_layout_quick', '{not json');
+      expect(await cache.readQuick(), isNull);
+    });
+
+    test('overwrite replaces value', () async {
+      await cache.writeQuick([RecordType.feed]);
+      await cache.writeQuick([RecordType.bath, RecordType.growth]);
+      expect(await cache.readQuick(), [RecordType.bath, RecordType.growth]);
     });
   });
 }
