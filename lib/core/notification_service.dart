@@ -550,6 +550,157 @@ class NotificationService {
     );
   }
 
+  // ── Sağlık modülü hatırlatıcıları (yerelde bebek verisinden hesaplanır,
+  // kullanıcı yalnız aç/kapa yapar — bkz NotificationPrefs.vaccine/leap/growth/
+  // pregnancyWeek/milestone/tooth). KRİTİK: id'ler _cycleBase (600000) ALTINDA
+  // OLAMAZ — _syncNow, o eşiğin altındaki ve aktif özel-hatırlatıcı listesinde
+  // olmayan her bekleyen bildirimi "yetim" sayıp iptal ediyor (bkz aşağıdaki
+  // yorum). Bu yüzden 600000-700000 (cycle ile aile etkinliği arası) boş
+  // aralığa yerleştirildi; her biri bebek slotuna göre ayrışır.
+  static const _vaccineBase = 610000;
+  static const _leapBase = 620000;
+  static const _growthBase = 630000;
+  static const _pregWeekBase = 640000;
+  static const _milestoneBase = 650000;
+  static const _toothBase = 660000;
+  static const _medicationBase = 670000;
+  static int _medIdFor(int planId, int timeIdx) =>
+      _medicationBase + (planId % 1000) * 10 + timeIdx;
+
+  /// Aşı hatırlatıcısı — en yakın (zorunlu, yapılmamış) aşının tarihinde
+  /// (09:00) tek seferlik. Her senkronda yeniden hesaplanır; bir aşı işaretlenip
+  /// sıradaki değişince otomatik yeni tarihe kayar.
+  Future<void> syncVaccineReminder({
+    required bool enabled,
+    required DateTime? dueDate,
+    String vaccineName = '',
+    int slot = 0,
+    String babyName = '',
+  }) async {
+    if (!_ready) await init();
+    final id = _vaccineBase + slot;
+    await _plugin.cancel(id: id);
+    if (!enabled || dueDate == null) return;
+    final at = DateTime(dueDate.year, dueDate.month, dueDate.day, 9);
+    if (!at.isAfter(DateTime.now())) return;
+    await _ensurePermission();
+    final prefix = babyName.isNotEmpty ? '$babyName · ' : '';
+    await _scheduleOnce(
+        id, at, '$prefix${trp('Aşı zamanı: {name}', {'name': vaccineName})}');
+  }
+
+  /// Gelişim atağı hatırlatıcısı — bir sonraki atağın huzursuz öncesi
+  /// penceresi başlarken (09:00) tek seferlik.
+  Future<void> syncLeapReminder({
+    required bool enabled,
+    required DateTime? at,
+    String leapTitle = '',
+    int leapIndex = 0,
+    int slot = 0,
+    String babyName = '',
+  }) async {
+    if (!_ready) await init();
+    final id = _leapBase + slot;
+    await _plugin.cancel(id: id);
+    if (!enabled || at == null || !at.isAfter(DateTime.now())) return;
+    await _ensurePermission();
+    final prefix = babyName.isNotEmpty ? '$babyName · ' : '';
+    await _scheduleOnce(id, at,
+        '$prefix${trp('{n}. atak yaklaşıyor: {title}', {'n': leapIndex, 'title': leapTitle})}');
+  }
+
+  /// Büyüme ölçümü hatırlatıcısı — son ölçümden (yoksa doğumdan) ~30 gün sonra
+  /// (09:00) tek seferlik; yeni ölçüm girilince otomatik ötelenir.
+  Future<void> syncGrowthReminder({
+    required bool enabled,
+    required DateTime? at,
+    int slot = 0,
+    String babyName = '',
+  }) async {
+    if (!_ready) await init();
+    final id = _growthBase + slot;
+    await _plugin.cancel(id: id);
+    if (!enabled || at == null || !at.isAfter(DateTime.now())) return;
+    await _ensurePermission();
+    final prefix = babyName.isNotEmpty ? '$babyName · ' : '';
+    await _scheduleOnce(id, at, '$prefix${tr('Büyüme ölçümü zamanı 📏')}');
+  }
+
+  /// Gebelik haftası hatırlatıcısı — bir sonraki hafta değişiminde (09:00) tek
+  /// seferlik (yalnız bekleme modu).
+  Future<void> syncPregnancyWeekReminder({
+    required bool enabled,
+    required DateTime? at,
+    int week = 0,
+    int slot = 0,
+    String babyName = '',
+  }) async {
+    if (!_ready) await init();
+    final id = _pregWeekBase + slot;
+    await _plugin.cancel(id: id);
+    if (!enabled || at == null || !at.isAfter(DateTime.now())) return;
+    await _ensurePermission();
+    final prefix = babyName.isNotEmpty ? '$babyName · ' : '';
+    await _scheduleOnce(
+        id, at, '$prefix${trp('{n}. haftasındasın 🤰', {'n': week})}');
+  }
+
+  /// Gelişim basamaklarını işaretlemeyi unutmamak için periyodik (2 haftada
+  /// bir) dürtme — yalnız yaşa yakın/işaretlenmemiş basamak varken açık kalır.
+  Future<void> syncMilestoneCheckReminder({required bool enabled, int slot = 0}) async {
+    if (!_ready) await init();
+    final id = _milestoneBase + slot;
+    await _plugin.cancel(id: id);
+    if (!enabled) return;
+    await _ensurePermission();
+    await _scheduleInterval(id, 14 * 24 * 60, tr('Gelişim basamaklarını kontrol et'));
+  }
+
+  /// Diş çıkışlarını işaretlemeyi unutmamak için periyodik (2 haftada bir)
+  /// dürtme — bebek en erken tipik diş ayına ulaşınca başlar.
+  Future<void> syncToothCheckReminder({required bool enabled, int slot = 0}) async {
+    if (!_ready) await init();
+    final id = _toothBase + slot;
+    await _plugin.cancel(id: id);
+    if (!enabled) return;
+    await _ensurePermission();
+    await _scheduleInterval(id, 14 * 24 * 60, tr('Diş çıkışlarını kontrol et'));
+  }
+
+  /// İlaç/vitamin planının TÜM zamanlanmış bildirimlerini iptal eder (plan
+  /// silinince/pasife alınınca). Sabit 10 doz/gün üst sınırıyla döner.
+  Future<void> cancelMedicationPlan(int planId) async {
+    if (!_ready) return;
+    for (var i = 0; i < 10; i++) {
+      await _plugin.cancel(id: _medIdFor(planId, i));
+    }
+  }
+
+  /// İlaç/vitamin planının günlük hatırlatıcılarını eşitler — [times] listesindeki
+  /// her saat için ayrı bir günlük bildirim kurar (en fazla 10 doz/gün). Önce
+  /// tüm slotları temizler; [enabled] false ya da liste boşsa yalnız temizlik yapar.
+  Future<void> syncMedicationPlan({
+    required bool enabled,
+    required int planId,
+    required String name,
+    required List<String> times,
+    String babyName = '',
+  }) async {
+    if (!_ready) await init();
+    await cancelMedicationPlan(planId);
+    if (!enabled || times.isEmpty) return;
+    await _ensurePermission();
+    final prefix = babyName.isNotEmpty ? '$babyName · ' : '';
+    final capped = times.take(10).toList();
+    for (var i = 0; i < capped.length; i++) {
+      final parts = capped[i].split(':');
+      final h = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 9;
+      final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+      await _scheduleDaily(_medIdFor(planId, i), h, m,
+          '$prefix${trp('İlaç zamanı: {name}', {'name': name})}');
+    }
+  }
+
   // Adet Takvimi hatırlatıcıları — kullanıcıya özel, kendi id aralığı (feed/sayaç/
   // hatırlatıcı id'lerinden ayrı). 0=adet, 1=doğurganlık, 2=PMS, 3=günlük kayıt.
   static const _cycleBase = 600000;

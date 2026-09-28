@@ -86,6 +86,82 @@ class NotificationsScreen extends ConsumerWidget {
           if (showBaby) ...[
             adSec(trp('{baby} · beslenme', {'baby': baby.name})),
             _FeedSection(babyId: baby.id),
+
+            adSec(trp('{baby} · sağlık hatırlatıcıları', {'baby': baby.name}),
+                info: tr('Zamanlama bebeğinin verisine göre otomatik hesaplanır '
+                    '(sen bir şey ayarlamazsın) — burada yalnız açıp kapatırsın.')),
+            _SwitchTile(
+              icon: 'syringe',
+              color: AppColors.med,
+              bg: AppColors.medBg,
+              title: tr('Aşı hatırlatıcısı'),
+              meta: tr('Sıradaki zorunlu aşının tarihinde bir kez'),
+              value: prefs[NotificationPrefs.vaccine] ?? true,
+              onChanged: (v) => setPref(NotificationPrefs.vaccine, v),
+            ),
+            _SwitchTile(
+              icon: 'ai',
+              color: AppColors.coral,
+              bg: AppColors.peachLight,
+              title: tr('Gelişim atağı hatırlatıcısı'),
+              meta: tr('Bir sonraki atak yaklaşırken bir kez'),
+              value: prefs[NotificationPrefs.leap] ?? true,
+              onChanged: (v) => setPref(NotificationPrefs.leap, v),
+            ),
+            _SwitchTile(
+              icon: 'star',
+              color: AppColors.growth,
+              bg: AppColors.growthBg,
+              title: tr('Gelişim basamağı hatırlatıcısı'),
+              meta: tr('Yaşına uygun basamak işaretlenmemişken ara sıra'),
+              value: prefs[NotificationPrefs.milestone] ?? true,
+              onChanged: (v) => setPref(NotificationPrefs.milestone, v),
+            ),
+            _SwitchTile(
+              icon: 'tooth',
+              color: AppColors.pump,
+              bg: AppColors.pumpBg,
+              title: tr('Diş çıkarma hatırlatıcısı'),
+              meta: tr('Diş zamanı geldiğinde, işaretlenmemişken ara sıra'),
+              value: prefs[NotificationPrefs.tooth] ?? true,
+              onChanged: (v) => setPref(NotificationPrefs.tooth, v),
+            ),
+            _SwitchTile(
+              icon: 'charts',
+              color: AppColors.doctor,
+              bg: AppColors.doctorBg,
+              title: tr('Büyüme ölçümü hatırlatıcısı'),
+              meta: tr('Son ölçümden ~30 gün sonra bir kez'),
+              value: prefs[NotificationPrefs.growth] ?? true,
+              onChanged: (v) => setPref(NotificationPrefs.growth, v),
+            ),
+            AdMenuItem(
+              icon: 'med',
+              color: AppColors.med,
+              bg: AppColors.medBg,
+              title: tr('İlaç & vitamin hatırlatıcıları'),
+              meta: tr('Her plan için günlük saat · İlaç & Vitamin Takibi'),
+              onTap: () => context.push('/medications'),
+              trailing: Switch.adaptive(
+                value: prefs[NotificationPrefs.medication] ?? true,
+                activeThumbColor: AppColors.coral,
+                onChanged: (v) => setPref(NotificationPrefs.medication, v),
+              ),
+            ),
+          ],
+
+          // ——— Gebelik (bekleme modu) ———
+          if (baby != null && baby.isExpecting) ...[
+            adSec(tr('Gebelik')),
+            _SwitchTile(
+              icon: 'calendar',
+              color: AppColors.coral,
+              bg: AppColors.peachLight,
+              title: tr('Gebelik haftası hatırlatıcısı'),
+              meta: tr('Her hafta değiştiğinde bir kez'),
+              value: prefs[NotificationPrefs.pregnancyWeek] ?? true,
+              onChanged: (v) => setPref(NotificationPrefs.pregnancyWeek, v),
+            ),
           ],
 
           // ——— Aile paylaşımı ———

@@ -1,12 +1,16 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/age.dart';
 import '../../core/i18n.dart';
+import '../../core/leaps.dart';
 import '../../core/live_activity_service.dart';
 import '../../core/notification_service.dart';
 import '../../core/widget_service.dart';
 import '../../data/feed_reminder_cache.dart';
 import '../../data/health_repository.dart';
+import '../../data/leap_repository.dart';
+import '../../data/leap_weeks.dart';
 import '../../data/notification_prefs.dart';
 import '../../models/baby.dart';
 import '../../models/feed_reminder.dart';
@@ -35,6 +39,8 @@ class FamilyNotificationSync extends ConsumerWidget {
         for (final b in babies) _BabyNotifSync(baby: b, key: ValueKey(b.id)),
         // Özel/randevu hatırlatıcıları: açılışta sunucudan çek + global planla.
         for (final b in babies) _ReminderSync(baby: b, key: ValueKey('rem-${b.id}')),
+        // Aşı/atak/büyüme/gebelik haftası/gelişim/diş hatırlatıcıları.
+        for (final b in babies) _HealthNotifSync(baby: b, key: ValueKey('health-${b.id}')),
         // Ana ekran widget'ı aktif bebeğin son beslenmesini gösterir.
         const _WidgetSync(),
         // iOS Live Activity (süren sayaç — kilit ekranı + Dynamic Island).
@@ -219,6 +225,149 @@ void repostActiveTimers(WidgetRef ref) {
 /// açılmasa da açılışta planlar kurulur). Hatırlatıcılar KİŞİSELDİR (karar
 /// 2026-07-07): aile paylaşımına dahil değildir, sunucuyla senkronlanmaz;
 /// kaynak yalnız bu cihazdaki Drift.
+/// Aşı/gelişim atağı/büyüme/gebelik haftası/gelişim basamağı/diş çıkarma
+/// hatırlatıcılarını bebek verisinden hesaplayıp cihazla eşitler. Kullanıcı
+/// yalnız Bildirimler ekranından aç/kapa yapar — zamanlama hep otomatiktir.
+/// Görünmez; her veri değiştiğinde (aşı işaretlenince, yeni ölçüm girilince…)
+/// yeniden hesaplanıp gerekirse yeni tarihe kayar.
+class _HealthNotifSync extends ConsumerWidget {
+  final Baby baby;
+  const _HealthNotifSync({required this.baby, super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final slot = baby.notifSlot;
+    final vaccineOn = ref.watch(notifPrefProvider(NotificationPrefs.vaccine));
+    final leapOn = ref.watch(notifPrefProvider(NotificationPrefs.leap));
+    final growthOn = ref.watch(notifPrefProvider(NotificationPrefs.growth));
+    final pregOn = ref.watch(notifPrefProvider(NotificationPrefs.pregnancyWeek));
+    final milestoneOn = ref.watch(notifPrefProvider(NotificationPrefs.milestone));
+    final toothOn = ref.watch(notifPrefProvider(NotificationPrefs.tooth));
+    final medicationOn = ref.watch(notifPrefProvider(NotificationPrefs.medication));
+
+    // İlaç/vitamin — her aktif planın kendi günlük saatlerinde. Bebek
+    // durumundan bağımsız hesaplanır (bekleme moduna dönerse de temizlensin
+    // diye enabled'a !isExpecting eklenir, plan listesi zaten yalnız
+    // doğmuş bebekte oluşturulabilir).
+    final medPlans = ref.watch(medicationPlansProvider(baby.id)).asData?.value;
+    if (medPlans != null) {
+      for (final p in medPlans) {
+        NotificationService.instance.syncMedicationPlan(
+          enabled: medicationOn && p.active && !baby.isExpecting,
+          planId: p.id,
+          name: p.name,
+          times: p.times,
+          babyName: baby.name,
+        );
+      }
+    }
+
+    if (baby.isExpecting) {
+      // Gebelik haftası — hafta değişince (09:00) tek seferlik.
+      final due = baby.dueDate;
+      final at = due == null ? null : nextPregnancyWeekBoundary(due);
+      final week = due == null ? 0 : pregnancyWeeks(due) + 1;
+      NotificationService.instance.syncPregnancyWeekReminder(
+          enabled: pregOn, at: at, week: week, slot: slot, babyName: baby.name);
+      // Doğmuş-bebek hatırlatıcıları bekleme modunda anlamsız → temizle.
+      NotificationService.instance
+          .syncVaccineReminder(enabled: false, dueDate: null, slot: slot);
+      NotificationService.instance.syncLeapReminder(enabled: false, at: null, slot: slot);
+      NotificationService.instance.syncGrowthReminder(enabled: false, at: null, slot: slot);
+      NotificationService.instance.syncMilestoneCheckReminder(enabled: false, slot: slot);
+      NotificationService.instance.syncToothCheckReminder(enabled: false, slot: slot);
+      return const SizedBox.shrink();
+    }
+
+    // Doğmuş bebekte gebelik haftası hatırlatıcısı anlamsız → temizle.
+    NotificationService.instance
+        .syncPregnancyWeekReminder(enabled: false, at: null, slot: slot);
+
+    // Aşı — en yakın (zorunlu, yapılmamış) aşının tarihinde.
+    final vaccines = ref.watch(vaccinesProvider(baby.id)).asData?.value;
+    if (vaccines != null) {
+      final pending = vaccines.where((v) => !v.done && !v.optional).toList()
+        ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+      final next = pending.firstOrNull;
+      NotificationService.instance.syncVaccineReminder(
+          enabled: vaccineOn,
+          dueDate: next?.dueDate,
+          vaccineName: next?.name ?? '',
+          slot: slot,
+          babyName: baby.name);
+    }
+
+    // Gelişim atağı — bir sonraki atağın huzursuz öncesi penceresi başlarken.
+    final leaps = ref.watch(leapsProvider).asData?.value;
+    final weeks = correctedAgeWeeks(baby);
+    if (leaps != null) {
+      LeapInfo? nextLeap;
+      DateTime? at;
+      if (weeks != null) {
+        for (final l in leaps) {
+          if (leapPhase(weeks, l.weekStart, l.fussyWeeksBefore) == LeapPhase.future) {
+            nextLeap = l;
+            break;
+          }
+        }
+        if (nextLeap != null) {
+          final anchor = baby.birthDate!.add(Duration(days: prematureEarlyDays(baby)));
+          at = leapReminderDate(anchor, nextLeap.weekStart, nextLeap.fussyWeeksBefore);
+        }
+      }
+      NotificationService.instance.syncLeapReminder(
+          enabled: leapOn,
+          at: at,
+          leapTitle: nextLeap?.title ?? '',
+          leapIndex: nextLeap?.index ?? 0,
+          slot: slot,
+          babyName: baby.name);
+    }
+
+    // Gelişim basamakları — yaşa yakın/işaretlenmemiş basamak varken periyodik
+    // dürtme (ana sayfa "Gelişim" bölümüyle aynı "yakınlık" kuralı: ≤ yaş+2 ay).
+    final milestones = ref.watch(milestonesProvider(baby.id)).asData?.value;
+    if (milestones != null) {
+      final age = correctedAgeMonths(baby);
+      final pending = milestones.where((m) => !m.achieved);
+      final relevant =
+          age == null ? pending : pending.where((m) => m.expectedMonth <= age + 2);
+      NotificationService.instance.syncMilestoneCheckReminder(
+          enabled: milestoneOn && relevant.isNotEmpty, slot: slot);
+    }
+
+    // Diş çıkarma — bebek en erken tipik diş ayına ulaşınca, işaretlenmemiş
+    // yakın diş varken periyodik dürtme.
+    final teeth = ref.watch(teethProvider(baby.id)).asData?.value;
+    if (teeth != null) {
+      final age = correctedAgeMonths(baby);
+      final minTypical =
+          teeth.isEmpty ? null : teeth.map((t) => t.typicalMonth).reduce((a, b) => a < b ? a : b);
+      final started = age != null && minTypical != null && age >= minTypical;
+      final pending = teeth.where((t) => !t.erupted);
+      final relevant =
+          age == null ? pending : pending.where((t) => t.typicalMonth <= age + 2);
+      NotificationService.instance.syncToothCheckReminder(
+          enabled: toothOn && started && relevant.isNotEmpty, slot: slot);
+    }
+
+    // Büyüme ölçümü — son ölçümden (yoksa doğumdan) ~30 gün sonra.
+    final latest = ref.watch(latestByTypeProvider(baby.id)).asData?.value;
+    if (latest != null) {
+      final anchor = latest[RecordType.growth]?.ts ?? baby.birthDate;
+      DateTime? at;
+      if (anchor != null) {
+        final d = anchor.add(const Duration(days: 30));
+        at = DateTime(d.year, d.month, d.day, 9);
+      }
+      NotificationService.instance.syncGrowthReminder(
+          enabled: growthOn, at: at, slot: slot, babyName: baby.name);
+    }
+
+    return const SizedBox.shrink();
+  }
+}
+
 class _ReminderSync extends ConsumerWidget {
   final Baby baby;
   const _ReminderSync({required this.baby, super.key});

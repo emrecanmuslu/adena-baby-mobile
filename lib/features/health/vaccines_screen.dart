@@ -6,18 +6,29 @@ import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/premium_gate.dart';
 import '../../core/source_citation.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
+import '../../models/baby.dart';
 import '../../models/vaccine.dart';
 import '../babies/baby_controller.dart';
+import '../charts/growth_report.dart';
 
 /// TR aşı takvimi: doğum tarihinden üretilen aşılar, yapıldı işaretleme.
-class VaccinesScreen extends ConsumerWidget {
+class VaccinesScreen extends ConsumerStatefulWidget {
   const VaccinesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<VaccinesScreen> createState() => _VaccinesScreenState();
+}
+
+class _VaccinesScreenState extends ConsumerState<VaccinesScreen> {
+  final GlobalKey _targetKey = GlobalKey();
+  bool _autoScrolled = false;
+
+  @override
+  Widget build(BuildContext context) {
     final baby = ref.watch(activeBabyProvider);
     if (baby == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
@@ -43,6 +54,15 @@ class VaccinesScreen extends ConsumerWidget {
           final sorted = [...vaccines]..sort((a, b) => a.dueDate.compareTo(b.dueDate));
           final firstPending =
               sorted.where((v) => !v.done && !v.optional).firstOrNull;
+
+          if (!_autoScrolled && firstPending != null) {
+            _autoScrolled = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final ctx = _targetKey.currentContext;
+              if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5);
+            });
+          }
+
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             children: [
@@ -58,11 +78,14 @@ class VaccinesScreen extends ConsumerWidget {
                 child: Column(
                   children: [
                     for (var i = 0; i < sorted.length; i++)
-                      _VacRow(
-                        vaccine: sorted[i],
-                        babyId: baby.id,
-                        highlighted: identical(sorted[i], firstPending),
-                        last: i == sorted.length - 1,
+                      KeyedSubtree(
+                        key: identical(sorted[i], firstPending) ? _targetKey : null,
+                        child: _VacRow(
+                          vaccine: sorted[i],
+                          babyId: baby.id,
+                          highlighted: identical(sorted[i], firstPending),
+                          last: i == sorted.length - 1,
+                        ),
                       ),
                   ],
                 ),
@@ -80,11 +103,62 @@ class VaccinesScreen extends ConsumerWidget {
                         url:
                             'https://www.cdc.gov/vaccines/imz-schedules/child-easyread.html'),
               ),
+              const SizedBox(height: 14),
+              _ShareVaccineCardButton(baby: baby, vaccines: sorted),
             ],
           );
         },
       ),
     );
+  }
+}
+
+/// Aşı takvimini PDF olarak paylaşan düğme — kreş/okul kaydı gibi resmi
+/// gerekliliklerde kullanılabilecek bir özet (premium; growth report ile aynı
+/// `/report` ucu, backend 'vaccines' anahtarını görünce bu tabloyu render eder).
+class _ShareVaccineCardButton extends ConsumerStatefulWidget {
+  final Baby baby;
+  final List<Vaccine> vaccines;
+  const _ShareVaccineCardButton({required this.baby, required this.vaccines});
+
+  @override
+  ConsumerState<_ShareVaccineCardButton> createState() => _ShareVaccineCardButtonState();
+}
+
+class _ShareVaccineCardButtonState extends ConsumerState<_ShareVaccineCardButton> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdSaveButton(
+      label: _busy ? tr('Hazırlanıyor…') : tr('📄  Aşı kartını paylaş'),
+      color: AppColors.coralDd,
+      ghost: true,
+      onTap: _busy ? () {} : _onTap,
+    );
+  }
+
+  void _onTap() {
+    requirePremium(
+      context,
+      ref,
+      feature: tr('Aşı kartı paylaşımı'),
+      desc: tr('Aşı takvimini, yapılan/yapılmayan durumuyla, kreş/okul kaydı '
+          'gibi ihtiyaçlar için PDF olarak paylaş.'),
+      onAllowed: _generate,
+    );
+  }
+
+  Future<void> _generate() async {
+    setState(() => _busy = true);
+    try {
+      final payload = buildVaccineReportPayload(widget.baby, widget.vaccines);
+      await shareGrowthReport(ref, widget.baby.id, payload);
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 }
 

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
 import '../core/providers.dart';
+import '../models/medication_plan.dart';
 import '../models/milestone.dart';
 import '../models/reminder.dart';
 import '../models/tooth.dart';
@@ -204,6 +205,60 @@ class HealthRepository {
     await (_db.delete(_db.localReminders)..where((r) => r.localId.equals(id))).go();
   }
 
+  // ── İlaç / vitamin planları (yerel int id → NotificationService) ──
+  // Reminder ile AYNI karar (2026-07-07): yalnız ZAMANLAMA kişisel/yereldir;
+  // "verildi" durumu zaten aile-paylaşımlı Record (RecordType.medication) ile
+  // takip edildiği için double-dosing sorunu buluta itmeden de çözülür.
+
+  MedicationPlan _toPlan(MedicationPlanRow r) => MedicationPlan(
+        id: r.localId,
+        name: r.name,
+        dose: r.dose,
+        times: (jsonDecode(r.timesJson) as List).cast<String>(),
+        active: r.active,
+        createdAt: r.createdAt ?? DateTime.now(),
+      );
+
+  Future<List<MedicationPlan>> medicationPlans(String babyId) async {
+    final rows = await (_db.select(_db.medicationPlans)
+          ..where((r) => r.baby.equals(babyId)))
+        .get();
+    return rows.map(_toPlan).toList();
+  }
+
+  Future<MedicationPlan> createMedicationPlan(String babyId,
+      {required String name, required String dose, required List<String> times}) async {
+    final id = await _db.into(_db.medicationPlans).insert(
+          MedicationPlansCompanion.insert(
+            baby: babyId,
+            name: name,
+            dose: Value(dose),
+            timesJson: Value(jsonEncode(times)),
+            createdAt: Value(DateTime.now()),
+          ),
+        );
+    final row = await (_db.select(_db.medicationPlans)
+          ..where((r) => r.localId.equals(id)))
+        .getSingle();
+    return _toPlan(row);
+  }
+
+  Future<void> updateMedicationPlan(int id,
+      {String? name, String? dose, List<String>? times, bool? active}) async {
+    await (_db.update(_db.medicationPlans)..where((r) => r.localId.equals(id))).write(
+      MedicationPlansCompanion(
+        name: name != null ? Value(name) : const Value.absent(),
+        dose: dose != null ? Value(dose) : const Value.absent(),
+        timesJson: times != null ? Value(jsonEncode(times)) : const Value.absent(),
+        active: active != null ? Value(active) : const Value.absent(),
+      ),
+    );
+  }
+
+  Future<void> deleteMedicationPlan(int id) async {
+    await (_db.delete(_db.medicationPlans)..where((r) => r.localId.equals(id))).go();
+  }
+
   // ── Cloud (premium) ──
 
   /// Tüm sağlık DURUMUNU buluta iter (son-yazan-kazanır). Premium push (durum
@@ -268,6 +323,7 @@ class HealthRepository {
   Future<void> purgeBaby(String babyId) async {
     await (_db.delete(_db.healthStatuses)..where((s) => s.baby.equals(babyId))).go();
     await (_db.delete(_db.localReminders)..where((r) => r.baby.equals(babyId))).go();
+    await (_db.delete(_db.medicationPlans)..where((r) => r.baby.equals(babyId))).go();
   }
 }
 
@@ -298,4 +354,9 @@ final milestonesProvider = FutureProvider.family<List<Milestone>, String>(
 /// Aktif bebeğin süt dişleri.
 final teethProvider = FutureProvider.family<List<Tooth>, String>(
   (ref, babyId) => ref.watch(healthRepositoryProvider).teeth(babyId),
+);
+
+/// Aktif bebeğin ilaç/vitamin planları (yerel).
+final medicationPlansProvider = FutureProvider.family<List<MedicationPlan>, String>(
+  (ref, babyId) => ref.watch(healthRepositoryProvider).medicationPlans(babyId),
 );

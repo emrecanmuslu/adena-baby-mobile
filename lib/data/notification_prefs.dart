@@ -29,8 +29,36 @@ class NotificationPrefs {
   /// Ön planda çıkan uygulama-içi üst banner (push geldiğinde).
   static const inAppBanner = 'notif_in_app_banner';
 
+  // ── Sağlık modülü hatırlatıcıları (yerelde hesaplanır, bebek verisine göre
+  // otomatik planlanır — kullanıcı zamanlama girmez, yalnız aç/kapa yapar). ──
+
+  /// En yakın (zorunlu, yapılmamış) aşının tarihinde tek seferlik hatırlatma.
+  static const vaccine = 'notif_vaccine';
+
+  /// Bir sonraki gelişim atağı yaklaşırken (huzursuz öncesi pencere) hatırlatma.
+  static const leap = 'notif_leap';
+
+  /// Son ölçümden ~30 gün sonra "büyüme ölçümü gir" dürtmesi.
+  static const growth = 'notif_growth';
+
+  /// Gebelikte her hafta değişince (bekleme modu) hatırlatma.
+  static const pregnancyWeek = 'notif_pregnancy_week';
+
+  /// Gelişim basamaklarını işaretlemeyi unutmamak için periyodik dürtme.
+  static const milestone = 'notif_milestone';
+
+  /// Diş çıkışlarını işaretlemeyi unutmamak için periyodik dürtme (min. tipik
+  /// diş ayından itibaren).
+  static const tooth = 'notif_tooth';
+
+  /// Her ilaç/vitamin planının günlük saatinde hatırlatma.
+  static const medication = 'notif_medication';
+
   /// Bu sınıfın yönettiği tüm anahtarlar (toplu okuma için).
-  static const all = [timers, community, inAppBanner];
+  static const all = [
+    timers, community, inAppBanner,
+    vaccine, leap, growth, pregnancyWeek, milestone, tooth, medication,
+  ];
 
   Future<bool> enabled(String key) async {
     try {

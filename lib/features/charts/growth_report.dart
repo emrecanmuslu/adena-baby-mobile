@@ -13,6 +13,7 @@ import '../../core/units.dart';
 import '../../core/who_growth.dart';
 import '../../models/baby.dart';
 import '../../models/record.dart';
+import '../../models/vaccine.dart';
 
 /// Grafik UI'ıyla AYNI hesabı kullanarak doktor PDF raporu için JSON payload üretir.
 /// WHO persentil/eğri motoru istemcide tek yer; backend bu veriyi PDF'e render eder.
@@ -23,7 +24,6 @@ Map<String, dynamic> buildGrowthReportPayload(
   final canPct = birth != null && gender != BabyGender.unknown;
   // Grafik UI ile AYNI mantık: prematüre bebekte düzeltilmiş yaş (efektif doğum
   // anı = doğum + erken doğum süresi). Term bebekte birth ile aynı.
-  final corrected = usesCorrectedAge(baby);
   final effBirth = baby.isPremature && birth != null
       ? birth.add(Duration(days: prematureEarlyDays(baby)))
       : birth;
@@ -150,16 +150,7 @@ Map<String, dynamic> buildGrowthReportPayload(
   final sleepTotal = sleepByDay.values.fold<double>(0, (a, b) => a + b);
 
   return {
-    'baby': {
-      'name': baby.name,
-      'gender': gender == BabyGender.male
-          ? 'male'
-          : gender == BabyGender.female
-              ? 'female'
-              : 'unknown',
-      'age_label': corrected ? dualAgeLabel(baby, now: now) : _ageLabel(birth, now),
-      'corrected_age': corrected,
-    },
+    'baby': _babyMeta(baby, now),
     'generated_at': fmtDayMonthYear(now),
     'measures': measuresOut,
     'trends': {
@@ -184,6 +175,46 @@ String _ageLabel(DateTime? birth, DateTime now) {
   if (days < 0) return '';
   if (days < 60) return trp('{n} hafta', {'n': (days / 7).floor()});
   return trp('{n} ay', {'n': (days / 30.4375).floor()});
+}
+
+/// PDF raporundaki ortak "baby" bloğu — büyüme ve aşı raporu aynısını kullanır.
+Map<String, dynamic> _babyMeta(Baby baby, DateTime now) {
+  final gender = baby.gender;
+  final corrected = usesCorrectedAge(baby);
+  return {
+    'name': baby.name,
+    'gender': gender == BabyGender.male
+        ? 'male'
+        : gender == BabyGender.female
+            ? 'female'
+            : 'unknown',
+    'age_label': corrected ? dualAgeLabel(baby, now: now) : _ageLabel(baby.birthDate, now),
+    'corrected_age': corrected,
+  };
+}
+
+/// Aşı takvimini PDF paylaşım raporu için JSON payload'a çevirir — aynı
+/// `/babies/{id}/report` ucu (backend 'vaccines' anahtarını görünce aşı
+/// tablosunu render eder, bkz. render_growth_report).
+Map<String, dynamic> buildVaccineReportPayload(Baby baby, List<Vaccine> vaccines) {
+  final now = DateTime.now();
+  final sorted = [...vaccines]..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+  return {
+    'baby': _babyMeta(baby, now),
+    'generated_at': fmtDayMonthYear(now),
+    'vaccines': [
+      for (final v in sorted)
+        {
+          'name': v.name,
+          'status': v.done
+              ? tr('Yapıldı')
+              : v.optional
+                  ? tr('İsteğe bağlı')
+                  : (v.isOverdue ? tr('Gecikti') : tr('Planlandı')),
+          'date': fmtDayMonYear(v.done && v.doneDate != null ? v.doneDate! : v.dueDate),
+        },
+    ],
+  };
 }
 
 /// Payload'ı backend'e gönderir, dönen PDF'i geçici dosyaya yazar ve paylaşım

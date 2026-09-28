@@ -39,3 +39,14 @@ LeapPhase leapPhase(int weeks, int weekStart, double fussyWeeksBefore) {
   if (weeks <= peakEnd) return LeapPhase.peak;
   return LeapPhase.past;
 }
+
+/// Bir atağın huzursuz-öncesi penceresinin başlayacağı takvim günü (09:00) —
+/// Bildirimler için ("N. atak yaklaşıyor" hatırlatıcısı). [anchor] =
+/// [correctedAgeWeeks] ile aynı ankor (düzeltilmiş doğum günü).
+///
+/// Saf (test edilebilir).
+DateTime leapReminderDate(DateTime anchor, int weekStart, double fussyWeeksBefore) {
+  final fussyStartWeek = weekStart - fussyWeeksBefore;
+  final d = anchor.add(Duration(days: (fussyStartWeek * 7).round()));
+  return DateTime(d.year, d.month, d.day, 9);
+}

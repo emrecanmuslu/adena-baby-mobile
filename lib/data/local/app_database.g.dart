@@ -6104,6 +6104,451 @@ class LocalRemindersCompanion extends UpdateCompanion<ReminderRow> {
   }
 }
 
+class $MedicationPlansTable extends MedicationPlans
+    with TableInfo<$MedicationPlansTable, MedicationPlanRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MedicationPlansTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _localIdMeta = const VerificationMeta(
+    'localId',
+  );
+  @override
+  late final GeneratedColumn<int> localId = GeneratedColumn<int>(
+    'local_id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _babyMeta = const VerificationMeta('baby');
+  @override
+  late final GeneratedColumn<String> baby = GeneratedColumn<String>(
+    'baby',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _doseMeta = const VerificationMeta('dose');
+  @override
+  late final GeneratedColumn<String> dose = GeneratedColumn<String>(
+    'dose',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _timesJsonMeta = const VerificationMeta(
+    'timesJson',
+  );
+  @override
+  late final GeneratedColumn<String> timesJson = GeneratedColumn<String>(
+    'times_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('["09:00"]'),
+  );
+  static const VerificationMeta _activeMeta = const VerificationMeta('active');
+  @override
+  late final GeneratedColumn<bool> active = GeneratedColumn<bool>(
+    'active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    localId,
+    baby,
+    name,
+    dose,
+    timesJson,
+    active,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'medication_plans';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MedicationPlanRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('local_id')) {
+      context.handle(
+        _localIdMeta,
+        localId.isAcceptableOrUnknown(data['local_id']!, _localIdMeta),
+      );
+    }
+    if (data.containsKey('baby')) {
+      context.handle(
+        _babyMeta,
+        baby.isAcceptableOrUnknown(data['baby']!, _babyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_babyMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('dose')) {
+      context.handle(
+        _doseMeta,
+        dose.isAcceptableOrUnknown(data['dose']!, _doseMeta),
+      );
+    }
+    if (data.containsKey('times_json')) {
+      context.handle(
+        _timesJsonMeta,
+        timesJson.isAcceptableOrUnknown(data['times_json']!, _timesJsonMeta),
+      );
+    }
+    if (data.containsKey('active')) {
+      context.handle(
+        _activeMeta,
+        active.isAcceptableOrUnknown(data['active']!, _activeMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {localId};
+  @override
+  MedicationPlanRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MedicationPlanRow(
+      localId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_id'],
+      )!,
+      baby: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}baby'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      dose: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dose'],
+      )!,
+      timesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}times_json'],
+      )!,
+      active: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}active'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      ),
+    );
+  }
+
+  @override
+  $MedicationPlansTable createAlias(String alias) {
+    return $MedicationPlansTable(attachedDatabase, alias);
+  }
+}
+
+class MedicationPlanRow extends DataClass
+    implements Insertable<MedicationPlanRow> {
+  final int localId;
+  final String baby;
+  final String name;
+  final String dose;
+
+  /// Günlük saatler, JSON dizi ("HH:MM"), ör. '["09:00","21:00"]'.
+  final String timesJson;
+  final bool active;
+  final DateTime? createdAt;
+  const MedicationPlanRow({
+    required this.localId,
+    required this.baby,
+    required this.name,
+    required this.dose,
+    required this.timesJson,
+    required this.active,
+    this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['local_id'] = Variable<int>(localId);
+    map['baby'] = Variable<String>(baby);
+    map['name'] = Variable<String>(name);
+    map['dose'] = Variable<String>(dose);
+    map['times_json'] = Variable<String>(timesJson);
+    map['active'] = Variable<bool>(active);
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<DateTime>(createdAt);
+    }
+    return map;
+  }
+
+  MedicationPlansCompanion toCompanion(bool nullToAbsent) {
+    return MedicationPlansCompanion(
+      localId: Value(localId),
+      baby: Value(baby),
+      name: Value(name),
+      dose: Value(dose),
+      timesJson: Value(timesJson),
+      active: Value(active),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+    );
+  }
+
+  factory MedicationPlanRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MedicationPlanRow(
+      localId: serializer.fromJson<int>(json['localId']),
+      baby: serializer.fromJson<String>(json['baby']),
+      name: serializer.fromJson<String>(json['name']),
+      dose: serializer.fromJson<String>(json['dose']),
+      timesJson: serializer.fromJson<String>(json['timesJson']),
+      active: serializer.fromJson<bool>(json['active']),
+      createdAt: serializer.fromJson<DateTime?>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'localId': serializer.toJson<int>(localId),
+      'baby': serializer.toJson<String>(baby),
+      'name': serializer.toJson<String>(name),
+      'dose': serializer.toJson<String>(dose),
+      'timesJson': serializer.toJson<String>(timesJson),
+      'active': serializer.toJson<bool>(active),
+      'createdAt': serializer.toJson<DateTime?>(createdAt),
+    };
+  }
+
+  MedicationPlanRow copyWith({
+    int? localId,
+    String? baby,
+    String? name,
+    String? dose,
+    String? timesJson,
+    bool? active,
+    Value<DateTime?> createdAt = const Value.absent(),
+  }) => MedicationPlanRow(
+    localId: localId ?? this.localId,
+    baby: baby ?? this.baby,
+    name: name ?? this.name,
+    dose: dose ?? this.dose,
+    timesJson: timesJson ?? this.timesJson,
+    active: active ?? this.active,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
+  );
+  MedicationPlanRow copyWithCompanion(MedicationPlansCompanion data) {
+    return MedicationPlanRow(
+      localId: data.localId.present ? data.localId.value : this.localId,
+      baby: data.baby.present ? data.baby.value : this.baby,
+      name: data.name.present ? data.name.value : this.name,
+      dose: data.dose.present ? data.dose.value : this.dose,
+      timesJson: data.timesJson.present ? data.timesJson.value : this.timesJson,
+      active: data.active.present ? data.active.value : this.active,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MedicationPlanRow(')
+          ..write('localId: $localId, ')
+          ..write('baby: $baby, ')
+          ..write('name: $name, ')
+          ..write('dose: $dose, ')
+          ..write('timesJson: $timesJson, ')
+          ..write('active: $active, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(localId, baby, name, dose, timesJson, active, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MedicationPlanRow &&
+          other.localId == this.localId &&
+          other.baby == this.baby &&
+          other.name == this.name &&
+          other.dose == this.dose &&
+          other.timesJson == this.timesJson &&
+          other.active == this.active &&
+          other.createdAt == this.createdAt);
+}
+
+class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
+  final Value<int> localId;
+  final Value<String> baby;
+  final Value<String> name;
+  final Value<String> dose;
+  final Value<String> timesJson;
+  final Value<bool> active;
+  final Value<DateTime?> createdAt;
+  const MedicationPlansCompanion({
+    this.localId = const Value.absent(),
+    this.baby = const Value.absent(),
+    this.name = const Value.absent(),
+    this.dose = const Value.absent(),
+    this.timesJson = const Value.absent(),
+    this.active = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  MedicationPlansCompanion.insert({
+    this.localId = const Value.absent(),
+    required String baby,
+    required String name,
+    this.dose = const Value.absent(),
+    this.timesJson = const Value.absent(),
+    this.active = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : baby = Value(baby),
+       name = Value(name);
+  static Insertable<MedicationPlanRow> custom({
+    Expression<int>? localId,
+    Expression<String>? baby,
+    Expression<String>? name,
+    Expression<String>? dose,
+    Expression<String>? timesJson,
+    Expression<bool>? active,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (localId != null) 'local_id': localId,
+      if (baby != null) 'baby': baby,
+      if (name != null) 'name': name,
+      if (dose != null) 'dose': dose,
+      if (timesJson != null) 'times_json': timesJson,
+      if (active != null) 'active': active,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  MedicationPlansCompanion copyWith({
+    Value<int>? localId,
+    Value<String>? baby,
+    Value<String>? name,
+    Value<String>? dose,
+    Value<String>? timesJson,
+    Value<bool>? active,
+    Value<DateTime?>? createdAt,
+  }) {
+    return MedicationPlansCompanion(
+      localId: localId ?? this.localId,
+      baby: baby ?? this.baby,
+      name: name ?? this.name,
+      dose: dose ?? this.dose,
+      timesJson: timesJson ?? this.timesJson,
+      active: active ?? this.active,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (localId.present) {
+      map['local_id'] = Variable<int>(localId.value);
+    }
+    if (baby.present) {
+      map['baby'] = Variable<String>(baby.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (dose.present) {
+      map['dose'] = Variable<String>(dose.value);
+    }
+    if (timesJson.present) {
+      map['times_json'] = Variable<String>(timesJson.value);
+    }
+    if (active.present) {
+      map['active'] = Variable<bool>(active.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MedicationPlansCompanion(')
+          ..write('localId: $localId, ')
+          ..write('baby: $baby, ')
+          ..write('name: $name, ')
+          ..write('dose: $dose, ')
+          ..write('timesJson: $timesJson, ')
+          ..write('active: $active, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -6117,6 +6562,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SyncCursorsTable syncCursors = $SyncCursorsTable(this);
   late final $HealthStatusesTable healthStatuses = $HealthStatusesTable(this);
   late final $LocalRemindersTable localReminders = $LocalRemindersTable(this);
+  late final $MedicationPlansTable medicationPlans = $MedicationPlansTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6131,6 +6579,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     syncCursors,
     healthStatuses,
     localReminders,
+    medicationPlans,
   ];
 }
 
@@ -9042,6 +9491,244 @@ typedef $$LocalRemindersTableProcessedTableManager =
       ReminderRow,
       PrefetchHooks Function()
     >;
+typedef $$MedicationPlansTableCreateCompanionBuilder =
+    MedicationPlansCompanion Function({
+      Value<int> localId,
+      required String baby,
+      required String name,
+      Value<String> dose,
+      Value<String> timesJson,
+      Value<bool> active,
+      Value<DateTime?> createdAt,
+    });
+typedef $$MedicationPlansTableUpdateCompanionBuilder =
+    MedicationPlansCompanion Function({
+      Value<int> localId,
+      Value<String> baby,
+      Value<String> name,
+      Value<String> dose,
+      Value<String> timesJson,
+      Value<bool> active,
+      Value<DateTime?> createdAt,
+    });
+
+class $$MedicationPlansTableFilterComposer
+    extends Composer<_$AppDatabase, $MedicationPlansTable> {
+  $$MedicationPlansTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get localId => $composableBuilder(
+    column: $table.localId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baby => $composableBuilder(
+    column: $table.baby,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dose => $composableBuilder(
+    column: $table.dose,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get timesJson => $composableBuilder(
+    column: $table.timesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$MedicationPlansTableOrderingComposer
+    extends Composer<_$AppDatabase, $MedicationPlansTable> {
+  $$MedicationPlansTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get localId => $composableBuilder(
+    column: $table.localId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get baby => $composableBuilder(
+    column: $table.baby,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dose => $composableBuilder(
+    column: $table.dose,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get timesJson => $composableBuilder(
+    column: $table.timesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$MedicationPlansTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MedicationPlansTable> {
+  $$MedicationPlansTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get localId =>
+      $composableBuilder(column: $table.localId, builder: (column) => column);
+
+  GeneratedColumn<String> get baby =>
+      $composableBuilder(column: $table.baby, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get dose =>
+      $composableBuilder(column: $table.dose, builder: (column) => column);
+
+  GeneratedColumn<String> get timesJson =>
+      $composableBuilder(column: $table.timesJson, builder: (column) => column);
+
+  GeneratedColumn<bool> get active =>
+      $composableBuilder(column: $table.active, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$MedicationPlansTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MedicationPlansTable,
+          MedicationPlanRow,
+          $$MedicationPlansTableFilterComposer,
+          $$MedicationPlansTableOrderingComposer,
+          $$MedicationPlansTableAnnotationComposer,
+          $$MedicationPlansTableCreateCompanionBuilder,
+          $$MedicationPlansTableUpdateCompanionBuilder,
+          (
+            MedicationPlanRow,
+            BaseReferences<
+              _$AppDatabase,
+              $MedicationPlansTable,
+              MedicationPlanRow
+            >,
+          ),
+          MedicationPlanRow,
+          PrefetchHooks Function()
+        > {
+  $$MedicationPlansTableTableManager(
+    _$AppDatabase db,
+    $MedicationPlansTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MedicationPlansTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MedicationPlansTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MedicationPlansTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> localId = const Value.absent(),
+                Value<String> baby = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> dose = const Value.absent(),
+                Value<String> timesJson = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                Value<DateTime?> createdAt = const Value.absent(),
+              }) => MedicationPlansCompanion(
+                localId: localId,
+                baby: baby,
+                name: name,
+                dose: dose,
+                timesJson: timesJson,
+                active: active,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> localId = const Value.absent(),
+                required String baby,
+                required String name,
+                Value<String> dose = const Value.absent(),
+                Value<String> timesJson = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                Value<DateTime?> createdAt = const Value.absent(),
+              }) => MedicationPlansCompanion.insert(
+                localId: localId,
+                baby: baby,
+                name: name,
+                dose: dose,
+                timesJson: timesJson,
+                active: active,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$MedicationPlansTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MedicationPlansTable,
+      MedicationPlanRow,
+      $$MedicationPlansTableFilterComposer,
+      $$MedicationPlansTableOrderingComposer,
+      $$MedicationPlansTableAnnotationComposer,
+      $$MedicationPlansTableCreateCompanionBuilder,
+      $$MedicationPlansTableUpdateCompanionBuilder,
+      (
+        MedicationPlanRow,
+        BaseReferences<_$AppDatabase, $MedicationPlansTable, MedicationPlanRow>,
+      ),
+      MedicationPlanRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -9064,4 +9751,6 @@ class $AppDatabaseManager {
       $$HealthStatusesTableTableManager(_db, _db.healthStatuses);
   $$LocalRemindersTableTableManager get localReminders =>
       $$LocalRemindersTableTableManager(_db, _db.localReminders);
+  $$MedicationPlansTableTableManager get medicationPlans =>
+      $$MedicationPlansTableTableManager(_db, _db.medicationPlans);
 }

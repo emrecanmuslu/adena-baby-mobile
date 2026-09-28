@@ -175,3 +175,16 @@ int pregnancyDays(DateTime due, {DateTime? now}) {
 /// Saf (test edilebilir): referans an [now] verilebilir; verilmezse
 /// `DateTime.now()`.
 int pregnancyWeeks(DateTime due, {DateTime? now}) => pregnancyDays(due, now: now) ~/ 7;
+
+/// Bir sonraki gebelik haftasının başlayacağı takvim günü (09:00) — Bildirimler
+/// için ("{n}. haftasındasın" hatırlatıcısı). Şu anki hafta 40'ı geçtiyse/40'a
+/// ulaştıysa (kırpma/vade geçmiş) null döner — artık hafta hatırlatıcısı anlamlı
+/// değildir.
+///
+/// Saf (test edilebilir): referans an [now] verilebilir.
+DateTime? nextPregnancyWeekBoundary(DateTime due, {DateTime? now}) {
+  final nextWeek = pregnancyWeeks(due, now: now) + 1;
+  if (nextWeek > 40) return null;
+  final d = due.subtract(Duration(days: 280 - nextWeek * 7));
+  return DateTime(d.year, d.month, d.day, 9);
+}

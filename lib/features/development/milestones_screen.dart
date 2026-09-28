@@ -16,11 +16,19 @@ import '../babies/baby_controller.dart';
 
 /// Gelişim / Kilometre Taşları ekranı — yaşa gruplu basamaklar, başarıldı
 /// işaretleme + ilerleme özeti. Katalog sunucuda (milestone_catalog.py).
-class MilestonesScreen extends ConsumerWidget {
+class MilestonesScreen extends ConsumerStatefulWidget {
   const MilestonesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MilestonesScreen> createState() => _MilestonesScreenState();
+}
+
+class _MilestonesScreenState extends ConsumerState<MilestonesScreen> {
+  final Map<int, GlobalKey> _headerKeys = {};
+  bool _autoScrolled = false;
+
+  @override
+  Widget build(BuildContext context) {
     final baby = ref.watch(activeBabyProvider);
     if (baby == null) {
       return const Scaffold(
@@ -81,6 +89,17 @@ class MilestonesScreen extends ConsumerWidget {
           }
           final months = groups.keys.toList()..sort();
 
+          if (!_autoScrolled && ageMonths != null && months.isNotEmpty) {
+            final target =
+                months.firstWhere((m) => m >= ageMonths, orElse: () => months.last);
+            final key = _headerKeys.putIfAbsent(target, () => GlobalKey());
+            _autoScrolled = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final ctx = key.currentContext;
+              if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0);
+            });
+          }
+
           return ListView(
             padding: EdgeInsets.fromLTRB(
                 16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
@@ -91,7 +110,10 @@ class MilestonesScreen extends ConsumerWidget {
                   ageMonths: ageMonths,
                   baby: baby),
               for (final month in months) ...[
-                _GroupHeader(month: month, ageMonths: ageMonths),
+                KeyedSubtree(
+                  key: _headerKeys[month],
+                  child: _GroupHeader(month: month, ageMonths: ageMonths),
+                ),
                 for (final m in groups[month]!)
                   _MilestoneTile(
                     milestone: m,

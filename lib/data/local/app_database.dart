@@ -190,6 +190,23 @@ class LocalReminders extends Table {
   DateTimeColumn get createdAt => dateTime().nullable()();
 }
 
+/// İlaç/vitamin planı — local-first, CİHAZ-YEREL (Reminder deseniyle aynı:
+/// buluta itilmez). "Verildi" durumu BURADA tutulmaz — o zaten aile-paylaşımlı
+/// `Records` (RecordType.medication) ile takip edilir; bu tablo yalnız
+/// ZAMANLAMAYI (ad/doz/saatler) taşır, Bildirimler'in neyi hatırlatacağını bilmesi
+/// ve ana sayfanın "bugün" checklist'ini oluşturması için.
+@DataClassName('MedicationPlanRow')
+class MedicationPlans extends Table {
+  IntColumn get localId => integer().autoIncrement()();
+  TextColumn get baby => text()();
+  TextColumn get name => text()();
+  TextColumn get dose => text().withDefault(const Constant(''))();
+  /// Günlük saatler, JSON dizi ("HH:MM"), ör. '["09:00","21:00"]'.
+  TextColumn get timesJson => text().withDefault(const Constant('["09:00"]'))();
+  BoolColumn get active => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().nullable()();
+}
+
 @DriftDatabase(tables: [
   Records,
   Babies,
@@ -200,12 +217,13 @@ class LocalReminders extends Table {
   SyncCursors,
   HealthStatuses,
   LocalReminders,
+  MedicationPlans,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -287,6 +305,10 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(
                 cycleSettingsTable, cycleSettingsTable.learningWindow);
           }
+          if (from < 13) {
+            // İlaç/vitamin takip planları (zamanlama; "verildi" durumu Records'ta).
+            await m.createTable(medicationPlans);
+          }
         },
       );
 
@@ -332,6 +354,7 @@ class AppDatabase extends _$AppDatabase {
       TableUpdate.onTable(cycleEntries),
       TableUpdate.onTable(healthStatuses),
       TableUpdate.onTable(localReminders),
+      TableUpdate.onTable(medicationPlans),
     });
   }
 

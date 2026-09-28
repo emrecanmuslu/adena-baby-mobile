@@ -177,4 +177,32 @@ void main() {
       expect(pregnancyWeeks(DateTime(2026, 8, 27), now: now), 30);
     });
   });
+
+  group('nextPregnancyWeekBoundary', () {
+    test('sonraki hafta sınırının takvim gününü döner (09:00)', () {
+      // due now+70g → daysPregnant=210 → 30. hafta içi; sonraki (31.) hafta
+      // sınırı = 217. gün = due - (280-217) = due - 63 gün.
+      final now = DateTime(2026, 6, 18);
+      final due = DateTime(2026, 8, 27);
+      final at = nextPregnancyWeekBoundary(due, now: now);
+      expect(at, DateTime(due.subtract(const Duration(days: 63)).year,
+          due.subtract(const Duration(days: 63)).month,
+          due.subtract(const Duration(days: 63)).day, 9));
+    });
+
+    test('40. haftayı geçince (vade civarı) null döner', () {
+      final now = DateTime(2026, 6, 18);
+      // Uzak geçmişteki due → pregnancyWeeks 40'a kırpılır → sonraki hafta 41 → null.
+      expect(nextPregnancyWeekBoundary(DateTime(2025, 1, 1), now: now), null);
+    });
+
+    test('erken gebelik: 1. haftadan 2. haftaya geçiş', () {
+      // daysPregnant=7 → hafta 1 → sonraki hafta 2 → gün 14 → due-266.
+      final now = DateTime(2026, 1, 1);
+      final due = now.add(const Duration(days: 273)); // 280-7=273
+      final at = nextPregnancyWeekBoundary(due, now: now);
+      final expected = due.subtract(const Duration(days: 266));
+      expect(at, DateTime(expected.year, expected.month, expected.day, 9));
+    });
+  });
 }
