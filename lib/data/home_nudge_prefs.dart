@@ -30,4 +30,25 @@ class HomeNudgePrefs {
       await prefs.setString(_key(id), _today());
     } catch (_) {}
   }
+
+  // ── Kalıcı kapatma (gün-bazlı değil) — ör. ana sayfa İlaç & Vitamin keşif
+  // kartı: kullanıcı X ile kapatınca bir daha çıkmaz. Cihaz-yerel UI tercihi;
+  // senkron edilmez, veri modeline girmez.
+  static String _dismissKey(String id) => 'home_dismissed_$id';
+
+  Future<bool> dismissed(String id) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_dismissKey(id)) ?? false;
+    } catch (_) {
+      return true; // okunamazsa gösterme
+    }
+  }
+
+  Future<void> dismiss(String id) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_dismissKey(id), true);
+    } catch (_) {}
+  }
 }

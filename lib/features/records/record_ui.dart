@@ -168,7 +168,9 @@ class RecordUi {
         ];
         return parts.isEmpty ? tr('Büyüme') : trp('Büyüme · {parts}', {'parts': parts.join(' · ')});
       case RecordType.medication:
-        return trp('İlaç · {name}', {'name': d['name'] ?? ''});
+        return d['skipped'] == true
+            ? trp('İlaç · {name} · atlandı', {'name': d['name'] ?? ''})
+            : trp('İlaç · {name}', {'name': d['name'] ?? ''});
       case RecordType.bath:
         return tr('Banyo');
       case RecordType.appointment:

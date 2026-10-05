@@ -334,7 +334,14 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           data = {'value': v, 'unit': _unit};
         case RecordType.medication:
           if (ctl('name').text.trim().isEmpty) return _warn(tr('İlaç adını gir'));
-          data = {'name': ctl('name').text.trim(), 'dose': ctl('dose').text.trim(), 'given': true};
+          // "Atlandı" kaydı düzenlenirken atlandı kalır (verildi'ye dönmesin).
+          final skipped = widget.existing?.data['skipped'] == true;
+          data = {
+            'name': ctl('name').text.trim(),
+            'dose': ctl('dose').text.trim(),
+            'given': !skipped,
+            if (skipped) 'skipped': true,
+          };
         case RecordType.bath:
           data = {};
           _addNote(data);

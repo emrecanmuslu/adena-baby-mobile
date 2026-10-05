@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
@@ -13,7 +12,6 @@ import '../../core/brand.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/leaps.dart';
-import '../../core/medication.dart';
 import '../../core/modal_gate.dart';
 import '../../core/onboarding_paywall.dart';
 import '../../core/ring.dart';
@@ -29,7 +27,6 @@ import '../../data/leap_repository.dart';
 import '../../data/local_session.dart';
 import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
-import '../../models/medication_plan.dart';
 import '../../models/milestone.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
@@ -40,6 +37,7 @@ import '../babies/family_settings.dart';
 import '../charts/charts_view.dart';
 import '../content/content_ui.dart';
 import '../development/leaps_screen.dart' show LeapHeroCard;
+import '../health/medication_widgets.dart';
 import 'expecting_home.dart';
 import 'home_layout.dart';
 import 'home_layout_editor.dart';
@@ -63,10 +61,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Ana sayfa sekmesi scroll'u — alt menüde zaten Ana sayfadayken tekrar
   // dokununca en üste kaydırmak için (yaygın "geri başa dön" davranışı).
   final _homeScroll = ScrollController();
-  // "İlaç verdin mi?" snackbar'ı bu State ömründe yalnız BİR kez denenir
-  // (veri geldikten sonra); gün-bazlı asıl tekrar-önleme HomeNudgePrefs'te.
-  bool _medSnackbarAttempted = false;
-  // "Dün nasıl geçti?" popup'ı — aynı desen (bkz. yukarıdaki not).
+  // "Dün nasıl geçti?" popup'ı bu State ömründe yalnız BİR kez denenir (veri
+  // geldikten sonra); gün-bazlı asıl tekrar-önleme HomeNudgePrefs'te.
   bool _yesterdaySummaryAttempted = false;
 
   @override
@@ -104,23 +100,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _homeScroll.dispose();
     super.dispose();
-  }
-
-  /// Bugünün en az bir dozu saati geçmiş hâlde işaretlenmemişse (ve bugün
-  /// içinde daha önce gösterilmediyse, başka bir modal sırada değilse) nazik
-  /// bir snackbar ile hatırlatır. Kontrol listesi zaten aynı ekranda görünür
-  /// olduğundan snackbar yalnız dikkat çeker, ayrı bir aksiyon gerekmez.
-  Future<void> _maybeShowMedicationNudge(String babyId) async {
-    if (ModalGate.isBlocked) return;
-    final id = 'med_$babyId';
-    if (await HomeNudgePrefs.instance.shownToday(id)) return;
-    await HomeNudgePrefs.instance.markShownToday(id);
-    if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-      content: Text(tr('Bugünün ilaç/vitamin zamanı geçti — verdin mi? '
-          'Ana sayfadan işaretlemeyi unutma.')),
-      duration: const Duration(seconds: 6),
-    ));
   }
 
   /// Bir önceki günün beslenme/bez/uyku özetini popup olarak gösterir — ilk
@@ -223,31 +202,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               : (h.truncateToDouble() == h ? h.toStringAsFixed(0) : h.toStringAsFixed(1));
           WidgetsBinding.instance.addPostFrameCallback(
               (_) => _maybeShowYesterdaySummary(baby.id, diapers, feeds, sleepStr));
-        }
-      }
-    }
-
-    // İlaç/vitamin "verdin mi?" snackbar'ı — veri (plan + bugünün kayıtları)
-    // oturur oturmaz, State ömründe bir kez değerlendirilir.
-    if (!_medSnackbarAttempted && !baby.isExpecting) {
-      final plans = ref.watch(medicationPlansProvider(baby.id)).asData?.value;
-      if (plans != null) {
-        _medSnackbarAttempted = true;
-        final active = plans.where((p) => p.active).toList();
-        if (active.isNotEmpty) {
-          final now = DateTime.now();
-          final today = DateTime(now.year, now.month, now.day);
-          final recs = ref
-                  .watch(dayRecordsProvider((babyId: baby.id, day: today)))
-                  .asData
-                  ?.value ??
-              const <Record>[];
-          final overdue =
-              todaysMedicationDoses(active, recs, now: now).any((d) => d.isOverdue);
-          if (overdue) {
-            WidgetsBinding.instance
-                .addPostFrameCallback((_) => _maybeShowMedicationNudge(baby.id));
-          }
         }
       }
     }
@@ -818,6 +772,7 @@ class _HomeTab extends ConsumerWidget {
     final units = ref.watch(activeUnitsProvider);
     final HomeLayout layout = ref.watch(homeLayoutControllerProvider).asData?.value ??
         ref.watch(cachedHomeLayoutProvider);
+    final medPromote = ref.watch(medicationDayProvider(babyId))?.promote ?? false;
 
     return RefreshIndicator(
       color: AppColors.coral,
@@ -854,12 +809,16 @@ class _HomeTab extends ConsumerWidget {
               ],
             ],
           ),
+          // İlaç & Vitamin: saati geçmiş doz varsa ya da sıradaki doza ≤60 dk
+          // kaldıysa bölüm buraya (Hızlı Giriş'in altına) çıkar; diğer
+          // durumlarda aşağıda, Yaklaşan'ın altında kalır. Büyümez, yer değiştirir.
+          if (medPromote) MedHomeSection(babyId: babyId),
           _PredictSection(babyId: babyId),
           _LastActivitySection(babyId: babyId, units: units),
           _DaySummarySection(babyId: babyId),
           _LeapSection(babyId: babyId),
           _UpcomingSection(babyId: babyId),
-          _MedicationSection(babyId: babyId),
+          if (!medPromote) MedHomeSection(babyId: babyId),
           _MilestoneSection(babyId: babyId),
           _ForYouSection(babyId: babyId),
         ],
@@ -1081,166 +1040,6 @@ class _ForYouRow extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// Ana sayfa "İlaç & Vitamin" bölümü — bugün verilmesi gereken (aktif planlı)
-/// dozları checklist olarak gösterir; dokununca tek adımda kaydeder/geri alır
-/// (RecordType.medication — aile paylaşımlı, çift doz verilmesin diye). Aktif
-/// plan ya da bugün için doz yoksa gizlenir.
-class _MedicationSection extends ConsumerWidget {
-  final String babyId;
-  const _MedicationSection({required this.babyId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final plans = ref.watch(medicationPlansProvider(babyId)).asData?.value;
-    final active = (plans ?? const <MedicationPlan>[]).where((p) => p.active).toList();
-    if (active.isEmpty) return const SizedBox.shrink();
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final todayRecords =
-        ref.watch(dayRecordsProvider((babyId: babyId, day: today))).asData?.value ??
-            const <Record>[];
-    final doses = todaysMedicationDoses(active, todayRecords, now: now);
-    if (doses.isEmpty) return const SizedBox.shrink();
-
-    int rank(MedicationDoseStatus s) => switch (s) {
-          MedicationDoseStatus.overdue => 0,
-          MedicationDoseStatus.upcoming => 1,
-          MedicationDoseStatus.given => 2,
-        };
-    final sorted = [...doses]
-      ..sort((a, b) {
-        final r = rank(a.status).compareTo(rank(b.status));
-        return r != 0 ? r : a.time.compareTo(b.time);
-      });
-    final doneCount = doses.where((d) => d.isGiven).length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(3, 18, 3, 10),
-          child: Row(
-            children: [
-              Text(tr('İLAÇ & VİTAMİN'),
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.muted,
-                      letterSpacing: 0.7)),
-              const SizedBox(width: 6),
-              AdInfoDot(
-                title: tr('İlaç & Vitamin Takibi'),
-                body: tr('Bugün verilmesi gereken ilaç/vitaminler. İşaretlediğinde '
-                    'aile paylaşımı açıksa diğer ebeveyn de görür — aynı dozu '
-                    'tekrar vermezsiniz.'),
-              ),
-              const Spacer(),
-              Text(trp('{done}/{total}', {'done': doneCount, 'total': doses.length}),
-                  style: const TextStyle(
-                      fontSize: 11.5, fontWeight: FontWeight.w900, color: AppColors.coralDark)),
-            ],
-          ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: AppColors.softShadow,
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < sorted.length; i++)
-                _DoseRow(dose: sorted[i], babyId: babyId, last: i == sorted.length - 1),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-const _doseUuid = Uuid();
-
-/// Tek doz satırı — ad/doz/saat + durum + dokununca işaretle/geri al dairesi.
-class _DoseRow extends ConsumerWidget {
-  final MedicationDose dose;
-  final String babyId;
-  final bool last;
-  const _DoseRow({required this.dose, required this.babyId, required this.last});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final d = dose;
-    final (Color mbg, Color mfg, String icon) = switch (d.status) {
-      MedicationDoseStatus.given => (AppColors.growth, Colors.white, 'check'),
-      MedicationDoseStatus.overdue => (AppColors.coral, Colors.white, 'med'),
-      MedicationDoseStatus.upcoming => (AppColors.line, AppColors.muted, 'med'),
-    };
-    final subtitle = switch (d.status) {
-      MedicationDoseStatus.given =>
-        trp('Verildi · {t}', {'t': fmtTime(d.record!.ts)}),
-      MedicationDoseStatus.overdue => trp('Saati geçti · {t}', {'t': d.time}),
-      MedicationDoseStatus.upcoming => trp('Planlanan · {t}', {'t': d.time}),
-    };
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 11).copyWith(bottom: last ? 14 : 0),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => _toggle(context, ref),
-            child: Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(color: mbg, shape: BoxShape.circle),
-              alignment: Alignment.center,
-              child: AdenaIcon(icon, size: 16, color: mfg, sw: 2.2),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                    d.plan.dose.isNotEmpty ? '${d.plan.name} · ${d.plan.dose}' : d.plan.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14,
-                        color: d.isGiven ? AppColors.muted : null)),
-                const SizedBox(height: 2),
-                Text(subtitle,
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: d.isOverdue ? AppColors.coralDd : AppColors.muted)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _toggle(BuildContext context, WidgetRef ref) async {
-    final actions = ref.read(recordActionsProvider);
-    if (dose.isGiven) {
-      await actions.delete(dose.record!.id);
-    } else {
-      await actions.upsert(Record(
-        id: _doseUuid.v4(),
-        baby: babyId,
-        type: RecordType.medication,
-        ts: DateTime.now(),
-        data: {'name': dose.plan.name, 'dose': dose.plan.dose, 'given': true},
-      ));
-    }
   }
 }
 

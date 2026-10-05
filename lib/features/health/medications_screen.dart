@@ -4,16 +4,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/i18n.dart';
-import '../../core/notification_service.dart';
+import '../../core/medication.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
+import '../../data/notification_prefs.dart';
 import '../../models/medication_plan.dart';
 import '../babies/baby_controller.dart';
+import '../settings/notification_prefs_controller.dart';
+import 'medication_plan_sheet.dart';
+import 'medication_widgets.dart';
 
-/// İlaç & Vitamin Takibi — planları (ad/doz/saat) yönetme ekranı. "Verildi"
-/// işaretleme burada DEĞİL, ana sayfadaki günlük checklist'te yapılır (bkz.
-/// home_screen.dart _MedicationSection) — burası yalnız kurulum.
+/// İlaç & Vitamin — planları (ad/doz/saat) yönetme ekranı. Aktif planların
+/// bugünkü saatleri kartın içinde çip olarak durur ve ana sayfadakiyle AYNI
+/// kurallarla işaretlenebilir (bkz. medTapDose). Duraklatılan planlar ayrı
+/// bölümde, tek dokunuşla devam ettirilir.
 class MedicationsScreen extends ConsumerWidget {
   const MedicationsScreen({super.key});
 
@@ -25,163 +30,274 @@ class MedicationsScreen extends ConsumerWidget {
           body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
     }
     final async = ref.watch(medicationPlansProvider(baby.id));
+    final day = ref.watch(medicationDayProvider(baby.id));
+    final plans = async.asData?.value;
+    final isEmpty = plans != null && plans.isEmpty;
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Row(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(tr('İlaç & Vitamin Takibi')),
-            const SizedBox(width: 8),
-            AdInfoDot(
-              title: tr('İlaç & Vitamin Takibi'),
-              body: tr('Her gün düzenli verdiğin ilaç/vitaminleri buraya ekle. Ana '
-                  'sayfada bugünün dozları listelenir, verildiğinde işaretlersin — '
-                  'aile paylaşımı açıksa diğer ebeveyn de görür, aynı dozu tekrar '
-                  'vermezsiniz.'),
-              size: 16,
-            ),
+            Text(tr('İlaç & Vitamin')),
+            if (day != null && day.total > 0)
+              Text(
+                  trp('Bugün {done}/{total} doz verildi',
+                      {'done': day.done, 'total': day.total}),
+                  style: TextStyle(
+                      fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
           ],
         ),
-      ),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
-        children: [
-          async.when(
-            loading: () => Column(children: [
-              for (var i = 0; i < 2; i++)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 10),
-                  child: Skeleton(height: 68, radius: 16),
+        actions: [
+          if (!isEmpty)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 14),
+              child: Semantics(
+                button: true,
+                label: tr('İlaç / vitamin ekle'),
+                child: GestureDetector(
+                  onTap: () => showMedicationPlanSheet(context, baby.id),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      color: AppColors.coral,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                            color: Color(0x4DE2553F), blurRadius: 14, offset: Offset(0, 6)),
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    child: const AdenaIcon('plus', size: 20, color: Colors.white, sw: 2.4),
+                  ),
                 ),
-            ]),
-            error: (_, _) => const SizedBox.shrink(),
-            data: (plans) {
-              if (plans.isEmpty) return const _Empty();
-              return Column(
-                children: [
-                  for (final p in plans)
-                    _PlanTile(plan: p, babyId: baby.id),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 4),
-          AdSaveButton(
-            label: tr('İlaç / vitamin ekle'),
-            color: AppColors.coralDd,
-            ghost: true,
-            onTap: () => _showAddPlanSheet(context, ref, baby.id),
-          ),
+              ),
+            ),
         ],
+      ),
+      bottomNavigationBar: isEmpty
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                child: AdSaveButton(
+                  label: tr('Kendi planını ekle'),
+                  color: AppColors.coral,
+                  onTap: () => showMedicationPlanSheet(context, baby.id),
+                ),
+              ),
+            )
+          : null,
+      body: async.when(
+        loading: () => ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            for (var i = 0; i < 2; i++)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: Skeleton(height: 96, radius: 20),
+              ),
+          ],
+        ),
+        error: (_, _) => const SizedBox.shrink(),
+        data: (plans) => plans.isEmpty
+            ? _EmptyBody(babyId: baby.id)
+            : _PlansBody(babyId: baby.id, plans: plans, day: day),
       ),
     );
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppColors.softShadow,
-      ),
-      child: Column(
-        children: [
-          AdenaIcon('med', size: 40, color: AppColors.peach),
-          const SizedBox(height: 10),
-          Text(tr('Henüz ilaç/vitamin eklenmedi'),
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text(
-              tr('D vitamini, demir gibi her gün düzenli verdiklerini ekle — ana '
-                  'sayfada bugünün dozlarını görür, işaretlersin.'),
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlanTile extends ConsumerWidget {
-  final MedicationPlan plan;
+class _PlansBody extends ConsumerWidget {
   final String babyId;
-  const _PlanTile({required this.plan, required this.babyId});
+  final List<MedicationPlan> plans;
+  final MedicationDay? day;
+  const _PlansBody({required this.babyId, required this.plans, required this.day});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final timesLabel = ([...plan.times]..sort()).join(' · ');
-    return Dismissible(
-      key: ValueKey(plan.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.only(right: 22),
-        alignment: Alignment.centerRight,
-        decoration:
-            BoxDecoration(color: AppColors.feverBg, borderRadius: BorderRadius.circular(16)),
-        child: const AdenaIcon('trash', size: 20, color: AppColors.fever),
-      ),
-      onDismissed: (_) async {
-        await ref.read(healthRepositoryProvider).deleteMedicationPlan(plan.id);
-        await NotificationService.instance.cancelMedicationPlan(plan.id);
-        ref.invalidate(medicationPlansProvider(babyId));
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: AppColors.softShadow,
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => _showAddPlanSheet(context, ref, babyId, existing: plan),
+    final active = plans.where((p) => p.active).toList();
+    final paused = plans.where((p) => !p.active).toList();
+    final rows = {for (final r in day?.rows ?? const <MedicationPlanDay>[]) r.plan.id: r};
+    final notifOn = ref.watch(notifPrefProvider(NotificationPrefs.medication));
+
+    return ListView(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).padding.bottom),
+      children: [
+        if (active.isNotEmpty) ...[
+          adSec(trp('Aktif planlar · {n}', {'n': active.length})),
+          for (final p in active) _PlanCard(babyId: babyId, plan: p, row: rows[p.id]),
+        ],
+        if (paused.isNotEmpty) ...[
+          adSec(tr('Duraklatılan')),
+          for (final p in paused) _PausedCard(babyId: babyId, plan: p),
+        ],
+        adSec(tr('Hatırlatma')),
+        Container(
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 10, 8, 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppColors.softShadow,
+          ),
           child: Row(
             children: [
-              AdIconChip('med', color: AppColors.med, bg: AppColors.medBg),
-              const SizedBox(width: 13),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(plan.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    Text(tr('Doz bildirimleri'),
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
                     const SizedBox(height: 1),
-                    Text(
-                        [
-                          if (plan.dose.isNotEmpty) plan.dose,
-                          trp('Her gün {t}', {'t': timesLabel}),
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    Text(tr('Her doz saatinde hatırlatır'),
                         style: TextStyle(
-                            fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.muted)),
                   ],
                 ),
               ),
               Switch.adaptive(
-                value: plan.active,
+                value: notifOn,
                 activeThumbColor: AppColors.coral,
-                onChanged: (v) async {
-                  await ref
-                      .read(healthRepositoryProvider)
-                      .updateMedicationPlan(plan.id, active: v);
-                  ref.invalidate(medicationPlansProvider(babyId));
-                },
+                onChanged: (v) => ref
+                    .read(notifPrefsProvider.notifier)
+                    .set(NotificationPrefs.medication, v),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _InfoNote(
+          icon: 'family',
+          text: tr('Verilen dozları ailen anında görür. Plan listesi yalnızca bu '
+              'telefonda saklanır.'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlanCard extends StatelessWidget {
+  final String babyId;
+  final MedicationPlan plan;
+  final MedicationPlanDay? row;
+  const _PlanCard({required this.babyId, required this.plan, required this.row});
+
+  @override
+  Widget build(BuildContext context) {
+    void edit() => showMedicationPlanSheet(context, babyId, existing: plan);
+    final meta = [
+      if (plan.dose.isNotEmpty) plan.dose,
+      trp('her gün · {n} doz', {'n': plan.times.length}),
+    ].join(' · ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: AppColors.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              AdIconChip('med', color: AppColors.med, bg: AppColors.medBg),
+              const SizedBox(width: 12),
+              Expanded(child: _PlanTitle(name: plan.name, meta: meta)),
+              const SizedBox(width: 8),
+              Semantics(
+                button: true,
+                label: tr('Düzenle'),
+                child: GestureDetector(
+                  onTap: edit,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                        color: fieldBg(context), borderRadius: BorderRadius.circular(12)),
+                    alignment: Alignment.center,
+                    child: AdenaIcon('edit', size: 18, color: AppColors.ink2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (row != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 50, top: 11),
+              child: Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  for (final d in row!.doses) MedTimeChip(babyId: babyId, dose: d),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PausedCard extends ConsumerWidget {
+  final String babyId;
+  final MedicationPlan plan;
+  const _PausedCard({required this.babyId, required this.plan});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final meta = [
+      if (plan.dose.isNotEmpty) plan.dose,
+      trp('{n} doz · hatırlatma yok', {'n': plan.times.length}),
+    ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: CustomPaint(
+        painter: MedDashedBorder(color: AppColors.line2, radius: 20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => showMedicationPlanSheet(context, babyId, existing: plan),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+            child: Row(
+              children: [
+                AdIconChip('med', color: AppColors.muted, bg: AppColors.line),
+                const SizedBox(width: 12),
+                Expanded(child: _PlanTitle(name: plan.name, meta: meta)),
+                const SizedBox(width: 8),
+                Material(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  elevation: 0,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      await ref
+                          .read(healthRepositoryProvider)
+                          .updateMedicationPlan(plan.id, active: true);
+                      ref.invalidate(medicationPlansProvider(babyId));
+                    },
+                    child: Container(
+                      constraints: const BoxConstraints(minHeight: 36),
+                      padding: const EdgeInsets.symmetric(horizontal: 13),
+                      alignment: Alignment.center,
+                      child: Text(tr('Devam ettir'),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12,
+                              color: AppColors.coralDark)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -189,142 +305,146 @@ class _PlanTile extends ConsumerWidget {
   }
 }
 
-Future<void> _showAddPlanSheet(BuildContext context, WidgetRef ref, String babyId,
-    {MedicationPlan? existing}) {
-  return showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: false,
-    shape: adSheetShape,
-    builder: (_) => _AddPlanSheet(babyId: babyId, ref: ref, existing: existing),
-  );
-}
-
-class _AddPlanSheet extends StatefulWidget {
-  final String babyId;
-  final WidgetRef ref;
-  final MedicationPlan? existing;
-  const _AddPlanSheet({required this.babyId, required this.ref, this.existing});
-
-  @override
-  State<_AddPlanSheet> createState() => _AddPlanSheetState();
-}
-
-class _AddPlanSheetState extends State<_AddPlanSheet> {
-  late final _name = TextEditingController(text: widget.existing?.name ?? '');
-  late final _dose = TextEditingController(text: widget.existing?.dose ?? '');
-  late List<String> _times = widget.existing != null
-      ? ([...widget.existing!.times]..sort())
-      : ['09:00'];
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _dose.dispose();
-    super.dispose();
-  }
-
-  Future<void> _addTime() async {
-    final picked = await showTimePicker(
-        context: context, initialTime: const TimeOfDay(hour: 21, minute: 0));
-    if (picked == null) return;
-    final t =
-        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
-    if (_times.contains(t)) return;
-    setState(() => _times = [..._times, t]..sort());
-  }
+class _PlanTitle extends StatelessWidget {
+  final String name;
+  final String meta;
+  const _PlanTitle({required this.name, required this.meta});
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-            left: 16, right: 16, bottom: 20 + MediaQuery.of(context).viewInsets.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(child: adGrabHandle()),
-            Padding(
-              padding: const EdgeInsets.only(left: 2, bottom: 14),
-              child: Text(
-                  widget.existing == null ? tr('İlaç / vitamin ekle') : tr('İlaç / vitamin düzenle'),
-                  style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-            ),
-            AdField(
-              label: tr('Ad'),
-              child: AdInput(
-                controller: _name,
-                hint: tr('örn. D vitamini'),
-                capitalization: TextCapitalization.sentences,
-              ),
-            ),
-            AdField(
-              label: tr('Doz (opsiyonel)'),
-              child: AdInput(controller: _dose, hint: tr('örn. 1 damla')),
-            ),
-            AdField(
-              label: tr('Günlük saatler'),
-              info: tr('Her gün bu saat(ler)de hatırlatma alırsın. Birden fazla '
-                  'doz için saat ekleyebilirsin.'),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final t in _times)
-                    Chip(
-                      label: Text(t,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
-                      onDeleted: _times.length > 1
-                          ? () => setState(() => _times = _times.where((x) => x != t).toList())
-                          : null,
-                      backgroundColor: AppColors.medBg,
-                    ),
-                  ActionChip(
-                    avatar: const AdenaIcon('plus', size: 14, color: AppColors.coralDark),
-                    label: Text(tr('Saat ekle'),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 12.5, color: AppColors.coralDark)),
-                    onPressed: _addTime,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            AdSaveButton(
-              label: _saving ? tr('Kaydediliyor…') : tr('Kaydet'),
-              color: AppColors.coral,
-              onTap: _saving ? () {} : _save,
-            ),
-          ],
-        ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, height: 1.25)),
+        const SizedBox(height: 2),
+        Text(meta,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
+      ],
+    );
+  }
+}
+
+class _InfoNote extends StatelessWidget {
+  final String icon;
+  final String text;
+  const _InfoNote({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: AdenaIcon(icon, size: 16, color: AppColors.muted),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted)),
+          ),
+        ],
       ),
     );
   }
+}
 
-  Future<void> _save() async {
-    if (_name.text.trim().isEmpty) {
-      showAdError(context, tr('İlaç/vitamin adını gir'));
-      return;
-    }
-    setState(() => _saving = true);
-    final repo = widget.ref.read(healthRepositoryProvider);
-    try {
-      if (widget.existing != null) {
-        await repo.updateMedicationPlan(widget.existing!.id,
-            name: _name.text.trim(), dose: _dose.text.trim(), times: _times);
-      } else {
-        await repo.createMedicationPlan(widget.babyId,
-            name: _name.text.trim(), dose: _dose.text.trim(), times: _times);
-      }
-      widget.ref.invalidate(medicationPlansProvider(widget.babyId));
-      if (mounted) {
-        Navigator.pop(context);
-        showAdToast(context, tr('Kaydedildi'));
-      }
-    } catch (e) {
-      if (mounted) setState(() => _saving = false);
-    }
+/// Boş durum: kısa tanıtım + "Hızlı başla" önerileri (dokun → dolu plan sayfası).
+class _EmptyBody extends StatelessWidget {
+  final String babyId;
+  const _EmptyBody({required this.babyId});
+
+  @override
+  Widget build(BuildContext context) {
+    final suggestions = medicationSuggestions();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 30, 16, 16),
+      children: [
+        Center(
+          child: Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+                color: AppColors.medBg, borderRadius: BorderRadius.circular(28)),
+            alignment: Alignment.center,
+            child: const AdenaIcon('med', size: 40, color: AppColors.med, sw: 1.6),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(tr('Henüz plan yok'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 5),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Text(
+              tr('Her gün düzenli verdiğin vitamin ve ilaçları ekle. Saatinde '
+                  'hatırlatalım, tek dokunuşla işaretle.'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted)),
+        ),
+        adSec(tr('Hızlı başla')),
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppColors.softShadow,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              for (var i = 0; i < suggestions.length; i++)
+                InkWell(
+                  onTap: () => showMedicationPlanSheet(context, babyId,
+                      presetName: suggestions[i].name, presetTime: suggestions[i].time),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border:
+                          i > 0 ? Border(top: BorderSide(color: AppColors.line)) : null,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                    child: Row(
+                      children: [
+                        AdIconChip('med',
+                            color: AppColors.med, bg: AppColors.medBg, size: 36),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _PlanTitle(
+                            name: suggestions[i].name,
+                            meta: trp('Önerilen: {n} kez · {t}',
+                                {'n': 1, 't': suggestions[i].time}),
+                          ),
+                        ),
+                        const AdenaIcon('plus', size: 20, color: AppColors.coralDark, sw: 2.4),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _InfoNote(
+          icon: 'shield',
+          text: tr('Doz ve saatleri doktorunun önerisine göre ayarla.'),
+        ),
+      ],
+    );
   }
 }

@@ -19,6 +19,7 @@ import '../../models/quiet_hours.dart';
 import '../../models/reminder.dart';
 import '../babies/baby_controller.dart';
 import '../babies/family_settings.dart';
+import 'medication_widgets.dart';
 
 /// Hatırlatıcılar (design ScrReminders): nazik bildirim açıklaması + aktif
 /// hatırlatıcı listesi (aç/kapa anahtarı, kaydır-sil) + "Hatırlatıcı ekle".
@@ -121,6 +122,12 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
           const _NudgeBanner(),
+          // İlaç & Vitamin planları — yalnız doğmuş bebekte (bekleme modunda
+          // modül yok). Zil → buradan 2 dokunuşta plan yönetimi.
+          if (!baby.isExpecting) ...[
+            adSec(tr('Günlük rutin')),
+            _MedicationPlansRow(babyId: baby.id),
+          ],
           adSec(tr('Beslenme hatırlatıcısı')),
           _FeedReminderCard(babyId: baby.id),
           adSec(tr('Sessiz saat')),
@@ -181,6 +188,35 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// "İlaç & Vitamin planları" satırı — plan/hatırlatma sayısı ve bekleyen doz
+/// özetiyle; dokun → yönetim ekranı.
+class _MedicationPlansRow extends ConsumerWidget {
+  final String babyId;
+  const _MedicationPlansRow({required this.babyId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final day = ref.watch(medicationDayProvider(babyId));
+    final String meta;
+    if (day == null || day.planCount == 0) {
+      meta = tr('Her gün verdiklerini ekle, saatinde hatırlatalım');
+    } else {
+      meta = [
+        trp('{p} plan · {n} hatırlatma/gün', {'p': day.planCount, 'n': day.total}),
+        if (day.overdue > 0) trp('{n} doz bekliyor', {'n': day.overdue}),
+      ].join(' · ');
+    }
+    return AdMenuItem(
+      icon: 'med',
+      color: AppColors.med,
+      bg: AppColors.medBg,
+      title: tr('İlaç & Vitamin planları'),
+      meta: meta,
+      onTap: () => context.push('/medications'),
     );
   }
 }

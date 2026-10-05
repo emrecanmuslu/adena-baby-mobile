@@ -213,6 +213,7 @@ class _RecordDetailSheet extends ConsumerWidget {
       case RecordType.medication:
         row(tr('İlaç / vitamin'), d['name'] as String?);
         row(tr('Doz'), d['dose'] as String?);
+        if (d['skipped'] == true) row(tr('Durum'), tr('Atlandı'));
       case RecordType.bath:
         note(tr('Not'), d['note'] as String?);
       case RecordType.appointment:
