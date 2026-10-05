@@ -41,6 +41,7 @@ import '../health/medication_widgets.dart';
 import 'expecting_home.dart';
 import 'home_layout.dart';
 import 'home_layout_editor.dart';
+import 'yesterday_recap_sheet.dart';
 import '../records/add_record_sheet.dart';
 import '../records/record_controller.dart';
 import '../records/record_form.dart';
@@ -102,71 +103,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
-  /// Bir önceki günün beslenme/bez/uyku özetini popup olarak gösterir — ilk
-  /// açılışta (gün başına en fazla bir kez), sabah nazikçe "dün nasıl geçti?"
-  /// hatırlatması. Hiç kayıt yoksa (yeni bebek vb.) gösterilmez.
-  Future<void> _maybeShowYesterdaySummary(
-      String babyId, int diapers, int feeds, String sleepStr) async {
+  /// "Dün nasıl geçti?" sabah özeti — günün ilk açılışında (gün başına en
+  /// fazla bir kez). Başka bir modal sıradaysa ya da dün hiç kayıt yoksa
+  /// gösterilmez. Hesap + çizim: yesterday_recap_sheet.dart.
+  Future<void> _maybeShowYesterdaySummary(Baby baby) async {
     if (ModalGate.isBlocked) return;
-    final id = 'yesterday_$babyId';
+    final id = 'yesterday_${baby.id}';
     if (await HomeNudgePrefs.instance.shownToday(id)) return;
+    if (!mounted) return;
+    final bundle = await loadYesterdayRecap(ref, baby);
+    if (bundle == null || !mounted || ModalGate.isBlocked) return;
     await HomeNudgePrefs.instance.markShownToday(id);
     if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Theme.of(ctx).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 22, 20, 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration:
-                        BoxDecoration(color: AppColors.feedBg, shape: BoxShape.circle),
-                    alignment: Alignment.center,
-                    child: const Text('🌅', style: TextStyle(fontSize: 17)),
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Text(tr('Dün nasıl geçti?'),
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              IntrinsicHeight(
-                child: Row(
-                  children: [
-                    Expanded(child: _DayCol(n: '$diapers', label: tr('Bez'))),
-                    Container(width: 1, margin: const EdgeInsets.symmetric(vertical: 3), color: AppColors.line),
-                    Expanded(child: _DayCol(n: '$feeds', label: tr('Beslenme'))),
-                    Container(width: 1, margin: const EdgeInsets.symmetric(vertical: 3), color: AppColors.line),
-                    Expanded(child: _DayCol(n: sleepStr, small: tr('sa'), label: tr('Uyku'))),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: TextButton.styleFrom(foregroundColor: AppColors.coralDark),
-                  child: Text(tr('Tamam'), style: const TextStyle(fontWeight: FontWeight.w900)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    await showYesterdayRecap(context, ref, baby, bundle);
   }
 
   @override
@@ -187,21 +136,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final yRecs = yAsync.asData?.value;
       if (yRecs != null) {
         _yesterdaySummaryAttempted = true;
-        final diapers = yRecs.where((r) => r.type == RecordType.diaper).length;
-        final feeds = yRecs.where((r) => r.type == RecordType.feed).length;
-        var sleepMin = 0;
-        for (final r in yRecs) {
-          if (r.type == RecordType.sleep && r.data['duration'] is num) {
-            sleepMin += (r.data['duration'] as num).toInt();
-          }
-        }
-        if (diapers > 0 || feeds > 0 || sleepMin > 0) {
-          final h = sleepMin / 60;
-          final sleepStr = sleepMin == 0
-              ? '0'
-              : (h.truncateToDouble() == h ? h.toStringAsFixed(0) : h.toStringAsFixed(1));
-          WidgetsBinding.instance.addPostFrameCallback(
-              (_) => _maybeShowYesterdaySummary(baby.id, diapers, feeds, sleepStr));
+        if (yRecs.isNotEmpty) {
+          WidgetsBinding.instance
+              .addPostFrameCallback((_) => _maybeShowYesterdaySummary(baby));
         }
       }
     }

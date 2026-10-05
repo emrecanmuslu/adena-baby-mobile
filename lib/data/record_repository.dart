@@ -97,6 +97,25 @@ class RecordRepository {
     return q.watch().map((rows) => rows.map(_toModel).toList());
   }
 
+  /// [before]'dan ÖNCE kaydı olan ek gıda adları (küçük harf, kırpılmış) —
+  /// "Dün nasıl geçti?" özetinde "ilk" tespiti için. Tüm geçmişi modele
+  /// çevirmemek adına SQL'de `data` JSON metninden süzülür.
+  Future<Set<String>> solidFoodNamesBefore(String babyId, DateTime before) async {
+    final q = _db.select(_db.records)
+      ..where((r) =>
+          r.baby.equals(babyId) &
+          r.isDeleted.equals(false) &
+          r.type.equals(RecordType.feed.name) &
+          r.ts.isSmallerThanValue(before.toUtc()) &
+          r.data.like('%"sub":"solid"%'));
+    final rows = await q.get();
+    return {
+      for (final r in rows.map(_toModel))
+        if ((r.data['food_name'] as String? ?? '').trim().isNotEmpty)
+          (r.data['food_name'] as String).trim().toLowerCase(),
+    };
+  }
+
   /// Aktif (bitmemiş) uyku — yalnız en son uyku kaydını kontrol eder (ucuz).
   Stream<Record?> watchOngoingSleep(String babyId) {
     final q = _db.select(_db.records)

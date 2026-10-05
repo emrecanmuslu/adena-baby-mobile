@@ -65,6 +65,9 @@ const _avatarPalette = [
 
 typedef MedGiver = ({String name, String initial, Color color});
 
+/// Üye rengi (id'ye göre sabit) — akıştaki avatar paletiyle aynı.
+Color medAvatarColor(String id) => _avatarPalette[id.hashCode.abs() % _avatarPalette.length];
+
 /// Dozu BAŞKA bir aile üyesi verdiyse onun adı/baş harfi/rengi; kendi kaydıysa
 /// (ya da henüz senkronlanmamış yerel kayıtsa — createdBy null) null. Üye
 /// listesi yüklenemediyse ad boş, baş harf "?" döner (yine "başkası" sayılır).

@@ -68,6 +68,8 @@ class AdenaIcons {
     'sun': '<circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M22 12h-2.5M4.5 12H2M18.7 5.3L17 7M7 17l-1.7 1.7M18.7 18.7L17 17M7 7L5.3 5.3"/>',
     'search': '<circle cx="11" cy="11" r="7.5"/><path d="M20.5 20.5L16.5 16.5"/>',
     'quote': '<path d="M10 7H6a3 3 0 00-3 3v1a3 3 0 003 3h1.2A5.8 5.8 0 013 17.5V19a7.3 7.3 0 007-7.3zM21 7h-4a3 3 0 00-3 3v1a3 3 0 003 3h1.2a5.8 5.8 0 01-4.2 3.5V19a7.3 7.3 0 007-7.3z" fill="currentColor" stroke="none"/>',
+    // "Dün nasıl geçti?" özeti (design/Dün Nasıl Geçti.html)
+    'sunrise': '<path d="M3 18h18"/><path d="M7 18a5 5 0 0110 0"/><path d="M12 5v3.5M5.3 10.3l1.8 1.8M18.7 10.3l-1.8 1.8M2.5 14.5h2M19.5 14.5h2"/><path d="M9.5 6.5L12 4l2.5 2.5"/>',
     'userHeart': '<circle cx="9" cy="7" r="3.2"/><path d="M3.5 21c0-3.5 2.5-5.8 5.5-5.8s5.5 2.3 5.5 5.8"/><path d="M17.5 3.5a3 3 0 012.7 4.4c-.6 1.3-2.7 2.9-2.7 2.9s-2.1-1.6-2.7-2.9a3 3 0 012.7-4.4z"/>',
   };
 
