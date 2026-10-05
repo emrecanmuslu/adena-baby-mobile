@@ -405,6 +405,10 @@ class RecordActions {
   /// (id korunursa düzenleme, yeni id ise ekleme).
   Future<void> upsert(Record r) => _saveAndSync(r, ad: true);
 
+  /// Reklam/puanlama sayacını TETİKLEMEYEN oluştur/güncelle — ana sayfadaki doz
+  /// işaretleme gibi tek dokunuşluk, günde defalarca yapılan tikler için.
+  Future<void> upsertQuiet(Record r) => _saveAndSync(r);
+
   Future<void> addDiaper(String babyId, String sub) => _saveAndSync(
         Record(
           id: _uuid.v4(),

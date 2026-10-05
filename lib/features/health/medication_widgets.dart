@@ -167,7 +167,7 @@ Future<void> _writeDose(BuildContext context, WidgetRef ref, String babyId,
     {required bool skipped}) async {
   final actions = ref.read(recordActionsProvider);
   final id = _uuid.v4();
-  await actions.upsert(Record(
+  await actions.upsertQuiet(Record(
     id: id,
     baby: babyId,
     type: RecordType.medication,
@@ -296,7 +296,7 @@ class _DoseSheetState extends ConsumerState<_DoseSheet> {
   }
 
   Future<void> _save() async {
-    await ref.read(recordActionsProvider).upsert(_record.copyWith(ts: _at));
+    await ref.read(recordActionsProvider).upsertQuiet(_record.copyWith(ts: _at));
     if (!mounted) return;
     Navigator.pop(context);
     showAdToast(context, tr('Saat güncellendi'));
@@ -313,7 +313,7 @@ class _DoseSheetState extends ConsumerState<_DoseSheet> {
     final data = Map<String, dynamic>.from(_record.data)
       ..remove('skipped')
       ..['given'] = true;
-    await ref.read(recordActionsProvider).upsert(_record.copyWith(data: data));
+    await ref.read(recordActionsProvider).upsertQuiet(_record.copyWith(data: data));
     if (!mounted) return;
     Navigator.pop(context);
     showAdToast(

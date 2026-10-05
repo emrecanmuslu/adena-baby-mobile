@@ -101,6 +101,25 @@ void main() {
       expect(captured.data['weight'], 5.2);
       verify(() => sync.syncAll()).called(1);
     });
+
+    test('upsertQuiet de yerele yazar ve syncAll tetikler', () async {
+      final c = makeContainer();
+      final rec = Record(
+        id: 'm1',
+        baby: 'b1',
+        type: RecordType.medication,
+        ts: DateTime(2026, 6, 1),
+        data: const {'name': 'D vitamini', 'given': true},
+      );
+
+      await actions(c).upsertQuiet(rec);
+      await Future<void>.delayed(Duration.zero);
+
+      final captured =
+          verify(() => repo.upsertLocal(captureAny())).captured.single as Record;
+      expect(captured.id, 'm1');
+      verify(() => sync.syncAll()).called(1);
+    });
   });
 
   group('beslenme — online/offline sync bekleme', () {
