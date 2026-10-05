@@ -6189,6 +6189,55 @@ class $MedicationPlansTable extends MedicationPlans
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _uuidMeta = const VerificationMeta('uuid');
+  @override
+  late final GeneratedColumn<String> uuid = GeneratedColumn<String>(
+    'uuid',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _clientUpdatedAtMeta = const VerificationMeta(
+    'clientUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> clientUpdatedAt =
+      GeneratedColumn<DateTime>(
+        'client_updated_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
+  @override
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     localId,
@@ -6198,6 +6247,10 @@ class $MedicationPlansTable extends MedicationPlans
     timesJson,
     active,
     createdAt,
+    uuid,
+    isDeleted,
+    clientUpdatedAt,
+    dirty,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6257,6 +6310,33 @@ class $MedicationPlansTable extends MedicationPlans
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('uuid')) {
+      context.handle(
+        _uuidMeta,
+        uuid.isAcceptableOrUnknown(data['uuid']!, _uuidMeta),
+      );
+    }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
+    if (data.containsKey('client_updated_at')) {
+      context.handle(
+        _clientUpdatedAtMeta,
+        clientUpdatedAt.isAcceptableOrUnknown(
+          data['client_updated_at']!,
+          _clientUpdatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
     return context;
   }
 
@@ -6294,6 +6374,22 @@ class $MedicationPlansTable extends MedicationPlans
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       ),
+      uuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}uuid'],
+      ),
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
+      clientUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}client_updated_at'],
+      ),
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
     );
   }
 
@@ -6314,6 +6410,10 @@ class MedicationPlanRow extends DataClass
   final String timesJson;
   final bool active;
   final DateTime? createdAt;
+  final String? uuid;
+  final bool isDeleted;
+  final DateTime? clientUpdatedAt;
+  final bool dirty;
   const MedicationPlanRow({
     required this.localId,
     required this.baby,
@@ -6322,6 +6422,10 @@ class MedicationPlanRow extends DataClass
     required this.timesJson,
     required this.active,
     this.createdAt,
+    this.uuid,
+    required this.isDeleted,
+    this.clientUpdatedAt,
+    required this.dirty,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6335,6 +6439,14 @@ class MedicationPlanRow extends DataClass
     if (!nullToAbsent || createdAt != null) {
       map['created_at'] = Variable<DateTime>(createdAt);
     }
+    if (!nullToAbsent || uuid != null) {
+      map['uuid'] = Variable<String>(uuid);
+    }
+    map['is_deleted'] = Variable<bool>(isDeleted);
+    if (!nullToAbsent || clientUpdatedAt != null) {
+      map['client_updated_at'] = Variable<DateTime>(clientUpdatedAt);
+    }
+    map['dirty'] = Variable<bool>(dirty);
     return map;
   }
 
@@ -6349,6 +6461,12 @@ class MedicationPlanRow extends DataClass
       createdAt: createdAt == null && nullToAbsent
           ? const Value.absent()
           : Value(createdAt),
+      uuid: uuid == null && nullToAbsent ? const Value.absent() : Value(uuid),
+      isDeleted: Value(isDeleted),
+      clientUpdatedAt: clientUpdatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(clientUpdatedAt),
+      dirty: Value(dirty),
     );
   }
 
@@ -6365,6 +6483,10 @@ class MedicationPlanRow extends DataClass
       timesJson: serializer.fromJson<String>(json['timesJson']),
       active: serializer.fromJson<bool>(json['active']),
       createdAt: serializer.fromJson<DateTime?>(json['createdAt']),
+      uuid: serializer.fromJson<String?>(json['uuid']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+      clientUpdatedAt: serializer.fromJson<DateTime?>(json['clientUpdatedAt']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
     );
   }
   @override
@@ -6378,6 +6500,10 @@ class MedicationPlanRow extends DataClass
       'timesJson': serializer.toJson<String>(timesJson),
       'active': serializer.toJson<bool>(active),
       'createdAt': serializer.toJson<DateTime?>(createdAt),
+      'uuid': serializer.toJson<String?>(uuid),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
+      'clientUpdatedAt': serializer.toJson<DateTime?>(clientUpdatedAt),
+      'dirty': serializer.toJson<bool>(dirty),
     };
   }
 
@@ -6389,6 +6515,10 @@ class MedicationPlanRow extends DataClass
     String? timesJson,
     bool? active,
     Value<DateTime?> createdAt = const Value.absent(),
+    Value<String?> uuid = const Value.absent(),
+    bool? isDeleted,
+    Value<DateTime?> clientUpdatedAt = const Value.absent(),
+    bool? dirty,
   }) => MedicationPlanRow(
     localId: localId ?? this.localId,
     baby: baby ?? this.baby,
@@ -6397,6 +6527,12 @@ class MedicationPlanRow extends DataClass
     timesJson: timesJson ?? this.timesJson,
     active: active ?? this.active,
     createdAt: createdAt.present ? createdAt.value : this.createdAt,
+    uuid: uuid.present ? uuid.value : this.uuid,
+    isDeleted: isDeleted ?? this.isDeleted,
+    clientUpdatedAt: clientUpdatedAt.present
+        ? clientUpdatedAt.value
+        : this.clientUpdatedAt,
+    dirty: dirty ?? this.dirty,
   );
   MedicationPlanRow copyWithCompanion(MedicationPlansCompanion data) {
     return MedicationPlanRow(
@@ -6407,6 +6543,12 @@ class MedicationPlanRow extends DataClass
       timesJson: data.timesJson.present ? data.timesJson.value : this.timesJson,
       active: data.active.present ? data.active.value : this.active,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      uuid: data.uuid.present ? data.uuid.value : this.uuid,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+      clientUpdatedAt: data.clientUpdatedAt.present
+          ? data.clientUpdatedAt.value
+          : this.clientUpdatedAt,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
     );
   }
 
@@ -6419,14 +6561,29 @@ class MedicationPlanRow extends DataClass
           ..write('dose: $dose, ')
           ..write('timesJson: $timesJson, ')
           ..write('active: $active, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('uuid: $uuid, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('clientUpdatedAt: $clientUpdatedAt, ')
+          ..write('dirty: $dirty')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(localId, baby, name, dose, timesJson, active, createdAt);
+  int get hashCode => Object.hash(
+    localId,
+    baby,
+    name,
+    dose,
+    timesJson,
+    active,
+    createdAt,
+    uuid,
+    isDeleted,
+    clientUpdatedAt,
+    dirty,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -6437,7 +6594,11 @@ class MedicationPlanRow extends DataClass
           other.dose == this.dose &&
           other.timesJson == this.timesJson &&
           other.active == this.active &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.uuid == this.uuid &&
+          other.isDeleted == this.isDeleted &&
+          other.clientUpdatedAt == this.clientUpdatedAt &&
+          other.dirty == this.dirty);
 }
 
 class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
@@ -6448,6 +6609,10 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
   final Value<String> timesJson;
   final Value<bool> active;
   final Value<DateTime?> createdAt;
+  final Value<String?> uuid;
+  final Value<bool> isDeleted;
+  final Value<DateTime?> clientUpdatedAt;
+  final Value<bool> dirty;
   const MedicationPlansCompanion({
     this.localId = const Value.absent(),
     this.baby = const Value.absent(),
@@ -6456,6 +6621,10 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     this.timesJson = const Value.absent(),
     this.active = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.uuid = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.clientUpdatedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
   });
   MedicationPlansCompanion.insert({
     this.localId = const Value.absent(),
@@ -6465,6 +6634,10 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     this.timesJson = const Value.absent(),
     this.active = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.uuid = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.clientUpdatedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
   }) : baby = Value(baby),
        name = Value(name);
   static Insertable<MedicationPlanRow> custom({
@@ -6475,6 +6648,10 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     Expression<String>? timesJson,
     Expression<bool>? active,
     Expression<DateTime>? createdAt,
+    Expression<String>? uuid,
+    Expression<bool>? isDeleted,
+    Expression<DateTime>? clientUpdatedAt,
+    Expression<bool>? dirty,
   }) {
     return RawValuesInsertable({
       if (localId != null) 'local_id': localId,
@@ -6484,6 +6661,10 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
       if (timesJson != null) 'times_json': timesJson,
       if (active != null) 'active': active,
       if (createdAt != null) 'created_at': createdAt,
+      if (uuid != null) 'uuid': uuid,
+      if (isDeleted != null) 'is_deleted': isDeleted,
+      if (clientUpdatedAt != null) 'client_updated_at': clientUpdatedAt,
+      if (dirty != null) 'dirty': dirty,
     });
   }
 
@@ -6495,6 +6676,10 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     Value<String>? timesJson,
     Value<bool>? active,
     Value<DateTime?>? createdAt,
+    Value<String?>? uuid,
+    Value<bool>? isDeleted,
+    Value<DateTime?>? clientUpdatedAt,
+    Value<bool>? dirty,
   }) {
     return MedicationPlansCompanion(
       localId: localId ?? this.localId,
@@ -6504,6 +6689,10 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
       timesJson: timesJson ?? this.timesJson,
       active: active ?? this.active,
       createdAt: createdAt ?? this.createdAt,
+      uuid: uuid ?? this.uuid,
+      isDeleted: isDeleted ?? this.isDeleted,
+      clientUpdatedAt: clientUpdatedAt ?? this.clientUpdatedAt,
+      dirty: dirty ?? this.dirty,
     );
   }
 
@@ -6531,6 +6720,18 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (uuid.present) {
+      map['uuid'] = Variable<String>(uuid.value);
+    }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
+    if (clientUpdatedAt.present) {
+      map['client_updated_at'] = Variable<DateTime>(clientUpdatedAt.value);
+    }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
     return map;
   }
 
@@ -6543,7 +6744,11 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
           ..write('dose: $dose, ')
           ..write('timesJson: $timesJson, ')
           ..write('active: $active, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('uuid: $uuid, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('clientUpdatedAt: $clientUpdatedAt, ')
+          ..write('dirty: $dirty')
           ..write(')'))
         .toString();
   }
@@ -9500,6 +9705,10 @@ typedef $$MedicationPlansTableCreateCompanionBuilder =
       Value<String> timesJson,
       Value<bool> active,
       Value<DateTime?> createdAt,
+      Value<String?> uuid,
+      Value<bool> isDeleted,
+      Value<DateTime?> clientUpdatedAt,
+      Value<bool> dirty,
     });
 typedef $$MedicationPlansTableUpdateCompanionBuilder =
     MedicationPlansCompanion Function({
@@ -9510,6 +9719,10 @@ typedef $$MedicationPlansTableUpdateCompanionBuilder =
       Value<String> timesJson,
       Value<bool> active,
       Value<DateTime?> createdAt,
+      Value<String?> uuid,
+      Value<bool> isDeleted,
+      Value<DateTime?> clientUpdatedAt,
+      Value<bool> dirty,
     });
 
 class $$MedicationPlansTableFilterComposer
@@ -9553,6 +9766,26 @@ class $$MedicationPlansTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get clientUpdatedAt => $composableBuilder(
+    column: $table.clientUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9600,6 +9833,26 @@ class $$MedicationPlansTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get clientUpdatedAt => $composableBuilder(
+    column: $table.clientUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MedicationPlansTableAnnotationComposer
@@ -9631,6 +9884,20 @@ class $$MedicationPlansTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get uuid =>
+      $composableBuilder(column: $table.uuid, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get clientUpdatedAt => $composableBuilder(
+    column: $table.clientUpdatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
 }
 
 class $$MedicationPlansTableTableManager
@@ -9677,6 +9944,10 @@ class $$MedicationPlansTableTableManager
                 Value<String> timesJson = const Value.absent(),
                 Value<bool> active = const Value.absent(),
                 Value<DateTime?> createdAt = const Value.absent(),
+                Value<String?> uuid = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<DateTime?> clientUpdatedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
               }) => MedicationPlansCompanion(
                 localId: localId,
                 baby: baby,
@@ -9685,6 +9956,10 @@ class $$MedicationPlansTableTableManager
                 timesJson: timesJson,
                 active: active,
                 createdAt: createdAt,
+                uuid: uuid,
+                isDeleted: isDeleted,
+                clientUpdatedAt: clientUpdatedAt,
+                dirty: dirty,
               ),
           createCompanionCallback:
               ({
@@ -9695,6 +9970,10 @@ class $$MedicationPlansTableTableManager
                 Value<String> timesJson = const Value.absent(),
                 Value<bool> active = const Value.absent(),
                 Value<DateTime?> createdAt = const Value.absent(),
+                Value<String?> uuid = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<DateTime?> clientUpdatedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
               }) => MedicationPlansCompanion.insert(
                 localId: localId,
                 baby: baby,
@@ -9703,6 +9982,10 @@ class $$MedicationPlansTableTableManager
                 timesJson: timesJson,
                 active: active,
                 createdAt: createdAt,
+                uuid: uuid,
+                isDeleted: isDeleted,
+                clientUpdatedAt: clientUpdatedAt,
+                dirty: dirty,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

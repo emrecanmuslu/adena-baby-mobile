@@ -8,9 +8,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/ad_service.dart';
+import '../../core/notification_service.dart';
 import '../../core/review_service.dart';
 import '../../core/analytics_service.dart';
 import '../../core/providers.dart';
+import '../../data/health_repository.dart';
 import '../../data/record_repository.dart';
 import '../../data/subscription_repository.dart';
 import '../../data/sync_gate.dart';
@@ -256,6 +258,7 @@ class SyncService with WidgetsBindingObserver {
         if (!_ref.read(babyCloudEligibleProvider(b.id))) continue;
         try {
           await repo.sync(b.id);
+          await _syncMedicationPlans(b.id);
           // Başarılı → geçici 403 işaretini kaldır (varsa). Artık restart gerekmez.
           _ref.read(cloudReadonlyBabiesProvider.notifier).remove(b.id);
         } on DioException catch (e) {
@@ -302,6 +305,21 @@ class SyncService with WidgetsBindingObserver {
       _pending = false;
       await syncAll(sharedOnly: false);
     }
+  }
+
+  /// İlaç/vitamin planlarının aile senkronu. Kayıt senkronundan BAĞIMSIZ hata
+  /// yönetimi: burada düşen bir istek (çevrimdışı, premium 403'ü) kayıt turunu
+  /// başarısız saydırmaz, bebeği salt-okunur işaretlemez — plan yerelde kalır,
+  /// sonraki turda yeniden denenir.
+  Future<void> _syncMedicationPlans(String babyId) async {
+    try {
+      final r =
+          await _ref.read(healthRepositoryProvider).syncMedicationPlans(babyId);
+      for (final id in r.removed) {
+        await NotificationService.instance.cancelMedicationPlan(id);
+      }
+      if (r.changed) _ref.invalidate(medicationPlansProvider(babyId));
+    } catch (_) {/* bilinçli sessiz — bkz. yukarı */}
   }
 
   void dispose() {

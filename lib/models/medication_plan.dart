@@ -1,8 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-/// İlaç/vitamin planı — cihaz-yerel (bkz. `MedicationPlans` tablosu). Yalnız
+/// İlaç/vitamin planı — aile paylaşımlı (bkz. `MedicationPlans` tablosu). Yalnız
 /// ZAMANLAMAYI taşır; "verildi" durumu aile-paylaşımlı `Record`
 /// (RecordType.medication) ile takip edilir (bkz. core/medication.dart).
+/// [id] cihaza özel yerel kimliktir (bildirim id'leri bundan türer).
 @immutable
 class MedicationPlan {
   final int id;

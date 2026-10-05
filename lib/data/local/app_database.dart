@@ -190,11 +190,13 @@ class LocalReminders extends Table {
   DateTimeColumn get createdAt => dateTime().nullable()();
 }
 
-/// İlaç/vitamin planı — local-first, CİHAZ-YEREL (Reminder deseniyle aynı:
-/// buluta itilmez). "Verildi" durumu BURADA tutulmaz — o zaten aile-paylaşımlı
+/// İlaç/vitamin planı — local-first, AİLE PAYLAŞIMLI (v14'ten beri): plan
+/// `/babies/{id}/medication-plans/sync` ile diğer üyelere aynalanır (bkz.
+/// HealthRepository.syncMedicationPlans). "Verildi" durumu BURADA tutulmaz — o
 /// `Records` (RecordType.medication) ile takip edilir; bu tablo yalnız
-/// ZAMANLAMAYI (ad/doz/saatler) taşır, Bildirimler'in neyi hatırlatacağını bilmesi
-/// ve ana sayfanın "bugün" checklist'ini oluşturması için.
+/// ZAMANLAMAYI (ad/doz/saatler) taşır. Bildirim kimliği olarak yerel
+/// autoincrement `localId` kullanılır (cihaza özel); sunucuyla ortak kimlik
+/// `uuid`'dir (v13'ten kalan satırlarda null → ilk senkronda atanır).
 @DataClassName('MedicationPlanRow')
 class MedicationPlans extends Table {
   IntColumn get localId => integer().autoIncrement()();
@@ -205,6 +207,11 @@ class MedicationPlans extends Table {
   TextColumn get timesJson => text().withDefault(const Constant('["09:00"]'))();
   BoolColumn get active => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime().nullable()();
+  // ── Senkron (Records'taki _SyncCols ile aynı anlam) ──
+  TextColumn get uuid => text().nullable()();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get clientUpdatedAt => dateTime().nullable()();
+  BoolColumn get dirty => boolean().withDefault(const Constant(true))();
 }
 
 @DriftDatabase(tables: [
@@ -223,7 +230,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -308,6 +315,15 @@ class AppDatabase extends _$AppDatabase {
           if (from < 13) {
             // İlaç/vitamin takip planları (zamanlama; "verildi" durumu Records'ta).
             await m.createTable(medicationPlans);
+          }
+          if (from >= 13 && from < 14) {
+            // İlaç planları aile paylaşımına alındı: senkron kolonları. Mevcut
+            // satırlar dirty=true varsayılanıyla ilk senkronda yüklenir.
+            // (from < 13 ise tablo az önce güncel şemayla kuruldu.)
+            await m.addColumn(medicationPlans, medicationPlans.uuid);
+            await m.addColumn(medicationPlans, medicationPlans.isDeleted);
+            await m.addColumn(medicationPlans, medicationPlans.clientUpdatedAt);
+            await m.addColumn(medicationPlans, medicationPlans.dirty);
           }
         },
       );
