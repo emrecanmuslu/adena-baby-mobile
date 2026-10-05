@@ -760,19 +760,54 @@ Widget _quickCardFor(BuildContext context, WidgetRef ref, String babyId,
 
 /// Ana Sayfa sekmesi — design ScrHome: Hızlı Giriş · Sonraki beslenme · Son
 /// Aktivite · Bugün · Yaklaşan.
-class _HomeTab extends ConsumerWidget {
+class _HomeTab extends ConsumerStatefulWidget {
   final String babyId;
   final ScrollController? scrollController;
   const _HomeTab({required this.babyId, this.scrollController});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends ConsumerState<_HomeTab> {
+  // İlaç & Vitamin bölümü bir kez yukarı çıktıysa, kullanıcı ana sayfadayken
+  // orada KALIR: dozu işaretleyince "öne çıkar" koşulu biter ama kart parmağın
+  // altından aşağı kaçmasın ("Geri al" da elinin altında dursun). Yeri yalnız
+  // ana sayfaya yeniden gelindiğinde tazelenir — sekme değişimi bu State'i
+  // yeniden kurar, uygulama öne gelince [_resume] sıfırlar.
+  bool _medHeldUp = false;
+  late final AppLifecycleListener _resume =
+      AppLifecycleListener(onResume: () => setState(() => _medHeldUp = false));
+
+  @override
+  void initState() {
+    super.initState();
+    _resume; // late final'ı kur (dinlemeye başla)
+  }
+
+  @override
+  void didUpdateWidget(_HomeTab old) {
+    super.didUpdateWidget(old);
+    if (old.babyId != widget.babyId) _medHeldUp = false; // başka bebek → yeniden hesapla
+  }
+
+  @override
+  void dispose() {
+    _resume.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final babyId = widget.babyId;
+    final scrollController = widget.scrollController;
     final ongoing = ref.watch(ongoingSleepProvider(babyId));
     final ongoingBreast = ref.watch(ongoingBreastProvider(babyId));
     final units = ref.watch(activeUnitsProvider);
     final HomeLayout layout = ref.watch(homeLayoutControllerProvider).asData?.value ??
         ref.watch(cachedHomeLayoutProvider);
-    final medPromote = ref.watch(medicationDayProvider(babyId))?.promote ?? false;
+    if (ref.watch(medicationDayProvider(babyId))?.promote ?? false) _medHeldUp = true;
+    final medPromote = _medHeldUp;
 
     return RefreshIndicator(
       color: AppColors.coral,
@@ -811,7 +846,8 @@ class _HomeTab extends ConsumerWidget {
           ),
           // İlaç & Vitamin: saati geçmiş doz varsa ya da sıradaki doza ≤60 dk
           // kaldıysa bölüm buraya (Hızlı Giriş'in altına) çıkar; diğer
-          // durumlarda aşağıda, Yaklaşan'ın altında kalır. Büyümez, yer değiştirir.
+          // durumlarda aşağıda, Yaklaşan'ın altında kalır. Büyümez, yer
+          // değiştirir — ama ekrandayken aşağı inmez (bkz. _medHeldUp).
           if (medPromote) MedHomeSection(babyId: babyId),
           _PredictSection(babyId: babyId),
           _LastActivitySection(babyId: babyId, units: units),
