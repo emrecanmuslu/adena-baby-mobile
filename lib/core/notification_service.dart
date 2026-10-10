@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../models/medication_plan.dart';
 import '../models/quiet_hours.dart';
 import '../models/reminder.dart';
 import 'i18n.dart';
@@ -705,9 +706,75 @@ class NotificationService {
     }
   }
 
+  /// Bir bebeğin ilaç planı listesini cihaz bildirimleriyle eşitler (BULGULAR.md K5).
+  ///
+  /// [plans] = bu bebeğin (oturmuş, bayat olmayan) plan listesi; her plan için
+  /// `enabled && p.active` ise kurulur, değilse temizlenir. [activePlanIds] = DB'den
+  /// TAZE okunan, cihazdaki TÜM bebeklerin aktif (silinmemiş) plan id'leri:
+  /// ilaç id aralığındaki (670000-679999) hiçbir aktif plana ait olmayan bekleyen
+  /// bildirim yetim sayılıp iptal edilir (bayat listeden geri kurulmuş ya da
+  /// purge/silme yarışında kalmış bildirimler böylece öz-onarılır). Komşu sağlık
+  /// slot aralıklarına (…-669999) ve 700000+'a dokunulmaz.
+  ///
+  /// Çağrılar [_medChain] ile SERİLEŞTİRİLİR: eski rebuild'in (aktif) çağrısı ile
+  /// yeni rebuild'in (pasif) çağrısı iç içe geçip son durumu bozamaz; sıra bize
+  /// gelince aktif küme yeniden okunduğu için sonuç hep en güncel DB durumudur.
+  Future<void> syncMedicationPlans(
+    List<MedicationPlan> plans, {
+    required bool enabled,
+    required Future<Set<int>> Function() activePlanIds,
+    String babyName = '',
+  }) {
+    final run = _medChain.then(
+        (_) => _syncMedicationPlansNow(plans, enabled, activePlanIds, babyName));
+    _medChain = run.catchError((_) {});
+    return run;
+  }
+
+  Future<void> _medChain = Future.value();
+
+  Future<void> _syncMedicationPlansNow(
+    List<MedicationPlan> plans,
+    bool enabled,
+    Future<Set<int>> Function() activePlanIds,
+    String babyName,
+  ) async {
+    if (!_ready) await init();
+    // 1) Öz-onarım: aktif kümesi okunabildiyse yetim ilaç bildirimlerini temizle.
+    Set<int>? keep;
+    try {
+      keep = {for (final id in await activePlanIds()) id % 1000};
+    } catch (_) {
+      keep = null; // kaynak okunamadı → yetim temizliğini atla, listeyi yine işle
+    }
+    if (keep != null) {
+      try {
+        final pending = await _plugin.pendingNotificationRequests();
+        for (final p in pending) {
+          if (p.id < _medicationBase || p.id >= _medicationBase + 10000) continue;
+          final planKey = (p.id - _medicationBase) ~/ 10;
+          if (!keep.contains(planKey)) await _plugin.cancel(id: p.id);
+        }
+      } catch (_) {
+        // Bekleyenler okunamadı → yalnız listedekiler işlenir (aşağıda).
+      }
+    }
+    // 2) Listedeki planlar: her biri için temizle + (aktifse) yeniden kur.
+    for (final p in plans) {
+      await syncMedicationPlan(
+        enabled: enabled && p.active,
+        planId: p.id,
+        name: p.name,
+        times: p.times,
+        babyName: babyName,
+      );
+    }
+  }
+
   /// İlaç/vitamin planının günlük hatırlatıcılarını eşitler — [times] listesindeki
   /// her saat için ayrı bir günlük bildirim kurar (en fazla 10 doz/gün). Önce
   /// tüm slotları temizler; [enabled] false ya da liste boşsa yalnız temizlik yapar.
+  /// Tek başına çağrılırsa SERİLEŞTİRİLMEZ — ağaçtan [syncMedicationPlans] kullan.
   Future<void> syncMedicationPlan({
     required bool enabled,
     required int planId,

@@ -205,6 +205,12 @@ void syncBreastTimer(Baby baby, Record? r, {bool enabled = true}) {
   );
 }
 
+/// Provider yenilenirken (`ref.invalidate` → Riverpod `AsyncData(isLoading:true)`)
+/// `asData` ESKİ listeyi taşır. Bildirim kuran yan-etkili dinleyiciler bayat
+/// listeyle çalışmasın diye: yükleniyorsa null, aksi halde oturmuş liste.
+List<T>? settledListOrNull<T>(AsyncValue<List<T>> v) =>
+    v.isLoading ? null : v.asData?.value;
+
 /// Tüm bebeklerin aktif uyku/emzirme sayacı bildirimini YENİDEN post eder.
 /// Uygulama öne gelince (resume) çağrılır: kullanıcı bildirim iznini sistem
 /// ayarlarından SONRADAN açtıysa, devam eden sayacın bildirimi yeniden belirir
@@ -249,17 +255,20 @@ class _HealthNotifSync extends ConsumerWidget {
     // durumundan bağımsız hesaplanır (bekleme moduna dönerse de temizlensin
     // diye enabled'a !isExpecting eklenir, plan listesi zaten yalnız
     // doğmuş bebekte oluşturulabilir).
-    final medPlans = ref.watch(medicationPlansProvider(baby.id)).asData?.value;
+    // Yenileme (invalidate) sırasında `asData` ESKİ listeyi taşır → silinen/
+    // duraklatılan plan bayat listeden geri kuruluyordu (BULGULAR.md K5). Yalnız
+    // oturmuş veriyle çalış; liste bazlı kurulum + DB'den taze aktif kümeyle
+    // yetim temizliği + serileştirme syncMedicationPlans içinde.
+    final medPlans =
+        settledListOrNull(ref.watch(medicationPlansProvider(baby.id)));
     if (medPlans != null) {
-      for (final p in medPlans) {
-        NotificationService.instance.syncMedicationPlan(
-          enabled: medicationOn && p.active && !baby.isExpecting,
-          planId: p.id,
-          name: p.name,
-          times: p.times,
-          babyName: baby.name,
-        );
-      }
+      NotificationService.instance.syncMedicationPlans(
+        medPlans,
+        enabled: medicationOn && !baby.isExpecting,
+        babyName: baby.name,
+        activePlanIds:
+            ref.read(healthRepositoryProvider).activeMedicationPlanIds,
+      );
     }
 
     if (baby.isExpecting) {

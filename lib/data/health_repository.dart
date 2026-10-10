@@ -260,6 +260,16 @@ class HealthRepository {
     return rows.map(_toPlan).toList();
   }
 
+  /// Cihazdaki TÜM bebeklerin aktif (silinmemiş) ilaç planı yerel id'leri —
+  /// `NotificationService.syncMedicationPlans` yetim-bildirim mutabakatı için
+  /// (BULGULAR.md K5).
+  Future<Set<int>> activeMedicationPlanIds() async {
+    final rows = await (_db.select(_db.medicationPlans)
+          ..where((r) => r.active.equals(true) & r.isDeleted.equals(false)))
+        .get();
+    return {for (final r in rows) r.localId};
+  }
+
   Future<MedicationPlan> createMedicationPlan(String babyId,
       {required String name, required String dose, required List<String> times}) async {
     final now = DateTime.now();
