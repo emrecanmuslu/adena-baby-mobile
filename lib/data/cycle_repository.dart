@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -11,6 +13,7 @@ import '../models/cycle.dart';
 import 'local/app_database.dart';
 import 'local_session.dart';
 import 'sync_gate.dart';
+import 'sync_merge.dart';
 
 const _uuid = Uuid();
 
@@ -286,30 +289,79 @@ class CycleRepository {
     await _pushDirtyEntries();
   }
 
+  /// Kalıcı reddedilen push'lar: id → açıklama (bellek-içi; kolon v15'te, K-1).
+  final Map<String, String> pushErrors = {};
+
+  static DateTime? _parseTs(dynamic v) =>
+      (v is String && v.isNotEmpty) ? DateTime.tryParse(v) : null;
+
+  /// Pull (TASARIM-SENKRON.md R1/R2/R4/R5, O7): dirty yerel satır ezilmez,
+  /// tombstone diriltilmez, sunucunun TAM listesinde olmayan temiz satır K-2
+  /// korumalarıyla silinir; `updated_at` damga karşılaştırması + `serverUpdatedAt`.
   Future<void> _pullEntries() async {
+    final acct = _acct;
+    if (acct == null) return;
     final resp = await _api.dio.get('/cycle/entries');
-    final data = resp.data as List<dynamic>;
+    // Yanıt TAMAMEN parse edilmeden hiçbir şey uygulanmaz (R4 güvencesi).
+    final rows = (resp.data as List<dynamic>)
+        .map((e) => e as Map<String, dynamic>)
+        .toList();
+    final parsed = [for (final m in rows) (m, CycleEntry.fromJson(m))];
+    final serverIds = {for (final (_, ce) in parsed) ce.id};
+    final local = await (_db.select(_db.cycleEntries)
+          ..where((e) => e.accountId.equals(acct)))
+        .get();
+    final localById = {for (final r in local) r.id: r};
+    final stale = staleLocalIds(
+      local: [
+        for (final r in local)
+          LocalRowState(r.id, dirty: r.dirty, deleted: r.isDeleted)
+      ],
+      serverIds: serverIds,
+      statusCode: resp.statusCode ?? 0,
+      parsedOk: true,
+    );
+    if (stale.skipped) {
+      debugPrint('[cycle-pull] silme atlandı: ${stale.skippedReason}');
+    }
     await _db.transaction(() async {
-      for (final e in data) {
-        final m = e as Map<String, dynamic>;
-        final ce = CycleEntry.fromJson(m);
+      for (final (m, ce) in parsed) {
+        final l = localById[ce.id];
+        final decision = decideServerRow(
+          localExists: l != null,
+          localDirty: l?.dirty ?? false,
+          localDeleted: l?.isDeleted ?? false,
+          localStamp: l?.clientUpdatedAt,
+          serverStamp: _parseTs(m['updated_at']),
+        );
+        if (decision != MergeDecision.apply) continue;
         await _db.into(_db.cycleEntries).insertOnConflictUpdate(
               CycleEntriesCompanion.insert(
                 id: ce.id,
-                accountId: Value(_acct),
+                accountId: Value(acct),
                 date: _dayOnly(ce.date),
                 flow: Value(ce.flow?.name),
                 lochiaColor: Value(ce.lochiaColor?.apiValue),
                 symptoms: Value(jsonEncode(ce.symptoms)),
                 mood: Value(ce.mood),
                 note: Value(ce.note),
+                serverUpdatedAt: Value(_parseTs(m['updated_at'])),
                 dirty: const Value(false),
               ),
             );
       }
+      // R4: sunucuda artık olmayan temiz satırlar (başka cihazda silindi; sunucu
+      // hard delete). Çapa (`firstPeriodDate`) settings'te durduğundan motor
+      // etkilenmez (bkz. computeStatus: starts = {anchor, …}).
+      for (final id in stale.ids) {
+        await (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(id))).go();
+      }
     });
   }
 
+  /// Silmeler tek tek DELETE (404 = zaten yok → başarı); oluştur/güncellemeler
+  /// TEK toplu istek (`/cycle/entries/bulk`). Yalnız `saved` temizlenir; `failed[]`
+  /// ve kalıcı (4xx) redler dirty kalır + `pushErrors` (R3/R5).
   Future<void> _pushDirtyEntries() async {
     final acct = _acct;
     if (acct == null) return;
@@ -318,19 +370,24 @@ class CycleRepository {
         .get();
     if (dirty.isEmpty) return;
 
-    // Silmeler (nadir) tek tek DELETE; oluştur/güncellemeler TEK toplu istek
-    // (/cycle/entries/bulk) — migrasyonda N kayıt için N istek yerine 1 istek.
     final upserts = <CycleEntryRow>[];
     for (final r in dirty) {
-      if (r.isDeleted) {
-        try {
-          await _api.dio.delete('/cycle/entries/${r.id}');
-          await (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(r.id)))
-              .go();
-        } catch (_) {}
-      } else {
+      if (!r.isDeleted) {
         upserts.add(r);
+        continue;
       }
+      try {
+        await _api.dio.delete('/cycle/entries/${r.id}');
+      } on DioException catch (e) {
+        if (e.response?.statusCode != 404) {
+          _noteFailure(r.id, e);
+          continue; // tombstone dirty kalır, sonraki tur yeniden dener
+        }
+      } catch (_) {
+        continue;
+      }
+      await (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(r.id))).go();
+      pushErrors.remove(r.id);
     }
     if (upserts.isEmpty) return;
 
@@ -339,19 +396,40 @@ class CycleRepository {
         '/cycle/entries/bulk',
         data: [for (final r in upserts) _toEntry(r).toJson()],
       );
-      // Sunucunun onayladığı id'leri temizle (kısmî başarıda kalanlar dirty kalır).
-      final saved = (((resp.data as Map)['saved'] as List?) ?? const [])
-          .map((e) => e.toString())
-          .toSet();
+      final body = resp.data as Map;
+      final saved =
+          ((body['saved'] as List?) ?? const []).map((e) => e.toString()).toSet();
+      final failed = <String, String>{
+        for (final f in (body['failed'] as List?) ?? const [])
+          if (f is Map && f['id'] != null)
+            f['id'].toString(): (f['error'] ?? 'failed').toString(),
+      };
       await _db.transaction(() async {
         for (final r in upserts) {
           if (saved.contains(r.id)) {
             await (_db.update(_db.cycleEntries)..where((e) => e.id.equals(r.id)))
                 .write(const CycleEntriesCompanion(dirty: Value(false)));
+            pushErrors.remove(r.id);
+          } else if (failed.containsKey(r.id)) {
+            pushErrors[r.id] = failed[r.id]!; // sunucu bu öğeyi reddetti (kalıcı)
           }
         }
       });
-    } catch (_) {}
+    } on DioException catch (e) {
+      for (final r in upserts) {
+        _noteFailure(r.id, e);
+      }
+    } catch (_) {
+      // Beklenmeyen — dirty kalır, sonraki tur.
+    }
+  }
+
+  void _noteFailure(String id, DioException e) {
+    if (classifyDioError(e) == PushFailure.permanent) {
+      final code = e.response?.statusCode;
+      pushErrors[id] = 'HTTP $code';
+      debugPrint('[cycle-push] kalıcı red $id: HTTP $code ${e.response?.data}');
+    }
   }
 
   /// Verilen gün, son sıfırlama olayının (doğum/kayıp) gününden SONRA mı?

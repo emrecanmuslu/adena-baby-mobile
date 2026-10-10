@@ -119,14 +119,14 @@ Migration `from < 15`: `addColumn` + yukarıdaki `UPDATE`'ler. Veri kaybı riski
 
 ## 8. Uygulama planı
 
-### Bu sürüm (commit 1-6)
+### Bu sürüm (commit 1-6) — hash'ler tabloda; K1 `00cd3fb`, K3 `37f05f8`, K5 `e5f1a66`, docs `a5cdc94` (1. aşama)
 
 | # | Commit | Kapsam | Risk | Testler |
 |---|---|---|---|---|
-| 1 | `sync_merge.dart` saf yardımcı | §3 fonksiyonları; davranış değişikliği yok | yok | dirty/deleted/damga matrisi; R4: boş liste, >5 ∧ >%50 oranı, 200 dışı/parse hatası; R3 sınıflandırma |
-| 2 | fix(K2) bebek pull | `pullFromServer` R1/R2/R5; `pushDirty` R3 (kalıcı red → log + prefs `pushError`, kolon v15'te) | düşük | dirty bebek korunur; yüklenmemiş foto korunur; temiz bebek güncellenir; paylaşılan bebek listeden düşünce silinir |
-| 3 | fix(O20) caregiver kilidi | UI kilidi + repo `StateError` + toast (migrasyon temizliği v15'te) | düşük | caregiver'da Kaydet yok; repo caregiver update → `StateError`, dirty üretmez |
-| 4 | fix(O5) anı + anne | `_pull` R1/R2/R4 (+`serverUpdatedAt`), `memoriesProvider` Stream (K-6), `list()` ağ beklemez | orta | dirty korunur; tombstone geri gelmez; sunucuda olmayan temiz satır silinir; boş liste → silme yok; oran koruması |
+| 1 (`eb7102f`) | `sync_merge.dart` saf yardımcı | §3 fonksiyonları; davranış değişikliği yok | yok | dirty/deleted/damga matrisi; R4: boş liste, >5 ∧ >%50 oranı, 200 dışı/parse hatası; R3 sınıflandırma |
+| 2 (`7823480`, 3b `20ed1f5`) | fix(K2) bebek pull | `pullFromServer` R1/R2/R5; `pushDirty` R3 (kalıcı red → log + prefs `pushError`, kolon v15'te) | düşük | dirty bebek korunur; yüklenmemiş foto korunur; temiz bebek güncellenir; paylaşılan bebek listeden düşünce silinir |
+| 3 (`ce7e04c`) | fix(O20) caregiver kilidi | UI kilidi + repo `StateError` + toast (migrasyon temizliği v15'te) | düşük | caregiver'da Kaydet yok; repo caregiver update → `StateError`, dirty üretmez |
+| 4 (`c6a55dc`) | fix(O5) anı + anne | `_pull` R1/R2/R4 (+`serverUpdatedAt`), `memoriesProvider` Stream (K-6), `list()` ağ beklemez | orta | dirty korunur; tombstone geri gelmez; sunucuda olmayan temiz satır silinir; boş liste → silme yok; oran koruması |
 | 5 | fix(O7) adet kayıtları | `_pullEntries` R1/R2/R4; çift dokunma `_saving` koruması (K-9) | orta | aynı desen + çift dokunma |
 | 6 | fix(O6) adet ayarı | `getSettings` dirty ise GET uygulanmaz; dirty ayar `syncAll`'da yeniden denenir; `toPatchJson` `baby: null` gönderir (K-8); R8 | düşük | çevrimdışı patch → online GET ezmez → PATCH gönderilir; null baby patch'e girer |
 
