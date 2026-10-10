@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import 'config.dart';
@@ -45,7 +46,12 @@ class RevenueCatService {
 
   /// Giriş sonrası: RC kullanıcı kimliğini bizim `user.id`'ye sabitle (webhook
   /// app_user_id eşleşmesi için). Henüz configure olmadıysa önce dener.
+  /// Yalnız test: identify çağrılarını gözlemlemek için kanca.
+  @visibleForTesting
+  void Function(String userId)? identifyHook;
+
   Future<void> identify(String userId) async {
+    identifyHook?.call(userId);
     if (!_configured) await configure();
     if (!_configured) return;
     try {

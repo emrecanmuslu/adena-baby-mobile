@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../data/feed_reminder_cache.dart';
+import '../data/local_session.dart';
 import '../data/record_repository.dart';
 import '../data/sync_gate.dart';
 import '../features/auth/auth_controller.dart';
@@ -11,6 +12,7 @@ import '../features/babies/family_settings.dart';
 import '../models/baby.dart';
 import '../models/record.dart';
 import 'db_watchdog.dart';
+import 'providers.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
 
@@ -46,10 +48,17 @@ Future<void> runBackgroundSync() async {
   // zaman/nasıl bitti" bilgisini ancak böyle taşıyabiliyoruz. Tur ortada
   // kalırsa değer 'başladı' olarak kalır → arıza ile turun bağı görünür.
   await DbWatchdog.markBackgroundSync('başladı');
+  // K9: yerel oturum bayrakları (misafir, import/premiumSynced kümeleri) bu
+  // isolate'te de yüklü olsun — activeAccountId kapsamı ve LocalSession
+  // yazımları yüklenmemiş bellekle çalışmasın. Zaman aşımlı (Keychain göçü
+  // takılırsa tur yine sürer; O35 yazımları zaten diskle birleştirir).
+  await ensureLocalSessionForBackground();
   // NOT: Bu isolate'in AppDatabase'i KENDİ sqlite bağlantısını açar
   // (shareAcrossIsolates kapalı) → aşağıdaki container.dispose() → db.close()
   // ön plandaki bağlantıya ARTIK dokunmaz. Bkz. AppDatabase._open.
-  final container = ProviderContainer();
+  final container = ProviderContainer(overrides: [
+    runningInBackgroundProvider.overrideWithValue(true),
+  ]);
   var outcome = 'bitti';
   try {
     // Oturum çözülene kadar bekle; yoksa hiç senkron yok (saf local-first).
@@ -140,7 +149,10 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
 /// ağacı zaten `requestSyncSoon()` ile aynı işi yapıyor, bkz. main.dart).
 Future<void> refreshBabyFeedStateFromPush(String babyId) async {
   WidgetsFlutterBinding.ensureInitialized();
-  final container = ProviderContainer();
+  await ensureLocalSessionForBackground(); // K9
+  final container = ProviderContainer(overrides: [
+    runningInBackgroundProvider.overrideWithValue(true),
+  ]);
   try {
     await container.read(authControllerProvider.future);
     if (!container.read(loggedInProvider)) return;
@@ -165,6 +177,18 @@ Future<void> refreshBabyFeedStateFromPush(String babyId) async {
     // Auth/bebek çözülemedi — sessiz; foreground açılışta veya periyodik turda düzelir.
   } finally {
     container.dispose();
+  }
+}
+
+/// Arka plan isolate'i için [LocalSession.ensureLoaded] — zaman aşımlı ve
+/// hatasız (K9). Ön planın main()'deki `_step` sarmalayıcısına denk.
+Future<void> ensureLocalSessionForBackground(
+    {Duration timeout = const Duration(seconds: 5)}) async {
+  if (LocalSession.loaded) return;
+  try {
+    await LocalSession.ensureLoaded().timeout(timeout);
+  } catch (_) {
+    // Yükleme takıldı → tur varsayılanlarla sürer (yazımlar diskle birleşir).
   }
 }
 

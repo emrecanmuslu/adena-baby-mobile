@@ -23,8 +23,13 @@ class AuthController extends AsyncNotifier<User?> {
   Future<User?> build() async {
     final storage = ref.read(tokenStorageProvider);
     if (!await storage.hasSession) return null;
+    // K9: arka plan isolate'inde (workmanager/BGTask/FCM) yalnız kimlik gerekir;
+    // /auth/me tazeleme + ilk import, RevenueCat identify ve exitGuest ön plana
+    // ait işlerdir — bg'de HİÇ başlatılmaz (container dispose'dan önce bitmez,
+    // her turda tam import tetikler, prefs bayraklarını ezerdi).
+    final bg = ref.read(runningInBackgroundProvider);
     // Gerçek oturum var → misafir ("kayıt olmadan devam et") bayrağını kapat.
-    unawaited(LocalSession.exitGuest());
+    if (!bg) unawaited(LocalSession.exitGuest());
     // Local-first: önbellekte kullanıcı varsa AĞI BEKLEMEDEN hemen onunla dön —
     // splash/router bu future'ı bekliyor (bkz router.dart auth.isLoading), yavaş
     // ağda /auth/me'nin (15-20s timeout) bitmesini beklemek kullanıcıyı splash'te
@@ -32,19 +37,23 @@ class AuthController extends AsyncNotifier<User?> {
     final cached = await LocalSession.cachedAuthUser();
     if (cached != null) {
       final user = User.fromJson(cached);
-      _syncRevenueCat(user);
       LocalSession.setActiveAccount(user.id);
-      unawaited(_refreshInBackground());
+      if (!bg) {
+        _syncRevenueCat(user);
+        unawaited(_refreshInBackground());
+      }
       return user;
     }
     // Önbellek yok (ilk açılış / farklı cihaz) → gösterecek yerel veri
-    // olmadığından burada ağı beklemek zorundayız.
+    // olmadığından burada ağı beklemek zorundayız (bg'de de: kimlik şart).
     try {
       final user = await _repo.me();
       await LocalSession.cacheAuthUser(user.toJson()); // offline açılış yedeği
-      _syncRevenueCat(user);
       LocalSession.setActiveAccount(user.id);
-      await ref.read(initialImportProvider).runIfNeeded();
+      if (!bg) {
+        _syncRevenueCat(user);
+        await ref.read(initialImportProvider).runIfNeeded();
+      }
       return user;
     } catch (_) {
       // /auth/me başarısız, önbellek de yok. Token silme kararı TEK yerde:

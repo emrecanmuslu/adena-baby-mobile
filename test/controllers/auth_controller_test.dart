@@ -5,6 +5,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:adena_baby/core/providers.dart';
+import 'package:adena_baby/core/revenuecat_service.dart';
 import 'package:adena_baby/core/token_storage.dart';
 import 'package:adena_baby/data/auth_repository.dart';
 import 'package:adena_baby/data/initial_import.dart';
@@ -361,6 +362,91 @@ void main() {
 
       await c.read(authControllerProvider.notifier).logout();
       expect(c.read(activeAccountIdProvider), isNull);
+    });
+  });
+
+  // ───────── K9: arka plan isolate'inde yan isler baslamasin ─────────
+  group('K9 — runningInBackgroundProvider', () {
+    late List<String> rcIdentified;
+
+    setUp(() {
+      LocalSession.resetForTests();
+      rcIdentified = [];
+      RevenueCatService.instance.identifyHook = rcIdentified.add;
+    });
+
+    tearDown(() {
+      RevenueCatService.instance.identifyHook = null;
+      LocalSession.resetForTests();
+    });
+
+    Future<void> settle() async {
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    test('bg=true: önbellekli kullanıcı döner; /auth/me, initialImport, RC identify, exitGuest HİÇ başlamaz',
+        () async {
+      await LocalSession.enterGuest(); // bayat misafir bayrağı (bg'de dokunulmamalı)
+      await LocalSession.cacheAuthUser(_user(id: 'bg1').toJson());
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'bg1'));
+
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        runningInBackgroundProvider.overrideWithValue(true),
+      ]);
+      addTearDown(c.dispose);
+
+      final user = await c.read(authControllerProvider.future);
+      await settle();
+
+      expect(user!.id, 'bg1');
+      expect(LocalSession.activeAccountId, 'bg1', reason: 'DB kapsamı bg\'de kurulmalı');
+      verifyNever(() => repo.me());
+      verifyNever(() => import.runIfNeeded());
+      expect(rcIdentified, isEmpty);
+      expect(LocalSession.guest, isTrue, reason: 'exitGuest bg\'de çağrılmamalı');
+    });
+
+    test('bg=false (varsayılan): önbellek yolu /auth/me + initialImport + RC + exitGuest başlatır',
+        () async {
+      await LocalSession.enterGuest();
+      await LocalSession.cacheAuthUser(_user(id: 'fg1').toJson());
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'fg1'));
+
+      final c = makeContainer();
+      final user = await c.read(authControllerProvider.future);
+      await settle();
+
+      expect(user!.id, 'fg1');
+      verify(() => repo.me()).called(1);
+      verify(() => import.runIfNeeded()).called(1);
+      expect(rcIdentified, contains('fg1'));
+      expect(LocalSession.guest, isFalse);
+    });
+
+    test('bg=true + önbellek yok: /auth/me beklenir (zorunlu) ama initialImport/RC yine başlamaz',
+        () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'bg2'));
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        runningInBackgroundProvider.overrideWithValue(true),
+      ]);
+      addTearDown(c.dispose);
+      final user = await c.read(authControllerProvider.future);
+      await settle();
+      expect(user!.id, 'bg2');
+      verify(() => repo.me()).called(1);
+      verifyNever(() => import.runIfNeeded());
+      expect(rcIdentified, isEmpty);
     });
   });
 }
