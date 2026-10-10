@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -14,6 +15,7 @@ import '../models/baby.dart';
 import '../models/membership.dart';
 import 'local/app_database.dart';
 import 'local_session.dart';
+import 'sync_merge.dart';
 
 /// Bebek deposu — **local-first**. Bebek telefonda doğar (istemci-üretimli UUID),
 /// drift'te birincil tutulur. Premium'da `/babies` ile aynalanır (push dirty +
@@ -227,13 +229,26 @@ class BabyRepository {
     final fresh =
         data.map((e) => Baby.fromJson(e as Map<String, dynamic>)).toList();
     final freshIds = fresh.map((b) => b.id).toSet();
-    // Reconcile yalnız bu hesabın bebekleri içinde.
-    final localRows = await (_db.select(_db.babies)
-          ..where((b) => b.isDeleted.equals(false) & b.accountId.equals(acct)))
+    // Reconcile yalnız bu hesabın bebekleri içinde. Tombstone'lar da okunur:
+    // bekleyen silme (R2) sunucu kopyasıyla geri getirilmemeli.
+    final allLocal = await (_db.select(_db.babies)
+          ..where((b) => b.accountId.equals(acct)))
         .get();
+    final localById = {for (final r in allLocal) r.id: r};
+    final localRows = allLocal.where((r) => !r.isDeleted).toList();
     final removed = <Baby>[];
     await _db.transaction(() async {
       for (final b in fresh) {
+        // R1/R2 (TASARIM-SENKRON.md, K2): push'u henüz başarmamış dirty satır
+        // (düzenleme, yüklenmemiş yerel foto) ve bekleyen tombstone sunucu
+        // kopyasıyla EZİLMEZ; bir sonraki push LWW'ye bırakır.
+        final l = localById[b.id];
+        final decision = decideServerRow(
+          localExists: l != null,
+          localDirty: l?.dirty ?? false,
+          localDeleted: l?.isDeleted ?? false,
+        );
+        if (decision != MergeDecision.apply) continue;
         await _db.into(_db.babies).insertOnConflictUpdate(
               BabiesCompanion.insert(
                 id: b.id,
@@ -347,11 +362,26 @@ class BabyRepository {
         }
         await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
             .write(const BabiesCompanion(dirty: Value(false)));
+        pushErrors.remove(r.id);
+      } on DioException catch (e) {
+        // R3: yerel değişiklik her durumda KORUNUR (dirty kalır). Kalıcı red
+        // (4xx; sunucu bunu hiç kabul etmeyecek) not edilir ki sessizce sonsuza
+        // dek yeniden denenmesin — banner/geri alma sonraki iş (K-1).
+        if (classifyDioError(e) == PushFailure.permanent) {
+          final code = e.response?.statusCode;
+          pushErrors[r.id] = 'HTTP $code';
+          debugPrint('[baby-push] kalıcı red ${r.id}: HTTP $code ${e.response?.data}');
+        }
       } catch (_) {
-        // Çevrimdışı/çakışma — yerel korunur, sonra tekrar denenir.
+        // Beklenmeyen (ör. dosya okunamadı) — yerel korunur, sonra tekrar denenir.
       }
     }
   }
+
+  /// Kalıcı (4xx) reddedilen bebek push'ları: id → 'HTTP `<kod>`'. Bellek-içi
+  /// (süreç ömrü); kalıcı `pushError` kolonu şema v15'te gelecek
+  /// (TASARIM-SENKRON.md §5, K-1). Başarılı push kaydı temizler.
+  final Map<String, String> pushErrors = {};
 
   // ---- Üyelik & davet (cloud/premium — paylaşım) ----
 

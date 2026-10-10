@@ -30,6 +30,7 @@ class _FakeTokens extends TokenStorage {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  k2Tests();
 
   late ApiClient api;
   late DioAdapter adapter;
@@ -455,6 +456,156 @@ void main() {
           data: Matchers.any);
       await repo.removeMember('b1', 'u1');
       expect(hit, isTrue);
+    });
+  });
+}
+
+/// K2 (BULGULAR.md / TASARIM-SENKRON.md R1-R3, R5): pull, push'u henüz
+/// başarmamış dirty yerel satırı ve yüklenmemiş yerel fotoyu sunucu kopyasıyla
+/// eziyordu; pushDirty kalıcı (4xx) reddi geçici hatadan ayırmıyordu.
+void k2Tests() {
+  late ApiClient api;
+  late DioAdapter adapter;
+  late AppDatabase db;
+  late BabyRepository repo;
+  const acct = 'acct-k2';
+
+  setUp(() {
+    api = ApiClient(_FakeTokens());
+    adapter = DioAdapter(dio: api.dio);
+    db = AppDatabase(NativeDatabase.memory());
+    repo = BabyRepository(db, api);
+    LocalSession.setActiveAccount(acct);
+  });
+
+  tearDown(() async {
+    LocalSession.setActiveAccount(null);
+    await db.close();
+  });
+
+  Future<BabyRow?> rawRow(String id) =>
+      (db.select(db.babies)..where((b) => b.id.equals(id))).getSingleOrNull();
+
+  Map<String, dynamic> srv(String id, String name, {String? photo}) => {
+        'id': id,
+        'name': name,
+        'status': 'born',
+        'my_role': 'owner',
+        'member_count': 1,
+        'photo': ?photo,
+      };
+
+  group('K2 — pull dirty satırı ezmez (R1)', () {
+    test('dirty yerel ad düzenlemesi pull sonrası korunur, dirty kalır', () async {
+      await repo.create(const Baby(id: 'b1', name: 'Eski'));
+      await (db.update(db.babies)..where((b) => b.id.equals('b1')))
+          .write(const BabiesCompanion(dirty: Value(false))); // sunucuyla eşit
+      await repo.update('b1', {'name': 'Yeni'}); // push henüz gitmedi → dirty
+
+      adapter.onGet('/babies', (s) => s.reply(200, [srv('b1', 'Eski')]));
+      await repo.pullFromServer();
+
+      final row = await rawRow('b1');
+      expect(row!.name, 'Yeni', reason: 'sunucu kopyası dirty satırı ezmemeli');
+      expect(row.dirty, isTrue, reason: 'bir sonraki push göndermeli');
+    });
+
+    test('yüklenmemiş yerel foto yolu pull sonrası korunur', () async {
+      await repo.create(const Baby(id: 'b2', name: 'Foto'));
+      await (db.update(db.babies)..where((b) => b.id.equals('b2'))).write(
+          const BabiesCompanion(
+              photo: Value('/data/user/0/app/babies/b2-1.jpg'),
+              dirty: Value(true)));
+
+      adapter.onGet('/babies',
+          (s) => s.reply(200, [srv('b2', 'Foto', photo: 'https://cdn/old.jpg')]));
+      await repo.pullFromServer();
+
+      final row = await rawRow('b2');
+      expect(row!.photo, '/data/user/0/app/babies/b2-1.jpg');
+      expect(row.dirty, isTrue);
+    });
+
+    test('bekleyen silme (tombstone, dirty) pull ile geri gelmez (R2)', () async {
+      await repo.create(const Baby(id: 'b3', name: 'Silinecek'));
+      await repo.delete('b3'); // isDeleted + dirty
+
+      adapter.onGet('/babies', (s) => s.reply(200, [srv('b3', 'Silinecek')]));
+      await repo.pullFromServer();
+
+      final row = await rawRow('b3');
+      expect(row!.isDeleted, isTrue);
+      expect(row.dirty, isTrue);
+    });
+
+    test('temiz bebek sunucudan güncellenir', () async {
+      await repo.create(const Baby(id: 'b4', name: 'Eski'));
+      await (db.update(db.babies)..where((b) => b.id.equals('b4')))
+          .write(const BabiesCompanion(dirty: Value(false)));
+
+      adapter.onGet('/babies',
+          (s) => s.reply(200, [srv('b4', 'Yeni', photo: 'https://cdn/n.jpg')]));
+      await repo.pullFromServer();
+
+      final row = await rawRow('b4');
+      expect(row!.name, 'Yeni');
+      expect(row.photo, 'https://cdn/n.jpg');
+      expect(row.dirty, isFalse);
+    });
+
+    test('paylaşılan temiz bebek listeden düşünce hâlâ silinir', () async {
+      await repo.create(const Baby(id: 'sh', name: 'Paylaşılan', myRole: 'parent'));
+      await (db.update(db.babies)..where((b) => b.id.equals('sh')))
+          .write(const BabiesCompanion(dirty: Value(false)));
+      await repo.create(const Baby(id: 'mine', name: 'Benim'));
+      await (db.update(db.babies)..where((b) => b.id.equals('mine')))
+          .write(const BabiesCompanion(dirty: Value(false)));
+
+      adapter.onGet('/babies', (s) => s.reply(200, [srv('mine', 'Benim')]));
+      final removed = await repo.pullFromServer();
+
+      expect(removed.map((b) => b.id), ['sh']);
+      expect(await rawRow('sh'), isNull);
+      expect(await rawRow('mine'), isNotNull);
+    });
+  });
+
+  group('K2 — pushDirty R3 sınıflandırması', () {
+    test('kalıcı red (422): dirty KALIR, pushError kaydedilir', () async {
+      await repo.create(const Baby(id: 'p1', name: 'Red'));
+      adapter.onPost('/babies', (s) => s.reply(422, {'name': ['geçersiz']}),
+          data: Matchers.any);
+
+      await repo.pushDirty();
+
+      expect((await rawRow('p1'))!.dirty, isTrue);
+      expect(repo.pushErrors['p1'], contains('422'));
+    });
+
+    test('geçici hata (503): dirty kalır, pushError YOK', () async {
+      await repo.create(const Baby(id: 'p2', name: 'Geçici'));
+      adapter.onPost('/babies', (s) => s.reply(503, {'detail': 'down'}),
+          data: Matchers.any);
+
+      await repo.pushDirty();
+
+      expect((await rawRow('p2'))!.dirty, isTrue);
+      expect(repo.pushErrors.containsKey('p2'), isFalse);
+    });
+
+    test('başarılı push önceki pushError notunu temizler', () async {
+      await repo.create(const Baby(id: 'p3', name: 'Düzeldi'));
+      adapter.onPost('/babies', (s) => s.reply(422, {'name': ['x']}),
+          data: Matchers.any);
+      await repo.pushDirty();
+      expect(repo.pushErrors.containsKey('p3'), isTrue);
+
+      adapter.onPost('/babies', (s) => s.reply(201, {'id': 'p3', 'name': 'Düzeldi'}),
+          data: Matchers.any);
+      await repo.pushDirty();
+
+      expect((await rawRow('p3'))!.dirty, isFalse);
+      expect(repo.pushErrors.containsKey('p3'), isFalse);
     });
   });
 }
