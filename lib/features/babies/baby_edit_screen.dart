@@ -238,6 +238,10 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
     _seed(baby);
     final isOwner = baby.myRole == 'owner';
     final isBorn = !baby.isExpecting;
+    // Bakıcı (caregiver) salt-okunur: Kaydet/"doğdu"/sil yok, alanlar pasif
+    // (foto zaten kilitli). Aksi hâlde "Kaydedildi" denip push rol filtresine
+    // takılır, bir sonraki pull değişikliği sessizce geri alırdı (O20).
+    final readOnly = !baby.canFullWrite;
 
     return Scaffold(
       appBar: AppBar(
@@ -250,6 +254,34 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (readOnly) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.feedBg,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AdenaIcon('shield', size: 18, color: AppColors.coralDd),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        tr('Bakıcı rolünde bebek bilgileri salt-okunurdur; '
+                            'düzenlemeyi ebeveyn/sahip yapabilir.'),
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            height: 1.45,
+                            color: AppColors.ink2),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             Center(
               child: GestureDetector(
                 onTap: _photoBusy ? null : () => _choosePhotoSource(baby),
@@ -308,71 +340,90 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            AdField(
-              label: tr('Ad'),
-              child: AdInput(
-                controller: _name,
-                hint: tr('ör. Aden'),
-                capitalization: TextCapitalization.words,
-              ),
-            ),
-            AdField(
-              label: tr('Cinsiyet'),
-              child: AdSides(
-                selected: _gender.name,
-                onSelect: (v) => setState(() => _gender = BabyGender.values.byName(v)),
-                items: [
-                  (key: 'female', label: tr('Kız'), small: null),
-                  (key: 'male', label: tr('Erkek'), small: null),
-                  (key: 'unknown', label: tr('Belirsiz'), small: null),
-                ],
-              ),
-            ),
-            AdField(
-              label: isBorn ? tr('Doğum tarihi') : tr('Tahmini doğum tarihi'),
-              child: InkWell(
-                onTap: () => _pickDate(baby),
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.line, width: 1.5),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _date != null ? fmtDayMonthYear(_date!) : tr('Tarih seç'),
-                          style: TextStyle(
-                            color: _date != null ? null : AppColors.muted,
-                            fontWeight: FontWeight.w700,
+            // Bakıcıda form pasif (dokunulamaz, soluk) — kaydedilemeyen düzenleme
+            // yapılmasın.
+            AbsorbPointer(
+              absorbing: readOnly,
+              child: Opacity(
+                opacity: readOnly ? 0.6 : 1,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AdField(
+                      label: tr('Ad'),
+                      child: AdInput(
+                        controller: _name,
+                        hint: tr('ör. Aden'),
+                        capitalization: TextCapitalization.words,
+                      ),
+                    ),
+                    AdField(
+                      label: tr('Cinsiyet'),
+                      child: AdSides(
+                        selected: _gender.name,
+                        onSelect: (v) =>
+                            setState(() => _gender = BabyGender.values.byName(v)),
+                        items: [
+                          (key: 'female', label: tr('Kız'), small: null),
+                          (key: 'male', label: tr('Erkek'), small: null),
+                          (key: 'unknown', label: tr('Belirsiz'), small: null),
+                        ],
+                      ),
+                    ),
+                    AdField(
+                      label: isBorn ? tr('Doğum tarihi') : tr('Tahmini doğum tarihi'),
+                      child: InkWell(
+                        onTap: () => _pickDate(baby),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppColors.line, width: 1.5),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _date != null
+                                      ? fmtDayMonthYear(_date!)
+                                      : tr('Tarih seç'),
+                                  style: TextStyle(
+                                    color: _date != null ? null : AppColors.muted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              AdenaIcon('calendar', size: 19, color: AppColors.muted),
+                            ],
                           ),
                         ),
                       ),
-                      AdenaIcon('calendar', size: 19, color: AppColors.muted),
-                    ],
-                  ),
+                    ),
+
+                    // Prematüre girişi yalnız doğmuş bebekte (bekleme modunda gizli).
+                    if (isBorn)
+                      PrematureSection(
+                        weeks: _gestWeeks,
+                        days: _gestDays,
+                        onChanged: (w, d) => setState(() {
+                          _gestWeeks = w;
+                          _gestDays = d;
+                        }),
+                      ),
+                  ],
                 ),
               ),
             ),
 
-            // Prematüre girişi yalnız doğmuş bebekte (bekleme modunda gizli).
-            if (isBorn)
-              PrematureSection(
-                weeks: _gestWeeks,
-                days: _gestDays,
-                onChanged: (w, d) => setState(() {
-                  _gestWeeks = w;
-                  _gestDays = d;
-                }),
-              ),
-
             const SizedBox(height: 14),
 
-            _saving
-                ? FilledButton(
+            if (readOnly)
+              const SizedBox.shrink()
+            else if (_saving)
+              FilledButton(
                     onPressed: null,
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.coral,
@@ -386,11 +437,12 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2.5, color: Colors.white)),
                   )
-                : AdSaveButton(
-                    label: tr('Kaydet'), color: AppColors.coral, onTap: () => _save(baby)),
+            else
+              AdSaveButton(
+                  label: tr('Kaydet'), color: AppColors.coral, onTap: () => _save(baby)),
 
-            // Gebelik → doğdu geçişi
-            if (!isBorn) ...[
+            // Gebelik → doğdu geçişi (bakıcı yapamaz: status değişikliği de yazımdır)
+            if (!isBorn && !readOnly) ...[
               const SizedBox(height: 10),
               AdSaveButton(
                 label: tr('🎉  Bebeğim doğdu'),

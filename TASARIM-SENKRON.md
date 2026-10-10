@@ -52,7 +52,7 @@ Not: `Baby` yanıtı `updated_at` taşıyor; anı ve adet kaydı yanıtları `up
 | R1 | **Pull dirty satırı asla ezmez.** Yerel `dirty=true` ise sunucu kopyası uygulanmaz (records `_applyServerRow` ile aynı). Sunucu damgası varsa ve yerel `clientUpdatedAt`'ten yeniyse → "çakışma": yerel kalır, bir sonraki push LWW'ye bırakır. | K2, O5(b), O6, O7 |
 | R2 | **Pull `isDeleted=true` satırı asla geri almaz.** Tombstone'lu yerel satır sunucuda hâlâ görünüyorsa dokunulmaz; DELETE/op:delete bir daha denenir. | O5(b), O7 |
 | R3 | **Push başarısızlığı dirty'yi temizlemez; geçici/kalıcı ayrımı yapılır.** Ağ/5xx/401/403/429 → geçici: dirty kalır, sessizce yeniden denenir. Diğer 4xx (400/404/413/422) → *kalıcı red*: yerel değişiklik **korunur**, satıra `pushError` kaydedilir (K-1; kolon v15'e kadar yok → log + prefs). Banner + geri alma sonraki iş. | K2, O5, O21 |
-| R4 | **Sunucuda olmayan, yerelde `dirty=false` ve `isDeleted=false` olan satır kaldırılır** — yalnız pull'un TAM liste döndürdüğü tiplerde (anı, anne, adet kaydı, paylaşılan bebek). Korumalar (K-2): yalnız HTTP 200 + tam parse; sunucu listesi boşsa hiç silme; silinecek > 5 VE temiz satırların > %50'si ise silme atlanır ve loglanır. | O5(a), O7 |
+| R4 | **Sunucuda olmayan, yerelde `dirty=false` ve `isDeleted=false` olan satır kaldırılır** — yalnız pull'un TAM liste döndürdüğü tiplerde (anı, anne, adet kaydı, paylaşılan bebek). Korumalar (K-2): yalnız HTTP 200 + tam parse; sunucu listesi boşsa hiç silme; silinecek > 5 VE temiz satırların > %50'si ise silme atlanır ve loglanır. **Bebek listesi istisnası (onaylandı, K2 commit'i):** `GET /babies` için boş-liste ve oran korumaları UYGULANMAZ — boş liste meşru bir durumdur (üyenin tek bebeği paylaşılan bir bebekse ve erişimi kaldırıldıysa) ve mevcut kural zaten yalnız paylaşılan+temiz satırı siler; paylaşılan bebeğin verisi sunucuda sahibinde durduğu için yerel silme geri kazanılabilir. | O5(a), O7 |
 | R5 | **`dirty=false` yalnız sunucu onayıyla yazılır** (push yanıtı `saved/applied` ya da pull'dan gelen satır). Uçuş-içi düzenleme koruması: gönderilen damga ≠ mevcut damga ise dirty kalır (records/ilaç planı deseni). | K2, O5, O7 |
 | R6 | **Ayrı veri ayrı bayrak.** Aile ayarları bebek profilinden bağımsız `settingsDirty` taşır; sağlık işaretleri satır başına `dirty`. Bir tipin push hatası diğerini kilitlemez. | O4, K4 |
 | R7 | **Tam-küme push yasak.** Yalnız dirty satırlar gönderilir; sunucuya "listede olmayan = sil" anlamı yüklenmez. Aile ayarlarında PATCH yalnız değişen alanlar (K-5). | K4, O4 |
@@ -93,7 +93,6 @@ Not: `Baby` yanıtı `updated_at` taşıyor; anı ve adet kaydı yanıtları `up
 | `health_statuses` | `dirty` (bool, default false), `clientUpdatedAt`, `serverUpdatedAt` (nullable) | Backfill (K-4): yalnız `done=true` satırlar `dirty=true` → bir kez push. |
 | `babies` | `settingsDirty` (bool, default false) | Yerel ayar JSON ≠ `{}` ise `settingsDirty=true` → bir kez (değişen alan) PATCH. |
 | `babies`, `memories`, `mom_entries`, `cycle_entries`, `health_statuses` | `pushError` (text, nullable) — R3 kalıcı red notu (K-1) | yok |
-| `babies` (migrasyon UPDATE) | `myRole='caregiver' AND dirty=1 → dirty=0` (O20 artığı temizliği) | caregiver cihazında yetim dirty satırlar sunucuya döner |
 | `memories`, `mom_entries`, `cycle_entries` | kolon yok; `serverUpdatedAt` pull'da yazılmaya başlar (v15 öncesi de yapılabilir, kolon zaten var) | yok |
 
 Migration `from < 15`: `addColumn` + yukarıdaki `UPDATE`'ler. Veri kaybı riski yok; kolonlar ek.
@@ -112,7 +111,9 @@ Migration `from < 15`: `addColumn` + yukarıdaki `UPDATE`'ler. Veri kaybı riski
 
 ## 7. O20 — caregiver düzenlemesi
 
-**UI kilidi + repo reddi + K2 birlikte.** Yalnız K2 uygulanırsa caregiver'ın yerel düzenlemesi sonsuza dek dirty kalır (`pushDirty` rol filtresi göndermez, pull artık ezmez) → kalıcı ayrışma. Karar K-7: `BabyRepository.update/updatePhoto/updateFamilySettings` caregiver satırında `StateError` fırlatır; `baby_edit_screen._save` ve born-flow `canFullWrite` ile kilitlenir, hata toast'la gösterilir. Mevcut yetim dirty satırlar v15 migrasyonunda temizlenir (§5).
+**UI kilidi + repo reddi + K2 birlikte.** Yalnız K2 uygulanırsa caregiver'ın yerel düzenlemesi sonsuza dek dirty kalır (`pushDirty` rol filtresi göndermez, pull artık ezmez) → kalıcı ayrışma. Karar K-7: `BabyRepository.update/updatePhoto/updateFamilySettings` caregiver satırında `StateError` fırlatır; `baby_edit_screen` bakıcıda salt-okunur (not + pasif form, Kaydet/"doğdu"/sil yok), `expecting_home` "Bebeğim doğdu" düğmesi toast verir; aile ayarı yardımcıları (`updateUnits/updateQuietHours`) `StateError`'ı yakalayıp üst banner gösterir.
+
+**Mevcut cihaz temizliği (ŞEMASIZ, commit 3'te uygulandı):** `pullFromServer` caregiver satırında dirty bayrağını yok sayıp sunucu kopyasını uygular (`dirty=false`). Bu **bebek-repo'ya özel istisna**dır, `sync_merge` kuralı değil: rol kavramı yalnız bebek tablosunda var; saf yardımcı tablo/rol bilmez ve diğer tiplerde "dirty'yi yok say" diye bir durum yok. v15 migrasyon maddesi bu nedenle kaldırıldı.
 
 ---
 

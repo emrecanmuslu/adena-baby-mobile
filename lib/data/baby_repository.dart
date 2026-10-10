@@ -88,9 +88,21 @@ class BabyRepository {
     return (await _byId(baby.id))!;
   }
 
+  /// Bakıcı (caregiver) bebek profilini/ayarını YAZAMAZ (backend PATCH 403 döner;
+  /// pushDirty rol filtresi göndermez). Yerelde dirty üretilirse K2 sonrası pull
+  /// da ezmediğinden satır sonsuza dek ayrışırdı (BULGULAR.md O20, karar K-7).
+  /// UI `canFullWrite` ile zaten kilitler; bu son savunma hattıdır.
+  Future<void> _requireFullWrite(String babyId) async {
+    final row = await _byIdRow(babyId);
+    if (row?.myRole == 'caregiver') {
+      throw StateError('caregiver_readonly: $babyId');
+    }
+  }
+
   /// Alan-bazlı güncelleme (API fields sözlüğüyle uyumlu: name/gender/status/
   /// birth_date/due_date/last_menstrual_date/photo).
   Future<Baby> update(String babyId, Map<String, dynamic> fields) async {
+    await _requireFullWrite(babyId);
     DateTime? d(dynamic v) =>
         (v is String && v.isNotEmpty) ? DateTime.tryParse(v) : null;
     final c = BabiesCompanion(
@@ -132,6 +144,7 @@ class BabyRepository {
   /// dizinine kopyalar ve `photo` alanına yerel yol olarak yazar (dirty=true).
   /// Bir sonraki `pushDirty` bunu bulutta varsa multipart yükler.
   Future<Baby> updatePhoto(String babyId, String pickedPath) async {
+    await _requireFullWrite(babyId);
     final stored = await _persistPhoto(babyId, pickedPath);
     await (_db.update(_db.babies)..where((b) => b.id.equals(babyId))).write(
       BabiesCompanion(
@@ -197,6 +210,7 @@ class BabyRepository {
 
   Future<Map<String, dynamic>> updateFamilySettings(
       String babyId, Map<String, dynamic> fields) async {
+    await _requireFullWrite(babyId);
     final current = await familySettings(babyId);
     current.addAll(fields);
     await (_db.update(_db.babies)..where((b) => b.id.equals(babyId))).write(
@@ -243,11 +257,17 @@ class BabyRepository {
         // (düzenleme, yüklenmemiş yerel foto) ve bekleyen tombstone sunucu
         // kopyasıyla EZİLMEZ; bir sonraki push LWW'ye bırakır.
         final l = localById[b.id];
-        final decision = decideServerRow(
-          localExists: l != null,
-          localDirty: l?.dirty ?? false,
-          localDeleted: l?.isDeleted ?? false,
-        );
+        // Bebek-repo'ya özel istisna (sync_merge rol bilmez): caregiver satırında
+        // dirty anlamsızdır — bu rol yazamaz, push göndermez; K2 öncesinden kalmış
+        // yetim dirty düzenleme ancak sunucu kopyasıyla düzelir (O20, şemasız).
+        final caregiverRow = l?.myRole == 'caregiver';
+        final decision = caregiverRow
+            ? MergeDecision.apply
+            : decideServerRow(
+                localExists: l != null,
+                localDirty: l?.dirty ?? false,
+                localDeleted: l?.isDeleted ?? false,
+              );
         if (decision != MergeDecision.apply) continue;
         await _db.into(_db.babies).insertOnConflictUpdate(
               BabiesCompanion.insert(

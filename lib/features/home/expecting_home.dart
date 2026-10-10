@@ -192,7 +192,14 @@ class ExpectingHome extends ConsumerWidget {
 
         const SizedBox(height: 22),
         FilledButton(
-          onPressed: () => openBornFlow(context),
+          onPressed: () {
+            // Bakıcı status değiştiremez (O20) — profil düzenlemeyle aynı kapı.
+            if (!baby.canFullWrite) {
+              showAdToast(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
+              return;
+            }
+            openBornFlow(context);
+          },
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.coral,
             padding: const EdgeInsets.symmetric(vertical: 16),

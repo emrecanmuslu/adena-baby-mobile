@@ -31,6 +31,7 @@ class _FakeTokens extends TokenStorage {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   k2Tests();
+  o20Tests();
 
   late ApiClient api;
   late DioAdapter adapter;
@@ -606,6 +607,113 @@ void k2Tests() {
 
       expect((await rawRow('p3'))!.dirty, isFalse);
       expect(repo.pushErrors.containsKey('p3'), isFalse);
+    });
+  });
+}
+
+/// O20: caregiver yazımı repo'da reddedilir (dirty üretmez); K2 sonrası
+/// caregiver cihazında dirty kalmış satırlar pull'da sunucu kopyasıyla düzelir
+/// (push rol filtresi onları hiç göndermediği için başka düzelme yolu yok).
+void o20Tests() {
+  late ApiClient api;
+  late DioAdapter adapter;
+  late AppDatabase db;
+  late BabyRepository repo;
+  const acct = 'acct-o20';
+
+  setUp(() {
+    api = ApiClient(_FakeTokens());
+    adapter = DioAdapter(dio: api.dio);
+    db = AppDatabase(NativeDatabase.memory());
+    repo = BabyRepository(db, api);
+    LocalSession.setActiveAccount(acct);
+  });
+
+  tearDown(() async {
+    LocalSession.setActiveAccount(null);
+    await db.close();
+  });
+
+  Future<BabyRow?> rawRow(String id) =>
+      (db.select(db.babies)..where((b) => b.id.equals(id))).getSingleOrNull();
+
+  Future<void> seedClean(String id, String name, String role) async {
+    await repo.create(Baby(id: id, name: name, myRole: role));
+    await (db.update(db.babies)..where((b) => b.id.equals(id)))
+        .write(const BabiesCompanion(dirty: Value(false)));
+  }
+
+  Map<String, dynamic> srv(String id, String name, String role) => {
+        'id': id,
+        'name': name,
+        'status': 'born',
+        'my_role': role,
+        'member_count': 2,
+      };
+
+  group('O20 — caregiver yazımı reddedilir', () {
+    test('update → StateError, satır değişmez, dirty açılmaz', () async {
+      await seedClean('c1', 'Sunucu Adı', 'caregiver');
+      await expectLater(
+          repo.update('c1', {'name': 'Bakıcı Değiştirdi'}), throwsStateError);
+      final row = await rawRow('c1');
+      expect(row!.name, 'Sunucu Adı');
+      expect(row.dirty, isFalse);
+    });
+
+    test('updateFamilySettings → StateError, settings değişmez', () async {
+      await seedClean('c2', 'X', 'caregiver');
+      await expectLater(
+          repo.updateFamilySettings('c2', {'units': {'volume': 'oz'}}),
+          throwsStateError);
+      final row = await rawRow('c2');
+      expect(row!.settings, '{}');
+      expect(row.dirty, isFalse);
+    });
+
+    test('updatePhoto → StateError, photo/dirty değişmez', () async {
+      await seedClean('c3', 'X', 'caregiver');
+      await expectLater(
+          repo.updatePhoto('c3', '/tmp/does-not-matter.jpg'), throwsStateError);
+      final row = await rawRow('c3');
+      expect(row!.photo, isNull);
+      expect(row.dirty, isFalse);
+    });
+
+    test('parent update çalışır (regresyon)', () async {
+      await seedClean('p1', 'Eski', 'parent');
+      final b = await repo.update('p1', {'name': 'Yeni'});
+      expect(b.name, 'Yeni');
+      expect((await rawRow('p1'))!.dirty, isTrue);
+    });
+  });
+
+  group('O20 — pull: dirty kalmış caregiver satırı sunucuyla düzelir', () {
+    test('caregiver dirty satırı pull sonrası sunucu kopyası + dirty=false',
+        () async {
+      await seedClean('c4', 'Sunucu', 'caregiver');
+      // K2 öncesinden kalmış yetim dirty düzenleme (doğrudan DB'ye).
+      await (db.update(db.babies)..where((b) => b.id.equals('c4'))).write(
+          const BabiesCompanion(name: Value('Yetim'), dirty: Value(true)));
+
+      adapter.onGet('/babies', (s) => s.reply(200, [srv('c4', 'Sunucu', 'caregiver')]));
+      await repo.pullFromServer();
+
+      final row = await rawRow('c4');
+      expect(row!.name, 'Sunucu');
+      expect(row.dirty, isFalse);
+    });
+
+    test('parent dirty satırı pull sonrası korunur (K2 regresyonu)', () async {
+      await seedClean('p2', 'Sunucu', 'parent');
+      await repo.update('p2', {'name': 'Yerel'}); // dirty
+
+      adapter.onGet('/babies', (s) => s.reply(200, [srv('p2', 'Sunucu', 'parent')]));
+      await repo.pullFromServer();
+
+      final row = await rawRow('p2');
+      expect(row!.name, 'Yerel');
+      expect(row.dirty, isTrue);
     });
   });
 }

@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/i18n.dart';
+import '../../core/in_app_notification.dart';
 import '../../core/locale_util.dart';
 import '../../core/units.dart';
 import '../../data/baby_repository.dart';
@@ -58,11 +60,22 @@ final activeUnitsProvider = Provider<Units>((ref) {
 
 /// Birim tercihlerini günceller (tüm units sözlüğünü gönderir) ve önbelleği tazeler.
 Future<void> updateUnits(WidgetRef ref, String babyId, Units units) async {
-  await ref
-      .read(babyRepositoryProvider)
-      .updateFamilySettings(babyId, {'units': units.toMap()});
+  try {
+    await ref
+        .read(babyRepositoryProvider)
+        .updateFamilySettings(babyId, {'units': units.toMap()});
+  } on StateError {
+    _roleToast(); // bakıcı aile ayarını yazamaz (O20)
+    return;
+  }
   ref.invalidate(familySettingsProvider(babyId));
 }
+
+/// Repo rol reddi (StateError) → kullanıcıya kısa bildirim. Çağıranların
+/// çoğu context'siz `onSelected` callback'leri; global üst banner kullanılır.
+void _roleToast() => showInAppNotification(
+    title: tr('Bebek bilgileri'),
+    body: tr('Bu işlem için ebeveyn/sahip olmalısın'));
 
 /// Beslenme hatırlatıcı ayarlarının CİHAZ-YEREL durumu (bebek başına). Açılışta
 /// yerelden yüklenir; güncelleme YALNIZ yerele yazılır (sunucuya gitmez) → her
@@ -166,9 +179,14 @@ final quietHoursProvider = Provider.family<QuietHours, String>((ref, babyId) {
 
 /// Sessiz saat ayarını günceller ve önbelleği tazeler.
 Future<void> updateQuietHours(WidgetRef ref, String babyId, QuietHours q) async {
-  await ref
-      .read(babyRepositoryProvider)
-      .updateFamilySettings(babyId, {'quiet_hours': q.toMap()});
+  try {
+    await ref
+        .read(babyRepositoryProvider)
+        .updateFamilySettings(babyId, {'quiet_hours': q.toMap()});
+  } on StateError {
+    _roleToast();
+    return;
+  }
   ref.invalidate(familySettingsProvider(babyId));
 }
 
