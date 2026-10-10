@@ -170,7 +170,20 @@ class CycleRepository {
   }
 
   /// Gün başına tek kayıt — aynı tarih varsa onun id'siyle günceller.
-  Future<CycleEntry> saveEntry(CycleEntry entry) async {
+  ///
+  /// Çağrılar SERİLEŞTİRİLİR (O8): iki ekrandan/çift dokunuştan aynı güne eş
+  /// zamanlı iki çağrı "mevcut var mı?" sorgusunu aynı anda boş görüp iki UUID
+  /// üretiyordu → yerelde çift satır, sunucuda id uyuşmazlığı. Sıra bize gelince
+  /// mevcut satır görülür ve aynı id güncellenir.
+  Future<CycleEntry> saveEntry(CycleEntry entry) {
+    final run = _saveChain.then((_) => _saveEntryNow(entry));
+    _saveChain = run.then((_) {}, onError: (_) {});
+    return run;
+  }
+
+  Future<void> _saveChain = Future.value();
+
+  Future<CycleEntry> _saveEntryNow(CycleEntry entry) async {
     final acct = _acct;
     var id = entry.id;
     if (id.isEmpty) {

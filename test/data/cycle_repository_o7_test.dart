@@ -260,4 +260,31 @@ void main() {
       expect(repo2.pushErrors.containsKey(e.id), isFalse);
     });
   });
+
+  // ───────── O8 (istemci kısmı): aynı güne eşzamanlı çift kayıt ─────────
+  group('O8 adet — saveEntry serileştirme', () {
+    test('aynı güne eşzamanlı iki saveEntry → TEK satır (aynı id)', () async {
+      final repo = localRepo();
+      final e1 = CycleEntry(id: '', date: DateTime(2026, 6, 1), flow: FlowLevel.medium);
+      final e2 = CycleEntry(id: '', date: DateTime(2026, 6, 1), flow: FlowLevel.heavy);
+      final results = await Future.wait([repo.saveEntry(e1), repo.saveEntry(e2)]);
+
+      final rows = await (db.select(db.cycleEntries)
+            ..where((r) => r.date.equals(DateTime(2026, 6, 1))))
+          .get();
+      expect(rows, hasLength(1), reason: 'gün başına tek kayıt');
+      expect(results[0].id, results[1].id);
+      expect(rows.single.flow, 'heavy', reason: 'son yazan kazanır');
+    });
+
+    test('farklı günler serileşse de hepsi yazılır', () async {
+      final repo = localRepo();
+      await Future.wait([
+        for (var d = 1; d <= 5; d++)
+          repo.saveEntry(CycleEntry(id: '', date: DateTime(2026, 7, d), flow: FlowLevel.light)),
+      ]);
+      final rows = await (db.select(db.cycleEntries)).get();
+      expect(rows, hasLength(5));
+    });
+  });
 }

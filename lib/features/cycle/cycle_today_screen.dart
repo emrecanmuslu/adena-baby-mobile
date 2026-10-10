@@ -6,6 +6,7 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/in_flight_guard.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
@@ -22,6 +23,10 @@ import 'cycle_widgets.dart';
 
 /// Bugün — "Bloom" durum makinesi (v3): eyebrow + imza Dial + CTA + "Bu döngü"
 /// Mini kartları + şefkatli kayıt istemi. Mod: aktif / lohusalık / bekleme.
+/// "Adet başlat" hızlı eylemi için uçuş koruması — `_Today` stateless (her
+/// provider emit'inde yeniden kurulur) olduğundan dosya düzeyinde tek örnek.
+final _quickStartGuard = InFlightGuard();
+
 class CycleTodayScreen extends ConsumerWidget {
   const CycleTodayScreen({super.key});
 
@@ -95,25 +100,28 @@ class _Today extends ConsumerWidget {
   /// olarak işaretle (flow=orta). Bekleme/gecikme/erken durumlarda anında loglar
   /// ve döngü takibini başlatır/yeniler. Mevcut gün kaydı varsa diğer alanları korur.
   Future<void> _quickStartPeriod(BuildContext context, WidgetRef ref) async {
-    final t = DateTime.now();
-    final e = _todayEntry;
-    final entry = CycleEntry(
-      id: e?.id ?? '',
-      date: DateTime(t.year, t.month, t.day),
-      flow: FlowLevel.medium,
-      lochiaColor: e?.lochiaColor,
-      symptoms: e?.symptoms ?? const [],
-      mood: e?.mood,
-      note: e?.note,
-    );
-    try {
-      await ref.read(cycleRepositoryProvider).saveEntry(entry);
-      ref.invalidate(cycleEntriesProvider);
-      ref.invalidate(cycleSettingsProvider); // ilk adet → bekleme/loşia'dan aktife geçiş
-      if (context.mounted) showAdToast(context, tr('Adet başlangıcı kaydedildi'));
-    } catch (err) {
-      if (context.mounted) showAdError(context, apiErrorText(err));
-    }
+    // Çift dokunma koruması (O8): iş sürerken ikinci dokunuş atlanır.
+    await _quickStartGuard.run(() async {
+      final t = DateTime.now();
+      final e = _todayEntry;
+      final entry = CycleEntry(
+        id: e?.id ?? '',
+        date: DateTime(t.year, t.month, t.day),
+        flow: FlowLevel.medium,
+        lochiaColor: e?.lochiaColor,
+        symptoms: e?.symptoms ?? const [],
+        mood: e?.mood,
+        note: e?.note,
+      );
+      try {
+        await ref.read(cycleRepositoryProvider).saveEntry(entry);
+        ref.invalidate(cycleEntriesProvider);
+        ref.invalidate(cycleSettingsProvider); // ilk adet → bekleme/loşia'dan aktife geçiş
+        if (context.mounted) showAdToast(context, tr('Adet başlangıcı kaydedildi'));
+      } catch (err) {
+        if (context.mounted) showAdError(context, apiErrorText(err));
+      }
+    });
   }
 
   @override
