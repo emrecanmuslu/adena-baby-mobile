@@ -142,6 +142,14 @@ Commit 3b (K2 ek): paylaşılan temiz bebek listeden düşünce silinmeden önce
 | K7 (`eb25b3c`) | bebeksiz misafirin adet verisi göçü | |
 | K8 (`91f7744`) | misafir göçünde adet ayarı | |
 
+### Bu sürüm — 4. aşama (arka plan isolate)
+
+| # | Commit | Kapsam |
+|---|---|---|
+| O35 (`91e8b14`) | LocalSession set/map bayrakları: yazımda `reload → diskle birleştir → yaz`, yüklemede birleştir | kalan teorik yarış: iki isolate aynı ms penceresinde → son yazan kazanır |
+| K9 (`e6edcd5`) | `runningInBackgroundProvider`; bg'de `/auth/me` tazeleme + ilk import, RC identify, exitGuest başlamaz; bg girişlerinde zaman aşımlı `ensureLoaded` | |
+| O36 (`00ebb90`) | `runBackgroundSyncWith` (bebekler yerel repo'dan, BabyController/subscription kurulmaz), dispose en sonda, zaman aşımı damgası; Android 4 dk / iOS 25 sn / FCM 20 sn | 403'te purge/salt-okunur yazımı yok |
+
 ### Sonraki sürüm (şema v15; commit 7-8)
 
 | # | Commit | Kapsam | Risk | Testler |

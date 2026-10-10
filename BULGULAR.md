@@ -46,6 +46,30 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 
 ---
 
+## 2b. Düzeltme durumu (branch `fix/audit-bulgular`, 2026-10-11)
+
+| Bulgu | Commit | Not |
+|---|---|---|
+| K3 | `37f05f8` | `SyncService.whileWiping` |
+| K1 | `00cd3fb` | mutabakat tüm bebeklerin aktif id'leriyle |
+| K5 | `e5f1a66` | isLoading koruması + öz-onarım + serileştirme |
+| K2 | `7823480`, `20ed1f5` | pull dirty'yi ezmez; purge öncesi erişim doğrulama |
+| O20 | `ce7e04c` | caregiver UI kilidi + repo reddi |
+| O5 | `c6a55dc` | anı/anne R1/R2/R4/R5/R8 |
+| O7 | `4352738` | adet kayıtları R1/R2/R4/R5 |
+| O8 (istemci) | `3426724` | saveEntry serileştirme + InFlightGuard |
+| O6 (+O26 okuma) | `89cc58f` | adet ayarı önce PATCH; Stream provider'lar |
+| K6 (+D33) | `249aad1` | çapa politikası |
+| K7 | `eb25b3c` | bebeksiz misafir adet verisi |
+| K8 | `91f7744` | misafir göçünde adet ayarı |
+| O35 | `91e8b14` | bayraklar diskle birleşir |
+| K9 | `e6edcd5` | bg'de yan işler başlamaz |
+| O36 | `00ebb90` | bg turu dispose en sonda, zaman aşımı |
+
+Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
+
+---
+
 ## 3. KRİTİK bulgular
 
 ### K1. Çok-bebekte özel/randevu hatırlatıcıları birbirini iptal ediyor
@@ -110,6 +134,7 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 - **Koşul:** Oturum açık + paylaşımlı bebek (periyodik tur) ya da sync_nudge push'u.
 - **Etki:** Her arka plan turunda gereksiz tam import trafiği (pil/veri), kapalı DB'ye yazım hataları, çoklu hesapta import bayraklarının bozulması (bir sonraki girişte yeniden tam import).
 - **Şüpheli:** kısmen — mekanizma kesin; import'un dispose'dan önce ne kadar ilerlediği zamanlamaya bağlı.
+- **DÜZELTİLDİ (`e6edcd5`, 2026-10-11):** bg container'ları `runningInBackgroundProvider=true` ile kurulur; `AuthController.build` bu bayrakla `_refreshInBackground` (/auth/me + ilk import), RevenueCat identify ve exitGuest'i başlatmaz; her bg girişi (`runBackgroundSync`, `refreshBabyFeedStateFromPush`) container'dan önce zaman aşımlı `LocalSession.ensureLoaded` çağırır. Prefs ezilmesi O35 ile ayrıca kapandı.
 
 ---
 
@@ -366,12 +391,14 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 - **Sorun:** `markImportedForAccount` vb. `Set.join(',')` ile tüm listeyi yazar; bg isolate (K9) ya da `ensureLoaded` tamamlanmadan (`main.dart:189-191` 8 sn güvenlik ağı) yapılan yazım diğer hesapların bayraklarını siler.
 - **Etki:** Çoklu hesapta yeniden tam import / yeniden "buluta yükleniyor" overlay'i.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`91e8b14`, 2026-10-11):** `markImportedForAccount`/`markPremiumSyncedForAccount`/`clearPremiumSyncedForAccount`/`setPurgeHandled` artık `prefs.reload → diskteki küme ∪ bellek (− çıkarma) → yaz`; `ensureLoaded` diskten okuduğunu bellekle birleştirir (union / purge'de daha yeni damga). `clearLocalProfile` bilinçli sıfırlaması aynen. **Kalan teorik yarış:** iki isolate `reload→yaz` penceresini (ms mertebesi) aynı anda geçerse son yazan kazanır; pratikte bg turu ile ön plan yazımı çakışmasına bağlı, veri kaybı tek bayrakla sınırlı ve bir sonraki yazımda kendini onarır.
 
 #### O36. Arka plan turu `container.dispose()` ile süren işin altından DB'yi çekiyor
 - **Dosya:** `lib/core/background_sync.dart:52-57, 76-78, 141-168`
 - **Sorun:** `authControllerProvider.future` önbellekle anında döner; `_refreshInBackground` (K9) ve `BabyController._pull` unawaited sürerken `finally` DB'yi kapatır → kapalı DB'ye yazım hataları (yutulur), `DbWatchdog.markBackgroundSync('bitti')` yanlış damga.
 - **Etki:** Yarım kalan import/pull, teşhis telemetrisinde yanıltıcı "bitti".
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`00ebb90`, 2026-10-11):** tur gövdesi `runBackgroundSyncWith(container, timeout:, onlyBabyId:)`: bebek listesi `babyRepository.getAll` (yerel), BabyController/`subscriptionProvider` hiç kurulmaz (unawaited `_pull`/GET yok), `repo.sync`+widget işi awaited, `container.dispose()` `finally`'de en sonda; damga `'bitti' | 'hata' | 'zaman aşımı'` yalnız iş bitince. Zaman aşımı giriş noktasına göre (Android 4 dk, iOS 25 sn, FCM 20 sn). `Future.timeout` işi iptal etmez; kayıt senkronu tek transaction olduğundan cursor/kayıt tutarsızlığı yok.
 
 #### O37. Kayıt düzenleme formu `createdBy`'ı düşürüyor
 - **Dosya:** `lib/features/records/record_form.dart:359-365` (`Record(…)` yeni nesne, `copyWith` değil)
