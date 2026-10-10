@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workmanager/workmanager.dart';
@@ -7,7 +10,7 @@ import '../data/local_session.dart';
 import '../data/record_repository.dart';
 import '../data/sync_gate.dart';
 import '../features/auth/auth_controller.dart';
-import '../features/babies/baby_controller.dart';
+import '../data/baby_repository.dart';
 import '../features/babies/family_settings.dart';
 import '../models/baby.dart';
 import '../models/record.dart';
@@ -33,6 +36,23 @@ void callbackDispatcher() {
   });
 }
 
+/// Arka plan turu zaman aşımları (O36) — giriş noktasına/platforma göre.
+/// `Future.timeout` işi İPTAL ETMEZ: aşımda tur "zaman aşımı" ile biter ve
+/// container dispose edilir; süren bir `repo.sync` kapalı DB'ye düşüp hata alır
+/// (yutulur). Kayıt senkronunda sayfa yazımı + cursor TEK transaction'da olduğu
+/// için kesinti "cursor ilerledi, kayıt yazılmadı" kaybı doğurmaz.
+/// Android workmanager: sistem sınırı 10 dk → 4 dk.
+const bgSyncTimeoutAndroid = Duration(minutes: 4);
+/// iOS BGAppRefreshTask: sistem ~30 sn verir → 25 sn.
+const bgSyncTimeoutIos = Duration(seconds: 25);
+/// FCM arka plan işleyicisi (sync_nudge): her iki platformda ~30 sn → 20 sn.
+const bgPushTimeout = Duration(seconds: 20);
+
+/// Watchdog damgaları (bkz. DbWatchdog.markBackgroundSync).
+const bgOutcomeDone = 'bitti';
+const bgOutcomeError = 'hata';
+const bgOutcomeTimeout = 'zaman aşımı';
+
 /// Uygulama KAPALI/ölü iken bile paylaşımlı bebekleri senkronlar — push düşmese
 /// de yarım saatte bir yerel veri (drift) tazelensin (kullanıcı açınca güncel olsun).
 ///
@@ -54,37 +74,72 @@ Future<void> runBackgroundSync() async {
   // takılırsa tur yine sürer; O35 yazımları zaten diskle birleştirir).
   await ensureLocalSessionForBackground();
   // NOT: Bu isolate'in AppDatabase'i KENDİ sqlite bağlantısını açar
-  // (shareAcrossIsolates kapalı) → aşağıdaki container.dispose() → db.close()
-  // ön plandaki bağlantıya ARTIK dokunmaz. Bkz. AppDatabase._open.
+  // (shareAcrossIsolates kapalı) → container.dispose() → db.close() ön plandaki
+  // bağlantıya ARTIK dokunmaz. Bkz. AppDatabase._open.
   final container = ProviderContainer(overrides: [
     runningInBackgroundProvider.overrideWithValue(true),
   ]);
-  var outcome = 'bitti';
+  final outcome = await runBackgroundSyncWith(container,
+      timeout: Platform.isIOS ? bgSyncTimeoutIos : bgSyncTimeoutAndroid);
+  // Damga yalnız tüm iş bittikten (ya da zaman aşımından) SONRA.
+  await DbWatchdog.markBackgroundSync(outcome);
+}
+
+/// Tur gövdesi — test edilebilir (container dışarıdan). [onlyBabyId] verilirse
+/// (FCM sync_nudge) yalnız o bebek; verilmezse tüm PAYLAŞIMLI bebekler.
+///
+/// O36: BabyController HİÇ kurulmaz (build'i `_pull`'u — GET /babies, erişim
+/// doğrulama GET'leri, `cloudSyncEnabledProvider` üzerinden GET
+/// /auth/me/subscription, child purge — unawaited başlatıyordu); bebek listesi
+/// yerel DB'den (`babyRepository.getAll`) okunur, paylaşım ayrımı yerel
+/// `member_count`/`my_role` kolonlarıyla yapılır. Geriye izlenecek unawaited iş
+/// kalmaz; `container.dispose()` her durumda EN SONDA. Döner: watchdog damgası.
+Future<String> runBackgroundSyncWith(
+  ProviderContainer container, {
+  required Duration timeout,
+  String? onlyBabyId,
+}) async {
+  var outcome = bgOutcomeDone;
   try {
-    // Oturum çözülene kadar bekle; yoksa hiç senkron yok (saf local-first).
-    await container.read(authControllerProvider.future);
-    if (!container.read(loggedInProvider)) return;
-    final babies = await container.read(babyControllerProvider.future);
-    final repo = container.read(recordRepositoryProvider);
-    for (final b in babies) {
-      if (!b.isShared) continue; // yalnız paylaşımlı bebek
-      try {
-        await repo.sync(b.id);
-      } catch (_) {
-        // 403 (erişim/grace) / çevrimdışı / 5xx → yerel korunur, sonraki tur tekrar.
-      }
-      // Senkron sonrası (push düşse bile) widget'ı + sonraki-beslenme bildirimini
-      // taze veriyle yeniden kur: başka cihazın eklediği kayda göre HER İKİ
-      // platformda en geç bu turda (≈30 dk) doğru zamana kayar. Sync hata verse
-      // de yereldeki veriyle çalışır (zararsız, idempotent).
-      if (!b.isExpecting) await _refreshFeedState(repo, b);
-    }
+    await _syncBabies(container, onlyBabyId: onlyBabyId).timeout(timeout);
+  } on TimeoutException {
+    outcome = bgOutcomeTimeout;
   } catch (_) {
-    // Auth/baby çözülemedi → sessiz; bir sonraki turda tekrar denenir.
-    outcome = 'hata';
+    // Auth/bebek çözülemedi → sessiz; bir sonraki turda tekrar denenir.
+    outcome = bgOutcomeError;
   } finally {
     container.dispose();
-    await DbWatchdog.markBackgroundSync(outcome);
+  }
+  return outcome;
+}
+
+Future<void> _syncBabies(ProviderContainer container,
+    {String? onlyBabyId}) async {
+  // Oturum çözülene kadar bekle; yoksa hiç senkron yok (saf local-first).
+  await container.read(authControllerProvider.future);
+  if (!container.read(loggedInProvider)) return;
+  final acct = container.read(activeAccountIdProvider);
+  final babies =
+      await container.read(babyRepositoryProvider).getAll(accountId: acct);
+  final repo = container.read(recordRepositoryProvider);
+  for (final b in babies) {
+    if (onlyBabyId != null) {
+      if (b.id != onlyBabyId) continue;
+    } else if (!b.isShared) {
+      continue; // periyodik tur: yalnız paylaşımlı bebek
+    }
+    if (b.isExpecting) continue; // bekleme modunda kayıt/beslenme işi yok
+    try {
+      await repo.sync(b.id);
+    } catch (_) {
+      // 403 (erişim/grace) / çevrimdışı / 5xx → yerel korunur, sonraki tur
+      // tekrar. Bg'de purge/salt-okunur işareti YAZILMAZ (ön plan pull'u karar verir).
+    }
+    // Senkron sonrası (push düşse bile) widget'ı + sonraki-beslenme bildirimini
+    // taze veriyle yeniden kur: başka cihazın eklediği kayda göre HER İKİ
+    // platformda en geç bu turda (≈30 dk) doğru zamana kayar. Sync hata verse
+    // de yereldeki veriyle çalışır (zararsız, idempotent).
+    await _refreshFeedState(repo, b);
   }
 }
 
@@ -153,31 +208,9 @@ Future<void> refreshBabyFeedStateFromPush(String babyId) async {
   final container = ProviderContainer(overrides: [
     runningInBackgroundProvider.overrideWithValue(true),
   ]);
-  try {
-    await container.read(authControllerProvider.future);
-    if (!container.read(loggedInProvider)) return;
-    final babies = await container.read(babyControllerProvider.future);
-    Baby? baby;
-    for (final b in babies) {
-      if (b.id == babyId) {
-        baby = b;
-        break;
-      }
-    }
-    if (baby == null || baby.isExpecting) return;
-    final repo = container.read(recordRepositoryProvider);
-    try {
-      await repo.sync(babyId);
-    } catch (_) {
-      // Çevrimdışı/sunucu hatası — yereldeki (bayat olabilir) veriyle yine de
-      // tazele; zararsız, idempotent, bir sonraki tur düzeltir.
-    }
-    await _refreshFeedState(repo, baby);
-  } catch (_) {
-    // Auth/bebek çözülemedi — sessiz; foreground açılışta veya periyodik turda düzelir.
-  } finally {
-    container.dispose();
-  }
+  // O36: aynı gövde, tek bebek, FCM süresine uygun zaman aşımı; dispose en sonda.
+  await runBackgroundSyncWith(container,
+      timeout: bgPushTimeout, onlyBabyId: babyId);
 }
 
 /// Arka plan isolate'i için [LocalSession.ensureLoaded] — zaman aşımlı ve
