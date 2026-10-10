@@ -140,7 +140,7 @@ Commit 3b (K2 ek): paylaşılan temiz bebek listeden düşünce silinmeden önce
 |---|---|---|
 | K6 (`249aad1`) | çapa politikası + D33 + invalidate temizliği | bkz. commit mesajı |
 | K7 (`eb25b3c`) | bebeksiz misafirin adet verisi göçü | |
-| K8 (`<K8>`) | misafir göçünde adet ayarı | |
+| K8 (`91f7744`) | misafir göçünde adet ayarı | |
 
 ### Sonraki sürüm (şema v15; commit 7-8)
 
