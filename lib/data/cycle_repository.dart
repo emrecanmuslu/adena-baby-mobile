@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -32,21 +33,84 @@ class CycleRepository {
 
   // ---- Ayarlar ----
 
-  Future<CycleSettings> getSettings() async {
+  /// Yerel ayar (R8: ağa ÇIKMAZ). Bulut senkronu [syncIfCloud] ile arka planda.
+  Future<CycleSettings> getSettings() async =>
+      _rowToSettings(await _settingsRow());
+
+  Future<CycleSettingsRow?> _settingsRow() async {
     final acct = _acct;
-    if (acct == null) return const CycleSettings();
-    if (_cloudEnabled()) {
-      try {
-        final resp = await _api.dio.get('/cycle/settings');
-        await _writeSettings(
-            CycleSettings.fromJson(resp.data as Map<String, dynamic>),
-            dirty: false);
-      } catch (_) {}
-    }
-    final row = await (_db.select(_db.cycleSettingsTable)
-          ..where((s) => s.id.equals(acct)))
+    if (acct == null) return null;
+    return (_db.select(_db.cycleSettingsTable)..where((s) => s.id.equals(acct)))
         .getSingleOrNull();
-    return _rowToSettings(row);
+  }
+
+  /// Reaktif ayar akışı — ekranlar bunu dinler (satır yoksa varsayılan).
+  Stream<CycleSettings> watchSettings() {
+    final acct = _acct;
+    if (acct == null) return Stream.value(const CycleSettings());
+    return (_db.select(_db.cycleSettingsTable)..where((s) => s.id.equals(acct)))
+        .watchSingleOrNull()
+        .map(_rowToSettings);
+  }
+
+  /// Reaktif kayıt akışı (yeni→eski, tombstone gizli).
+  Stream<List<CycleEntry>> watchEntries() {
+    final acct = _acct;
+    if (acct == null) return Stream.value(const []);
+    final q = _db.select(_db.cycleEntries)
+      ..where((e) => e.isDeleted.equals(false) & e.accountId.equals(acct))
+      ..orderBy([(e) => OrderingTerm.desc(e.date)]);
+    return q.watch().map((rows) => rows.map(_toEntry).toList());
+  }
+
+  /// Bulut uygunsa ayar + kayıtları arka planda eşitler; her hata yutulur.
+  /// Ayar (O6/R1): yerel satır DIRTY ise önce PATCH denenir; başarılıysa PATCH
+  /// yanıtı (sunucu güncel hâli) uygulanır ve GET atlanır; başarısızsa GET
+  /// uygulanMAZ (yerel değişiklik korunur, sonraki tur yeniden dener). Temizse
+  /// GET sonucu uygulanır. Kayıtlar: push dirty (bulk/DELETE) + pull (R1-R5).
+  Future<void> syncIfCloud() async {
+    if (!_cloudEnabled()) return;
+    try {
+      await _syncSettings();
+    } catch (_) {}
+    try {
+      await _pushDirtyEntries();
+      await _pullEntries();
+    } catch (_) {}
+  }
+
+  Future<void> _syncSettings() async {
+    final row = await _settingsRow();
+    if (row != null && row.dirty) {
+      await _pushDirtySettings(row);
+      return; // başarı → PATCH yanıtı uygulandı; değilse dirty korunur, GET yok
+    }
+    final resp = await _api.dio.get('/cycle/settings');
+    final srv = CycleSettings.fromJson(resp.data as Map<String, dynamic>);
+    // Uçuş sırasında yerel değişiklik olduysa (dirty oldu) sunucuyu uygulama.
+    final again = await _settingsRow();
+    if (again != null && again.dirty) return;
+    await _writeSettings(srv, dirty: false);
+  }
+
+  /// Dirty ayar satırını PATCH eder; gövde yerel gerçektir (`baby` null dahil —
+  /// satır dirty ise bağ koparma niyeti de yerelde yazılıdır). Başarıda sunucu
+  /// yanıtı yerele uygulanır ve satır temizlenir. Döner: başarılı mı.
+  Future<bool> _pushDirtySettings(CycleSettingsRow row) async {
+    try {
+      final resp = await _api.dio.patch('/cycle/settings',
+          data: _rowToSettings(row).toPatchJson(includeNullBaby: true));
+      final srv = CycleSettings.fromJson(resp.data as Map<String, dynamic>);
+      final again = await _settingsRow();
+      // Uçuşta yeniden düzenlendiyse (damga değişti) dirty kalsın.
+      if (again != null && again.clientUpdatedAt != row.clientUpdatedAt) {
+        return true;
+      }
+      await _writeSettings(srv, dirty: false);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   CycleSettings _rowToSettings(CycleSettingsRow? row) {
@@ -78,8 +142,10 @@ class CycleRepository {
     );
   }
 
+  /// Yerel merge + dirty; bulut uygunsa hemen PATCH (O6: önce GET YAPILMAZ —
+  /// GET, gönderilmemiş yerel değişikliği eziyordu).
   Future<CycleSettings> patchSettings(Map<String, dynamic> fields) async {
-    final current = await getSettings();
+    final current = await getSettings(); // yerel (ağ yok)
     // Durum-makinesi: postpartum/loss'ta İLK ADET işaretlenince (çapa null →
     // dolu) döngü takibine otomatik dönülür ("ilk gerçek adet = yeni Gün 1").
     // Merkezde (patchSettings) yapılır ki hem saveEntry kancası hem adet-düzenleme
@@ -99,12 +165,29 @@ class CycleRepository {
     }
     final merged = {...current.toPatchJson(), ...fields};
     final next = CycleSettings.fromJson(merged);
+    // `baby` yalnız açıkça null'landıysa (fields'ta null ya da dolu→null) gider;
+    // alan hiç değişmediyse gönderilmez (K-8).
+    final babyNulled = (fields.containsKey('baby') && fields['baby'] == null) ||
+        (current.babyId != null && next.babyId == null);
     await _writeSettings(next, dirty: true);
     if (_cloudEnabled()) {
       try {
-        await _api.dio.patch('/cycle/settings', data: next.toPatchJson());
-        await _markSettingsClean();
-      } catch (_) {}
+        final resp = await _api.dio.patch('/cycle/settings',
+            data: next.toPatchJson(includeNullBaby: babyNulled));
+        // Başarı: sunucu yanıtı otoriter (uçuşta düzenlenmediyse) + temiz.
+        final srv = CycleSettings.fromJson(resp.data as Map<String, dynamic>);
+        final again = await _settingsRow();
+        if (again != null && again.dirty) {
+          final mine = _rowToSettings(again);
+          if (mine.toPatchJson(includeNullBaby: true).toString() ==
+              next.toPatchJson(includeNullBaby: true).toString()) {
+            await _writeSettings(srv, dirty: false);
+            return srv;
+          }
+        }
+      } catch (_) {
+        // Çevrimdışı/hata → dirty kalır; syncIfCloud (syncAll turu) yeniden dener.
+      }
     }
     return next;
   }
@@ -138,24 +221,12 @@ class CycleRepository {
         );
   }
 
-  Future<void> _markSettingsClean() async {
-    final acct = _acct;
-    if (acct == null) return;
-    await (_db.update(_db.cycleSettingsTable)..where((s) => s.id.equals(acct)))
-        .write(const CycleSettingsTableCompanion(dirty: Value(false)));
-  }
-
   // ---- Girdiler ----
 
+  /// Yerel kayıtlar (R8: ağa ÇIKMAZ). Senkron [syncIfCloud] ile.
   Future<List<CycleEntry>> listEntries({DateTime? from, DateTime? to}) async {
     final acct = _acct;
     if (acct == null) return const [];
-    if (_cloudEnabled()) {
-      try {
-        await _pushDirtyEntries();
-        await _pullEntries();
-      } catch (_) {}
-    }
     final q = _db.select(_db.cycleEntries)
       ..where((e) => e.isDeleted.equals(false) & e.accountId.equals(acct));
     if (from != null) {
@@ -289,16 +360,8 @@ class CycleRepository {
   Future<void> migrateToCloud() async {
     final acct = _acct;
     if (acct == null) return;
-    final row = await (_db.select(_db.cycleSettingsTable)
-          ..where((s) => s.id.equals(acct)))
-        .getSingleOrNull();
-    if (row != null && row.dirty) {
-      try {
-        await _api.dio.patch('/cycle/settings',
-            data: _rowToSettings(row).toPatchJson());
-        await _markSettingsClean();
-      } catch (_) {}
-    }
+    final row = await _settingsRow();
+    if (row != null && row.dirty) await _pushDirtySettings(row);
     await _pushDirtyEntries();
   }
 
@@ -490,21 +553,25 @@ final cycleRepositoryProvider = Provider<CycleRepository>(
   ),
 );
 
-/// Kullanıcının adet modülü ayarı (yerel; premium'da sunucuyla eşlenir).
-/// Hesap değişince yeniden yüklenir (aktif hesaba göre kapsamlı).
-final cycleSettingsProvider = FutureProvider<CycleSettings>((ref) async {
+/// Kullanıcının adet modülü ayarı — yerel drift akışı (R8); bulut senkronu
+/// arka planda (`syncIfCloud`), ekran ağı beklemez (O6/O26).
+/// Hesap değişince yeniden kurulur (aktif hesaba göre kapsamlı).
+final cycleSettingsProvider = StreamProvider<CycleSettings>((ref) async* {
   // Açılış yarışı koruması: oturum çözülmeden (auth loading) activeAccountId
   // null olur ve boş ayarlar "kurulmamış" sanılıp sihirbaz açılırdı. Auth
   // sonuçlanana dek bekle → shell bu sürede spinner gösterir.
   await ref.watch(authControllerProvider.future);
   ref.watch(activeAccountIdProvider);
-  return ref.watch(cycleRepositoryProvider).getSettings();
+  final repo = ref.watch(cycleRepositoryProvider);
+  unawaited(repo.syncIfCloud());
+  yield* repo.watchSettings();
 });
 
-/// Tüm adet kayıtları (yeni→eski).
-final cycleEntriesProvider = FutureProvider<List<CycleEntry>>((ref) async {
-  // bkz. cycleSettingsProvider — aynı açılış yarışı koruması.
+/// Tüm adet kayıtları (yeni→eski) — yerel drift akışı (R8).
+final cycleEntriesProvider = StreamProvider<List<CycleEntry>>((ref) async* {
+  // bkz. cycleSettingsProvider — aynı açılış yarışı koruması. Senkron tetiği
+  // ayar provider'ında (iki kez ağ turu açmamak için).
   await ref.watch(authControllerProvider.future);
   ref.watch(activeAccountIdProvider);
-  return ref.watch(cycleRepositoryProvider).listEntries();
+  yield* ref.watch(cycleRepositoryProvider).watchEntries();
 });

@@ -12,6 +12,7 @@ import '../../core/notification_service.dart';
 import '../../core/review_service.dart';
 import '../../core/analytics_service.dart';
 import '../../core/providers.dart';
+import '../../data/cycle_repository.dart';
 import '../../data/health_repository.dart';
 import '../../data/record_repository.dart';
 import '../../data/subscription_repository.dart';
@@ -293,6 +294,9 @@ class SyncService with WidgetsBindingObserver {
           hadError = true;
         }
       }
+      // Adet modülü (kişisel, bebekten bağımsız): dirty ayar/kayıt yeniden
+      // denenir + pull (O6/O7). Yalnız tam turlarda; hata kaydı turunu etkilemez.
+      if (!sharedOnly) await _syncCycle();
       _ref.read(syncStatusProvider.notifier).set(hadError
           ? SyncStatus(
               lastSyncedAt: _ref.read(syncStatusProvider).lastSyncedAt,
@@ -319,6 +323,14 @@ class SyncService with WidgetsBindingObserver {
       _pending = false;
       await syncAll(sharedOnly: false);
     }
+  }
+
+  /// Adet ayarı + kayıtlarının bulut senkronu (yalnız kendi premium'um;
+  /// cycleRepository kapıyı kendisi uygular). Bilinçli sessiz.
+  Future<void> _syncCycle() async {
+    try {
+      await _ref.read(cycleRepositoryProvider).syncIfCloud();
+    } catch (_) {}
   }
 
   /// İlaç/vitamin planlarının aile senkronu. Kayıt senkronundan BAĞIMSIZ hata

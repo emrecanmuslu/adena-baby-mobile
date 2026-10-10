@@ -367,7 +367,8 @@ void main() {
           s.reply(204, null);
         });
 
-      await cloudRepo().listEntries(); // push+pull tetikler
+      // O6/R8: listEntries artık yalnız yerel; push+pull syncIfCloud ile.
+      await cloudRepo().syncIfCloud();
       expect(deleted, isTrue);
       final row = await (db.select(db.cycleEntries)
             ..where((r) => r.id.equals(e.id)))
