@@ -162,8 +162,9 @@ class DevSettingsScreen extends ConsumerWidget {
     AppConfig.setRuntimeApiBaseUrl(url);
     // 4) Yerel veriyi temizle (ortamlar arası karışmasın).
     try {
-      SyncService.wiping = true; // silme sırasında sync re-insert etmesin (yarış)
-      await ref.read(databaseProvider).wipeAllData();
+      // Silme sırasında sync re-insert etmesin (yarış); bayrak bitince sıfırlanır.
+      await SyncService.whileWiping(
+          () => ref.read(databaseProvider).wipeAllData());
     } catch (_) {}
     // 5) Yeniden başlat → ApiClient yeni tabana bağlanır, oturum sıfırlanır.
     if (context.mounted) RestartWidget.restartApp(context);

@@ -182,7 +182,21 @@ class SyncService with WidgetsBindingObserver {
   bool _running = false; // çakışan eşitleme turlarını önle
   bool _pending = false; // tur sürerken gelen istek → tur bitince bir kez daha çalış
   // GDPR "yerel verileri sil" sırasında sync re-insert etmesin (wipe yarışı).
+  // Doğrudan set ETME → [whileWiping] kullan: bayrak eskiden hiç false'a
+  // dönmüyordu ve (RestartWidget süreci öldürmediği için) silme sonrası sync
+  // süreç ömrü boyunca sessizce kapalı kalıyordu (BULGULAR.md K3).
   static bool wiping = false;
+
+  /// [body] (yerel silme) çalışırken sync'i durdurur; gövde başarılı da bitse
+  /// hata da fırlatsa bayrak her durumda sıfırlanır.
+  static Future<T> whileWiping<T>(Future<T> Function() body) async {
+    wiping = true;
+    try {
+      return await body();
+    } finally {
+      wiping = false;
+    }
+  }
 
   static const _pollInterval = Duration(minutes: 1);
 

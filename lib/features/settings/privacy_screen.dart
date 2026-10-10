@@ -245,8 +245,9 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
     );
     if (confirm != true) return;
     try {
-      SyncService.wiping = true; // silme sırasında sync re-insert etmesin (yarış)
-      await ref.read(databaseProvider).wipeAllData();
+      // Silme sırasında sync re-insert etmesin (yarış); bayrak bitince sıfırlanır.
+      await SyncService.whileWiping(
+          () => ref.read(databaseProvider).wipeAllData());
       await LocalSession.clearLocalProfile();
       if (mounted) RestartWidget.restartApp(context);
     } catch (e) {
