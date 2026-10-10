@@ -386,6 +386,18 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     final db = ref.read(databaseProvider);
     if (!await GuestMigration.hasData(db, accountId)) return;
     _guestMigChecked = true; // veri var → bu oturumda bir kez teklif et
+    // K7: bebeksiz (yalnız adet takvimi) misafir için metin adet verisine uygun.
+    final hasBaby = await GuestMigration.hasBabyData(db, accountId);
+    final offerBody = hasBaby
+        ? tr('Kayıt olmadan eklediğin bebek ve kayıtlar bu cihazda duruyor. '
+            'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.')
+        : tr('Kayıt olmadan tuttuğun adet takvimi kayıtların bu cihazda duruyor. '
+            'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.');
+    final deleteBody = hasBaby
+        ? tr('Aktarmadığın bebek ve kayıtlar bu cihazdan KALICI olarak '
+            'silinecek. Bu işlem geri alınamaz.')
+        : tr('Aktarmadığın adet kayıtların bu cihazdan KALICI olarak silinecek. '
+            'Bu işlem geri alınamaz.');
     // KRİTİK: kayıt/giriş anında dinleyici tetikleniyor ama go_router aynı anda
     // yeni hesabı yönlendiriyor (bebek yoksa → /onboarding, varsa → /home). Diyalog
     // bu geçişten ÖNCE basılırsa kök navigator geçişte onu anında kaldırıyor
@@ -403,9 +415,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
           canPop: false,
           child: AlertDialog(
             title: Text(tr('Kayıtlarını hesabına aktaralım mı?')),
-            content: Text(
-                tr('Kayıt olmadan eklediğin bebek ve kayıtlar bu cihazda duruyor. '
-                    'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.')),
+            content: Text(offerBody),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(c, false),
@@ -437,9 +447,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
           canPop: false,
           child: AlertDialog(
             title: Text(tr('Misafir verileri silinsin mi?')),
-            content: Text(
-                tr('Aktarmadığın bebek ve kayıtlar bu cihazdan KALICI olarak '
-                    'silinecek. Bu işlem geri alınamaz.')),
+            content: Text(deleteBody),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(c, false),
