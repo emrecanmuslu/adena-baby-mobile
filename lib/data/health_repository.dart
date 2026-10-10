@@ -203,6 +203,16 @@ class HealthRepository {
     return _toReminder(row);
   }
 
+  /// Cihazdaki TÜM bebeklerin AÇIK hatırlatıcı id'leri — `NotificationService.sync`
+  /// mutabakatı bununla yapılır (tek bebeğin listesiyle yapılınca diğer bebeklerin
+  /// bildirimleri yetim sanılıp siliniyordu, BULGULAR.md K1).
+  Future<Set<int>> activeReminderIds() async {
+    final rows = await (_db.select(_db.localReminders)
+          ..where((r) => r.enabled.equals(true)))
+        .get();
+    return {for (final r in rows) r.localId};
+  }
+
   Future<void> setReminderEnabled(int id, bool enabled) async {
     await (_db.update(_db.localReminders)..where((r) => r.localId.equals(id)))
         .write(LocalRemindersCompanion(enabled: Value(enabled)));

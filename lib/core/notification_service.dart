@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -15,10 +16,14 @@ import 'i18n.dart';
 /// Üç tür: özel/randevu hatırlatıcıları (günlük veya tek-sefer), beslenme uyarısı
 /// (son beslenme + aralık) ve süren uyku/emzirme sayaçları.
 class NotificationService {
-  NotificationService._();
+  NotificationService._() : _plugin = FlutterLocalNotificationsPlugin();
   static final NotificationService instance = NotificationService._();
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  /// Yalnız test: sahte eklentiyle bağımsız bir örnek (platform kanalı yok).
+  @visibleForTesting
+  NotificationService.withPlugin(this._plugin);
+
+  final FlutterLocalNotificationsPlugin _plugin;
   bool _ready = false;
   bool _permissionAsked = false;
 
@@ -445,18 +450,29 @@ class NotificationService {
   ///   • periyodik: {repeat:'interval', every_min:15|30|60, title?} → kapatılana
   ///     dek her X dakikada bir (ateş takibi vb. için)
   /// Eski/uygulanmamış şekiller (vaccine days_before, nudge idle_hours) atlanır.
-  Future<void> sync(List<Reminder> reminders) {
+  ///
+  /// [reminders] = TEK bebeğin listesi (kurulacaklar). [allActiveIds] = cihazdaki
+  /// TÜM bebeklerin aktif hatırlatıcı id'leri (mutabakat için, DB'den taze okunur).
+  /// Eskiden mutabakat yalnız [reminders]'a bakıyordu → B bebeği senkronlanınca
+  /// A bebeğinin hatırlatıcıları yetim sanılıp siliniyordu (BULGULAR.md K1).
+  Future<void> sync(
+    List<Reminder> reminders, {
+    required Future<Set<int>> Function() allActiveIds,
+  }) {
     // Seri çalıştır: iki dinleyici (Hatırlatıcılar ekranı + global _ReminderSync)
     // aynı anda tetiklenebilir; await'ler arasında birbirine karışan iki sync,
     // iptal edilmiş bir planı geri kurabilir.
-    final run = _syncChain.then((_) => _syncNow(reminders));
+    final run = _syncChain.then((_) => _syncNow(reminders, allActiveIds));
     _syncChain = run.catchError((_) {});
     return run;
   }
 
   Future<void> _syncChain = Future.value();
 
-  Future<void> _syncNow(List<Reminder> reminders) async {
+  Future<void> _syncNow(
+    List<Reminder> reminders,
+    Future<Set<int>> Function() allActiveIds,
+  ) async {
     if (!_ready) await init();
     final active = reminders.where((r) => r.enabled).toList();
     if (active.isNotEmpty) await _ensurePermission();
@@ -465,15 +481,28 @@ class NotificationService {
     // sayaç 900xxx / adet 600xxx / aile 700xxx korunur). Özel hatırlatıcı id'si
     // = Drift localId, yani _cycleBase altındaki TÜM bekleyen bildirimler bu
     // modülündür. Listeye göre tek tek iptal yerine bekleyenlerle MUTABAKAT:
-    // aktif listede olmayan her bekleyen iptal edilir — silinme anındaki bir
-    // yarışta yetim kalan periyodik alarm da böylece sonraki sync'te temizlenir.
+    // hiçbir bebeğin aktif listesinde olmayan her bekleyen iptal edilir —
+    // silinme anındaki bir yarışta yetim kalan periyodik alarm da böylece
+    // sonraki sync'te temizlenir. Küme, zincirde sıra bize gelince TAZE okunur
+    // (çağıranın listesi o ana kadar bayatlamış olabilir).
+    final listIds = {for (final r in reminders) r.id};
     final activeIds = {for (final r in active) r.id};
+    Set<int>? keep;
+    try {
+      keep = await allActiveIds();
+    } catch (_) {
+      // Kaynak okunamadı → başka bebeklerin bildirimlerine DOKUNMA; yalnız bu
+      // listede olup kapalı olanlar iptal edilir (aşağıda keep == null dalı).
+      keep = null;
+    }
     try {
       final pending = await _plugin.pendingNotificationRequests();
       for (final p in pending) {
-        if (p.id < _cycleBase && !activeIds.contains(p.id)) {
-          await _plugin.cancel(id: p.id);
-        }
+        if (p.id >= _cycleBase) continue;
+        final stale = keep != null
+            ? !keep.contains(p.id)
+            : (listIds.contains(p.id) && !activeIds.contains(p.id));
+        if (stale) await _plugin.cancel(id: p.id);
       }
     } catch (_) {
       // Bekleyenler okunamazsa eski davranışa düş: listedekileri iptal et.

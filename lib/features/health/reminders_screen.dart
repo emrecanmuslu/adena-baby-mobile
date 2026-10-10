@@ -107,7 +107,8 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
       if (next.isLoading) return;
       final list = next.asData?.value;
       if (list != null) {
-        NotificationService.instance.sync(list);
+        NotificationService.instance.sync(list,
+            allActiveIds: ref.read(healthRepositoryProvider).activeReminderIds);
         _pruneExpiredOnce(baby.id, list);
       }
     });

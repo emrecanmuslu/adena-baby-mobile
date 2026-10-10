@@ -380,7 +380,10 @@ class _ReminderSync extends ConsumerWidget {
     // hatırlatıcıyı yeniden kurmamak için yalnız oturmuş veriyle çalış.
     final async = ref.watch(remindersProvider(baby.id));
     final list = async.isLoading ? null : async.asData?.value;
-    if (list != null) NotificationService.instance.sync(list);
+    if (list != null) {
+      NotificationService.instance.sync(list,
+          allActiveIds: ref.read(healthRepositoryProvider).activeReminderIds);
+    }
     return const SizedBox.shrink();
   }
 }

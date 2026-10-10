@@ -66,7 +66,8 @@ Future<void> _syncApptReminderBg({
     });
     await container.read(recordRepositoryProvider).upsertLocal(updated);
     final list = await repo.reminders(babyId);
-    await NotificationService.instance.sync(list);
+    await NotificationService.instance
+        .sync(list, allActiveIds: repo.activeReminderIds);
     container.invalidate(remindersProvider(babyId));
   } catch (_) {
     // Hatırlatıcı kurulamazsa kayıt yine de kaydedilmiş kalır (sessiz geç).
