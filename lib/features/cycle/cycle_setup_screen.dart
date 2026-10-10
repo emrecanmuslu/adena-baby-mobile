@@ -84,8 +84,6 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
           );
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
-      ref.invalidate(cycleSettingsProvider);
-      ref.invalidate(cycleEntriesProvider);
       if (mounted) widget.onDone();
     } catch (e) {
       if (mounted) {

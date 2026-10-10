@@ -217,7 +217,6 @@ class _BabyEditScreenState extends ConsumerState<BabyEditScreen> {
               'predictions_hidden': false,
             },
           });
-          ref.invalidate(cycleSettingsProvider);
         }
       } catch (_) {}
       if (mounted) context.go('/home');

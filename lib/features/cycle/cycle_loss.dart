@@ -37,7 +37,6 @@ Future<void> recordCycleLoss(WidgetRef ref, {DateTime? date}) async {
     // (bayat id, sonraki köprü çağrılarında yanlış bebeğe işaret ederdi).
     'baby': null,
   });
-  ref.invalidate(cycleSettingsProvider);
 }
 
 /// Şefkatli moddan çık → adet takibine dön (kullanıcı hazır olunca).
@@ -46,7 +45,6 @@ Future<void> returnToTrackingFromLoss(WidgetRef ref) async {
     'lifecycle_mode': CycleLifecycleMode.tracking.name,
     'predictions_hidden': false,
   });
-  ref.invalidate(cycleSettingsProvider);
 }
 
 /// Gebelik durumunu güncelle sayfası: doğum / kayıp / takibe dön.

@@ -120,7 +120,6 @@ class _BodyState extends ConsumerState<_Body> {
     );
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
-      ref.invalidate(cycleSettingsProvider);
       // Hatırlatıcıları döngü tahminine göre yeniden planla.
       final entries = await ref.read(cycleRepositoryProvider).listEntries();
       final status = computeStatus(next, entries);
@@ -510,7 +509,6 @@ class _BodyState extends ConsumerState<_Body> {
     final next = widget.settings.copyWith(breastfeeding: picked);
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
-      ref.invalidate(cycleSettingsProvider);
       if (mounted) showAdToast(context, tr('Güncellendi'));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
@@ -554,8 +552,6 @@ class _BodyState extends ConsumerState<_Body> {
       });
       // Planlı adet bildirimlerini de iptal et (boş yapı → yalnız cancel).
       await NotificationService.instance.syncCycle(reminders: const {});
-      ref.invalidate(cycleEntriesProvider);
-      ref.invalidate(cycleSettingsProvider);
       if (mounted) {
         showAdToast(context, tr('Adet takvimi sıfırlandı'));
         // Ayarlar sayfası kurulumu silinen kabuğun üstünde kalmasın.

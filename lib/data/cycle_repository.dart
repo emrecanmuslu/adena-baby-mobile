@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../core/api_client.dart';
 import '../core/providers.dart';
 import '../features/auth/auth_controller.dart';
+import '../features/cycle/cycle_anchor.dart';
 import '../models/cycle.dart';
 import 'local/app_database.dart';
 import 'local_session.dart';
@@ -291,7 +292,7 @@ class CycleRepository {
     // doğum/kayıp kanamasıdır, adet değil).
     if (entry.isPeriod) {
       final s = await getSettings();
-      if (_afterLatestReset(entry.date, s)) {
+      if (afterLatestReset(entry.date, s)) {
         if (s.firstPeriodDate == null) {
           await patchSettings({'first_period_date': _isoDate(entry.date)});
         } else if (s.predictionsHidden) {
@@ -306,6 +307,8 @@ class CycleRepository {
         }
       }
     }
+    // D33: çapa gününün adet işareti bu kayıtla kalktıysa çapayı taşı.
+    if (!entry.isPeriod) await _maintainAnchorAfterRemoval(entry.date);
     if (_cloudEnabled()) {
       try {
         await _pushDirtyEntries();
@@ -316,7 +319,31 @@ class CycleRepository {
     return _toEntry(r);
   }
 
+  /// D33 / K6 politikası: çapa gününün adet işareti kalktıysa (silme, akış
+  /// kaldırma, senkronla silinme) çapa, sıfırlama sonrası KALAN en eski adet
+  /// gününe taşınır; kalan yoksa korunur. Çapa günü hâlâ adetse ya da [removed]
+  /// çapa günü değilse hiçbir şey yapmaz — kurulum sihirbazının kayıtsız çapası
+  /// sonraki adet kayıtlarıyla OYNAMAZ.
+  Future<void> _maintainAnchorAfterRemoval(DateTime removed) async {
+    final s = await getSettings();
+    final anchor = s.firstPeriodDate;
+    if (anchor == null || _dayOnly(anchor) != _dayOnly(removed)) return;
+    final entries = await listEntries();
+    final stillPeriod = entries.any(
+        (e) => _dayOnly(e.date) == _dayOnly(anchor) && e.isPeriod);
+    if (stillPeriod) return;
+    final cand = anchorCandidate(
+        entries.where((e) => e.isPeriod).map((e) => e.date), s);
+    if (cand == null || cand == _dayOnly(anchor)) return;
+    await patchSettings({
+      'first_period_date': _isoDate(cand),
+      'lifecycle_mode': s.lifecycleMode.name, // örtük mod geçişi olmasın
+    });
+  }
+
   Future<void> deleteEntry(String id) async {
+    final row = await (_db.select(_db.cycleEntries)..where((e) => e.id.equals(id)))
+        .getSingleOrNull();
     await (_db.update(_db.cycleEntries)..where((e) => e.id.equals(id))).write(
       CycleEntriesCompanion(
         isDeleted: const Value(true),
@@ -324,6 +351,7 @@ class CycleRepository {
         clientUpdatedAt: Value(DateTime.now().toUtc()),
       ),
     );
+    if (row != null) await _maintainAnchorAfterRemoval(row.date); // D33
     if (_cloudEnabled()) {
       try {
         await _pushDirtyEntries();
@@ -400,6 +428,10 @@ class CycleRepository {
     if (stale.skipped) {
       debugPrint('[cycle-pull] silme atlandı: ${stale.skippedReason}');
     }
+    final anchor = (await getSettings()).firstPeriodDate;
+    final anchorWasPeriod = anchor != null &&
+        (await listEntries()).any(
+            (e) => _dayOnly(e.date) == _dayOnly(anchor) && e.isPeriod);
     await _db.transaction(() async {
       for (final (m, ce) in parsed) {
         final l = localById[ce.id];
@@ -433,6 +465,8 @@ class CycleRepository {
         await (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(id))).go();
       }
     });
+    // D33: başka cihaz çapa gününün adet işaretini kaldırdıysa çapayı taşı.
+    if (anchorWasPeriod) await _maintainAnchorAfterRemoval(anchor);
   }
 
   /// Silmeler tek tek DELETE (404 = zaten yok → başarı); oluştur/güncellemeler
@@ -506,19 +540,6 @@ class CycleRepository {
       pushErrors[id] = 'HTTP $code';
       debugPrint('[cycle-push] kalıcı red $id: HTTP $code ${e.response?.data}');
     }
-  }
-
-  /// Verilen gün, son sıfırlama olayının (doğum/kayıp) gününden SONRA mı?
-  /// Olay yoksa her gün geçerlidir. Olay günü dahil öncesi geçersizdir —
-  /// bkz. saveEntry'deki çapa kancası (backfill koruması).
-  static bool _afterLatestReset(DateTime day, CycleSettings s) {
-    final resets = [
-      if (s.birthDate != null) _dayOnly(s.birthDate!),
-      if (s.lastLossDate != null) _dayOnly(s.lastLossDate!),
-    ];
-    if (resets.isEmpty) return true;
-    final latest = resets.reduce((a, b) => b.isAfter(a) ? b : a);
-    return _dayOnly(day).isAfter(latest);
   }
 
   static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);

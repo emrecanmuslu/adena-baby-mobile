@@ -99,7 +99,6 @@ class _BornFlowScreenState extends ConsumerState<BornFlowScreen> {
             // henüz dönmedi" (loşia/bekleme) moduna geçsin, aktif takipte kalmasın.
             'first_period_date': null,
           });
-          ref.invalidate(cycleSettingsProvider);
         }
       } catch (_) {}
       if (!mounted) return;

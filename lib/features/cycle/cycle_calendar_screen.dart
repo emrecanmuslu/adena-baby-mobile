@@ -975,8 +975,6 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       _editGuard.run(() => _unmarkPeriodNow(d, e));
 
   void _afterEdit(String msg) {
-    ref.invalidate(cycleEntriesProvider);
-    ref.invalidate(cycleSettingsProvider); // ilk adet → mod değişebilir
     if (mounted) showAdToast(context, msg);
   }
 
@@ -1105,7 +1103,6 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     if (ok != true) return;
     try {
       await ref.read(cycleRepositoryProvider).deleteEntry(entry.id);
-      ref.invalidate(cycleEntriesProvider);
       if (mounted) showAdToast(context, tr('Silindi'));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));

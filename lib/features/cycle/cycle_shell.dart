@@ -89,7 +89,7 @@ class _CycleShellState extends ConsumerState<CycleShell>
             initial: settings,
             babyBirthDate: baby?.birthDate,
             cycleFirst: !hasBaby,
-            onDone: () => ref.invalidate(cycleSettingsProvider),
+            onDone: () {}, // ayar yazımı akışa düşer (Stream); yenileme gerekmez
           );
         }
         return Scaffold(

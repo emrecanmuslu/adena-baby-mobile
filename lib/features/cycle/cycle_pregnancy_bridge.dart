@@ -68,7 +68,6 @@ Future<Baby?> ensureExpectingBabyForPregnancy(
     'predictions_hidden': false,
     'baby': baby.id,
   });
-  ref.invalidate(cycleSettingsProvider);
   return baby;
 }
 

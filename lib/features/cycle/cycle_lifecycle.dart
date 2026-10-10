@@ -80,7 +80,6 @@ Future<void> setCycleLifecycleMode(
         '${ttcStartedAt.day.toString().padLeft(2, '0')}';
   }
   await repo.patchSettings(fields);
-  ref.invalidate(cycleSettingsProvider);
 }
 
 /// Ayarlar/ana ekranda gösterilen mod seçici — "Hedefim" (Flo pariteti).

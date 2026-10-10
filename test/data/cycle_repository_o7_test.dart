@@ -185,14 +185,12 @@ void main() {
       final settings = await localRepo().getSettings();
       final after = computeStatus(settings, await localRepo().listEntries(),
           today: today);
-      expect(settings.firstPeriodDate, DateTime(2026, 5, 1));
-      expect(after.mode, CycleMode.active,
-          reason: 'çapa settings\'te durduğundan takip aktif kalır');
-      // BİLİNEN SAPMA (BULGULAR.md D33 / K6 aşaması): çapa günü kaydı silinince
-      // 2 Mayıs `periodStarts` ile yeni başlangıç sayılır → dayInCycle 10→9
-      // kayar. Motor/çapa semantiği K6'da ele alınacak; burada yalnız "aktif
-      // kalır, çapa korunur, çökmez" garanti edilir.
-      expect(after.dayInCycle, lessThanOrEqualTo(before.dayInCycle));
+      // K6/D33: başka cihaz çapa gününün kaydını sildi → çapa kalan en eski
+      // adet gününe (2 Mayıs) taşınır; hayalet ikinci başlangıç oluşmaz.
+      expect(settings.firstPeriodDate, DateTime(2026, 5, 2));
+      expect(after.mode, CycleMode.active);
+      expect(after.dayInCycle, before.dayInCycle - 1);
+      expect(after.cycleNumber, before.cycleNumber);
     });
   });
 

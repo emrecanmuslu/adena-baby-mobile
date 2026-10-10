@@ -140,5 +140,6 @@ Commit 3b (K2 ek): paylaşılan temiz bebek listeden düşünce silinmeden önce
 |---|---|---|---|---|
 | 7 | şema v15 + fix(K4/O21) sağlık | migration (`dirty`, damgalar, `pushError`, caregiver temizliği, K-4 backfill); `_setStatus` dirty; delta push; pull K-3 tetikleriyle; `importFromCloud` R1 | yüksek | migration v14→v15 backfill; yalnız dirty gönderilir; temiz satır sunucudan güncellenir; dirty korunur |
 | 8 | fix(O4) aile ayarları | `settingsDirty`, `GET /settings` pull, değişen-alan PATCH (K-5) | orta | yerel dirty ayar ezilmez; temiz ayar sunucudan dolar; yalnız değişen alan gönderilir |
+| 8b | O26 kalanı: `patchSettings`/`saveEntry` bulut açıkken PATCH/push'u satır içinde bekliyor → `requestSyncSoon`'a bırakılacak (ekran kaydı anında döner) | düşük | repo testi: patch sonrası ağ beklenmez, dirty syncIfCloud'da gider |
 | 9 | "Gönderilemeyen değişiklik" banner'ı + "değişikliği geri al" (K-1) | `pushError` kolonu + `syncStatusProvider` sayacı + UI | düşük | — |
 | 10 | (backend sonrası) | sağlık kalem damgası, `bulk` id eşlemesi, anı tombstone, anne `updated_at` | — | sözleşme güncellenince |

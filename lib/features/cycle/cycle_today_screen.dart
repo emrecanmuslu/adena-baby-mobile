@@ -115,8 +115,6 @@ class _Today extends ConsumerWidget {
       );
       try {
         await ref.read(cycleRepositoryProvider).saveEntry(entry);
-        ref.invalidate(cycleEntriesProvider);
-        ref.invalidate(cycleSettingsProvider); // ilk adet → bekleme/loşia'dan aktife geçiş
         if (context.mounted) showAdToast(context, tr('Adet başlangıcı kaydedildi'));
       } catch (err) {
         if (context.mounted) showAdError(context, apiErrorText(err));
