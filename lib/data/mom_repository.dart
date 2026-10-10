@@ -1,4 +1,8 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -8,11 +12,16 @@ import '../models/mom_entry.dart';
 import 'local/app_database.dart';
 import 'local_session.dart';
 import 'sync_gate.dart';
+import 'sync_merge.dart';
 
 const _uuid = Uuid();
 
 /// Bekleme modu anne takibi (kilo/randevu/not) — **local-first**. Free'de
 /// telefonda; premium'da `/babies/{id}/mom-entries` ile aynalanır.
+///
+/// Senkron kuralları (TASARIM-SENKRON.md §2, O5): R1/R2/R4/R5/R8 — anı ile aynı.
+/// Sunucu `updated_at` döndürmediğinden damga karşılaştırması yok: dirty yerel
+/// kazanır, temiz yerel sunucuyu alır.
 class MomRepository {
   final AppDatabase _db;
   final ApiClient _api;
@@ -23,18 +32,35 @@ class MomRepository {
 
   MomRepository(this._db, this._api, this._localUserId, this._cloudEnabled);
 
+  /// Kalıcı reddedilen push'lar: id → açıklama (bellek-içi; kolon v15'te, K-1).
+  final Map<String, String> pushErrors = {};
+
+  // ---- Yerel okuma ----
+
+  /// Reaktif liste (yeni→eski, tombstone gizli); ağ beklemez (R8).
+  Stream<List<MomEntry>> watch(String babyId) {
+    final q = _db.select(_db.momEntries)
+      ..where((m) => m.baby.equals(babyId) & m.isDeleted.equals(false))
+      ..orderBy([(m) => OrderingTerm.desc(m.date)]);
+    return q.watch().map((rows) => rows.map(_toModel).toList());
+  }
+
+  /// Tek seferlik yerel okuma (dışa aktarma vb.). Ağa ÇIKMAZ.
   Future<List<MomEntry>> list(String babyId) async {
-    if (_cloudEnabled(babyId)) {
-      try {
-        await pushDirty(babyId);
-        await _pull(babyId);
-      } catch (_) {}
-    }
     final rows = await (_db.select(_db.momEntries)
           ..where((m) => m.baby.equals(babyId) & m.isDeleted.equals(false))
           ..orderBy([(m) => OrderingTerm.desc(m.date)]))
         .get();
     return rows.map(_toModel).toList();
+  }
+
+  /// Bulut uygunsa arka planda push + pull; her hata yutulur.
+  Future<void> syncIfCloud(String babyId) async {
+    if (!_cloudEnabled(babyId)) return;
+    try {
+      await pushDirty(babyId);
+      await _pull(babyId);
+    } catch (_) {}
   }
 
   Future<MomEntry> add(
@@ -95,13 +121,41 @@ class MomRepository {
 
   Future<void> _pull(String babyId) async {
     final resp = await _api.dio.get('/babies/$babyId/mom-entries');
-    final data = resp.data as List<dynamic>;
+    // Yanıt TAMAMEN parse edilmeden hiçbir şey uygulanmaz (R4 güvencesi).
+    final rows = (resp.data as List<dynamic>)
+        .map((e) => e as Map<String, dynamic>)
+        .toList();
+    final serverIds = {for (final m in rows) m['id'] as String};
+    final local = await (_db.select(_db.momEntries)
+          ..where((m) => m.baby.equals(babyId)))
+        .get();
+    final localById = {for (final r in local) r.id: r};
+    final stale = staleLocalIds(
+      local: [
+        for (final r in local)
+          LocalRowState(r.id, dirty: r.dirty, deleted: r.isDeleted)
+      ],
+      serverIds: serverIds,
+      statusCode: resp.statusCode ?? 0,
+      parsedOk: true,
+    );
+    if (stale.skipped) {
+      debugPrint('[mom-pull] silme atlandı: ${stale.skippedReason}');
+    }
     await _db.transaction(() async {
-      for (final e in data) {
-        final m = e as Map<String, dynamic>;
+      for (final m in rows) {
+        final id = m['id'] as String;
+        final l = localById[id];
+        // Sunucu damgası yok → dirty yerel kazanır, temiz yerel sunucuyu alır.
+        final decision = decideServerRow(
+          localExists: l != null,
+          localDirty: l?.dirty ?? false,
+          localDeleted: l?.isDeleted ?? false,
+        );
+        if (decision != MergeDecision.apply) continue;
         await _db.into(_db.momEntries).insertOnConflictUpdate(
               MomEntriesCompanion.insert(
-                id: m['id'] as String,
+                id: id,
                 baby: babyId,
                 kind: (m['kind'] as String?) ?? 'note',
                 date: DateTime.parse(m['date'] as String).toLocal(),
@@ -115,6 +169,10 @@ class MomRepository {
               ),
             );
       }
+      // R4: sunucuda artık olmayan temiz satırlar (başka üye sildi; sunucu hard delete).
+      for (final id in stale.ids) {
+        await (_db.delete(_db.momEntries)..where((m) => m.id.equals(id))).go();
+      }
     });
   }
 
@@ -124,25 +182,33 @@ class MomRepository {
         .write(const MomEntriesCompanion(dirty: Value(true)));
   }
 
+  /// Silmeler tek tek DELETE (404 = zaten yok → başarı); oluştur/güncellemeler
+  /// TEK toplu istek (`/mom-entries/bulk`). `saved` id'leri temizlenir; `failed`
+  /// listesindekiler ve kalıcı (4xx) redler `pushErrors`'a yazılır, dirty kalır.
   Future<void> pushDirty(String babyId) async {
     final dirty = await (_db.select(_db.momEntries)
           ..where((m) => m.baby.equals(babyId) & m.dirty.equals(true)))
         .get();
     if (dirty.isEmpty) return;
 
-    // Silmeler (nadir) tek tek DELETE; oluştur/güncellemeler TEK toplu istek
-    // (/mom-entries/bulk) — migrasyonda N kayıt için N istek yerine 1 istek.
     final upserts = <MomEntryRow>[];
     for (final r in dirty) {
-      if (r.isDeleted) {
-        try {
-          await _api.dio.delete('/babies/$babyId/mom-entries/${r.id}');
-          await (_db.delete(_db.momEntries)..where((m) => m.id.equals(r.id)))
-              .go();
-        } catch (_) {}
-      } else {
+      if (!r.isDeleted) {
         upserts.add(r);
+        continue;
       }
+      try {
+        await _api.dio.delete('/babies/$babyId/mom-entries/${r.id}');
+      } on DioException catch (e) {
+        if (e.response?.statusCode != 404) {
+          _noteFailure(r.id, e);
+          continue;
+        }
+      } catch (_) {
+        continue;
+      }
+      await (_db.delete(_db.momEntries)..where((m) => m.id.equals(r.id))).go();
+      pushErrors.remove(r.id);
     }
     if (upserts.isEmpty) return;
 
@@ -151,20 +217,40 @@ class MomRepository {
         '/babies/$babyId/mom-entries/bulk',
         data: [for (final r in upserts) _toModel(r).toCreateJson()],
       );
-      // Sunucunun onayladığı id'leri temizle (kısmî başarıda kalanlar dirty kalır,
-      // sonraki senkronda yeniden denenir).
-      final saved = (((resp.data as Map)['saved'] as List?) ?? const [])
-          .map((e) => e.toString())
-          .toSet();
+      final body = resp.data as Map;
+      final saved =
+          ((body['saved'] as List?) ?? const []).map((e) => e.toString()).toSet();
+      final failed = <String, String>{
+        for (final f in (body['failed'] as List?) ?? const [])
+          if (f is Map && f['id'] != null)
+            f['id'].toString(): (f['error'] ?? 'failed').toString(),
+      };
       await _db.transaction(() async {
         for (final r in upserts) {
           if (saved.contains(r.id)) {
             await (_db.update(_db.momEntries)..where((m) => m.id.equals(r.id)))
                 .write(const MomEntriesCompanion(dirty: Value(false)));
+            pushErrors.remove(r.id);
+          } else if (failed.containsKey(r.id)) {
+            pushErrors[r.id] = failed[r.id]!; // sunucu bu öğeyi reddetti (kalıcı)
           }
         }
       });
-    } catch (_) {}
+    } on DioException catch (e) {
+      for (final r in upserts) {
+        _noteFailure(r.id, e);
+      }
+    } catch (_) {
+      // Beklenmeyen — dirty kalır, sonraki tur.
+    }
+  }
+
+  void _noteFailure(String id, DioException e) {
+    if (classifyDioError(e) == PushFailure.permanent) {
+      final code = e.response?.statusCode;
+      pushErrors[id] = 'HTTP $code';
+      debugPrint('[mom-push] kalıcı red $id: HTTP $code ${e.response?.data}');
+    }
   }
 
   Future<MomEntry?> _byId(String id) async {
@@ -192,7 +278,12 @@ final momRepositoryProvider = Provider<MomRepository>(
   ),
 );
 
-/// Aktif bebeğin anne takibi kayıtları (tarihe göre yeni→eski).
-final momEntriesProvider = FutureProvider.family<List<MomEntry>, String>(
-  (ref, babyId) => ref.watch(momRepositoryProvider).list(babyId),
+/// Aktif bebeğin anne takibi kayıtları (yeni→eski) — yerel drift akışı (R8);
+/// bulut senkronu arka planda tetiklenir, ekran ağı beklemez.
+final momEntriesProvider = StreamProvider.family<List<MomEntry>, String>(
+  (ref, babyId) {
+    final repo = ref.watch(momRepositoryProvider);
+    unawaited(repo.syncIfCloud(babyId));
+    return repo.watch(babyId);
+  },
 );

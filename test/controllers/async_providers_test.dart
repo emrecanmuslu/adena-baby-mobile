@@ -202,23 +202,32 @@ void main() {
       return c;
     }
 
-    test('resolves to repo.list(babyId)', () async {
-      when(() => repo.list('b1')).thenAnswer((_) async => [
+    // O5/R8: provider artık yerel drift akışını (watch) dinler; bulut senkronu
+    // (syncIfCloud) arka planda tetiklenir, ekran ağı beklemez.
+    test('resolves to repo.watch(babyId) and kicks syncIfCloud in background',
+        () async {
+      when(() => repo.syncIfCloud('b1')).thenAnswer((_) async {});
+      when(() => repo.watch('b1')).thenAnswer((_) => Stream.value([
             MomEntry(id: 'm1', kind: MomKind.weight, date: DateTime(2026, 6, 1),
                 weightKg: 60),
-          ]);
+          ]));
 
       final c = make();
-      final out = await c.read(momEntriesProvider('b1').future);
+      final sub = c.listen(momEntriesProvider('b1'), (_, _) {},
+          fireImmediately: true);
+      final out = (await drain(sub)).requireValue;
 
       expect(out.single.id, 'm1');
       expect(out.single.weightKg, 60);
-      verify(() => repo.list('b1')).called(1);
+      verify(() => repo.watch('b1')).called(1);
+      verify(() => repo.syncIfCloud('b1')).called(1);
+      verifyNever(() => repo.list(any()));
     });
 
-    test('error → AsyncError', () async {
-      when(() => repo.list('b1'))
-          .thenAnswer((_) async => throw Exception('boom'));
+    test('stream error → AsyncError', () async {
+      when(() => repo.syncIfCloud('b1')).thenAnswer((_) async {});
+      when(() => repo.watch('b1'))
+          .thenAnswer((_) => Stream.error(Exception('boom')));
 
       final c = make();
       final sub = c.listen(momEntriesProvider('b1'), (_, _) {},
