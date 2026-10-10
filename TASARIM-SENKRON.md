@@ -134,6 +134,14 @@ Migration `from < 15`: `addColumn` + yukarıdaki `UPDATE`'ler. Veri kaybı riski
 
 Commit 3b (K2 ek): paylaşılan temiz bebek listeden düşünce silinmeden önce `GET /babies/{id}` ile doğrulanır (403/404 → sil + child purge; 200/ağ/5xx → dokunma). Gerekçe: child purge (`records/memories/mom/health`) dirty satırları da sildiğinden 200 ile gelen eksik liste üyenin gönderilmemiş verisini kaybettirirdi.
 
+### Bu sürüm — 3. aşama (adet/misafir)
+
+| # | Commit | Kapsam |
+|---|---|---|
+| K6 (`249aad1`) | çapa politikası + D33 + invalidate temizliği | bkz. commit mesajı |
+| K7 (`<K7>`) | bebeksiz misafirin adet verisi göçü | |
+| K8 (`<K8>`) | misafir göçünde adet ayarı | |
+
 ### Sonraki sürüm (şema v15; commit 7-8)
 
 | # | Commit | Kapsam | Risk | Testler |
