@@ -114,8 +114,13 @@ class GuestMigration {
         clientUpdatedAt: Value(now),
       ),
     );
-    // Adet ayarı (tekil satır; id = hesap id). Yeni hesapta ayar yoksa misafirinkini
-    // taşı; varsa (buluttan indi) yeni hesabınki korunur, misafirinki silinir.
+    // Adet ayarı (tekil satır; id = hesap id) — K8. Yeni hesabın satırı
+    // "kurulmamış" ise (yok YA DA breastfeeding boş: initialImport'un indirdiği,
+    // backend get_or_create varsayılanı — sihirbaz tamamlanmamış; cycle_shell de
+    // aynı ölçütle sihirbaz açar) misafirin kurulumu onu ezer. Satır gerçekten
+    // kurulmuşsa (başka cihazda sihirbaz bitmiş) o korunur, misafirinki atılır.
+    // Kopya `toCompanion` ile TÜM kolonları taşır (yeni kolon eklenince elle
+    // liste güncellemek gerekmez; test tüm iş alanlarını karşılaştırır).
     final guestS = await (db.select(db.cycleSettingsTable)
           ..where((s) => s.id.equals(guestId)))
         .getSingleOrNull();
@@ -123,24 +128,15 @@ class GuestMigration {
       final newS = await (db.select(db.cycleSettingsTable)
             ..where((s) => s.id.equals(newAccountId)))
           .getSingleOrNull();
-      if (newS == null) {
+      final newInitialized =
+          newS != null && (newS.breastfeeding ?? '').isNotEmpty;
+      if (!newInitialized) {
         await db.into(db.cycleSettingsTable).insertOnConflictUpdate(
-              CycleSettingsTableCompanion(
+              guestS.toCompanion(false).copyWith(
                 id: Value(newAccountId),
-                baby: Value(guestS.baby),
-                birthDate: Value(guestS.birthDate),
-                breastfeeding: Value(guestS.breastfeeding),
-                firstPeriodDate: Value(guestS.firstPeriodDate),
-                reminders: Value(guestS.reminders),
-                showFertilityWarning: Value(guestS.showFertilityWarning),
-                enabled: Value(guestS.enabled),
-                expectedCycleLength: Value(guestS.expectedCycleLength),
-                periodLength: Value(guestS.periodLength),
-                lutealPhaseLength: Value(guestS.lutealPhaseLength),
-                smartPrediction: Value(guestS.smartPrediction),
-                weekStartsSunday: Value(guestS.weekStartsSunday),
+                dirty: const Value(true), // sunucuya PATCH gitsin
                 clientUpdatedAt: Value(now),
-                dirty: const Value(true),
+                serverUpdatedAt: const Value(null),
               ),
             );
       }

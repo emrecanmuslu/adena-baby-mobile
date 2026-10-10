@@ -223,4 +223,33 @@ void main() {
       expect(rec.calls, isEmpty);
     });
   });
+
+  // ───────── K8 (3. madde): importFromCloud dirty ayarı ezmez ─────────
+  group('K8 — importFromCloud dirty ayar satırını ezmez', () {
+    test('yerel dirty ayar (göçten) + sunucu varsayılanı → yerel korunur', () async {
+      await localRepo().patchSettings({
+        'breastfeeding': 'mixed',
+        'lifecycle_mode': 'loss',
+        'last_loss_date': '2026-04-01',
+      }); // dirty (cloud kapalı)
+      adapter
+        ..onGet('/cycle/settings', (s) => s.reply(200, {'breastfeeding': ''}))
+        ..onGet('/cycle/entries', (s) => s.reply(200, []));
+
+      await cloudRepo().importFromCloud();
+
+      final r = await row();
+      expect(r!.dirty, isTrue);
+      expect(r.lifecycleMode, 'loss');
+      expect(r.breastfeeding, 'mixed');
+    });
+
+    test('temiz yerel ayar → sunucu uygulanır (import davranışı korunur)', () async {
+      adapter
+        ..onGet('/cycle/settings', (s) => s.reply(200, serverJson(cycleLen: 29)))
+        ..onGet('/cycle/entries', (s) => s.reply(200, []));
+      await cloudRepo().importFromCloud();
+      expect((await row())!.expectedCycleLength, 29);
+    });
+  });
 }

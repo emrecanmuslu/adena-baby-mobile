@@ -93,4 +93,112 @@ void main() {
       expect(await repo().listEntries(), isEmpty);
     });
   });
+
+  // ───────── K8: misafir göçünde adet ayarı ─────────
+  group('K8 — adet ayarı göçü', () {
+    /// initialImport'un yazdığı "sunucu varsayılanı" satırı (kurulum yok:
+    /// breastfeeding boş, çapa yok, mode tracking). Backend get_or_create
+    /// ile aynen böyle üretir.
+    Future<void> seedDefaultRowFor(String acct) async {
+      await db.into(db.cycleSettingsTable).insertOnConflictUpdate(
+          CycleSettingsTableCompanion(
+              id: Value(acct),
+              clientUpdatedAt: Value(DateTime.now().toUtc()),
+              dirty: const Value(false)));
+    }
+
+    Future<void> setupGuestLoss() => repo().patchSettings({
+          'breastfeeding': 'mixed',
+          'birth_date': '2026-01-10',
+          'lifecycle_mode': 'loss',
+          'last_loss_date': '2026-04-01',
+          'predictions_hidden': true,
+          'ttc_started_at': '2026-02-01',
+          'learning_window': 4,
+          'expected_cycle_length': 31,
+          'period_length': 6,
+          'luteal_phase_length': 12,
+          'smart_prediction': false,
+          'week_starts_sunday': true,
+          'show_fertility_warning': false,
+          'reminders': {'period': {'on': true}},
+        });
+
+    test('yeni hesapta yalnız varsayılan (kurulmamış) satır varsa misafir ayarı KORUNUR, tüm alanlar, dirty',
+        () async {
+      await setupGuestLoss();
+      await seedDefaultRowFor(newAcct);
+
+      await GuestMigration.migrateData(db, guestId, newAcct);
+
+      final row = await (db.select(db.cycleSettingsTable)
+            ..where((r) => r.id.equals(newAcct)))
+          .getSingle();
+      expect(row.dirty, isTrue);
+      final s = CycleRepository(db, api, () => false);
+      LocalSession.setActiveAccount(newAcct);
+      final got = await s.getSettings();
+      expect(got.lifecycleMode, CycleLifecycleMode.loss);
+      expect(got.lastLossDate, DateTime(2026, 4, 1));
+      expect(got.predictionsHidden, isTrue);
+      expect(got.ttcStartedAt, isNotNull);
+      expect(got.learningWindow, 4);
+      expect(got.breastfeeding, Breastfeeding.mixed);
+      expect(got.expectedCycleLength, 31);
+      expect(got.smartPrediction, isFalse);
+      expect(got.weekStartsSunday, isTrue);
+      expect(got.reminders['period'], isNotNull);
+      // misafir satırı silinmiş
+      expect(
+          await (db.select(db.cycleSettingsTable)..where((r) => r.id.equals(guestId)))
+              .getSingleOrNull(),
+          isNull);
+    });
+
+    test('TÜM kolonlar kopyalanır (id/senkron damgaları hariç) — yeni kolon unutulmaz',
+        () async {
+      await setupGuestLoss();
+      final guestRow = await (db.select(db.cycleSettingsTable)
+            ..where((r) => r.id.equals(guestId)))
+          .getSingle();
+      await GuestMigration.migrateData(db, guestId, newAcct);
+      final newRow = await (db.select(db.cycleSettingsTable)
+            ..where((r) => r.id.equals(newAcct)))
+          .getSingle();
+      const skip = {'id', 'dirty', 'clientUpdatedAt', 'serverUpdatedAt', 'isDeleted'};
+      final g = guestRow.toJson()..removeWhere((k, _) => skip.contains(k));
+      final n = newRow.toJson()..removeWhere((k, _) => skip.contains(k));
+      expect(n, g, reason: 'tüm iş alanları birebir taşınmalı');
+    });
+
+    test('yeni hesapta KURULMUŞ gerçek ayar varsa o korunur, misafirinki atılır', () async {
+      await setupGuestLoss();
+      await db.into(db.cycleSettingsTable).insertOnConflictUpdate(
+          CycleSettingsTableCompanion(
+              id: const Value(newAcct),
+              breastfeeding: const Value('exclusive'),
+              firstPeriodDate: Value(DateTime(2026, 3, 1)),
+              dirty: const Value(false)));
+
+      await GuestMigration.migrateData(db, guestId, newAcct);
+
+      LocalSession.setActiveAccount(newAcct);
+      final got = await repo().getSettings();
+      expect(got.breastfeeding, Breastfeeding.exclusive);
+      expect(got.firstPeriodDate, DateTime(2026, 3, 1));
+      expect(got.lifecycleMode, CycleLifecycleMode.tracking);
+      expect(
+          await (db.select(db.cycleSettingsTable)..where((r) => r.id.equals(guestId)))
+              .getSingleOrNull(),
+          isNull);
+    });
+
+    test('yeni hesapta hiç satır yoksa misafir ayarı taşınır (eski davranış korunur)',
+        () async {
+      await setupGuestLoss();
+      await GuestMigration.migrateData(db, guestId, newAcct);
+      LocalSession.setActiveAccount(newAcct);
+      expect((await repo().getSettings()).lifecycleMode, CycleLifecycleMode.loss);
+    });
+  });
 }

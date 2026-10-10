@@ -366,9 +366,14 @@ class CycleRepository {
   Future<void> importFromCloud() async {
     try {
       final resp = await _api.dio.get('/cycle/settings');
-      await _writeSettings(
-          CycleSettings.fromJson(resp.data as Map<String, dynamic>),
-          dirty: false);
+      // K8/R1: yerelde gönderilmemiş (dirty) ayar varsa — misafir göçünden
+      // gelen kurulum gibi — sunucunun (çoğu kez boş varsayılan) satırı onu ezmez.
+      final local = await _settingsRow();
+      if (local == null || !local.dirty) {
+        await _writeSettings(
+            CycleSettings.fromJson(resp.data as Map<String, dynamic>),
+            dirty: false);
+      }
     } catch (_) {}
     await _pullEntries();
   }
