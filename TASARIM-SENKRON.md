@@ -128,7 +128,7 @@ Migration `from < 15`: `addColumn` + yukarıdaki `UPDATE`'ler. Veri kaybı riski
 | 3 (`ce7e04c`) | fix(O20) caregiver kilidi | UI kilidi + repo `StateError` + toast (migrasyon temizliği v15'te) | düşük | caregiver'da Kaydet yok; repo caregiver update → `StateError`, dirty üretmez |
 | 4 (`c6a55dc`) | fix(O5) anı + anne | `_pull` R1/R2/R4 (+`serverUpdatedAt`), `memoriesProvider` Stream (K-6), `list()` ağ beklemez | orta | dirty korunur; tombstone geri gelmez; sunucuda olmayan temiz satır silinir; boş liste → silme yok; oran koruması |
 | 5 (`4352738`, 5b `3426724`) | fix(O7) adet kayıtları | `_pullEntries` R1/R2/R4; çift dokunma `_saving` koruması (K-9) | orta | aynı desen + çift dokunma |
-| 6 | fix(O6) adet ayarı | `getSettings` dirty ise GET uygulanmaz; dirty ayar `syncAll`'da yeniden denenir; `toPatchJson` `baby: null` gönderir (K-8); R8 | düşük | çevrimdışı patch → online GET ezmez → PATCH gönderilir; null baby patch'e girer |
+| 6 (`89cc58f`) | fix(O6) adet ayarı | `getSettings` dirty ise GET uygulanmaz; dirty ayar `syncAll`'da yeniden denenir; `toPatchJson` `baby: null` gönderir (K-8); R8 | düşük | çevrimdışı patch → online GET ezmez → PATCH gönderilir; null baby patch'e girer |
 
 **Yayın öncesi kontrol listesi (bu sürüm):** `../api/apps/translations/data/*.json`'a eklenen yeni UI metinleri api repo'sunda commit'lenip prod'da `seed_translations --locale <en|es|fr|ar|hi|zh>` ile tohumlanmalı (commit 3'te 1 anahtar: "Bakıcı rolünde bebek bilgileri salt-okunurdur; …"); aksi hâlde yeni metin TR dışı dillerde Türkçe görünür.
 
