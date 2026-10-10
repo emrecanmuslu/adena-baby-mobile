@@ -250,6 +250,16 @@ class BabyRepository {
         .get();
     final localById = {for (final r in allLocal) r.id: r};
     final localRows = allLocal.where((r) => !r.isDeleted).toList();
+    // K2-3b: listeden düşen paylaşılan temiz bebekler silinmeden ÖNCE erişimin
+    // gerçekten kalktığı doğrulanır (ağ çağrısı transaction DIŞINDA, sıralı;
+    // her aday kendi try/catch'inde → biri düşse diğerleri etkilenmez).
+    final confirmedGone = <String>{};
+    for (final r in localRows) {
+      final shared = r.myRole == 'parent' || r.myRole == 'caregiver';
+      if (shared && !freshIds.contains(r.id) && !r.dirty) {
+        if (await _accessRevoked(r.id)) confirmedGone.add(r.id);
+      }
+    }
     final removed = <Baby>[];
     await _db.transaction(() async {
       for (final b in fresh) {
@@ -294,15 +304,32 @@ class BabyRepository {
       // premium'unun bitmesi). KENDİ (sahip) bebeğim asla pull ile silinmez — pull
       // artık free/lapsed oturumda da koşuyor, local-first gereği sahip verisi korunur
       // (kendi bebeğimin silinmesi yalnız açık delete ile, pushDirty üzerinden olur).
+      // Yalnız erişimi 403/404 ile DOĞRULANMIŞ adaylar silinir; 200 ile gelen
+      // eksik/boş liste ya da ağ hatası, üyenin gönderilmemiş child verisini
+      // (purge) kaybettirmesin (TASARIM-SENKRON.md R4 bebek listesi istisnası).
       for (final r in localRows) {
-        final shared = r.myRole == 'parent' || r.myRole == 'caregiver';
-        if (shared && !freshIds.contains(r.id) && !r.dirty) {
+        if (confirmedGone.contains(r.id)) {
           removed.add(_toModel(r));
           await (_db.delete(_db.babies)..where((b) => b.id.equals(r.id))).go();
         }
       }
     });
     return removed;
+  }
+
+  /// Paylaşılan bebeğe erişim gerçekten kalktı mı? `GET /babies/{id}`:
+  /// 403/404 → evet (üyelikten çıkarıldı / bebek silindi). 200 → hayır (liste
+  /// geçici tutarsızdı). Ağ hatası / 5xx / timeout → BİLİNMİYOR → hayır (silme).
+  Future<bool> _accessRevoked(String babyId) async {
+    try {
+      await _api.dio.get('/babies/$babyId');
+      return false;
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      return code == 403 || code == 404;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// free→premium migrasyonunda TAM yükleme garanti et: aktif hesabın tüm

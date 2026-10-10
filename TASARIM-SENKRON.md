@@ -130,6 +130,10 @@ Migration `from < 15`: `addColumn` + yukarıdaki `UPDATE`'ler. Veri kaybı riski
 | 5 | fix(O7) adet kayıtları | `_pullEntries` R1/R2/R4; çift dokunma `_saving` koruması (K-9) | orta | aynı desen + çift dokunma |
 | 6 | fix(O6) adet ayarı | `getSettings` dirty ise GET uygulanmaz; dirty ayar `syncAll`'da yeniden denenir; `toPatchJson` `baby: null` gönderir (K-8); R8 | düşük | çevrimdışı patch → online GET ezmez → PATCH gönderilir; null baby patch'e girer |
 
+**Yayın öncesi kontrol listesi (bu sürüm):** `../api/apps/translations/data/*.json`'a eklenen yeni UI metinleri api repo'sunda commit'lenip prod'da `seed_translations --locale <en|es|fr|ar|hi|zh>` ile tohumlanmalı (commit 3'te 1 anahtar: "Bakıcı rolünde bebek bilgileri salt-okunurdur; …"); aksi hâlde yeni metin TR dışı dillerde Türkçe görünür.
+
+Commit 3b (K2 ek): paylaşılan temiz bebek listeden düşünce silinmeden önce `GET /babies/{id}` ile doğrulanır (403/404 → sil + child purge; 200/ağ/5xx → dokunma). Gerekçe: child purge (`records/memories/mom/health`) dirty satırları da sildiğinden 200 ile gelen eksik liste üyenin gönderilmemiş verisini kaybettirirdi.
+
 ### Sonraki sürüm (şema v15; commit 7-8)
 
 | # | Commit | Kapsam | Risk | Testler |

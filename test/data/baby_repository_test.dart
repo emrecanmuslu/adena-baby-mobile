@@ -32,6 +32,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   k2Tests();
   o20Tests();
+  k2bTests();
 
   late ApiClient api;
   late DioAdapter adapter;
@@ -309,6 +310,9 @@ void main() {
           .write(const BabiesCompanion(dirty: Value(false)));
 
       adapter.onGet('/babies', (s) => s.reply(200, []));
+      // K2-3b: silmeden önce erişim doğrulanır — 403 = gerçekten kalktı.
+      adapter.onGet('/babies/local-gone',
+          (s) => s.reply(403, {'detail': 'Yetkiniz yok'}));
 
       final removed = await repo.pullFromServer();
       expect(removed.map((e) => e.id).toList(), ['local-gone']);
@@ -563,6 +567,7 @@ void k2Tests() {
           .write(const BabiesCompanion(dirty: Value(false)));
 
       adapter.onGet('/babies', (s) => s.reply(200, [srv('mine', 'Benim')]));
+      adapter.onGet('/babies/sh', (s) => s.reply(404, {'detail': 'Not found'}));
       final removed = await repo.pullFromServer();
 
       expect(removed.map((b) => b.id), ['sh']);
@@ -714,6 +719,131 @@ void o20Tests() {
       final row = await rawRow('p2');
       expect(row!.name, 'Yerel');
       expect(row.dirty, isTrue);
+    });
+  });
+}
+
+/// K2-3b: paylaşılan temiz bebek /babies listesinde yoksa silmeden önce
+/// GET /babies/{id} ile erişim doğrulanır. 403/404 → erişim kalktı → sil;
+/// 200 → geçici liste tutarsızlığı → dokunma; ağ/5xx → dokunma. Böylece 200 ile
+/// gelen eksik/boş liste üyenin gönderilmemiş child verisini (purge) kaybettirmez.
+void k2bTests() {
+  late ApiClient api;
+  late DioAdapter adapter;
+  late AppDatabase db;
+  late BabyRepository repo;
+  const acct = 'acct-k2b';
+
+  setUp(() {
+    api = ApiClient(_FakeTokens());
+    adapter = DioAdapter(dio: api.dio);
+    db = AppDatabase(NativeDatabase.memory());
+    repo = BabyRepository(db, api);
+    LocalSession.setActiveAccount(acct);
+  });
+
+  tearDown(() async {
+    LocalSession.setActiveAccount(null);
+    await db.close();
+  });
+
+  Future<BabyRow?> rawRow(String id) =>
+      (db.select(db.babies)..where((b) => b.id.equals(id))).getSingleOrNull();
+
+  Future<void> seedShared(String id) async {
+    await repo.create(Baby(id: id, name: 'Paylaşılan $id', myRole: 'parent'));
+    await (db.update(db.babies)..where((b) => b.id.equals(id)))
+        .write(const BabiesCompanion(dirty: Value(false)));
+    // Gönderilmemiş (dirty) child kaydı — purge ile kaybolmamalı.
+    await db.into(db.records).insert(RecordsCompanion.insert(
+        id: 'rec-$id', baby: id, type: 'feed', ts: DateTime(2026, 5, 1)));
+  }
+
+  Future<bool> recordExists(String id) async =>
+      (await (db.select(db.records)..where((r) => r.id.equals('rec-$id')))
+              .getSingleOrNull()) !=
+      null;
+
+  group('K2-3b — purge öncesi erişim doğrulaması', () {
+    test('liste boş ama GET /babies/{id} 200 → bebek ve dirty child korunur',
+        () async {
+      await seedShared('s200');
+      adapter.onGet('/babies', (s) => s.reply(200, []));
+      adapter.onGet('/babies/s200',
+          (s) => s.reply(200, {'id': 's200', 'name': 'Paylaşılan s200'}));
+
+      final removed = await repo.pullFromServer();
+
+      expect(removed, isEmpty);
+      expect(await rawRow('s200'), isNotNull);
+      expect(await recordExists('s200'), isTrue);
+    });
+
+    test('403 → silinir ve removed ile döner (child purge çağıranda)', () async {
+      await seedShared('s403');
+      adapter.onGet('/babies', (s) => s.reply(200, []));
+      adapter.onGet('/babies/s403', (s) => s.reply(403, {'detail': 'x'}));
+
+      final removed = await repo.pullFromServer();
+      expect(removed.map((b) => b.id), ['s403']);
+      expect(await rawRow('s403'), isNull);
+    });
+
+    test('404 → silinir', () async {
+      await seedShared('s404');
+      adapter.onGet('/babies', (s) => s.reply(200, []));
+      adapter.onGet('/babies/s404', (s) => s.reply(404, {'detail': 'x'}));
+
+      final removed = await repo.pullFromServer();
+      expect(removed.map((b) => b.id), ['s404']);
+    });
+
+    test('ağ hatası → korunur', () async {
+      await seedShared('snet');
+      adapter.onGet('/babies', (s) => s.reply(200, []));
+      adapter.onGet(
+          '/babies/snet',
+          (s) => s.throws(
+              0,
+              DioException(
+                  requestOptions: RequestOptions(path: '/babies/snet'),
+                  type: DioExceptionType.connectionError)));
+
+      final removed = await repo.pullFromServer();
+      expect(removed, isEmpty);
+      expect(await rawRow('snet'), isNotNull);
+      expect(await recordExists('snet'), isTrue);
+    });
+
+    test('503 → korunur', () async {
+      await seedShared('s503');
+      adapter.onGet('/babies', (s) => s.reply(200, []));
+      adapter.onGet('/babies/s503', (s) => s.reply(503, {'detail': 'down'}));
+
+      expect(await repo.pullFromServer(), isEmpty);
+      expect(await rawRow('s503'), isNotNull);
+    });
+
+    test('birden fazla aday: biri 200, biri 403, biri ağ hatası → yalnız 403 silinir',
+        () async {
+      await seedShared('m1');
+      await seedShared('m2');
+      await seedShared('m3');
+      adapter.onGet('/babies', (s) => s.reply(200, []));
+      adapter.onGet('/babies/m1', (s) => s.reply(200, {'id': 'm1', 'name': 'm1'}));
+      adapter.onGet('/babies/m2', (s) => s.reply(403, {'detail': 'x'}));
+      adapter.onGet(
+          '/babies/m3',
+          (s) => s.throws(
+              0,
+              DioException(
+                  requestOptions: RequestOptions(path: '/babies/m3'),
+                  type: DioExceptionType.connectionError)));
+
+      final removed = await repo.pullFromServer();
+      expect(removed.map((b) => b.id), ['m2']);
+      expect(await rawRow('m1'), isNotNull);
+      expect(await rawRow('m3'), isNotNull);
     });
   });
 }
