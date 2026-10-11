@@ -18,3 +18,27 @@
 - **Soru:** Toplu geri almada sunucuda olmayan satırlar sessizce silinmeli mi?
 - **Uygulanan varsayılan:** Hayır — yalnız sunucuda olanlar uygulanır, kalanlar listede kalır ve tek tek onay ister.
 - **Etkilenen:** `push_error_sheet.dart` `_all`.
+
+## KB-4 — Kesin alarm (exact alarm) izni için UI girişi (O16)
+- **Soru:** Android 14+'ta kesin alarm izni artık otomatik istenmiyor (izin yoksa ±dakika gecikmeli inexact). Kullanıcıya nerede/nasıl açıklanıp istenmeli?
+- **Seçenekler:** (a) Bildirimler ayar ekranına "Tam dakikasında bildirim" satırı + açıklama → `NotificationService.requestExactAlarmPermission()`; (b) beslenme hatırlatıcısı ilk kez açılırken tek seferlik açıklama diyaloğu; (c) hiç istememek (inexact yeterli).
+- **Uygulanan varsayılan:** otomatik istek kaldırıldı; `requestExactAlarmPermission()/canScheduleExact()` hazır, UI bağlanmadı (c gibi davranır).
+- **Etkilenen:** `lib/core/notification_service.dart` — `82d3db2`.
+
+## KB-5 — Gebelikten "Adet takibine dön"de çapa (O23)
+- **Soru:** Bekleyen bebek kaldırılırken `first_period_date` (eski LMP çapası) korunmalı mı sıfırlanmalı mı?
+- **Seçenekler:** (a) korumak — yanlış-alarm senaryosu: kullanıcı yeni adetini loglayınca çapa taşınır, ama o ana dek "N gün gecikti" görünür; (b) sıfırlamak — adet ekranı bekleme moduna döner, kullanıcı ilk adetini girer (kayıp akışıyla aynı).
+- **Uygulanan varsayılan:** (a) korundu.
+- **Etkilenen:** `lib/features/cycle/cycle_loss.dart` — `ce4e912`.
+
+## KB-6 — DST gün aritmetiği kapsamı (O29)
+- **Soru:** Adet motoru + LMP→TDT dışındaki ~20 nokta (akış "‹", 7-gün grafik anahtarı, dün özeti, düzeltilmiş yaş/atak/gebelik haftası, takvim adjust sheet, notification_sync) `cycleAddDays`/UTC-gün yardımcılarına taşınsın mı?
+- **Seçenekler:** (a) toplu mekanik değişim (15 dosya; görsel/istatistik sonuçları değişebilir, DST ortamında doğrulanamıyor); (b) yalnız veri yazan noktalar (yapıldı: TDT) + görünür hesaplar kalsın (TR pazarı DST yok).
+- **Uygulanan varsayılan:** (b).
+- **Etkilenen:** `cycle_engine.dart`, `cycle_pregnancy_bridge.dart` — `1b2696d`.
+
+## KB-7 — Aşı anahtarı dil bağımlılığı (O19)
+- **Soru:** Backend #3 (dil-bağımsız `key`) gelene dek istemcide bir şey yapılmalı mı?
+- **Seçenekler:** (a) beklemek (K4 yankı güvencesiyle tik kaybolmuyor, yalnız farklı dilde paylaşılmıyor); (b) 5 ek dilde kataloğu EN'e düşürmek (mevcut TR-adlı işaretler görünmez olur — veri kaybı görünümü).
+- **Uygulanan varsayılan:** (a).
+- **Etkilenen:** —

@@ -74,6 +74,25 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 | O4 | `beda831`, `6c70672` | settingsDirty, değişen-alan PATCH, GET /settings pull |
 | K-1 (banner) | `3c7d94c` | pushError kolonu, sayaç, banner + "değişikliği geri al" |
 | O26 (yazma) | `f93c849` | adet yazımları satır içi ağ beklemez |
+| O14, O15, O16 | `82d3db2` | periyodik dürtme, bebek bildirim iptali, exact-alarm otomatik istek yok |
+| O3 | `71bb441` | son bilinen premium durumu |
+| O12 | `63302f2` | RC doğruladıysa refresh hatası premium'u engellemez |
+| O24 | `91a24d9` | loşia doğum tarihi gerektirir |
+| O23 | `ce4e912` | gebelikten takibe dönüşte expecting bebek kaldırılır |
+| O25 | `f4274af` | CycleNotifSync |
+| O22 | `0ef3a1b` | doz çift-dokunma koruması |
+| O27, O37 | `8afd140` | uyku bitiş doğrulaması; createdBy |
+| O11, O13, O28 (+O27) | `0944af7` | syncAll kuyruk; gün değişimi; emzirme hayalet dakika; uyku clamp |
+| O30 | `a641c37` | bulut rozeti koşullu |
+| O31 | `0a41509` | yasal belgeler EN'e düşer |
+| O32 | `c5a480c` | export tam |
+| O33 | `af00ad9` | wipe + foto dosyası temizliği |
+| O9 | `85abf47` | /sync 500'lük parçalar |
+| O10 | `0b499bd` | hesap silme sırası |
+| O17 | `c581b9e` | push çapası gelecek eşiği (+NSE) |
+| O18 | `6ced4b8` | FCM dinleyici dispose |
+| O29 | `1b2696d` | kısmi DST (adet motoru, LMP→TDT) |
+| O19 | — | KABUL/backend #3 |
 
 Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 
@@ -174,6 +193,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Satın alma/kod kullanma sonrası `GET /auth/me/subscription` başarısız (çevrimdışı) ya da `_refreshInBackground`'un auth emit'i sırasında.
 - **Etki:** Para ödemiş kullanıcıya kilit/reklam; uygulama yeniden açılınca düzelir.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`71bb441`):** `cachedPremiumProvider` → `LastKnownPremium` Notifier (açılış cache'i `overrideWith`); `subscriptionProvider` her başarılı yanıtta set eder → GET hatası/bağımlılık rebuild'inde son bilinen canlı durum.
 
 #### O4. Aile ayarları (birim/sessiz saat/enabled_types) sunucudan hiç çekilmiyor; her üyenin push'u sunucuyu eziyor
 - **Dosya:** `lib/data/baby_repository.dart:186-208` (`familySettings` yalnız yerel JSON), `:335-338` (`PATCH /babies/{id}/settings` yerel sözlükle), `lib/features/babies/family_settings.dart:34-37`; sözleşme `API_SOZLESME.md:189` GET/PATCH
@@ -217,6 +237,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Uzun geçmişi olan kullanıcının free→premium geçişi ya da purge sonrası tam yeniden yükleme, zayıf ağ.
 - **Etki:** Göç hiç tamamlanamaz; overlay "bitti" der ama veri buluta çıkmaz.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`85abf47`):** `RecordRepository.sync` dirty satırları 500'lük parçalarla gönderir; her parça kendi `applied/server_changes/next_cursor`'ını uygular, cursor parçalar arası ilerler. Backend üst sınırı BACKEND-TALEPLERI #7.
 
 #### O10. Hesap silme: geri alınamayan yerel yan etkiler, ağ isteğinden ÖNCE çalışıyor
 - **Dosya:** `lib/features/auth/auth_controller.dart:170-182`
@@ -224,6 +245,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Hesap silme sırasında ağ/sunucu hatası.
 - **Etki:** Hatırlatıcılar sessizce gider; kullanıcı neden görmez.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`0b499bd`):** `cancelAll` + `SlotRegistry.clear` artık `repo.deleteAccount` BAŞARDIKTAN sonra; cihaz kaydı silme (sunucu işi) önce kalır.
 
 #### O11. "Kaydet → sunucu onayını bekle" sözü, bir tur zaten sürüyorsa tutulmuyor
 - **Dosya:** `lib/features/records/record_controller.dart:234-237, 362-377`
@@ -231,6 +253,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Push/polling turu sürerken tamamlanmış beslenme kaydı.
 - **Etki:** Kullanıcı kaydeder kaydetmez uygulamayı kapatırsa kayıt eşe geç ulaşır (tasarımın önlemeye çalıştığı durum).
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`0944af7`):** tur sürerken gelen `syncAll` takip turu bitene kadar bekler (`_pendingDone`); bağlantı durumu bilinmiyorsa beslenme kaydı beklemez (`?? false`, local-first).
 
 #### O12. Satın alma başarılı ama backend refresh hatası → kullanıcıya "hata" gösterilip premium açılmıyor
 - **Dosya:** `lib/features/settings/premium_screen.dart:473-500`; aynı kalıp `lib/features/onboarding/premium_welcome_screen.dart:141-165`
@@ -238,6 +261,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Ödeme bitince bağlantı kopması / backend geçici hata.
 - **Etki:** Para ödenmiş anda hata mesajı; RC dinleyicisi ya da yeniden açılış düzeltir (D22 ile birlikte düzelmeyebilir).
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`63302f2`):** RC doğruladıysa `refresh()` hatası yutulur; son bilinen durum + `SubscriptionCache` premium, invalidate, başarı toast'ı. test yok (RC platform bağımlı) — cihaz listesinde.
 
 ### Senkron / arka plan / bildirim
 
@@ -246,6 +270,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Uygulama öldürülmeden gece yarısını geçmek (arka planda bekleyip sabah açmak).
 - **Etki:** Ana sayfa "Bugün" kartı dünkü kayıtları da toplar; yalnız tam kapat-aç düzeltir.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`0944af7`):** `currentDayProvider` (gece yarısı Timer) → `todayRecordsProvider` günü izler.
 
 #### O14. Periyodik bildirimler her rebuild'de sıfırlanıyor → 14 günlük gelişim/diş dürtmesi ve "her X dk" hatırlatıcılar fiilen hiç çalmıyor
 - **Dosya:** `lib/features/babies/notification_sync.dart:329-352` (`_HealthNotifSync`), `:371-386` (`_ReminderSync`); `lib/core/notification_service.dart:650-668, 513-523` (`cancel` + `periodicallyShowWithDuration`)
@@ -253,6 +278,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Uygulamayı 14 günde bir kez bile açan herkes.
 - **Etki:** Gelişim/diş kontrol bildirimleri ölü; "her 15 dk ateş takibi" her öne gelişte yeniden başlar.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`82d3db2`):** gelişim/diş periyodik dürtmesi bekleyen plan varsa yeniden kurulmaz; "her X dk" özel hatırlatıcı bekleyen + aynı aralıkta ise atlanır; `_HealthNotifSync` bayat `asData` yerine `settledListOrNull/settledOrNull`.
 
 #### O15. Bebek silinince / erişim kalkınca sağlık ve ilaç bildirimleri yetim kalıyor
 - **Dosya:** `lib/features/babies/baby_controller.dart:90-93` (`deleteBaby` hiç iptal etmez), `:126-147` (erişim kaldırma yalnız feed+uyku+emzirme iptal eder)
@@ -260,6 +286,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Bebek silme ya da paylaşımdan çıkarılma.
 - **Etki:** Olmayan bebek için "Aşı zamanı", "İlaç zamanı", 14 günde bir gelişim dürtmesi; çıkışa (cancelAll) kadar.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`82d3db2`):** `cancelBabyScheduled(slot, medicationPlanIds)`; `deleteBaby` ve erişim-kalktı yolu çağırır (plan id'leri purge'den önce).
 
 #### O16. Android 14+: açılışta izin açıklaması olmadan sistem "Alarmlar ve hatırlatıcılar" sayfasına atılma
 - **Dosya:** `lib/core/notification_service.dart:113-119` (`_ensureExactAlarm` → `requestExactAlarmsPermission`), çağrılar `:338, 514, 542`; `android/app/src/main/AndroidManifest.xml:6` (`SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM` değil)
@@ -267,6 +294,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Android 14+, doğmuş bebek ya da beslenme hatırlatıcısı açık, izin verilmemiş.
 - **Etki:** Her açılışta açıklamasız Ayarlar'a zıplama → "bozuk" algısı.
 - **Şüpheli:** evet — Android 14 varsayılan-ret davranışı dokümante, cihazda doğrulanmadı.
+- **DÜZELTİLDİ (`82d3db2`):** planlama yolunda `requestExactAlarmsPermission` artık otomatik çağrılmaz (izin yoksa inexact); açık istek için `requestExactAlarmPermission()/canScheduleExact()` — UI girişi KARAR-BEKLEYEN KB-4. Cihazda doğrulanacak.
 
 #### O17. Push/NSE yolu çapa için "gelecek tarih eşiği" ve "en yeni kayıt" kuralını uygulamıyor
 - **Dosya:** `lib/core/push_service.dart:83, 166, 213`; `ios/NotificationService/NotificationService.swift:68-83, 113-116`
@@ -274,6 +302,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Başka üyenin ileri/geri tarihli beslenme girmesi, bu cihazın arka planda olması.
 - **Etki:** Geçici yanlış "sonraki beslenme" + yanlış zamana hatırlatıcı (≤30 dk; iOS force-quit'te açılışa kadar).
 - **Şüpheli:** evet — backend `last_feed_ts`'in "eklenen" mi "en yeni" kayıt mı olduğu bu depoda görülemiyor.
+- **DÜZELTİLDİ (`c581b9e`, kısmi):** `feedAnchorPlausible` (şimdi + 1 saat eşiği) family_activity ve sync_nudge yollarında; iOS NSE `nextFeedMs` aynı eşik (Dart testiyle doğrulanamaz). "En yeni kayıt" kuralı backend'e: BACKEND-TALEPLERI #10.
 
 #### O18. `FirebaseMessaging.onMessage` dinleyicisi dispose'da iptal edilmiyor → RestartWidget sonrası eski dinleyici yaşıyor
 - **Dosya:** `lib/main.dart:310-321` (initState), `:328-332` (dispose yalnız observer kaldırır)
@@ -281,6 +310,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Oturumda en az bir kez dil/tema değişimi + sonrasında push.
 - **Etki:** Yakalanmayan async hata → `platformDispatcher.onError` bunu Crashlytics'e `fatal:true` olarak raporlar (sahte çökme kaydı); işlevsel etki düşük.
 - **Şüpheli:** evet — release'te disposed ref davranışı doğrulanmadı.
+- **DÜZELTİLDİ (`6ced4b8`):** `_pushSub` dispose'da iptal + `adena/push` kanal işleyicisi null. test yok (Firebase/widget ömrü).
 
 ### Sağlık / ilaç / gelişim
 
@@ -290,6 +320,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Dil değişimi; farklı dilde iki aile üyesi; 5 ek dil kullanıcısının çevrimdışı ilk açılışı.
 - **Etki:** Aşı işaretleri kaybolmuş gibi görünür / aileye yansımaz.
 - **Şüpheli:** hayır
+- **KABUL / BACKEND (2026-10-11):** istemcide güvenli düzeltme yok — asset kataloğunda `key == yerelleştirilmiş ad`, dil-bağımsız anahtar yalnız backend #3 ile gelir; 5 ek dilde kataloğu EN'e düşürmek mevcut kullanıcıların TR-adlı işaretlerini görünmez yapardı. K4 (`e328ee8`) ile dil uyuşmazlığında tik artık KAYBOLMAZ (dirty kalır, yankı güvencesi). Kalan: BACKEND-TALEPLERI #3.
 
 #### O20. Bakıcı (caregiver) bebek bilgilerini düzenleyip "Kaydedildi" görüyor; değişiklik sessizce geri alınıyor
 - **Dosya:** `lib/features/babies/baby_edit_screen.dart:147-178` (`_save`), `:393-401` ("Bebeğim doğdu"); `lib/data/baby_repository.dart:301-306` (rol filtresi caregiver'ı göndermez)
@@ -312,6 +343,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Hızlı çift dokunuş.
 - **Etki:** Yanlış "verildi" özeti; çift doz riski.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`0ef3a1b`):** `_writeDose` plan+saat anahtarlı 2 sn uçuş-içi koruma.
 
 ### Adet modülü
 
@@ -321,6 +353,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Gebelik modunda "Durumu güncelle → Adet takibine dön".
 - **Etki:** Ana sayfa gebelik göstermeye devam eder; adet ekranı "95 gün gecikti" der.
 - **Şüpheli:** evet (çapa kısmı "yanlış alarm" senaryosunda kasıtlı olabilir; yetim bebek kısmı değil)
+- **DÜZELTİLDİ (`ce4e912`):** `returnToTrackingFromPregnancy`: expecting bebek kaldırılır, `baby: null`, mod tracking; çapa korunur (KARAR-BEKLEYEN KB-5).
 
 #### O24. Bekleme modundaki bebeksiz kullanıcı loşia rengi girebiliyor → motor kalıcı "lohusalık" moduna kilitleniyor
 - **Dosya:** `lib/features/cycle/cycle_engine.dart:146-148` (`hasLochia && (sinceBirth == null || …)`); `cycle_today_screen.dart:77-81`; `cycle_calendar_screen.dart:285-288, 658-661`; `cycle_entry_sheet.dart:257-268`
@@ -328,6 +361,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Doğum/LMP girilmemiş kullanıcı "Kayıt ekle"de renk seçer.
 - **Etki:** "Doğum +0 gün · Lohusalık", takvimde adet düzenleme gizlenir; çıkış için kaydı silmek gerekir.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`91a24d9`):** motor loşiayı yalnız doğum tarihi bilinirken (0–60 gün) kurar; kayıt sheet'i loşia satırını yalnız `mode == lochia` iken gösterir.
 
 #### O25. Adet hatırlatıcıları yalnız Ayarlar ekranında yeniden planlanıyor
 - **Dosya:** `lib/features/cycle/cycle_settings_screen.dart:111-137` (tek `syncCycle` çağrısı)
@@ -335,6 +369,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Hatırlatıcı açık, sonra yeni adet loglanır veya mod değişir.
 - **Etki:** "Adetin yaklaşıyor" yanlış günde; iyileşme modundaki kullanıcıya "Doğurganlık pencereniz başlıyor".
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`f4274af`):** `CycleNotifSync` (main.dart'ta) ayar/kayıt akışından `computeStatus` → `syncCycle`; Ayarlar ekranındaki çağrı kaldırıldı.
 
 #### O26. Premium'da her adet ekranı yüklemesi ağı bekliyor (local-first değil)
 - **Dosya:** `lib/data/cycle_repository.dart:35-42, 150-155`; `lib/core/api_client.dart:21-22`
@@ -351,12 +386,14 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Saat seçicide bitiş başlangıçtan önce; ya da başka cihazın saat sapması.
 - **Etki:** "Uyku · -1 sa -5 dk", günlük toplam azalır, grafik çubuğu negatif; recap `d > 0` ile atar, diğer yerler atmaz.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`8afd140` form + `0944af7` controller):** form iki yolda "Bitiş zamanı başlangıçtan önce olamaz"; `stopSleep/stopSleepWithTimes` end ≥ start (D25 de kapandı).
 
 #### O28. Emzirme: duraklatmışken meme değiştirip kaydedince hayalet dakika ekleniyor
 - **Dosya:** `lib/features/records/record_controller.dart:494-507` (`_accrueBreast` sonda `seg_start_ts = now`, `paused` korunur), `:531-537` (`switchBreastSide`), `:558-566` (`stopBreast` `paused`'a bakmaz); UI `record_form.dart:795`
 - **Koşul:** Durdur → Sol/Sağ geçişi → Kaydet (Devam et'e basmadan).
 - **Etki:** Kaydedilen dakika, ekranda gösterilenden duraklama süresi kadar fazla.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`0944af7`):** `_accrueBreast` duraklatılmışken segment yeniden başlatmaz.
 
 #### O29. DST uygulayan bölgelerde gün aritmetiği `Duration(days:)` / `.inDays` ile yapılıyor → 1 gün kayma (modüller arası)
 - **Dosya:** `lib/features/records/timeline_view.dart:43-46`; `lib/features/charts/charts_view.dart:782-784, 816-820`; `growth_report.dart:132-142`; `lib/features/home/home_screen.dart:132-135, 1738-1741`; `yesterday_recap_sheet.dart:44-46`; `lib/core/yesterday_recap.dart:255, 264`; `record_ui.dart:106-115`; `lib/core/leaps.dart:14, 17, 50`; `lib/core/age.dart:32, 113, 132, 169, 188`; `notification_sync.dart:314, 360`; `lib/features/cycle/cycle_engine.dart:82` (`_diffDays`), `cycle_calendar_screen.dart:429, 436, 1062`, `cycle_period_adjust_sheet.dart:134-165`, `cycle_pregnancy_bridge.dart:37-40` (`l.add(Duration(days:280))`)
@@ -364,6 +401,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** DST uygulayan ülke (EU/US; TR değil) — yılda 2 geçiş, haftalarca etkili olanlar var.
 - **Etki:** Görünür tutarsızlıklar; veri kaybı yok. `cycleAddDays` DST-güvenli ama yaygın kullanılmamış.
 - **Şüpheli:** hayır (mekanizma kesin; pazar TR ağırlıklı)
+- **DÜZELTİLDİ (kısmi, `1b2696d`):** adet motoru `_diffDays` UTC takvim günü; `pregnancyFromLmp` DST-güvenli fark + `DateTime(y,m,d+280)`. Kalan ~20 nokta (grafik/akış/yaş/atak/takvim) KARAR-BEKLEYEN KB-6.
 
 ### Ayarlar / gizlilik / içerik
 
@@ -372,18 +410,21 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Sorun:** `MemoryRepository` yalnız bulut-uygun bebekte push eder; Veri & Gizlilik ekranı aynı kullanıcıya "verin yalnız bu cihazda" der.
 - **Etki:** Kullanıcı fotoğraflarının yedeklendiğini sanır; telefon kaybında veri kaybı; mağaza/KVKK açısından yanıltıcı beyan.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`a641c37`):** rozet yalnız `babyCloudSyncedProvider(baby.id)` iken.
 
 #### O31. Yasal belgeler yalnız tr/en: 5 ek dil kullanıcısına Türkçe gizlilik/şartlar açılıyor
 - **Dosya:** `lib/core/legal_links.dart:24` (`locale == 'en' ? 'en' : 'tr'`)
 - **Koşul:** Uygulama dili zh/hi/es/fr/ar.
 - **Etki:** Rıza alınan metni kullanıcı okuyamaz (bilgilendirilmiş rıza ve Apple 3.1.2(c) açısından zayıf); İngilizce'ye düşmeliydi.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`0a41509`):** tr dışı her dil → EN belge.
 
 #### O32. "Verilerimi indir" yerel export'u eksik: sağlık durumu, hatırlatıcı, ilaç planı, bebek foto/prematüre alanları yok
 - **Dosya:** `lib/features/settings/data_export.dart:75-141`
 - **Koşul:** Free/misafir kullanıcı — ekran metni "önce yedek al" diye buna yönlendiriyor.
 - **Etki:** Yedek sanıp "Yerel verileri sil" yapan kullanıcı aşı/gelişim/diş işaretlerini, ilaç planlarını ve bebek fotoğrafını kaybeder.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`c5a480c`):** export'a sağlık (aşı/gelişim/diş), hatırlatıcılar, ilaç planları, foto/prematüre/LMP/rol alanları eklendi.
 
 #### O33. "Yerel verileri sil" anı fotoğraflarını diskte bırakıyor, zamanlanmış bildirimleri ve prefs store'larını temizlemiyor
 - **Dosya:** `lib/features/settings/privacy_screen.dart:247-251`; `lib/data/local/app_database.dart:379-385`
@@ -391,6 +432,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Ek (2026-10-11, commit 4 sonrası):** Aynı aile: anı pull'unda R4 ile silinen (başka üyenin sildiği) anının yerel fotoğraf dosyası (`memories/<id>.<ext>`) da diskte kalıyor; `_pull` yalnız satırı siler. Düzeltme yapılmadı, bu maddeyle birlikte ele alınmalı.
 - **Etki:** "Kalıcı silinecek" denen fotoğraflar kalır; silinmiş bebeğin hatırlatıcıları çalmaya devam edebilir.
 - **Şüpheli:** hayır (bildirim kısmı cihaz durumuna bağlı)
+- **DÜZELTİLDİ (`af00ad9`):** wipe sonrası `memories/`+`babies/` dizinleri, `cancelAll`, `SlotRegistry.clear`, `FeedInputCache.clear`; anı satırı kalıcı silinince (purge, pull R4, discard, tombstone DELETE) foto dosyası da silinir. Bildirim tercihleri/feed-reminder cache bilinçli korunuyor (tercih).
 
 ### Diğer çekirdek
 
@@ -420,6 +462,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Dosya:** `lib/features/records/record_form.dart:359-365` (`Record(…)` yeni nesne, `copyWith` değil)
 - **Etki:** Sunucu echo'su gelene kadar akışta "X ekledi" kaybolur; bakıcı rolünde `canDelete` (`createdBy == me.id`) kendi kaydı için false'a düşebilir.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`8afd140`):** düzenlemede `createdBy` korunur.
 
 ---
 

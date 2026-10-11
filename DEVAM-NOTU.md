@@ -1,6 +1,6 @@
 # DEVAM NOTU — fix/audit-bulgular
 
-Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1170 geçti, 0 başarısız**, `flutter analyze` temiz.
+Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1196 geçti, 0 başarısız**, `flutter analyze` temiz.
 
 ## Tamamlananlar (commit sırasıyla)
 1. aşama: K3 `37f05f8`, K1 `00cd3fb`, K5 `e5f1a66`
@@ -12,18 +12,18 @@ Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ
 Tasarım: `TASARIM-SENKRON.md` (kararlar K-1..K-10, R1-R9, §8 plan + hash'ler). Backend talepleri: `BACKEND-TALEPLERI.md` (9 madde).
 
 ## Otonom koşu (2026-10-11) — durum
-- **Tamamlanan grup:** GRUP 0 (5. aşama artığı), GRUP 1 (şema v15: 7a/7b/8/9), GRUP 2 (O26 `f93c849`).
-- **Sıradaki grup:** GRUP 3 — kalan ORTA; alt gruplar: 3a bildirim (O14, O15, O16), 3b premium (O3, O12), 3c adet (O23, O24, O25), 3d sağlık/ilaç (O19, O22), 3e kayıt/form (O27, O28, O37, O13, O11), 3f veri/yasal (O30, O31, O32, O33), 3g senkron/push (O9, O10, O17, O18, O29).
-- **KARAR-BEKLEYEN sayısı:** 3 (`KARAR-BEKLEYEN.md`: KB-1 sunucuda olmayan sahip bebek, KB-2 records/ilaç geri al, KB-3 toplu geri al).
+- **Tamamlanan grup:** GRUP 0, GRUP 1 (şema v15), GRUP 2 (O26 `f93c849`), GRUP 3 (24 ORTA: 23 DÜZELTİLDİ — O29 kısmi, O17 kısmi+backend #10; O19 KABUL/backend #3). Hash'ler BULGULAR §2b.
+- **Sıradaki grup:** GRUP 4 — DÜŞÜK D1–D45 triyajı (DÜZELT / KABUL / DOĞRULANAMAZ), sonra dosya bazlı uygulama.
+- **KARAR-BEKLEYEN sayısı:** 7 (`KARAR-BEKLEYEN.md`: KB-1..KB-3 geri al; KB-4 exact-alarm UI; KB-5 çapa; KB-6 DST kapsamı; KB-7 aşı anahtarı).
 - Sonra: GRUP 3 (kalan ORTA), GRUP 4 (DÜŞÜK triyaj), GRUP 5 (şüpheliler), GRUP 6 (YAYIN-KONTROL.md), FINAL-RAPOR.md.
 
 ## Kalan iş sırası
 c) ~~Şema v15~~ TAMAMLANDI (GRUP 1; v15'in ayrı sürüm olup olmayacağı yayın öncesi kullanıcı kararı, K-10).
 d) ~~O26 kalanı~~ TAMAMLANDI (`f93c849`).
-e) **Kalan ORTA:** O3, O9, O10, O11, O12, O13, O14, O15, O16, O17, O18, O19, O22, O23, O24, O25, O27, O28, O29, O30, O31, O32, O33, O37.
+e) ~~Kalan ORTA~~ TAMAMLANDI (GRUP 3; O19 KABUL/backend, O29/O17 kısmi).
 f) **DÜŞÜK:** D1–D45 (D33 kapandı; O33/D33 notlarına bakın).
 g) **Şüpheliler:** BULGULAR §6 listesi (cihaz/backend doğrulaması gerekenler).
-h) **Yayın öncesi:** `../api/apps/translations/data/*.json`'da commit'lenmemiş 19 anahtar (caregiver salt-okunur notu; misafir-adet teklif + silme metinleri; 3 oturum-sonu banner metni; 13 K-1 banner/geri al metni) → api'de commit + `seed_translations --locale <x>`; `BACKEND-TALEPLERI.md` 9 madde backend ekibine (#8 `code: session_superseded` gelene dek banner genel metni gösterir).
+h) **Yayın öncesi:** `../api/apps/translations/data/*.json`'da commit'lenmemiş 20 anahtar (uyku bitiş uyarısı dahil; caregiver salt-okunur notu; misafir-adet teklif + silme metinleri; 3 oturum-sonu banner metni; 13 K-1 banner/geri al metni) → api'de commit + `seed_translations --locale <x>`; `BACKEND-TALEPLERI.md` 9 madde backend ekibine (#8 `code: session_superseded` gelene dek banner genel metni gösterir).
 
 ## Çalışma kuralları (devam ederken)
 Her bulgu: önce mevcut koda karşı KALAN test (yeni API'ye dayanan kısım geçici kopyayla ayrılır) → en küçük düzeltme → `flutter analyze` + tam `flutter test` → `fix(Kx): …` ayrı commit → TASARIM §8 hash + BULGULAR "DÜZELTİLDİ" notu. Yan sorun düzeltilmez, raporlanır.
@@ -46,3 +46,12 @@ Her bulgu: önce mevcut koda karşı KALAN test (yeni API'ye dayanan kısım ge�
 - **İki cihaz aşı:** A işaretler → B öne gelince görür; B kaldırır → A öne gelince kalkar. Dil farklı iki üye: işaret yerelde kalır, kaybolmaz (dirty), sunucuya gitmez (beklenen, backend #3'e kadar).
 - **Ayar:** A çevrimdışı birim değiştirir → online olunca yalnız `units` PATCH; B (yeni cihaz/üye) öne gelince aynı birimi görür. Caregiver cihazı PATCH atmaz.
 - **Geri al banner'ı:** kalıcı 4xx üretip (ör. sunucuda silinmiş anıyı düzenle → 404) banner "{n} değişiklik sunucuya gönderilemedi" → sheet → "Geri al" → sunucuda yoksa onay diyaloğu → yerel silinir; sayaç 0'a iner.
+
+## Cihazda doğrulanacaklar (GRUP 3)
+- **O16 (Android 14+):** yeni kurulumda açılışta Ayarlar'a zıplama OLMAMALI; kesin alarm izni yokken beslenme hatırlatıcısı ±dakika gecikmeyle gelir.
+- **O14:** uygulamayı birkaç kez aç/kapa → `adb shell dumpsys alarm` / bekleyen bildirimlerde gelişim/diş dürtmesinin tetik zamanı DEĞİŞMEMELİ.
+- **O15:** bebek sil → o bebeğin aşı/ilaç/beslenme bildirimleri bekleyenlerden düşer.
+- **O12:** satın alma sırasında bağlantıyı kes → "Premium etkinleştirildi" + kilitler açık; sonraki açılışta sunucu senkron.
+- **O17 iOS NSE:** eşin ileri tarihli (yarın) beslenme girişi → bu cihazda widget/hatırlatıcı günler sonrasına KURULMAMALI (Swift değişikliği Dart testiyle doğrulanamaz).
+- **O18:** dil değiştir → push gönder → tek banner/tek senkron; Crashlytics'te sahte fatal yok.
+- **O25:** yeni adet logla → "adetin yaklaşıyor" bildirimi yeni tarihe (bekleyenlerde 600000 id).
