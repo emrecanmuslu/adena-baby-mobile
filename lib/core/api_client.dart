@@ -62,8 +62,13 @@ class ApiClient {
             opts.headers['Authorization'] = 'Bearer $token';
             try {
               return handler.resolve(await dio.fetch(opts));
+            } on DioException catch (re) {
+              // D1: retry'ın GERÇEK hatası (500/zaman aşımı) yüzeye çıksın —
+              // orijinal 401 geçerse çağıran "tekrar giriş yap" görürdü.
+              if (re.response?.statusCode != 401) return handler.reject(re);
+              return handler.next(e);
             } catch (_) {
-              return handler.next(e); // retry düştü → orijinal hata
+              return handler.next(e); // beklenmeyen → orijinal hata
             }
           case RefreshResult.transient:
             // O2: refresh ağ/zaman aşımı/5xx ile düştü → bekleyen istek AUTH
