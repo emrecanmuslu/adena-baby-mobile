@@ -108,7 +108,9 @@ class _Today extends ConsumerWidget {
         id: e?.id ?? '',
         date: DateTime(t.year, t.month, t.day),
         flow: FlowLevel.medium,
-        lochiaColor: e?.lochiaColor,
+        // D34: "ilk adetimi kaydet" loşia rengini TAŞIMAZ — taşısa kayıt
+        // isPeriod=false kalır, çapa kurulmaz ama başarı toast'ı gelirdi.
+        lochiaColor: null,
         symptoms: e?.symptoms ?? const [],
         mood: e?.mood,
         note: e?.note,
