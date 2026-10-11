@@ -172,6 +172,7 @@ class MembersScreen extends ConsumerWidget {
   }
 
   Future<void> _invite(BuildContext context, WidgetRef ref, String babyId) async {
+    var creating = false; // D41
     String role = 'parent';
     final created = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -218,12 +219,15 @@ class MembersScreen extends ConsumerWidget {
             TextButton(onPressed: () => Navigator.pop(dialogCtx), child: Text(tr('Vazgeç'))),
             ElevatedButton(
               onPressed: () async {
+                if (creating) return; // D41: çift dokunuşta iki davet olmasın
+                creating = true;
                 try {
                   final res = await ref
                       .read(babyRepositoryProvider)
                       .createInvitation(babyId, role: role);
                   if (dialogCtx.mounted) Navigator.pop(dialogCtx, res);
                 } catch (e) {
+                  creating = false;
                   if (context.mounted) showAdError(context, apiErrorText(e));
                 }
               },
