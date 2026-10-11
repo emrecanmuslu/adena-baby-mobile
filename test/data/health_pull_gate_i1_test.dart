@@ -123,6 +123,7 @@ void main() {
         name: 'T',
         accountId: const Value(acct),
         myRole: Value(role ?? 'owner'),
+        dirty: const Value(false), // K1(b): sunucuda var (lapse/göç senaryoları)
         birthDate: Value(DateTime(2026, 1, 1))));
     // v14'ten gelen temiz satır (K-4: aşıda backfill yok).
     await db.into(db.healthStatuses).insert(HealthStatusesCompanion.insert(

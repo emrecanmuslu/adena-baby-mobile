@@ -60,12 +60,15 @@ const _catalog = HealthCatalog(
   [ToothCatalogItem('ll1', 'lower', 'left', 1, 'Orta kesici', 6)],
 );
 
-/// INCELEME-2 J1/J8 — `premiumSynced` yalnız sağlık tam kümesi GERÇEKTEN buluta
-/// yüklendiyse yazılır. Göçte sağlık adımı düşerse (ağ/5xx/404) bayrak yazılmaz,
-/// `health_reseed` kurulur, sahip bebek pull'u kapalı kalır; `_dirtyCount`
-/// hatası "bilinmiyor"dur (kısayol yok, bayrak yok); göç sırasında kapsam
-/// değişirse eski hesaba bayrak yazılmaz. (b) Sunucu aşı listesi tamamen pending
-/// iken yerelde temiz done=true satır varsa aşı kalemleri uygulanmaz.
+/// INCELEME-2 J1/J8 (+ INCELEME-3 K1(a)) — sahip bebek sağlık pull kapısı
+/// yalnız sağlık tam kümesi GERÇEKTEN buluta yüklendiyse açılır. Göçte
+/// (sunucudaki bebekte) sağlık adımı düşerse (ağ/5xx/404) `premiumSynced` VE
+/// `health_reseed` BİRLİKTE yazılır: kapı kapalı kalır, sonraki açılışlar hafif
+/// yoldan (`_reseedHealth`) dener (K1(a) — eskiden `premiumSynced` yazılmaz,
+/// her açılışta tam göç + overlay tekrarlanırdı). `_dirtyCount` hatası
+/// "bilinmiyor"dur (kısayol yok, bayrak yok); göç sırasında kapsam değişirse
+/// eski hesaba bayrak yazılmaz. (b) Sunucu aşı listesi tamamen pending iken
+/// yerelde temiz done=true satır varsa aşı kalemleri uygulanmaz.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -167,11 +170,11 @@ void main() {
     adapter.onPost('/babies/b1/health/sync', fail, data: Matchers.any);
   }
 
-  Future<void> expectFlagNotWrittenAndPullClosed(ProviderContainer c) async {
-    expect(LocalSession.premiumSyncedForAccount(acct), isFalse,
-        reason: 'sağlık yüklenmedi → premiumSynced YAZILMAZ');
+  Future<void> expectBothFlagsAndPullClosed(ProviderContainer c) async {
+    expect(LocalSession.premiumSyncedForAccount(acct), isTrue,
+        reason: 'K1(a): tam göç bitti → bir daha overlay/markAllDirty yok');
     expect(LocalSession.healthReseedPending(acct), isTrue,
-        reason: 'yeniden-tohumlama bekler');
+        reason: 'sağlık yüklenmedi → yeniden-tohumlama bekler (kapı kapalı)');
     // Ağ geldi: bir sonraki tam tur sahip bebekte pull atmaz, tik korunur.
     adapter.onPost('/babies/b1/health/sync', (s) => s.reply(200, {'ok': true}),
         data: Matchers.any);
@@ -192,9 +195,10 @@ void main() {
                 type: DioExceptionType.connectionError))
       ),
       ('503', (s) => s.reply(503, {'detail': 'down'})),
-      ('404 (bebek sunucuda yok)', (s) => s.reply(404, {'detail': 'nope'})),
+      ('404', (s) => s.reply(404, {'detail': 'nope'})),
     ]) {
-      test('$label → bayrak yok, reseed var, sonraki tur pull yok', () async {
+      test('$label → premiumSynced + reseed birlikte, sonraki tur pull yok (K1(a))',
+          () async {
         await seedOwnerBabyWithCleanVaccine();
         healthSyncFails(fail);
         final c = container();
@@ -202,7 +206,7 @@ void main() {
 
         await c.read(migrationControllerProvider.notifier).run();
         expect(c.read(migrationControllerProvider).phase, MigrationPhase.done);
-        await expectFlagNotWrittenAndPullClosed(c);
+        await expectBothFlagsAndPullClosed(c);
       });
     }
 

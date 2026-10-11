@@ -105,6 +105,7 @@ void main() {
         name: 'T',
         accountId: const Value(acct),
         myRole: const Value('owner'),
+        dirty: const Value(false), // K1(b): sunucuda var (lapse senaryosu)
         birthDate: Value(DateTime(2026, 1, 1))));
   });
 
