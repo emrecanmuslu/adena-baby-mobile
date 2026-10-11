@@ -13,7 +13,7 @@ Ortak kök: pull, push'u başarısız olmuş `dirty` satırı ve silme tombstone
 | K-1 | **R3:** Kalıcı (4xx) redde yerel değişiklik korunur, satıra `pushError` kaydedilir. Kullanıcıya banner + "değişikliği geri al" seçeneği **ayrı, sonraki iş** (bkz. §8 "Sonraki sürüm"). Şema kolonu v15'e kadar yok → o zamana dek log + bellek-içi/prefs kaydı. |
 | K-2 | **R4:** Sunucu boş liste dönerse hiç silme yapılmaz. Silinecek satır sayısı **5'ten fazla VE temiz satırların yarısından fazlaysa** silme atlanır ve loglanır. R4 yalnız **HTTP 200 ve yanıt tamamen parse edildiyse** uygulanır. |
 | K-3 | **Sağlık pull sıklığı:** açılış, öne geliş ve işaretleme sonrası. 1 dk polling'e eklenmez. |
-| K-4 | **v15 backfill:** yalnız `done=true` sağlık satırları `dirty=true` yapılır. |
+| K-4 | **v15 backfill (kesinleşti 6. aşama):** **aşıda backfill YOK** — ilk v15 senkronunda aşı durumu için sunucu kazanır (yanlış "yapıldı" işareti kayıp işaretten tehlikeli). **Gelişim ve dişte** `done=true` satırlar `dirty=true`. |
 | K-5 | **Aile ayarları:** son yazan kazanır yeterli; ancak PATCH yalnız **değişen alanları** gönderir. |
 | K-6 | `memoriesProvider` drift **Stream**'e geçer (`list()` içindeki ağ beklemesi kalkar, pull arka planda). |
 | K-7 | **Caregiver reddi:** repo `StateError` fırlatır, UI toast gösterir. |
@@ -106,8 +106,8 @@ Durum (2.–5. aşamadan sonra): `pushError` **kolon yok**; K2/O5/O7 repo'ları 
 **Migration kodu (`onUpgrade`):** mevcut desenle (`if (from < 15)`), fakat **tablo o upgrade içinde yeni kurulduysa `addColumn` çalışmamalı** (ilaç planı deseni `from >= 13 && from < 14` gibi): `babies/memories/mom_entries/cycle_*` için `from >= 4 && from < 15`, `health_statuses` için `from >= 7 && from < 15`. `from < 4`/`from < 7` yolunda `createTable` zaten v15 şemasını kurar.
 
 **Backfill (`UPDATE`, migration içinde, aynı transaction):**
-- `babies.settingsDirty = (dirty = 1 AND settings != '{}' AND myRole != 'caregiver')` — v14'te ayar değişikliği bebek satırını dirty yapıyordu; yani "dirty + ayar dolu" = **gönderilememiş ayar** tam kümesidir. Sahip/parent'ın bekleyen değişikliği korunur, caregiver hiç dirty olamaz. `settingsBase` NULL kalır → ilk diff "tüm alanlar değişmiş" sayar → bir kez tam sözlük PATCH (v14 davranışıyla aynı, gerileme yok). Seçenek tartışması 5C'de.
-- `health_statuses.dirty`: 5B'deki karara göre (K-4 aynen / aşı hariç / hiç).
+- `babies.settingsDirty = (settings != '{}' AND (myRole IS NULL OR myRole = 'owner'))` — **KARAR (6. aşama):** yalnız sahip satırlarında, yerel JSON doluysa. Üye (parent) / caregiver satırlarında backfill yok; ilk pull sunucuyu uygular. `settingsBase` NULL kalır → ilk diff "tüm alanlar değişmiş" sayar → bir kez tam sözlük PATCH. Seçenek tartışması 5C'de.
+- `health_statuses.dirty = (done = 1 AND kind IN ('milestone','tooth'))` — **KARAR (K-4 kesinleşti):** aşıda backfill yok (ilk v15 turunda sunucu kazanır = normal R1), gelişim/dişte done=true → dirty. Bkz. 5B.
 - `pushError`: taşınacak veri YOK (bellek-içi haritalar süreç ömrü; prefs'te hiçbir kayıt yok). v15 sonrası haritalar kalkar, kolon yazılır; bekleyen dirty satır bir sonraki turda yeniden denenip kolonu doldurur.
 
 **Eşzamanlılık riski:** DB'yi bg isolate (workmanager/BGTask/FCM) de açar; ilk açan migrasyonu çalıştırır, diğeri `busy_timeout` ile bekler (WAL + PRAGMA sırası 2026-09-01 fix'i). Migration `addColumn` + 1-2 `UPDATE` → ms mertebesi; ek önlem gerekmez. `schemaVersion` tek sıçrama (14→15).
@@ -118,7 +118,7 @@ Durum (2.–5. aşamadan sonra): `pushError` **kolon yok**; K2/O5/O7 repo'ları 
 3. `test/data/migration_v15_test.dart`: `SchemaVerifier(GeneratedHelper())` → `startAt(14)` → `migrateAndValidate(AppDatabase(conn), 15)` (yapısal doğrulama) **+ veri dolu geçiş:** `schemaAt(14)`'e ham SQL ile satırlar basılır (done=true/false sağlık satırları; `dirty=1 settings='{...}'` sahip bebek, `dirty=1 settings='{}'` bebek, caregiver bebek, `dirty=0` bebek; anı/anne/adet satırları) → migrate → v15 DAO ile okunup backfill kuralları ve eski kolonların korunduğu doğrulanır. `make-migrations` (build.yaml konfigürasyonu ister) KULLANILMAZ; elle `onUpgrade` deseni korunur.
 4. Regresyon: `test/data/db_pragmas_test.dart` + tüm suite yeşil; `onCreate` yolu (taze kurulum) için `schemaVersion == 15` ve `createAll` testi.
 
-### 5B. K-4 backfill riski — seçenekler (KARAR BEKLİYOR)
+### 5B. K-4 backfill riski — seçenekler (KARAR VERİLDİ: (ii))
 
 **Bugünkü gerçek:** sağlık pull'u yalnız ilk giriş/göçte; her işaretleme `pushAll` ile cihazın **tam** kataloğunu gönderir → sunucu = **en son işaretleme yapan cihazın tam kümesi** (o cihazın her kalemi, done ve undone). Diğer cihazlar bunu hiç öğrenmedi → cihazlar ayrışmış. Tek cihazlı premium kullanıcıda (çoğunluk) sunucu == cihaz; yalnız çevrimdışı yapılmış ve sonra başka işaretlemeyle taşınmamış işaretler sunucuda yok.
 
@@ -130,7 +130,7 @@ Durum (2.–5. aşamadan sonra): `pushError` **kolon yok**; K2/O5/O7 repo'ları 
 
 **Push/pull sırası ilk v15 turunda:** dirty satır varken sıra fark etmez (pull dirty'yi ezmez → push gönderir → sonraki pull aynı değeri döndürür). Backfill olmayan türde push edecek bir şey yok; pull "sunucu kazanır" uygular — bu, v15 sonrası her turun normal R1 davranışıdır, özel bir "ilk tur" kodu gerekmez. Tek özel durum: free→premium göçü (`MigrationService`) **tam küme `pushAll`** olarak kalır (sunucuda hiçbir şey yok, tam yükleme doğru).
 
-**Öneri: (ii).** Gerekçe: aşıda yanlış "yapıldı" > kayıp tik; sunucu kümesi "en son işaretleme yapan cihaz"ın kümesi olduğundan en güncel insan-onaylı durumdur; kaybolan tik ekranda görünür ve geri alınabilir. Gelişim/diş için (i) birleşim davranışı kabul edilebilir. Ek güvence (ii) için: ilk pull'da "temiz done=true → sunucu pending" sayısı `debugPrint` + Crashlytics non-fatal ile sayılır (saha ölçümü).
+**Karar: (ii) (kullanıcı, 6. aşama).** (i) ve (iii) değerlendirildi, seçilmedi: (i) kaldırılmış aşı işaretini geri getirir; (iii) gelişim/dişte gereksiz tik kaybı. Gerekçe: aşıda yanlış "yapıldı" > kayıp tik; sunucu kümesi "en son işaretleme yapan cihaz"ın kümesi olduğundan en güncel insan-onaylı durumdur; kaybolan tik ekranda görünür ve geri alınabilir. Gelişim/diş için (i) birleşim davranışı kabul edilebilir. Ek güvence (ii) için: ilk pull'da "temiz done=true → sunucu pending" sayısı `debugPrint` + Crashlytics non-fatal ile sayılır (saha ölçümü).
 
 ### 5C. O4 `settingsDirty` backfill'i ve K-5 değişen-alan PATCH'i
 
@@ -139,9 +139,10 @@ Durum (2.–5. aşamadan sonra): `pushError` **kolon yok**; K2/O5/O7 repo'ları 
 | Yalnız sahip rolünde backfill (yerel JSON doluysa dirty) | Sahibin **bayat** cihazı (uzun süredir açılmamış) parent'ın güncel ayarını ezer | Rol tek başına güncelliği söylemez |
 | Önce `GET /settings`, sonra yalnız farklı alanlar dirty | Hangi tarafın güncel olduğunu yine bilmiyoruz (damga yok); "farklı = yerel kazanır" demek sunucuyu her zaman ezmektir | Kayıp azalır ama ezme riski kalır |
 | Backfill yok (sunucu kazanır) | v14'te **gönderilememiş** (çevrimdışı) ayar değişikliği kaybolur | Düşük riskli ama gerçek kayıp |
-| **Öneri — v14 dirty bayrağını taşı:** `settingsDirty = (babies.dirty AND settings != '{}' AND rol != caregiver)` | Yok: v14'te her ayar değişikliği bebek satırını dirty yapıp tam sözlüğü PATCH'liyordu → sunucu = son değiştiren cihazın tam sözlüğü (en güncel bilinçli durum); dirty+dolu satır = tam olarak "henüz gidememiş" kümesi | Bir kez tam sözlük PATCH (v14 ile aynı); sonrasında K-5 |
+| v14 dirty bayrağını taşı: `settingsDirty = (babies.dirty AND settings != '{}' AND rol != caregiver)` | Düşük (dirty+dolu = henüz gidememiş küme) | Değerlendirildi, **seçilmedi**: kullanıcı kararı sahip-rolü kuralı (aşağıda) |
+| **KARAR (6. aşama): yalnız sahip rolünde (`myRole` NULL/owner), yerel JSON ≠ `{}`** | Sahibin bayat cihazı üyenin daha yeni ayarını bir kez ezebilir — düşük önemli alanlar (birim/sessiz saat), görünür ve düzeltilebilir; parent/caregiver satırlarında backfill yok → ilk pull sunucuyu uygular | Uygulanan kural; `settingsBase` NULL → ilk PATCH tam sözlük |
 
-**K-5 "neyin değiştiği" nasıl tutulur:** `babies.settingsBase` (sunucunun son onayladığı JSON; GET/PATCH yanıtıyla yazılır). Değişen alan = üst-düzey anahtar (`units`, `quiet_hours`, `enabled_types`, `defaults`, `reminder_schedule`, `feed_reminder`) bazında `local[k] != base[k]`. Üst-düzey anahtar doğru birimdir: backend `partial=True` serializer alanı bütünüyle değiştirir (iç içe birleştirme yok); `updateFamilySettings` zaten anahtar bazında yazıyor. Ayrı kolon/ayrı JSON reddedildi (6 alan için 6 bool kolon ya da "changedKeys" listesi → base ile diff daha az durum taşır ve pull'da "değişmemiş alanı sunucudan al" kararını da verir).
+**K-5 "neyin değiştiği" nasıl tutulur (seçilen yöntem — en basit güvenilir yol):** `babies.settingsBase` (sunucunun son onayladığı JSON; GET/PATCH yanıtıyla yazılır). Değişen alan = üst-düzey anahtar (`units`, `quiet_hours`, `enabled_types`, `defaults`, `reminder_schedule`, `feed_reminder`) bazında `local[k] != base[k]`. Üst-düzey anahtar doğru birimdir: backend `partial=True` serializer alanı bütünüyle değiştirir (iç içe birleştirme yok); `updateFamilySettings` zaten anahtar bazında yazıyor. Ayrı kolon/ayrı JSON reddedildi (6 alan için 6 bool kolon ya da "changedKeys" listesi → base ile diff daha az durum taşır ve pull'da "değişmemiş alanı sunucudan al" kararını da verir).
 - **Push:** `settingsDirty` → PATCH yalnız değişen anahtarlar; 2xx → `settings = yanıt`, `settingsBase = yanıt`, `settingsDirty=false` (R5: PATCH sırasında yerel yeniden değiştiyse — `clientUpdatedAt` karşılaştırması — dirty kalır). Kalıcı 4xx → `pushError`. `pushDirty` artık ayarı bebek profilinin push'una **bağlamaz** (R6).
 - **Pull (`pullFromServer` içinde, bulut-uygun bebek için `GET /babies/{id}/settings`):** `settingsDirty=false` → `settings = base = sunucu`. `settingsDirty=true` → yalnız **değişmemiş** anahtarlar (`local[k] == base[k]`) sunucudan güncellenir, değişmişler korunur; base'in değişmemiş anahtarları güncellenir. Yanıt 200 + Map değilse dokunulmaz.
 - **Caregiver satırları:** `_requireFullWrite` dirty üretmesini engeller; migration backfill'i caregiver'ı dışlar; pull her zaman sunucu kazanır; push rol filtresi (owner/parent) korunur. Rol düşmesi (parent→caregiver) sonrası kalan dirty ayar → PATCH 403 → §6b "rol" kuralı.
@@ -227,7 +228,7 @@ Commit 3b (K2 ek): paylaşılan temiz bebek listeden düşünce silinmeden önce
 | O34 (`6c9581e`) | `AuthController._epoch`: `logout`/`deleteAccount`/`sessionExpired` kuşağı artırır; `_refreshInBackground`/`_postLogin`/`recordConsent`/`updateName` geç yanıtı yalnız kuşak aynıysa uygular | |
 | O1 (`177018a`) | `SessionEndReason` yalnız gövde `code` ile (`session_superseded`/`token_not_valid`/diğer→unknown); `ApiClient.onSessionRejected` + prefs `auth_session_end_reason`; `sessionExpired` (token/abonelik/önbellek/kapsam temiz + FCM `deleteToken` + RC logOut; yerel veri/hatırlatıcı/SlotRegistry/cihaz kaydı dokunulmaz); `verifySession` öne gelişte; bg `'oturum yok'`; giriş banner'ı tek seferlik | backend #8 gelene dek superseded kodsuz → "Oturumun sonlandırıldı" genel metni; #9 gelene dek sunucu tarafında eski cihaz kaydı kalır (deleteToken ile push düşmez) |
 
-### 6. aşama — şema v15 (aynı branch; sürüm kararı yayın öncesi, K-10)
+### 6. aşama — şema v15 (aynı branch; sürüm kararı yayın öncesi, K-10) — kararlar kesinleşti, uygulama başladı
 
 Sıra: **7a → 7b → 8 → 9 → docs.** 8b (O26 kalanı) bu aşamaya DAHİL DEĞİL.
 
