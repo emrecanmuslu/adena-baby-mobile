@@ -166,4 +166,14 @@ void main() {
         bgOutcomeDone);
     verifyNever(() => records.sync(any()));
   });
+
+  test('O1: sync 401 (refresh reddi sonrası) → damga "oturum yok", dispose en sonda', () async {
+    when(() => records.sync('shared')).thenThrow(DioException(
+        requestOptions: RequestOptions(path: '/sync'),
+        response: Response(requestOptions: RequestOptions(path: '/sync'), statusCode: 401)));
+    final c = make();
+    expect(await runBackgroundSyncWith(c, timeout: const Duration(seconds: 5)),
+        bgOutcomeNoSession);
+    expect(disposed, isTrue);
+  });
 }

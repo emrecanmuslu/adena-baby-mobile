@@ -487,6 +487,9 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // Bildirim izni sistem ayarlarından sonradan açıldıysa, devam eden uyku/
     // emzirme sayacının bildirimini yeniden post et (reaktif sync tetiklenmez).
     repostActiveTimers(ref);
+    // O1: token başka isolate'te (bg turu) refresh reddiyle silindiyse ön plan
+    // habersizdir → state User ama token yoksa zorunlu çıkışı uygula.
+    unawaited(ref.read(authControllerProvider.notifier).verifySession());
     // FCM token iOS'ta ilk açılışta geç gelmiş olabilir → oturum varsa cihaz
     // kaydını yeniden dene (token artık hazırsa /me/devices'a düşer). Güvence.
     if (ref.read(authControllerProvider).asData?.value != null) {

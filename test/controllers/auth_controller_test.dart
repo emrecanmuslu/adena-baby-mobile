@@ -7,6 +7,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:adena_baby/core/providers.dart';
+import 'package:adena_baby/core/session_end.dart';
 import 'package:adena_baby/core/revenuecat_service.dart';
 import 'package:adena_baby/core/token_storage.dart';
 import 'package:adena_baby/data/auth_repository.dart';
@@ -506,6 +507,168 @@ void main() {
       gate.complete(User(id: 'n1', email: 'a@b.com', name: 'Yeni'));
       await pending;
       expect(c.read(authControllerProvider).value, isNull);
+    });
+  });
+
+  group('O1 — sessionExpired / verifySession / kanca ömrü', () {
+    setUp(() => LocalSession.resetForTests());
+    tearDown(() => LocalSession.resetForTests());
+
+    Future<String?> prefsReason() async =>
+        (await SharedPreferences.getInstance()).getString(SessionEndCache.key);
+
+    Future<void> settle() async {
+      for (var i = 0; i < 30; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    test(
+        'sessionExpired: state null, token/önbellek/kapsam/abonelik temiz; repo.logout YOK; slot haritası dokunulmaz',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'baby_notif_slots': '{"b1":3}',
+        'sub_is_premium': true,
+      });
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'e1'));
+      when(() => repo.logout()).thenAnswer((_) async {});
+
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      expect(LocalSession.activeAccountId, 'e1');
+
+      await c
+          .read(authControllerProvider.notifier)
+          .sessionExpired(SessionEndReason.superseded);
+
+      expect(c.read(authControllerProvider).value, isNull);
+      expect(await tokens.hasSession, isFalse);
+      expect(LocalSession.activeAccountId, isNull);
+      expect(await LocalSession.cachedAuthUser(), isNull);
+      expect(c.read(sessionEndReasonProvider), SessionEndReason.superseded);
+      expect(await prefsReason(), 'superseded');
+      verifyNever(() => repo.logout()); // yetki yok → POST /auth/logout atılmaz
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('baby_notif_slots'), '{"b1":3}',
+          reason: 'SlotRegistry korunur (yerel hatırlatıcılar sürer)');
+      expect(prefs.getBool('sub_is_premium'), isNull,
+          reason: 'abonelik önbelleği temizlenir');
+    });
+
+    test(
+        'verifySession: state User ama token yok → prefs nedeniyle zorunlu çıkış',
+        () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'v1'));
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+
+      // Başka isolate (bg turu) refresh reddi aldı: token sildi + prefs yazdı.
+      tokens.access = null;
+      await SessionEndCache.write(SessionEndReason.expired);
+
+      await c.read(authControllerProvider.notifier).verifySession();
+
+      expect(c.read(authControllerProvider).value, isNull);
+      expect(c.read(sessionEndReasonProvider), SessionEndReason.expired);
+      expect(LocalSession.activeAccountId, isNull);
+    });
+
+    test('verifySession: token varsa no-op', () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'v2'));
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+
+      await c.read(authControllerProvider.notifier).verifySession();
+
+      expect(c.read(authControllerProvider).value?.id, 'v2');
+      expect(c.read(sessionEndReasonProvider), isNull);
+    });
+
+    test('kanca: build atar; ApiClient çağırınca zorunlu çıkış; dispose sıfırlar',
+        () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'h1'));
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      final api = c.read(apiClientProvider);
+      expect(api.onSessionRejected, isNotNull);
+
+      api.onSessionRejected!(SessionEndReason.superseded);
+      await settle();
+      expect(c.read(authControllerProvider).value, isNull);
+      expect(c.read(sessionEndReasonProvider), SessionEndReason.superseded);
+
+      c.dispose();
+      expect(api.onSessionRejected, isNull,
+          reason: 'eski notifier RestartWidget sonrası çağrılmamalı');
+    });
+
+    test('kanca: invalidate (RestartWidget) sonrası yeni notifier kancası durur',
+        () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'h2'));
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      final api = c.read(apiClientProvider);
+      final first = api.onSessionRejected;
+
+      c.invalidate(authControllerProvider);
+      await c.read(authControllerProvider.future);
+
+      expect(api.onSessionRejected, isNotNull);
+      expect(identical(api.onSessionRejected, first), isFalse);
+    });
+
+    test('kanca: oturum yokken (misafir/çıkmış) çağrı no-op', () async {
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      final api = c.read(apiClientProvider);
+
+      api.onSessionRejected!(SessionEndReason.unknown);
+      await settle();
+
+      expect(c.read(authControllerProvider).value, isNull);
+      expect(c.read(sessionEndReasonProvider), isNull);
+    });
+
+    test('bg=true: kanca ATANMAZ', () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'h3'));
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        runningInBackgroundProvider.overrideWithValue(true),
+      ]);
+      addTearDown(c.dispose);
+      await c.read(authControllerProvider.future);
+      expect(c.read(apiClientProvider).onSessionRejected, isNull);
+    });
+
+    test('prefs nedeni: başarılı giriş ve kullanıcı çıkışı temizler', () async {
+      await SessionEndCache.write(SessionEndReason.superseded);
+      when(() => repo.login(
+              email: any(named: 'email'), password: any(named: 'password')))
+          .thenAnswer((_) async => _user(id: 'p1'));
+      when(() => repo.logout()).thenAnswer((_) async {});
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      c.read(sessionEndReasonProvider.notifier).set(SessionEndReason.superseded);
+
+      await c
+          .read(authControllerProvider.notifier)
+          .login(email: 'a@b.c', password: 'x');
+      expect(await prefsReason(), isNull, reason: 'giriş eski nedeni siler');
+      expect(c.read(sessionEndReasonProvider), isNull);
+
+      await SessionEndCache.write(SessionEndReason.expired);
+      tokens.access = 'ACC';
+      await c.read(authControllerProvider.notifier).logout();
+      expect(await prefsReason(), isNull,
+          reason: 'kullanıcı çıkışı neden bırakmaz');
     });
   });
 }

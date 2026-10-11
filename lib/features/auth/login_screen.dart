@@ -7,6 +7,7 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
+import '../../core/session_end.dart';
 import '../../core/theme.dart';
 import '../../data/local_session.dart';
 import 'auth_controller.dart';
@@ -20,6 +21,32 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  /// O1: zorunlu çıkış nedeni — bir kez gösterilir, gösterilince provider +
+  /// prefs temizlenir (eski neden sonraki çıkışta yanlış banner göstermesin).
+  SessionEndReason? _endReason;
+
+  @override
+  void initState() {
+    super.initState();
+    _endReason = ref.read(sessionEndReasonProvider);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      ref.read(sessionEndReasonProvider.notifier).set(null);
+      if (_endReason == null) {
+        final persisted = await SessionEndCache.read(); // başka isolate/süreç
+        if (persisted != null && mounted) setState(() => _endReason = persisted);
+      }
+      await SessionEndCache.clear();
+    });
+  }
+
+  String _endReasonText(SessionEndReason r) => switch (r) {
+        SessionEndReason.superseded => tr(
+            'Hesabına başka bir cihazdan giriş yapıldı; bu cihazdaki oturum kapatıldı.'),
+        SessionEndReason.expired => tr('Oturumun sona erdi. Lütfen tekrar giriş yap.'),
+        SessionEndReason.unknown => tr('Oturumun sonlandırıldı. Lütfen tekrar giriş yap.'),
+      };
+
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -78,6 +105,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_endReason != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: AppColors.feedBg,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Text(
+                          _endReasonText(_endReason!),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              height: 1.4,
+                              color: AppColors.ink2),
+                        ),
+                      ),
+                    ],
                     const Center(child: BrandWordmark()),
                     const SizedBox(height: 9),
                     Center(

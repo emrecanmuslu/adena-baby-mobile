@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'config.dart';
 import 'i18n.dart';
+import 'session_end.dart';
 import 'token_storage.dart';
 
 /// Dio tabanlı API istemcisi. JWT ekler ve 401'de otomatik token yeniler.
@@ -86,6 +87,12 @@ class ApiClient {
   @visibleForTesting
   Dio get debugRefreshClient => _refreshClient;
 
+  /// Sunucu oturumu AÇIKÇA reddettiğinde (refresh 401/400 → token silindi)
+  /// çağrılır (O1). AuthController ön planda atar/sıfırlar; bg'de atanmaz.
+  /// Çağrıdan ÖNCE neden prefs'e yazılır ([SessionEndCache]) — başka isolate ya
+  /// da süreç ön planda bir kez gösterebilsin.
+  void Function(SessionEndReason reason)? onSessionRejected;
+
   /// Devam eden refresh turu — **tek-uçuş (single-flight) kilidi**.
   /// Access token'ın ömrü dolduğunda uygulama aynı anda onlarca istek atar
   /// (açılış turu: babies + sync + content + me...); hepsi birden 401 alır.
@@ -126,7 +133,10 @@ class ApiClient {
   /// Refresh token ile yeni access (ve dönerse refresh) alır.
   Future<RefreshResult> _refresh() async {
     final refresh = await _tokens.refreshToken;
-    if (refresh == null) return RefreshResult.rejected;
+    if (refresh == null) {
+      await _rejected(SessionEndReason.unknown);
+      return RefreshResult.rejected;
+    }
     try {
       final resp = await _refreshClient
           .post('/auth/refresh', data: {'refresh': refresh});
@@ -142,6 +152,7 @@ class ApiClient {
       final code = e.response?.statusCode;
       if (code == 401 || code == 400) {
         await _tokens.clear();
+        await _rejected(sessionEndReasonFromBody(e.response?.data));
         return RefreshResult.rejected;
       }
       _lastTransientType = e.type;
@@ -151,6 +162,13 @@ class ApiClient {
       _lastTransientType = DioExceptionType.unknown;
       return RefreshResult.transient;
     }
+  }
+
+  Future<void> _rejected(SessionEndReason reason) async {
+    await SessionEndCache.write(reason);
+    try {
+      onSessionRejected?.call(reason);
+    } catch (_) {}
   }
 }
 

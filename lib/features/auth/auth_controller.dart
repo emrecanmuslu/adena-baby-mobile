@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/notification_service.dart';
 import '../../core/providers.dart';
 import '../../core/push_service.dart';
 import '../../core/revenuecat_service.dart';
+import '../../core/session_end.dart';
 import '../../data/auth_repository.dart';
 import '../../data/initial_import.dart';
 import '../../data/local_session.dart';
@@ -34,12 +36,24 @@ class AuthController extends AsyncNotifier<User?> {
   @override
   Future<User?> build() async {
     final storage = ref.read(tokenStorageProvider);
-    if (!await storage.hasSession) return null;
     // K9: arka plan isolate'inde (workmanager/BGTask/FCM) yalnız kimlik gerekir;
     // /auth/me tazeleme + ilk import, RevenueCat identify ve exitGuest ön plana
     // ait işlerdir — bg'de HİÇ başlatılmaz (container dispose'dan önce bitmez,
     // her turda tam import tetikler, prefs bayraklarını ezerdi).
     final bg = ref.read(runningInBackgroundProvider);
+    // O1: sunucu oturumu reddedince (refresh 401/400) zorunlu çıkış. Kanca
+    // yalnız ön planda ve bu notifier yaşadığı sürece; dispose'da (hâlâ bizimse)
+    // sıfırlanır → RestartWidget sonrası eski notifier çağrılmaz. Oturum yokken
+    // de atanır: login() state'i rebuild olmadan değiştirir, kanca hazır olmalı.
+    if (!bg) {
+      final api = ref.read(apiClientProvider);
+      void hook(SessionEndReason r) => _onSessionRejected(r);
+      api.onSessionRejected = hook;
+      ref.onDispose(() {
+        if (identical(api.onSessionRejected, hook)) api.onSessionRejected = null;
+      });
+    }
+    if (!await storage.hasSession) return null;
     // Gerçek oturum var → misafir ("kayıt olmadan devam et") bayrağını kapat.
     if (!bg) unawaited(LocalSession.exitGuest());
     // Local-first: önbellekte kullanıcı varsa AĞI BEKLEMEDEN hemen onunla dön —
@@ -98,6 +112,44 @@ class AuthController extends AsyncNotifier<User?> {
     }
   }
 
+  void _onSessionRejected(SessionEndReason reason) {
+    if (!ref.mounted || state.value == null) return; // çıkışta/misafirde no-op
+    unawaited(sessionExpired(reason));
+  }
+
+  /// Zorunlu çıkış (O1): sunucu oturumu reddetti (başka cihazdan giriş / refresh
+  /// süresi doldu) ya da token başka isolate'te silindi. Kullanıcı çıkışından
+  /// FARKLI: yerel veri SİLİNMEZ (dirty kayıtlar aynı hesapla yeniden girişte
+  /// gönderilir), yerel hatırlatıcılar iptal EDİLMEZ, slot haritası ve cihaz
+  /// kaydı (yetki yok) dokunulmaz. Yalnız kimlik/yetki durumu temizlenir ve
+  /// aile push'u bu cihaza gelmesin diye FCM token'ı silinir.
+  Future<void> sessionExpired(SessionEndReason reason) async {
+    _epoch++; // uçuştaki auth yanıtları artık geçersiz (O34)
+    await ref.read(tokenStorageProvider).clear();
+    await SessionEndCache.write(reason);
+    try {
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {
+      // Firebase hazır değil / platform hatası → sessiz.
+    }
+    await RevenueCatService.instance.logoutUser();
+    await SubscriptionCache().clear();
+    await LocalSession.clearCachedAuthUser();
+    LocalSession.setActiveAccount(null);
+    if (!ref.mounted) return;
+    ref.read(sessionEndReasonProvider.notifier).set(reason);
+    state = const AsyncData(null);
+  }
+
+  /// Öne gelişte/açılışta: state User ama token yok (başka isolate'teki bg
+  /// turu refresh reddi aldı ve token'ı sildi) → zorunlu çıkışı uygula.
+  Future<void> verifySession() async {
+    if (!ref.mounted || state.value == null) return;
+    if (await ref.read(tokenStorageProvider).hasSession) return;
+    final reason = await SessionEndCache.read() ?? SessionEndReason.unknown;
+    await sessionExpired(reason);
+  }
+
   /// RevenueCat kullanıcı kimliğini bizim user.id'ye sabitler (webhook eşleşmesi).
   void _syncRevenueCat(User? user) {
     if (user != null) RevenueCatService.instance.identify(user.id);
@@ -139,6 +191,10 @@ class AuthController extends AsyncNotifier<User?> {
       // için /auth/me önbelleği burada da yazılır — yoksa ilk soğuk açılış
       // çevrimdışıyken oturum çözülemez (repo'lar hesapsız kalır).
       await LocalSession.cacheAuthUser(u.toJson());
+      // O1: eski "oturum sona erdi" nedeni bir sonraki çıkışta yanlış banner
+      // göstermesin.
+      await SessionEndCache.clear();
+      if (ref.mounted) ref.read(sessionEndReasonProvider.notifier).set(null);
       if (epoch != _epoch) return; // O34: await'ler sırasında çıkış yapıldı
       await ref.read(initialImportProvider).runIfNeeded();
     }
@@ -224,9 +280,24 @@ class AuthController extends AsyncNotifier<User?> {
     await SubscriptionCache().clear(); // sonraki kullanıcıya premium sızmasın
     await LocalSession.clearCachedAuthUser(); // önbellekli kullanıcı sızmasın
     LocalSession.setActiveAccount(null); // yerel veri kapsamı kapanır (silinmez)
+    await SessionEndCache.clear(); // kullanıcı çıkışı neden yazmaz/temizler (O1)
+    if (ref.mounted) ref.read(sessionEndReasonProvider.notifier).set(null);
     state = const AsyncData(null);
   }
 }
+
+/// Giriş ekranında bir kez gösterilecek "oturum sona erdi" nedeni (O1).
+/// `sessionExpired` set eder; giriş ekranı gösterince, başarılı giriş ve
+/// kullanıcı çıkışı temizler.
+class SessionEndReasonNotifier extends Notifier<SessionEndReason?> {
+  @override
+  SessionEndReason? build() => null;
+  void set(SessionEndReason? r) => state = r;
+}
+
+final sessionEndReasonProvider =
+    NotifierProvider<SessionEndReasonNotifier, SessionEndReason?>(
+        SessionEndReasonNotifier.new);
 
 final authControllerProvider =
     AsyncNotifierProvider<AuthController, User?>(AuthController.new);

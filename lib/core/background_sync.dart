@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workmanager/workmanager.dart';
@@ -52,6 +53,8 @@ const bgPushTimeout = Duration(seconds: 20);
 const bgOutcomeDone = 'bitti';
 const bgOutcomeError = 'hata';
 const bgOutcomeTimeout = 'zaman aşımı';
+/// Refresh reddi → token silindi; ön plan öne gelişte zorunlu çıkışı uygular (O1).
+const bgOutcomeNoSession = 'oturum yok';
 
 /// Uygulama KAPALI/ölü iken bile paylaşımlı bebekleri senkronlar — push düşmese
 /// de yarım saatte bir yerel veri (drift) tazelensin (kullanıcı açınca güncel olsun).
@@ -101,7 +104,9 @@ Future<String> runBackgroundSyncWith(
 }) async {
   var outcome = bgOutcomeDone;
   try {
-    await _syncBabies(container, onlyBabyId: onlyBabyId).timeout(timeout);
+    final sessionLost =
+        await _syncBabies(container, onlyBabyId: onlyBabyId).timeout(timeout);
+    if (sessionLost) outcome = bgOutcomeNoSession;
   } on TimeoutException {
     outcome = bgOutcomeTimeout;
   } catch (_) {
@@ -113,11 +118,15 @@ Future<String> runBackgroundSyncWith(
   return outcome;
 }
 
-Future<void> _syncBabies(ProviderContainer container,
+/// Döner: oturum sunucu tarafından reddedildi mi (401 → refresh reddi, token
+/// silindi). Bg'de başka iş yapılmaz; ön plan öne gelişte `verifySession` ile
+/// zorunlu çıkışı uygular.
+Future<bool> _syncBabies(ProviderContainer container,
     {String? onlyBabyId}) async {
+  var sessionLost = false;
   // Oturum çözülene kadar bekle; yoksa hiç senkron yok (saf local-first).
   await container.read(authControllerProvider.future);
-  if (!container.read(loggedInProvider)) return;
+  if (!container.read(loggedInProvider)) return false;
   final acct = container.read(activeAccountIdProvider);
   final babies =
       await container.read(babyRepositoryProvider).getAll(accountId: acct);
@@ -131,16 +140,19 @@ Future<void> _syncBabies(ProviderContainer container,
     if (b.isExpecting) continue; // bekleme modunda kayıt/beslenme işi yok
     try {
       await repo.sync(b.id);
-    } catch (_) {
+    } on DioException catch (e) {
+      // 401 = refresh reddi sonrası (token silindi) → oturum yok damgası.
       // 403 (erişim/grace) / çevrimdışı / 5xx → yerel korunur, sonraki tur
       // tekrar. Bg'de purge/salt-okunur işareti YAZILMAZ (ön plan pull'u karar verir).
-    }
+      if (e.response?.statusCode == 401) sessionLost = true;
+    } catch (_) {}
     // Senkron sonrası (push düşse bile) widget'ı + sonraki-beslenme bildirimini
     // taze veriyle yeniden kur: başka cihazın eklediği kayda göre HER İKİ
     // platformda en geç bu turda (≈30 dk) doğru zamana kayar. Sync hata verse
     // de yereldeki veriyle çalışır (zararsız, idempotent).
     await _refreshFeedState(repo, b);
   }
+  return sessionLost;
 }
 
 /// Bir bebeğin sonraki-beslenme widget'ını + yerel beslenme hatırlatıcısını
