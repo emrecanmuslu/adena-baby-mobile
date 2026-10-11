@@ -752,6 +752,7 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
       // güncellenir, Future tabanlı bölümleri de tazele.
       onRefresh: () async {
         await ref.read(syncServiceProvider).syncAll();
+        if (!context.mounted) return; // D24: sekme değişmiş olabilir
         ref.invalidate(familySettingsProvider(babyId));
       },
       child: ListView(

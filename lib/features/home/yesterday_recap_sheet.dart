@@ -232,6 +232,7 @@ class _RecapSheetState extends ConsumerState<_RecapSheet>
         data: {'name': d.plan.name, 'dose': d.plan.dose, 'given': true},
       ));
     }
+    if (!mounted) return; // D24
     unawaited(ref.read(syncServiceProvider).syncAll());
     final next = await loadYesterdayRecap(ref, widget.baby);
     if (!mounted) return;
