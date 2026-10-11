@@ -415,7 +415,8 @@ class _Today extends ConsumerWidget {
         'count' => (
             tr('Döngü günü'),
             '${status.dayInCycle} / $total',
-            tr('PMS olası'),
+            // D5: kesinlik değil olasılık dili.
+            tr('PMS belirtileri olabilir'),
             tr('2–3 gün')
           ),
         _ when status.irregular => (
