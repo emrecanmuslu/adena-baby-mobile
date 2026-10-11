@@ -287,8 +287,19 @@ class HealthRepository {
     return {for (final r in rows) r.localId};
   }
 
+  /// KB-8: bakıcı (caregiver) ilaç planı EKLEYEMEZ/düzenleyemez/silemez —
+  /// backend `can_full_write` reddeder, senkron göndermezdi → cihazda hayalet
+  /// plan kalırdı. K-7/O20 deseni: repo `StateError`, UI kilit + toast. Bakıcı
+  /// yalnız doz işaretler (kayıt senkronu rolden bağımsız gönderir).
+  Future<void> _requireFullWrite(String babyId) async {
+    final b = await (_db.select(_db.babies)..where((x) => x.id.equals(babyId)))
+        .getSingleOrNull();
+    if (b?.myRole == 'caregiver') throw StateError('caregiver_readonly: $babyId');
+  }
+
   Future<MedicationPlan> createMedicationPlan(String babyId,
       {required String name, required String dose, required List<String> times}) async {
+    await _requireFullWrite(babyId);
     final now = DateTime.now();
     final id = await _db.into(_db.medicationPlans).insert(
           MedicationPlansCompanion.insert(
@@ -314,6 +325,7 @@ class HealthRepository {
           ..where((r) => r.localId.equals(id)))
         .getSingleOrNull();
     if (row == null) return;
+    await _requireFullWrite(row.baby); // KB-8
     await (_db.update(_db.medicationPlans)..where((r) => r.localId.equals(id))).write(
       MedicationPlansCompanion(
         name: name != null ? Value(name) : const Value.absent(),
@@ -334,6 +346,7 @@ class HealthRepository {
           ..where((r) => r.localId.equals(id)))
         .getSingleOrNull();
     if (row == null) return;
+    await _requireFullWrite(row.baby); // KB-8
     if (row.uuid != null && _cloudEnabled(row.baby)) {
       await (_db.update(_db.medicationPlans)..where((r) => r.localId.equals(id)))
           .write(MedicationPlansCompanion(
@@ -511,10 +524,19 @@ class HealthRepository {
   /// Kalıcı 4xx → `pushError` (R3), dirty kalır, fırlatmaz. Geçici hata (ağ/5xx/
   /// 401/403) → fırlatır (syncAll 403'ü salt-okunur kapısına, diğerini hadError'a
   /// düşürür), dirty kalır.
-  Future<void> pushDirty(String babyId) async {
-    final rows = await (_db.select(_db.healthStatuses)
+  /// Yankılanmayan (dil uyuşmazlığı) aşı anahtarları — M9(a): her 1 dk polling
+  /// turunda yeniden POST edilmesin; yalnız tam turlarda (açılış/öne geliş/
+  /// işaretleme, `retryUnechoed: true`) yeniden denenir. Süreç ömrü.
+  final Map<String, Set<String>> _unechoedVaccines = {};
+
+  Future<void> pushDirty(String babyId, {bool retryUnechoed = true}) async {
+    var rows = await (_db.select(_db.healthStatuses)
           ..where((s) => s.baby.equals(babyId) & s.dirty.equals(true)))
         .get();
+    if (!retryUnechoed) {
+      final skip = _unechoedVaccines[babyId] ?? const <String>{};
+      rows = rows.where((r) => !(r.kind == 'vaccine' && skip.contains(r.itemKey))).toList();
+    }
     if (rows.isEmpty) return;
     final cat = await _catalog();
     String vaccineName(String key) {
@@ -702,6 +724,9 @@ class HealthRepository {
       if (missing.isNotEmpty) {
         debugPrint(
             '[health-pull] aşı yankısı yok (dil uyuşmazlığı?): ${missing.join(', ')}');
+        _unechoedVaccines[babyId] = missing.toSet(); // M9(a)
+      } else if (echo.isNotEmpty) {
+        _unechoedVaccines.remove(babyId);
       }
     }
     _vaccineEcho.remove(babyId);

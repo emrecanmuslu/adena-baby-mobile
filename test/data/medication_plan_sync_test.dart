@@ -280,7 +280,14 @@ void main() {
         };
     await repo.syncMedicationPlans(babyId);
     final localId = (await rows()).single.localId;
-    await repo.updateMedicationPlan(localId, name: 'Bakıcının değişikliği');
+    // KB-8: bakıcı repo üzerinden düzenleyemez (StateError). KB-8 öncesinden
+    // kalmış yetim dirty düzenlemeyi temsil etmek için satır doğrudan yazılır;
+    // senkron bunu göndermez ve sunucu kopyasıyla ezer (eski kontrat korunur).
+    await expectLater(repo.updateMedicationPlan(localId, name: 'Bakıcının değişikliği'),
+        throwsA(isA<StateError>()));
+    await (db.update(db.medicationPlans)..where((r) => r.localId.equals(localId)))
+        .write(const MedicationPlansCompanion(
+            name: Value('Bakıcının değişikliği'), dirty: Value(true)));
 
     await repo.syncMedicationPlans(babyId);
 

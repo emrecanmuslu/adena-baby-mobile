@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_widgets.dart';
+import '../../core/exact_alarm_prompt.dart';
 import '../../core/api_error.dart';
 import '../../core/adena_icons.dart';
 import '../../core/i18n.dart';
@@ -307,11 +308,19 @@ class _PlanSheetState extends ConsumerState<_PlanSheet> {
       } else {
         await repo.createMedicationPlan(widget.babyId,
             name: name, dose: _dose.text.trim(), times: _times);
+        // M4/KB-4: ilk plan → kesin alarm izni açıklaması (yalnız Android, tek sefer).
+        if (others.isEmpty && mounted) await ExactAlarmPrompt().maybeShow(context);
       }
       ref.invalidate(medicationPlansProvider(widget.babyId));
       if (mounted) {
         Navigator.pop(context);
         showAdToast(context, tr('Kaydedildi'));
+      }
+    } on StateError {
+      // KB-8: bakıcı planı yazamaz.
+      if (mounted) {
+        setState(() => _saving = false);
+        showAdError(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
       }
     } catch (e) {
       // D28: hata sessiz kalmasın.

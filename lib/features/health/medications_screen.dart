@@ -53,6 +53,7 @@ class MedicationsScreen extends ConsumerWidget {
         ),
         actions: [
           if (!isEmpty)
+            if (baby.canFullWrite) // KB-8: bakıcı plan ekleyemez
             Padding(
               padding: const EdgeInsetsDirectional.only(end: 14),
               child: Semantics(
@@ -83,11 +84,13 @@ class MedicationsScreen extends ConsumerWidget {
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-                child: AdSaveButton(
-                  label: tr('Kendi planını ekle'),
-                  color: AppColors.coral,
-                  onTap: () => showMedicationPlanSheet(context, baby.id),
-                ),
+                child: baby.canFullWrite
+                    ? AdSaveButton(
+                        label: tr('Kendi planını ekle'),
+                        color: AppColors.coral,
+                        onTap: () => showMedicationPlanSheet(context, baby.id),
+                      )
+                    : const SizedBox.shrink(), // KB-8
               ),
             )
           : null,
@@ -129,7 +132,12 @@ class _PlansBody extends ConsumerWidget {
       children: [
         if (active.isNotEmpty) ...[
           adSec(trp('Aktif planlar · {n}', {'n': active.length})),
-          for (final p in active) _PlanCard(babyId: babyId, plan: p, row: rows[p.id]),
+          for (final p in active)
+            _PlanCard(
+                babyId: babyId,
+                plan: p,
+                row: rows[p.id],
+                canEdit: ref.read(activeBabyProvider)?.canFullWrite ?? true), // KB-8
         ],
         if (paused.isNotEmpty) ...[
           adSec(tr('Duraklatılan')),
@@ -173,7 +181,10 @@ class _PlansBody extends ConsumerWidget {
         const SizedBox(height: 14),
         _InfoNote(
           icon: 'family',
-          text: tr('Verilen dozlar ve plan listesi ailenle paylaşılır.'),
+          // KB-8: rol farkı — bakıcı yalnız doz işaretler.
+          text: (ref.read(activeBabyProvider)?.canFullWrite ?? true)
+              ? tr('Verilen dozlar ve plan listesi ailenle paylaşılır.')
+              : tr('Bakıcı rolünde planları ebeveyn/sahip düzenler; sen dozları işaretleyebilirsin.'),
         ),
       ],
     );
@@ -184,11 +195,17 @@ class _PlanCard extends StatelessWidget {
   final String babyId;
   final MedicationPlan plan;
   final MedicationPlanDay? row;
-  const _PlanCard({required this.babyId, required this.plan, required this.row});
+  final bool canEdit;
+  const _PlanCard(
+      {required this.babyId, required this.plan, required this.row, this.canEdit = true});
 
   @override
   Widget build(BuildContext context) {
-    void edit() => showMedicationPlanSheet(context, babyId, existing: plan);
+    // KB-8: bakıcı düzenleyemez (sheet açılmaz; repo da StateError ile korur).
+    void edit() {
+      if (!canEdit) return;
+      showMedicationPlanSheet(context, babyId, existing: plan);
+    }
     final meta = [
       if (plan.dose.isNotEmpty) plan.dose,
       trp('her gün · {n} doz', {'n': plan.times.length}),
@@ -262,7 +279,9 @@ class _PausedCard extends ConsumerWidget {
         painter: MedDashedBorder(color: AppColors.line2, radius: 20),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          onTap: () => showMedicationPlanSheet(context, babyId, existing: plan),
+          onTap: (ref.read(activeBabyProvider)?.canFullWrite ?? true)
+              ? () => showMedicationPlanSheet(context, babyId, existing: plan)
+              : null, // KB-8
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
             child: Row(
