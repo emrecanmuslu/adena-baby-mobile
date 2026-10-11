@@ -518,6 +518,16 @@ class BabyRepository {
             // aksi hâlde pushError='HTTP 404' + "Silme gönderilemedi" banner'ı).
             if (e.response?.statusCode != 404) rethrow;
           }
+          // J9 (R5): DELETE uçuştayken satır canlandırıldıysa (yeniden oluşturma /
+          // K-1 geri al) ya da damgası değiştiyse dirty temizlenmez → sonraki tur
+          // güncel hâli gönderir; yalnız pushError silinir.
+          final cur = await _byIdRow(r.id);
+          if (cur == null) continue; // bu arada purge edilmiş
+          if (!(cur.isDeleted && cur.clientUpdatedAt == r.clientUpdatedAt)) {
+            await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
+                .write(const BabiesCompanion(pushError: Value(null)));
+            continue;
+          }
         } else {
           // `photo` yerel bir dosya yoluysa (henüz yüklenmemiş) multipart ekle;
           // zaten sunucu URL'i (http) ise partial=True update'te dokunmadan

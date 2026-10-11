@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -28,7 +29,7 @@ class _Tokens implements TokenStorage {
 
 /// POST sürerken [midFlight] çalışır (kullanıcı düzenler), sonra [reply] döner.
 class _SlowAdapter implements HttpClientAdapter {
-  final Future<void> Function() midFlight;
+  Future<void> Function() midFlight;
   final Map<String, dynamic> reply;
   final requests = <RequestOptions>[];
   _SlowAdapter(this.midFlight, this.reply);
@@ -53,6 +54,7 @@ void main() {
   late AppDatabase db;
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
+    LocalSession.resetForTests(); // J16: testler arası bayrak sızıntısı yok
     LocalSession.setActiveAccount('u1');
   });
   tearDown(() => db.close());
@@ -153,9 +155,41 @@ void main() {
     expect(r.isDeleted, isTrue);
     expect(r.dirty, isTrue, reason: 'silme bir sonraki turda DELETE olarak gitmeli');
 
+    // J9: ikinci turda uçuşta değişiklik YOK → DELETE gider, dirty temizlenir.
+    // (Eski kontrat uçuşta yeniden `delete` çağırıp yine dirty=false bekliyordu;
+    // R5 DELETE dalında da geçerli olduğundan o beklenti yanlıştı.)
+    adapter.midFlight = () async {};
     await repo.pushDirty(accountId: 'u1');
     expect(adapter.requests.last.method, 'DELETE');
     r = await row();
     expect(r.dirty, isFalse);
+  });
+
+  test('J9: DELETE uçuştayken satır canlandırıldı (dirty=true) → dirty KALIR, '
+      'sonraki tur güncel hâli gönderir', () async {
+    final api = ApiClient(_Tokens());
+    late BabyRepository repo;
+    final adapter = _SlowAdapter(() async {
+      // Kullanıcı aynı id ile yeniden oluşturdu / geri aldı: tombstone kalkar.
+      await (db.update(db.babies)..where((b) => b.id.equals('b1'))).write(
+          BabiesCompanion(
+              isDeleted: const Value(false),
+              dirty: const Value(true),
+              clientUpdatedAt: Value(DateTime.now().add(const Duration(seconds: 5)))));
+    }, {});
+    api.dio.httpClientAdapter = adapter;
+    repo = BabyRepository(db, api);
+    await repo.create(Baby(
+        id: 'b1', name: 'Eski', gender: BabyGender.unknown, status: BabyStatus.born));
+    await (db.update(db.babies)..where((b) => b.id.equals('b1'))).write(
+        const BabiesCompanion(isDeleted: Value(true), dirty: Value(true)));
+
+    await repo.pushDirty(accountId: 'u1');
+
+    expect(adapter.requests.single.method, 'DELETE');
+    final r = await row();
+    expect(r.isDeleted, isFalse);
+    expect(r.dirty, isTrue, reason: 'canlandırma bir sonraki turda POST olarak gitmeli');
+    expect(r.pushError, isNull);
   });
 }
