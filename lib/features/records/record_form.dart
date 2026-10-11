@@ -97,6 +97,26 @@ Future<void> showRecordForm(
   );
 }
 
+/// O37: formdan kaydedilecek kayıt — düzenlemede kimlik VE "kim ekledi"
+/// (`createdBy`) korunur; yeni kayıtta createdBy null (sunucu/yerel kimlik
+/// upsert'te verir). Saf, birim testli.
+Record recordForSave({
+  required Record? existing,
+  required String newId,
+  required String babyId,
+  required RecordType type,
+  required DateTime ts,
+  required Map<String, dynamic> data,
+}) =>
+    Record(
+      id: existing?.id ?? newId,
+      baby: babyId,
+      type: type,
+      ts: ts,
+      data: data,
+      createdBy: existing?.createdBy,
+    );
+
 class _RecordFormSheet extends ConsumerStatefulWidget {
   final String babyId;
   final RecordType type;
@@ -360,13 +380,13 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           _addNote(data);
       }
 
-      final record = Record(
-        id: widget.existing?.id ?? _uuid.v4(),
-        baby: widget.babyId,
+      final record = recordForSave(
+        existing: widget.existing,
+        newId: _uuid.v4(),
+        babyId: widget.babyId,
         type: widget.type,
         ts: _ts,
         data: data,
-        createdBy: widget.existing?.createdBy, // O37: düzenlemede "kim ekledi" korunur
       );
       // container'ı ilk await'ten ÖNCE yakala (context hâlâ kesin geçerliyken):
       // hatırlatıcı ağ isteği arkaplanda sürerken bu State dispose olsa bile

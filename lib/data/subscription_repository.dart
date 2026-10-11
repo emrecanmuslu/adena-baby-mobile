@@ -120,6 +120,28 @@ class LastKnownPremium extends Notifier<bool> {
 final cachedPremiumProvider =
     NotifierProvider<LastKnownPremium, bool>(LastKnownPremium.new);
 
+/// O12: satın alma RevenueCat'te DOĞRULANDI → premium artık gerçek. Backend
+/// refresh (webhook kısayolu) düşerse hata GÖSTERİLMEZ: son bilinen durum premium
+/// yapılır, kalıcı önbelleğe yazılır; RC webhook / sonraki açılış sunucuyu
+/// senkronlar. İki paywall ekranı da bunu çağırır (birim testli).
+class PurchaseConfirm {
+  final Ref _ref;
+  PurchaseConfirm(this._ref);
+
+  Future<void> applyConfirmed() async {
+    _ref.read(cachedPremiumProvider.notifier).set(true);
+    unawaited(SubscriptionCache().write(true));
+    try {
+      await _ref.read(subscriptionRepositoryProvider).refresh();
+    } catch (_) {
+      // Sunucu/ağ hatası premium'u engellemez (O12).
+    }
+    _ref.invalidate(subscriptionProvider);
+  }
+}
+
+final purchaseConfirmProvider = Provider<PurchaseConfirm>(PurchaseConfirm.new);
+
 /// Mevcut abonelik durumu. Satın alma sonrası invalidate edilir.
 /// Local-first: hesapsız (oturum yok) kullanıcıda sunucuya HİÇ gitmez → 401 olmaz,
 /// doğrudan free döner (free kullanıcı zaten premium değil).

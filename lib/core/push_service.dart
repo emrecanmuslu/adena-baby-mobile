@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../data/activity_notif_cache.dart';
@@ -27,6 +28,11 @@ import 'widget_service.dart';
 /// (bayrak true → OS bildirimi atla), arka planda `onBackgroundMessage` AYRI
 /// isolate'te çalışır (bayrak varsayılan false → OS bildirimi göster).
 bool appInForeground = false;
+
+/// D4: `inactive` (bildirim paneli, iOS app switcher) de ön plandır — aksi hâlde
+/// push hem OS bildirimi hem in-app banner olarak çift görünür. Saf, testli.
+bool isForegroundLifecycle(AppLifecycleState state) =>
+    state == AppLifecycleState.resumed || state == AppLifecycleState.inactive;
 
 /// O17: push çapası makul mü — ön plan `lastFeedAt` kuralıyla aynı eşik
 /// (şimdi + 1 saatten ileri kayıt çapa OLMAZ). "En yeni kayıt" kuralı backend
