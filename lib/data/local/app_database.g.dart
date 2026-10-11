@@ -821,6 +821,43 @@ class $BabiesTable extends Babies with TableInfo<$BabiesTable, BabyRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant('{}'),
   );
+  static const VerificationMeta _settingsDirtyMeta = const VerificationMeta(
+    'settingsDirty',
+  );
+  @override
+  late final GeneratedColumn<bool> settingsDirty = GeneratedColumn<bool>(
+    'settings_dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("settings_dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _settingsBaseMeta = const VerificationMeta(
+    'settingsBase',
+  );
+  @override
+  late final GeneratedColumn<String> settingsBase = GeneratedColumn<String>(
+    'settings_base',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pushErrorMeta = const VerificationMeta(
+    'pushError',
+  );
+  @override
+  late final GeneratedColumn<String> pushError = GeneratedColumn<String>(
+    'push_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -841,6 +878,9 @@ class $BabiesTable extends Babies with TableInfo<$BabiesTable, BabyRow> {
     myRole,
     memberCount,
     settings,
+    settingsDirty,
+    settingsBase,
+    pushError,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -981,6 +1021,30 @@ class $BabiesTable extends Babies with TableInfo<$BabiesTable, BabyRow> {
         settings.isAcceptableOrUnknown(data['settings']!, _settingsMeta),
       );
     }
+    if (data.containsKey('settings_dirty')) {
+      context.handle(
+        _settingsDirtyMeta,
+        settingsDirty.isAcceptableOrUnknown(
+          data['settings_dirty']!,
+          _settingsDirtyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('settings_base')) {
+      context.handle(
+        _settingsBaseMeta,
+        settingsBase.isAcceptableOrUnknown(
+          data['settings_base']!,
+          _settingsBaseMeta,
+        ),
+      );
+    }
+    if (data.containsKey('push_error')) {
+      context.handle(
+        _pushErrorMeta,
+        pushError.isAcceptableOrUnknown(data['push_error']!, _pushErrorMeta),
+      );
+    }
     return context;
   }
 
@@ -1062,6 +1126,18 @@ class $BabiesTable extends Babies with TableInfo<$BabiesTable, BabyRow> {
         DriftSqlType.string,
         data['${effectivePrefix}settings'],
       )!,
+      settingsDirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}settings_dirty'],
+      )!,
+      settingsBase: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}settings_base'],
+      ),
+      pushError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}push_error'],
+      ),
     );
   }
 
@@ -1090,6 +1166,9 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
   final String? myRole;
   final int memberCount;
   final String settings;
+  final bool settingsDirty;
+  final String? settingsBase;
+  final String? pushError;
   const BabyRow({
     required this.isDeleted,
     this.clientUpdatedAt,
@@ -1109,6 +1188,9 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     this.myRole,
     required this.memberCount,
     required this.settings,
+    required this.settingsDirty,
+    this.settingsBase,
+    this.pushError,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1149,6 +1231,13 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     }
     map['member_count'] = Variable<int>(memberCount);
     map['settings'] = Variable<String>(settings);
+    map['settings_dirty'] = Variable<bool>(settingsDirty);
+    if (!nullToAbsent || settingsBase != null) {
+      map['settings_base'] = Variable<String>(settingsBase);
+    }
+    if (!nullToAbsent || pushError != null) {
+      map['push_error'] = Variable<String>(pushError);
+    }
     return map;
   }
 
@@ -1190,6 +1279,13 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
           : Value(myRole),
       memberCount: Value(memberCount),
       settings: Value(settings),
+      settingsDirty: Value(settingsDirty),
+      settingsBase: settingsBase == null && nullToAbsent
+          ? const Value.absent()
+          : Value(settingsBase),
+      pushError: pushError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pushError),
     );
   }
 
@@ -1219,6 +1315,9 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
       myRole: serializer.fromJson<String?>(json['myRole']),
       memberCount: serializer.fromJson<int>(json['memberCount']),
       settings: serializer.fromJson<String>(json['settings']),
+      settingsDirty: serializer.fromJson<bool>(json['settingsDirty']),
+      settingsBase: serializer.fromJson<String?>(json['settingsBase']),
+      pushError: serializer.fromJson<String?>(json['pushError']),
     );
   }
   @override
@@ -1243,6 +1342,9 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
       'myRole': serializer.toJson<String?>(myRole),
       'memberCount': serializer.toJson<int>(memberCount),
       'settings': serializer.toJson<String>(settings),
+      'settingsDirty': serializer.toJson<bool>(settingsDirty),
+      'settingsBase': serializer.toJson<String?>(settingsBase),
+      'pushError': serializer.toJson<String?>(pushError),
     };
   }
 
@@ -1265,6 +1367,9 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     Value<String?> myRole = const Value.absent(),
     int? memberCount,
     String? settings,
+    bool? settingsDirty,
+    Value<String?> settingsBase = const Value.absent(),
+    Value<String?> pushError = const Value.absent(),
   }) => BabyRow(
     isDeleted: isDeleted ?? this.isDeleted,
     clientUpdatedAt: clientUpdatedAt.present
@@ -1292,6 +1397,9 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     myRole: myRole.present ? myRole.value : this.myRole,
     memberCount: memberCount ?? this.memberCount,
     settings: settings ?? this.settings,
+    settingsDirty: settingsDirty ?? this.settingsDirty,
+    settingsBase: settingsBase.present ? settingsBase.value : this.settingsBase,
+    pushError: pushError.present ? pushError.value : this.pushError,
   );
   BabyRow copyWithCompanion(BabiesCompanion data) {
     return BabyRow(
@@ -1325,6 +1433,13 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
           ? data.memberCount.value
           : this.memberCount,
       settings: data.settings.present ? data.settings.value : this.settings,
+      settingsDirty: data.settingsDirty.present
+          ? data.settingsDirty.value
+          : this.settingsDirty,
+      settingsBase: data.settingsBase.present
+          ? data.settingsBase.value
+          : this.settingsBase,
+      pushError: data.pushError.present ? data.pushError.value : this.pushError,
     );
   }
 
@@ -1348,13 +1463,16 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
           ..write('gestationalDays: $gestationalDays, ')
           ..write('myRole: $myRole, ')
           ..write('memberCount: $memberCount, ')
-          ..write('settings: $settings')
+          ..write('settings: $settings, ')
+          ..write('settingsDirty: $settingsDirty, ')
+          ..write('settingsBase: $settingsBase, ')
+          ..write('pushError: $pushError')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     isDeleted,
     clientUpdatedAt,
     serverUpdatedAt,
@@ -1373,7 +1491,10 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
     myRole,
     memberCount,
     settings,
-  );
+    settingsDirty,
+    settingsBase,
+    pushError,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1395,7 +1516,10 @@ class BabyRow extends DataClass implements Insertable<BabyRow> {
           other.gestationalDays == this.gestationalDays &&
           other.myRole == this.myRole &&
           other.memberCount == this.memberCount &&
-          other.settings == this.settings);
+          other.settings == this.settings &&
+          other.settingsDirty == this.settingsDirty &&
+          other.settingsBase == this.settingsBase &&
+          other.pushError == this.pushError);
 }
 
 class BabiesCompanion extends UpdateCompanion<BabyRow> {
@@ -1417,6 +1541,9 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
   final Value<String?> myRole;
   final Value<int> memberCount;
   final Value<String> settings;
+  final Value<bool> settingsDirty;
+  final Value<String?> settingsBase;
+  final Value<String?> pushError;
   final Value<int> rowid;
   const BabiesCompanion({
     this.isDeleted = const Value.absent(),
@@ -1437,6 +1564,9 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     this.myRole = const Value.absent(),
     this.memberCount = const Value.absent(),
     this.settings = const Value.absent(),
+    this.settingsDirty = const Value.absent(),
+    this.settingsBase = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BabiesCompanion.insert({
@@ -1458,6 +1588,9 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     this.myRole = const Value.absent(),
     this.memberCount = const Value.absent(),
     this.settings = const Value.absent(),
+    this.settingsDirty = const Value.absent(),
+    this.settingsBase = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name);
@@ -1480,6 +1613,9 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     Expression<String>? myRole,
     Expression<int>? memberCount,
     Expression<String>? settings,
+    Expression<bool>? settingsDirty,
+    Expression<String>? settingsBase,
+    Expression<String>? pushError,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1501,6 +1637,9 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
       if (myRole != null) 'my_role': myRole,
       if (memberCount != null) 'member_count': memberCount,
       if (settings != null) 'settings': settings,
+      if (settingsDirty != null) 'settings_dirty': settingsDirty,
+      if (settingsBase != null) 'settings_base': settingsBase,
+      if (pushError != null) 'push_error': pushError,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1524,6 +1663,9 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     Value<String?>? myRole,
     Value<int>? memberCount,
     Value<String>? settings,
+    Value<bool>? settingsDirty,
+    Value<String?>? settingsBase,
+    Value<String?>? pushError,
     Value<int>? rowid,
   }) {
     return BabiesCompanion(
@@ -1545,6 +1687,9 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
       myRole: myRole ?? this.myRole,
       memberCount: memberCount ?? this.memberCount,
       settings: settings ?? this.settings,
+      settingsDirty: settingsDirty ?? this.settingsDirty,
+      settingsBase: settingsBase ?? this.settingsBase,
+      pushError: pushError ?? this.pushError,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1606,6 +1751,15 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
     if (settings.present) {
       map['settings'] = Variable<String>(settings.value);
     }
+    if (settingsDirty.present) {
+      map['settings_dirty'] = Variable<bool>(settingsDirty.value);
+    }
+    if (settingsBase.present) {
+      map['settings_base'] = Variable<String>(settingsBase.value);
+    }
+    if (pushError.present) {
+      map['push_error'] = Variable<String>(pushError.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1633,6 +1787,9 @@ class BabiesCompanion extends UpdateCompanion<BabyRow> {
           ..write('myRole: $myRole, ')
           ..write('memberCount: $memberCount, ')
           ..write('settings: $settings, ')
+          ..write('settingsDirty: $settingsDirty, ')
+          ..write('settingsBase: $settingsBase, ')
+          ..write('pushError: $pushError, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1787,6 +1944,17 @@ class $MemoriesTable extends Memories
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _pushErrorMeta = const VerificationMeta(
+    'pushError',
+  );
+  @override
+  late final GeneratedColumn<String> pushError = GeneratedColumn<String>(
+    'push_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -1802,6 +1970,7 @@ class $MemoriesTable extends Memories
     localPhotoPath,
     firstTag,
     createdBy,
+    pushError,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1905,6 +2074,12 @@ class $MemoriesTable extends Memories
         createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
       );
     }
+    if (data.containsKey('push_error')) {
+      context.handle(
+        _pushErrorMeta,
+        pushError.isAcceptableOrUnknown(data['push_error']!, _pushErrorMeta),
+      );
+    }
     return context;
   }
 
@@ -1966,6 +2141,10 @@ class $MemoriesTable extends Memories
         DriftSqlType.string,
         data['${effectivePrefix}created_by'],
       ),
+      pushError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}push_error'],
+      ),
     );
   }
 
@@ -1989,6 +2168,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
   final String? localPhotoPath;
   final String firstTag;
   final String? createdBy;
+  final String? pushError;
   const MemoryRow({
     required this.isDeleted,
     this.clientUpdatedAt,
@@ -2003,6 +2183,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
     this.localPhotoPath,
     required this.firstTag,
     this.createdBy,
+    this.pushError,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2029,6 +2210,9 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
     map['first_tag'] = Variable<String>(firstTag);
     if (!nullToAbsent || createdBy != null) {
       map['created_by'] = Variable<String>(createdBy);
+    }
+    if (!nullToAbsent || pushError != null) {
+      map['push_error'] = Variable<String>(pushError);
     }
     return map;
   }
@@ -2058,6 +2242,9 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
       createdBy: createdBy == null && nullToAbsent
           ? const Value.absent()
           : Value(createdBy),
+      pushError: pushError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pushError),
     );
   }
 
@@ -2080,6 +2267,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
       localPhotoPath: serializer.fromJson<String?>(json['localPhotoPath']),
       firstTag: serializer.fromJson<String>(json['firstTag']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
+      pushError: serializer.fromJson<String?>(json['pushError']),
     );
   }
   @override
@@ -2099,6 +2287,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
       'localPhotoPath': serializer.toJson<String?>(localPhotoPath),
       'firstTag': serializer.toJson<String>(firstTag),
       'createdBy': serializer.toJson<String?>(createdBy),
+      'pushError': serializer.toJson<String?>(pushError),
     };
   }
 
@@ -2116,6 +2305,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
     Value<String?> localPhotoPath = const Value.absent(),
     String? firstTag,
     Value<String?> createdBy = const Value.absent(),
+    Value<String?> pushError = const Value.absent(),
   }) => MemoryRow(
     isDeleted: isDeleted ?? this.isDeleted,
     clientUpdatedAt: clientUpdatedAt.present
@@ -2136,6 +2326,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
         : this.localPhotoPath,
     firstTag: firstTag ?? this.firstTag,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    pushError: pushError.present ? pushError.value : this.pushError,
   );
   MemoryRow copyWithCompanion(MemoriesCompanion data) {
     return MemoryRow(
@@ -2158,6 +2349,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
           : this.localPhotoPath,
       firstTag: data.firstTag.present ? data.firstTag.value : this.firstTag,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      pushError: data.pushError.present ? data.pushError.value : this.pushError,
     );
   }
 
@@ -2176,7 +2368,8 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
           ..write('photo: $photo, ')
           ..write('localPhotoPath: $localPhotoPath, ')
           ..write('firstTag: $firstTag, ')
-          ..write('createdBy: $createdBy')
+          ..write('createdBy: $createdBy, ')
+          ..write('pushError: $pushError')
           ..write(')'))
         .toString();
   }
@@ -2196,6 +2389,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
     localPhotoPath,
     firstTag,
     createdBy,
+    pushError,
   );
   @override
   bool operator ==(Object other) =>
@@ -2213,7 +2407,8 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
           other.photo == this.photo &&
           other.localPhotoPath == this.localPhotoPath &&
           other.firstTag == this.firstTag &&
-          other.createdBy == this.createdBy);
+          other.createdBy == this.createdBy &&
+          other.pushError == this.pushError);
 }
 
 class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
@@ -2230,6 +2425,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
   final Value<String?> localPhotoPath;
   final Value<String> firstTag;
   final Value<String?> createdBy;
+  final Value<String?> pushError;
   final Value<int> rowid;
   const MemoriesCompanion({
     this.isDeleted = const Value.absent(),
@@ -2245,6 +2441,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     this.localPhotoPath = const Value.absent(),
     this.firstTag = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MemoriesCompanion.insert({
@@ -2261,6 +2458,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     this.localPhotoPath = const Value.absent(),
     this.firstTag = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        baby = Value(baby),
@@ -2279,6 +2477,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     Expression<String>? localPhotoPath,
     Expression<String>? firstTag,
     Expression<String>? createdBy,
+    Expression<String>? pushError,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2295,6 +2494,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
       if (localPhotoPath != null) 'local_photo_path': localPhotoPath,
       if (firstTag != null) 'first_tag': firstTag,
       if (createdBy != null) 'created_by': createdBy,
+      if (pushError != null) 'push_error': pushError,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2313,6 +2513,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     Value<String?>? localPhotoPath,
     Value<String>? firstTag,
     Value<String?>? createdBy,
+    Value<String?>? pushError,
     Value<int>? rowid,
   }) {
     return MemoriesCompanion(
@@ -2329,6 +2530,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
       localPhotoPath: localPhotoPath ?? this.localPhotoPath,
       firstTag: firstTag ?? this.firstTag,
       createdBy: createdBy ?? this.createdBy,
+      pushError: pushError ?? this.pushError,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2375,6 +2577,9 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     if (createdBy.present) {
       map['created_by'] = Variable<String>(createdBy.value);
     }
+    if (pushError.present) {
+      map['push_error'] = Variable<String>(pushError.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2397,6 +2602,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
           ..write('localPhotoPath: $localPhotoPath, ')
           ..write('firstTag: $firstTag, ')
           ..write('createdBy: $createdBy, ')
+          ..write('pushError: $pushError, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2537,6 +2743,17 @@ class $MomEntriesTable extends MomEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _pushErrorMeta = const VerificationMeta(
+    'pushError',
+  );
+  @override
+  late final GeneratedColumn<String> pushError = GeneratedColumn<String>(
+    'push_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -2551,6 +2768,7 @@ class $MomEntriesTable extends MomEntries
     title,
     note,
     createdBy,
+    pushError,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2647,6 +2865,12 @@ class $MomEntriesTable extends MomEntries
         createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
       );
     }
+    if (data.containsKey('push_error')) {
+      context.handle(
+        _pushErrorMeta,
+        pushError.isAcceptableOrUnknown(data['push_error']!, _pushErrorMeta),
+      );
+    }
     return context;
   }
 
@@ -2704,6 +2928,10 @@ class $MomEntriesTable extends MomEntries
         DriftSqlType.string,
         data['${effectivePrefix}created_by'],
       ),
+      pushError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}push_error'],
+      ),
     );
   }
 
@@ -2726,6 +2954,7 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
   final String? title;
   final String? note;
   final String? createdBy;
+  final String? pushError;
   const MomEntryRow({
     required this.isDeleted,
     this.clientUpdatedAt,
@@ -2739,6 +2968,7 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
     this.title,
     this.note,
     this.createdBy,
+    this.pushError,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2767,6 +2997,9 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
     if (!nullToAbsent || createdBy != null) {
       map['created_by'] = Variable<String>(createdBy);
     }
+    if (!nullToAbsent || pushError != null) {
+      map['push_error'] = Variable<String>(pushError);
+    }
     return map;
   }
 
@@ -2794,6 +3027,9 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
       createdBy: createdBy == null && nullToAbsent
           ? const Value.absent()
           : Value(createdBy),
+      pushError: pushError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pushError),
     );
   }
 
@@ -2815,6 +3051,7 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
       title: serializer.fromJson<String?>(json['title']),
       note: serializer.fromJson<String?>(json['note']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
+      pushError: serializer.fromJson<String?>(json['pushError']),
     );
   }
   @override
@@ -2833,6 +3070,7 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
       'title': serializer.toJson<String?>(title),
       'note': serializer.toJson<String?>(note),
       'createdBy': serializer.toJson<String?>(createdBy),
+      'pushError': serializer.toJson<String?>(pushError),
     };
   }
 
@@ -2849,6 +3087,7 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
     Value<String?> title = const Value.absent(),
     Value<String?> note = const Value.absent(),
     Value<String?> createdBy = const Value.absent(),
+    Value<String?> pushError = const Value.absent(),
   }) => MomEntryRow(
     isDeleted: isDeleted ?? this.isDeleted,
     clientUpdatedAt: clientUpdatedAt.present
@@ -2866,6 +3105,7 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
     title: title.present ? title.value : this.title,
     note: note.present ? note.value : this.note,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    pushError: pushError.present ? pushError.value : this.pushError,
   );
   MomEntryRow copyWithCompanion(MomEntriesCompanion data) {
     return MomEntryRow(
@@ -2885,6 +3125,7 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
       title: data.title.present ? data.title.value : this.title,
       note: data.note.present ? data.note.value : this.note,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      pushError: data.pushError.present ? data.pushError.value : this.pushError,
     );
   }
 
@@ -2902,7 +3143,8 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
           ..write('weightKg: $weightKg, ')
           ..write('title: $title, ')
           ..write('note: $note, ')
-          ..write('createdBy: $createdBy')
+          ..write('createdBy: $createdBy, ')
+          ..write('pushError: $pushError')
           ..write(')'))
         .toString();
   }
@@ -2921,6 +3163,7 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
     title,
     note,
     createdBy,
+    pushError,
   );
   @override
   bool operator ==(Object other) =>
@@ -2937,7 +3180,8 @@ class MomEntryRow extends DataClass implements Insertable<MomEntryRow> {
           other.weightKg == this.weightKg &&
           other.title == this.title &&
           other.note == this.note &&
-          other.createdBy == this.createdBy);
+          other.createdBy == this.createdBy &&
+          other.pushError == this.pushError);
 }
 
 class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
@@ -2953,6 +3197,7 @@ class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
   final Value<String?> title;
   final Value<String?> note;
   final Value<String?> createdBy;
+  final Value<String?> pushError;
   final Value<int> rowid;
   const MomEntriesCompanion({
     this.isDeleted = const Value.absent(),
@@ -2967,6 +3212,7 @@ class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
     this.title = const Value.absent(),
     this.note = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MomEntriesCompanion.insert({
@@ -2982,6 +3228,7 @@ class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
     this.title = const Value.absent(),
     this.note = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        baby = Value(baby),
@@ -3000,6 +3247,7 @@ class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
     Expression<String>? title,
     Expression<String>? note,
     Expression<String>? createdBy,
+    Expression<String>? pushError,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3015,6 +3263,7 @@ class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
       if (title != null) 'title': title,
       if (note != null) 'note': note,
       if (createdBy != null) 'created_by': createdBy,
+      if (pushError != null) 'push_error': pushError,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3032,6 +3281,7 @@ class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
     Value<String?>? title,
     Value<String?>? note,
     Value<String?>? createdBy,
+    Value<String?>? pushError,
     Value<int>? rowid,
   }) {
     return MomEntriesCompanion(
@@ -3047,6 +3297,7 @@ class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
       title: title ?? this.title,
       note: note ?? this.note,
       createdBy: createdBy ?? this.createdBy,
+      pushError: pushError ?? this.pushError,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3090,6 +3341,9 @@ class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
     if (createdBy.present) {
       map['created_by'] = Variable<String>(createdBy.value);
     }
+    if (pushError.present) {
+      map['push_error'] = Variable<String>(pushError.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3111,6 +3365,7 @@ class MomEntriesCompanion extends UpdateCompanion<MomEntryRow> {
           ..write('title: $title, ')
           ..write('note: $note, ')
           ..write('createdBy: $createdBy, ')
+          ..write('pushError: $pushError, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3391,6 +3646,17 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _pushErrorMeta = const VerificationMeta(
+    'pushError',
+  );
+  @override
+  late final GeneratedColumn<String> pushError = GeneratedColumn<String>(
+    'push_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -3415,6 +3681,7 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     predictionsHidden,
     lastLossDate,
     learningWindow,
+    pushError,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3602,6 +3869,12 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         ),
       );
     }
+    if (data.containsKey('push_error')) {
+      context.handle(
+        _pushErrorMeta,
+        pushError.isAcceptableOrUnknown(data['push_error']!, _pushErrorMeta),
+      );
+    }
     return context;
   }
 
@@ -3699,6 +3972,10 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         DriftSqlType.int,
         data['${effectivePrefix}learning_window'],
       ),
+      pushError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}push_error'],
+      ),
     );
   }
 
@@ -3732,6 +4009,7 @@ class CycleSettingsRow extends DataClass
   final bool predictionsHidden;
   final DateTime? lastLossDate;
   final int? learningWindow;
+  final String? pushError;
   const CycleSettingsRow({
     required this.isDeleted,
     this.clientUpdatedAt,
@@ -3755,6 +4033,7 @@ class CycleSettingsRow extends DataClass
     required this.predictionsHidden,
     this.lastLossDate,
     this.learningWindow,
+    this.pushError,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3805,6 +4084,9 @@ class CycleSettingsRow extends DataClass
     if (!nullToAbsent || learningWindow != null) {
       map['learning_window'] = Variable<int>(learningWindow);
     }
+    if (!nullToAbsent || pushError != null) {
+      map['push_error'] = Variable<String>(pushError);
+    }
     return map;
   }
 
@@ -3854,6 +4136,9 @@ class CycleSettingsRow extends DataClass
       learningWindow: learningWindow == null && nullToAbsent
           ? const Value.absent()
           : Value(learningWindow),
+      pushError: pushError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pushError),
     );
   }
 
@@ -3889,6 +4174,7 @@ class CycleSettingsRow extends DataClass
       predictionsHidden: serializer.fromJson<bool>(json['predictionsHidden']),
       lastLossDate: serializer.fromJson<DateTime?>(json['lastLossDate']),
       learningWindow: serializer.fromJson<int?>(json['learningWindow']),
+      pushError: serializer.fromJson<String?>(json['pushError']),
     );
   }
   @override
@@ -3917,6 +4203,7 @@ class CycleSettingsRow extends DataClass
       'predictionsHidden': serializer.toJson<bool>(predictionsHidden),
       'lastLossDate': serializer.toJson<DateTime?>(lastLossDate),
       'learningWindow': serializer.toJson<int?>(learningWindow),
+      'pushError': serializer.toJson<String?>(pushError),
     };
   }
 
@@ -3943,6 +4230,7 @@ class CycleSettingsRow extends DataClass
     bool? predictionsHidden,
     Value<DateTime?> lastLossDate = const Value.absent(),
     Value<int?> learningWindow = const Value.absent(),
+    Value<String?> pushError = const Value.absent(),
   }) => CycleSettingsRow(
     isDeleted: isDeleted ?? this.isDeleted,
     clientUpdatedAt: clientUpdatedAt.present
@@ -3980,6 +4268,7 @@ class CycleSettingsRow extends DataClass
     learningWindow: learningWindow.present
         ? learningWindow.value
         : this.learningWindow,
+    pushError: pushError.present ? pushError.value : this.pushError,
   );
   CycleSettingsRow copyWithCompanion(CycleSettingsTableCompanion data) {
     return CycleSettingsRow(
@@ -4035,6 +4324,7 @@ class CycleSettingsRow extends DataClass
       learningWindow: data.learningWindow.present
           ? data.learningWindow.value
           : this.learningWindow,
+      pushError: data.pushError.present ? data.pushError.value : this.pushError,
     );
   }
 
@@ -4062,7 +4352,8 @@ class CycleSettingsRow extends DataClass
           ..write('ttcStartedAt: $ttcStartedAt, ')
           ..write('predictionsHidden: $predictionsHidden, ')
           ..write('lastLossDate: $lastLossDate, ')
-          ..write('learningWindow: $learningWindow')
+          ..write('learningWindow: $learningWindow, ')
+          ..write('pushError: $pushError')
           ..write(')'))
         .toString();
   }
@@ -4091,6 +4382,7 @@ class CycleSettingsRow extends DataClass
     predictionsHidden,
     lastLossDate,
     learningWindow,
+    pushError,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -4117,7 +4409,8 @@ class CycleSettingsRow extends DataClass
           other.ttcStartedAt == this.ttcStartedAt &&
           other.predictionsHidden == this.predictionsHidden &&
           other.lastLossDate == this.lastLossDate &&
-          other.learningWindow == this.learningWindow);
+          other.learningWindow == this.learningWindow &&
+          other.pushError == this.pushError);
 }
 
 class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
@@ -4143,6 +4436,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
   final Value<bool> predictionsHidden;
   final Value<DateTime?> lastLossDate;
   final Value<int?> learningWindow;
+  final Value<String?> pushError;
   final Value<int> rowid;
   const CycleSettingsTableCompanion({
     this.isDeleted = const Value.absent(),
@@ -4167,6 +4461,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.predictionsHidden = const Value.absent(),
     this.lastLossDate = const Value.absent(),
     this.learningWindow = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CycleSettingsTableCompanion.insert({
@@ -4192,6 +4487,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.predictionsHidden = const Value.absent(),
     this.lastLossDate = const Value.absent(),
     this.learningWindow = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   static Insertable<CycleSettingsRow> custom({
@@ -4217,6 +4513,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Expression<bool>? predictionsHidden,
     Expression<DateTime>? lastLossDate,
     Expression<int>? learningWindow,
+    Expression<String>? pushError,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4244,6 +4541,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
       if (predictionsHidden != null) 'predictions_hidden': predictionsHidden,
       if (lastLossDate != null) 'last_loss_date': lastLossDate,
       if (learningWindow != null) 'learning_window': learningWindow,
+      if (pushError != null) 'push_error': pushError,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4271,6 +4569,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Value<bool>? predictionsHidden,
     Value<DateTime?>? lastLossDate,
     Value<int?>? learningWindow,
+    Value<String?>? pushError,
     Value<int>? rowid,
   }) {
     return CycleSettingsTableCompanion(
@@ -4296,6 +4595,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
       predictionsHidden: predictionsHidden ?? this.predictionsHidden,
       lastLossDate: lastLossDate ?? this.lastLossDate,
       learningWindow: learningWindow ?? this.learningWindow,
+      pushError: pushError ?? this.pushError,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4371,6 +4671,9 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     if (learningWindow.present) {
       map['learning_window'] = Variable<int>(learningWindow.value);
     }
+    if (pushError.present) {
+      map['push_error'] = Variable<String>(pushError.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4402,6 +4705,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
           ..write('predictionsHidden: $predictionsHidden, ')
           ..write('lastLossDate: $lastLossDate, ')
           ..write('learningWindow: $learningWindow, ')
+          ..write('pushError: $pushError, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4545,6 +4849,17 @@ class $CycleEntriesTable extends CycleEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _pushErrorMeta = const VerificationMeta(
+    'pushError',
+  );
+  @override
+  late final GeneratedColumn<String> pushError = GeneratedColumn<String>(
+    'push_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -4559,6 +4874,7 @@ class $CycleEntriesTable extends CycleEntries
     symptoms,
     mood,
     note,
+    pushError,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4654,6 +4970,12 @@ class $CycleEntriesTable extends CycleEntries
         note.isAcceptableOrUnknown(data['note']!, _noteMeta),
       );
     }
+    if (data.containsKey('push_error')) {
+      context.handle(
+        _pushErrorMeta,
+        pushError.isAcceptableOrUnknown(data['push_error']!, _pushErrorMeta),
+      );
+    }
     return context;
   }
 
@@ -4711,6 +5033,10 @@ class $CycleEntriesTable extends CycleEntries
         DriftSqlType.string,
         data['${effectivePrefix}note'],
       ),
+      pushError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}push_error'],
+      ),
     );
   }
 
@@ -4733,6 +5059,7 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
   final String symptoms;
   final int? mood;
   final String? note;
+  final String? pushError;
   const CycleEntryRow({
     required this.isDeleted,
     this.clientUpdatedAt,
@@ -4746,6 +5073,7 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
     required this.symptoms,
     this.mood,
     this.note,
+    this.pushError,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4776,6 +5104,9 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
     }
+    if (!nullToAbsent || pushError != null) {
+      map['push_error'] = Variable<String>(pushError);
+    }
     return map;
   }
 
@@ -4801,6 +5132,9 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
       symptoms: Value(symptoms),
       mood: mood == null && nullToAbsent ? const Value.absent() : Value(mood),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      pushError: pushError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pushError),
     );
   }
 
@@ -4822,6 +5156,7 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
       symptoms: serializer.fromJson<String>(json['symptoms']),
       mood: serializer.fromJson<int?>(json['mood']),
       note: serializer.fromJson<String?>(json['note']),
+      pushError: serializer.fromJson<String?>(json['pushError']),
     );
   }
   @override
@@ -4840,6 +5175,7 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
       'symptoms': serializer.toJson<String>(symptoms),
       'mood': serializer.toJson<int?>(mood),
       'note': serializer.toJson<String?>(note),
+      'pushError': serializer.toJson<String?>(pushError),
     };
   }
 
@@ -4856,6 +5192,7 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
     String? symptoms,
     Value<int?> mood = const Value.absent(),
     Value<String?> note = const Value.absent(),
+    Value<String?> pushError = const Value.absent(),
   }) => CycleEntryRow(
     isDeleted: isDeleted ?? this.isDeleted,
     clientUpdatedAt: clientUpdatedAt.present
@@ -4873,6 +5210,7 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
     symptoms: symptoms ?? this.symptoms,
     mood: mood.present ? mood.value : this.mood,
     note: note.present ? note.value : this.note,
+    pushError: pushError.present ? pushError.value : this.pushError,
   );
   CycleEntryRow copyWithCompanion(CycleEntriesCompanion data) {
     return CycleEntryRow(
@@ -4894,6 +5232,7 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
       symptoms: data.symptoms.present ? data.symptoms.value : this.symptoms,
       mood: data.mood.present ? data.mood.value : this.mood,
       note: data.note.present ? data.note.value : this.note,
+      pushError: data.pushError.present ? data.pushError.value : this.pushError,
     );
   }
 
@@ -4911,7 +5250,8 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
           ..write('lochiaColor: $lochiaColor, ')
           ..write('symptoms: $symptoms, ')
           ..write('mood: $mood, ')
-          ..write('note: $note')
+          ..write('note: $note, ')
+          ..write('pushError: $pushError')
           ..write(')'))
         .toString();
   }
@@ -4930,6 +5270,7 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
     symptoms,
     mood,
     note,
+    pushError,
   );
   @override
   bool operator ==(Object other) =>
@@ -4946,7 +5287,8 @@ class CycleEntryRow extends DataClass implements Insertable<CycleEntryRow> {
           other.lochiaColor == this.lochiaColor &&
           other.symptoms == this.symptoms &&
           other.mood == this.mood &&
-          other.note == this.note);
+          other.note == this.note &&
+          other.pushError == this.pushError);
 }
 
 class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
@@ -4962,6 +5304,7 @@ class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
   final Value<String> symptoms;
   final Value<int?> mood;
   final Value<String?> note;
+  final Value<String?> pushError;
   final Value<int> rowid;
   const CycleEntriesCompanion({
     this.isDeleted = const Value.absent(),
@@ -4976,6 +5319,7 @@ class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
     this.symptoms = const Value.absent(),
     this.mood = const Value.absent(),
     this.note = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CycleEntriesCompanion.insert({
@@ -4991,6 +5335,7 @@ class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
     this.symptoms = const Value.absent(),
     this.mood = const Value.absent(),
     this.note = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        date = Value(date);
@@ -5007,6 +5352,7 @@ class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
     Expression<String>? symptoms,
     Expression<int>? mood,
     Expression<String>? note,
+    Expression<String>? pushError,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -5022,6 +5368,7 @@ class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
       if (symptoms != null) 'symptoms': symptoms,
       if (mood != null) 'mood': mood,
       if (note != null) 'note': note,
+      if (pushError != null) 'push_error': pushError,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5039,6 +5386,7 @@ class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
     Value<String>? symptoms,
     Value<int?>? mood,
     Value<String?>? note,
+    Value<String?>? pushError,
     Value<int>? rowid,
   }) {
     return CycleEntriesCompanion(
@@ -5054,6 +5402,7 @@ class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
       symptoms: symptoms ?? this.symptoms,
       mood: mood ?? this.mood,
       note: note ?? this.note,
+      pushError: pushError ?? this.pushError,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5097,6 +5446,9 @@ class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
     if (note.present) {
       map['note'] = Variable<String>(note.value);
     }
+    if (pushError.present) {
+      map['push_error'] = Variable<String>(pushError.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5118,6 +5470,7 @@ class CycleEntriesCompanion extends UpdateCompanion<CycleEntryRow> {
           ..write('symptoms: $symptoms, ')
           ..write('mood: $mood, ')
           ..write('note: $note, ')
+          ..write('pushError: $pushError, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5400,8 +5753,66 @@ class $HealthStatusesTable extends HealthStatuses
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
   @override
-  List<GeneratedColumn> get $columns => [baby, kind, itemKey, done, statusDate];
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _clientUpdatedAtMeta = const VerificationMeta(
+    'clientUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> clientUpdatedAt =
+      GeneratedColumn<DateTime>(
+        'client_updated_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _serverUpdatedAtMeta = const VerificationMeta(
+    'serverUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> serverUpdatedAt =
+      GeneratedColumn<DateTime>(
+        'server_updated_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _pushErrorMeta = const VerificationMeta(
+    'pushError',
+  );
+  @override
+  late final GeneratedColumn<String> pushError = GeneratedColumn<String>(
+    'push_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    baby,
+    kind,
+    itemKey,
+    done,
+    statusDate,
+    dirty,
+    clientUpdatedAt,
+    serverUpdatedAt,
+    pushError,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -5450,6 +5861,36 @@ class $HealthStatusesTable extends HealthStatuses
         statusDate.isAcceptableOrUnknown(data['status_date']!, _statusDateMeta),
       );
     }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
+    if (data.containsKey('client_updated_at')) {
+      context.handle(
+        _clientUpdatedAtMeta,
+        clientUpdatedAt.isAcceptableOrUnknown(
+          data['client_updated_at']!,
+          _clientUpdatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('server_updated_at')) {
+      context.handle(
+        _serverUpdatedAtMeta,
+        serverUpdatedAt.isAcceptableOrUnknown(
+          data['server_updated_at']!,
+          _serverUpdatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('push_error')) {
+      context.handle(
+        _pushErrorMeta,
+        pushError.isAcceptableOrUnknown(data['push_error']!, _pushErrorMeta),
+      );
+    }
     return context;
   }
 
@@ -5479,6 +5920,22 @@ class $HealthStatusesTable extends HealthStatuses
         DriftSqlType.dateTime,
         data['${effectivePrefix}status_date'],
       ),
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
+      clientUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}client_updated_at'],
+      ),
+      serverUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}server_updated_at'],
+      ),
+      pushError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}push_error'],
+      ),
     );
   }
 
@@ -5494,12 +5951,20 @@ class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
   final String itemKey;
   final bool done;
   final DateTime? statusDate;
+  final bool dirty;
+  final DateTime? clientUpdatedAt;
+  final DateTime? serverUpdatedAt;
+  final String? pushError;
   const HealthStatusRow({
     required this.baby,
     required this.kind,
     required this.itemKey,
     required this.done,
     this.statusDate,
+    required this.dirty,
+    this.clientUpdatedAt,
+    this.serverUpdatedAt,
+    this.pushError,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5510,6 +5975,16 @@ class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
     map['done'] = Variable<bool>(done);
     if (!nullToAbsent || statusDate != null) {
       map['status_date'] = Variable<DateTime>(statusDate);
+    }
+    map['dirty'] = Variable<bool>(dirty);
+    if (!nullToAbsent || clientUpdatedAt != null) {
+      map['client_updated_at'] = Variable<DateTime>(clientUpdatedAt);
+    }
+    if (!nullToAbsent || serverUpdatedAt != null) {
+      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt);
+    }
+    if (!nullToAbsent || pushError != null) {
+      map['push_error'] = Variable<String>(pushError);
     }
     return map;
   }
@@ -5523,6 +5998,16 @@ class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
       statusDate: statusDate == null && nullToAbsent
           ? const Value.absent()
           : Value(statusDate),
+      dirty: Value(dirty),
+      clientUpdatedAt: clientUpdatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(clientUpdatedAt),
+      serverUpdatedAt: serverUpdatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverUpdatedAt),
+      pushError: pushError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pushError),
     );
   }
 
@@ -5537,6 +6022,10 @@ class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
       itemKey: serializer.fromJson<String>(json['itemKey']),
       done: serializer.fromJson<bool>(json['done']),
       statusDate: serializer.fromJson<DateTime?>(json['statusDate']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
+      clientUpdatedAt: serializer.fromJson<DateTime?>(json['clientUpdatedAt']),
+      serverUpdatedAt: serializer.fromJson<DateTime?>(json['serverUpdatedAt']),
+      pushError: serializer.fromJson<String?>(json['pushError']),
     );
   }
   @override
@@ -5548,6 +6037,10 @@ class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
       'itemKey': serializer.toJson<String>(itemKey),
       'done': serializer.toJson<bool>(done),
       'statusDate': serializer.toJson<DateTime?>(statusDate),
+      'dirty': serializer.toJson<bool>(dirty),
+      'clientUpdatedAt': serializer.toJson<DateTime?>(clientUpdatedAt),
+      'serverUpdatedAt': serializer.toJson<DateTime?>(serverUpdatedAt),
+      'pushError': serializer.toJson<String?>(pushError),
     };
   }
 
@@ -5557,12 +6050,24 @@ class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
     String? itemKey,
     bool? done,
     Value<DateTime?> statusDate = const Value.absent(),
+    bool? dirty,
+    Value<DateTime?> clientUpdatedAt = const Value.absent(),
+    Value<DateTime?> serverUpdatedAt = const Value.absent(),
+    Value<String?> pushError = const Value.absent(),
   }) => HealthStatusRow(
     baby: baby ?? this.baby,
     kind: kind ?? this.kind,
     itemKey: itemKey ?? this.itemKey,
     done: done ?? this.done,
     statusDate: statusDate.present ? statusDate.value : this.statusDate,
+    dirty: dirty ?? this.dirty,
+    clientUpdatedAt: clientUpdatedAt.present
+        ? clientUpdatedAt.value
+        : this.clientUpdatedAt,
+    serverUpdatedAt: serverUpdatedAt.present
+        ? serverUpdatedAt.value
+        : this.serverUpdatedAt,
+    pushError: pushError.present ? pushError.value : this.pushError,
   );
   HealthStatusRow copyWithCompanion(HealthStatusesCompanion data) {
     return HealthStatusRow(
@@ -5573,6 +6078,14 @@ class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
       statusDate: data.statusDate.present
           ? data.statusDate.value
           : this.statusDate,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
+      clientUpdatedAt: data.clientUpdatedAt.present
+          ? data.clientUpdatedAt.value
+          : this.clientUpdatedAt,
+      serverUpdatedAt: data.serverUpdatedAt.present
+          ? data.serverUpdatedAt.value
+          : this.serverUpdatedAt,
+      pushError: data.pushError.present ? data.pushError.value : this.pushError,
     );
   }
 
@@ -5583,13 +6096,27 @@ class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
           ..write('kind: $kind, ')
           ..write('itemKey: $itemKey, ')
           ..write('done: $done, ')
-          ..write('statusDate: $statusDate')
+          ..write('statusDate: $statusDate, ')
+          ..write('dirty: $dirty, ')
+          ..write('clientUpdatedAt: $clientUpdatedAt, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('pushError: $pushError')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(baby, kind, itemKey, done, statusDate);
+  int get hashCode => Object.hash(
+    baby,
+    kind,
+    itemKey,
+    done,
+    statusDate,
+    dirty,
+    clientUpdatedAt,
+    serverUpdatedAt,
+    pushError,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5598,7 +6125,11 @@ class HealthStatusRow extends DataClass implements Insertable<HealthStatusRow> {
           other.kind == this.kind &&
           other.itemKey == this.itemKey &&
           other.done == this.done &&
-          other.statusDate == this.statusDate);
+          other.statusDate == this.statusDate &&
+          other.dirty == this.dirty &&
+          other.clientUpdatedAt == this.clientUpdatedAt &&
+          other.serverUpdatedAt == this.serverUpdatedAt &&
+          other.pushError == this.pushError);
 }
 
 class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
@@ -5607,6 +6138,10 @@ class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
   final Value<String> itemKey;
   final Value<bool> done;
   final Value<DateTime?> statusDate;
+  final Value<bool> dirty;
+  final Value<DateTime?> clientUpdatedAt;
+  final Value<DateTime?> serverUpdatedAt;
+  final Value<String?> pushError;
   final Value<int> rowid;
   const HealthStatusesCompanion({
     this.baby = const Value.absent(),
@@ -5614,6 +6149,10 @@ class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
     this.itemKey = const Value.absent(),
     this.done = const Value.absent(),
     this.statusDate = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.clientUpdatedAt = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   HealthStatusesCompanion.insert({
@@ -5622,6 +6161,10 @@ class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
     required String itemKey,
     this.done = const Value.absent(),
     this.statusDate = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.clientUpdatedAt = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    this.pushError = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : baby = Value(baby),
        kind = Value(kind),
@@ -5632,6 +6175,10 @@ class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
     Expression<String>? itemKey,
     Expression<bool>? done,
     Expression<DateTime>? statusDate,
+    Expression<bool>? dirty,
+    Expression<DateTime>? clientUpdatedAt,
+    Expression<DateTime>? serverUpdatedAt,
+    Expression<String>? pushError,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -5640,6 +6187,10 @@ class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
       if (itemKey != null) 'item_key': itemKey,
       if (done != null) 'done': done,
       if (statusDate != null) 'status_date': statusDate,
+      if (dirty != null) 'dirty': dirty,
+      if (clientUpdatedAt != null) 'client_updated_at': clientUpdatedAt,
+      if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
+      if (pushError != null) 'push_error': pushError,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5650,6 +6201,10 @@ class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
     Value<String>? itemKey,
     Value<bool>? done,
     Value<DateTime?>? statusDate,
+    Value<bool>? dirty,
+    Value<DateTime?>? clientUpdatedAt,
+    Value<DateTime?>? serverUpdatedAt,
+    Value<String?>? pushError,
     Value<int>? rowid,
   }) {
     return HealthStatusesCompanion(
@@ -5658,6 +6213,10 @@ class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
       itemKey: itemKey ?? this.itemKey,
       done: done ?? this.done,
       statusDate: statusDate ?? this.statusDate,
+      dirty: dirty ?? this.dirty,
+      clientUpdatedAt: clientUpdatedAt ?? this.clientUpdatedAt,
+      serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
+      pushError: pushError ?? this.pushError,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5680,6 +6239,18 @@ class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
     if (statusDate.present) {
       map['status_date'] = Variable<DateTime>(statusDate.value);
     }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
+    if (clientUpdatedAt.present) {
+      map['client_updated_at'] = Variable<DateTime>(clientUpdatedAt.value);
+    }
+    if (serverUpdatedAt.present) {
+      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt.value);
+    }
+    if (pushError.present) {
+      map['push_error'] = Variable<String>(pushError.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5694,6 +6265,10 @@ class HealthStatusesCompanion extends UpdateCompanion<HealthStatusRow> {
           ..write('itemKey: $itemKey, ')
           ..write('done: $done, ')
           ..write('statusDate: $statusDate, ')
+          ..write('dirty: $dirty, ')
+          ..write('clientUpdatedAt: $clientUpdatedAt, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('pushError: $pushError, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7101,6 +7676,9 @@ typedef $$BabiesTableCreateCompanionBuilder =
       Value<String?> myRole,
       Value<int> memberCount,
       Value<String> settings,
+      Value<bool> settingsDirty,
+      Value<String?> settingsBase,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 typedef $$BabiesTableUpdateCompanionBuilder =
@@ -7123,6 +7701,9 @@ typedef $$BabiesTableUpdateCompanionBuilder =
       Value<String?> myRole,
       Value<int> memberCount,
       Value<String> settings,
+      Value<bool> settingsDirty,
+      Value<String?> settingsBase,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 
@@ -7222,6 +7803,21 @@ class $$BabiesTableFilterComposer
 
   ColumnFilters<String> get settings => $composableBuilder(
     column: $table.settings,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get settingsDirty => $composableBuilder(
+    column: $table.settingsDirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get settingsBase => $composableBuilder(
+    column: $table.settingsBase,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pushError => $composableBuilder(
+    column: $table.pushError,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7324,6 +7920,21 @@ class $$BabiesTableOrderingComposer
     column: $table.settings,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get settingsDirty => $composableBuilder(
+    column: $table.settingsDirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get settingsBase => $composableBuilder(
+    column: $table.settingsBase,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pushError => $composableBuilder(
+    column: $table.pushError,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BabiesTableAnnotationComposer
@@ -7400,6 +8011,19 @@ class $$BabiesTableAnnotationComposer
 
   GeneratedColumn<String> get settings =>
       $composableBuilder(column: $table.settings, builder: (column) => column);
+
+  GeneratedColumn<bool> get settingsDirty => $composableBuilder(
+    column: $table.settingsDirty,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get settingsBase => $composableBuilder(
+    column: $table.settingsBase,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pushError =>
+      $composableBuilder(column: $table.pushError, builder: (column) => column);
 }
 
 class $$BabiesTableTableManager
@@ -7448,6 +8072,9 @@ class $$BabiesTableTableManager
                 Value<String?> myRole = const Value.absent(),
                 Value<int> memberCount = const Value.absent(),
                 Value<String> settings = const Value.absent(),
+                Value<bool> settingsDirty = const Value.absent(),
+                Value<String?> settingsBase = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BabiesCompanion(
                 isDeleted: isDeleted,
@@ -7468,6 +8095,9 @@ class $$BabiesTableTableManager
                 myRole: myRole,
                 memberCount: memberCount,
                 settings: settings,
+                settingsDirty: settingsDirty,
+                settingsBase: settingsBase,
+                pushError: pushError,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7490,6 +8120,9 @@ class $$BabiesTableTableManager
                 Value<String?> myRole = const Value.absent(),
                 Value<int> memberCount = const Value.absent(),
                 Value<String> settings = const Value.absent(),
+                Value<bool> settingsDirty = const Value.absent(),
+                Value<String?> settingsBase = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BabiesCompanion.insert(
                 isDeleted: isDeleted,
@@ -7510,6 +8143,9 @@ class $$BabiesTableTableManager
                 myRole: myRole,
                 memberCount: memberCount,
                 settings: settings,
+                settingsDirty: settingsDirty,
+                settingsBase: settingsBase,
+                pushError: pushError,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -7549,6 +8185,7 @@ typedef $$MemoriesTableCreateCompanionBuilder =
       Value<String?> localPhotoPath,
       Value<String> firstTag,
       Value<String?> createdBy,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 typedef $$MemoriesTableUpdateCompanionBuilder =
@@ -7566,6 +8203,7 @@ typedef $$MemoriesTableUpdateCompanionBuilder =
       Value<String?> localPhotoPath,
       Value<String> firstTag,
       Value<String?> createdBy,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 
@@ -7640,6 +8278,11 @@ class $$MemoriesTableFilterComposer
 
   ColumnFilters<String> get createdBy => $composableBuilder(
     column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pushError => $composableBuilder(
+    column: $table.pushError,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7717,6 +8360,11 @@ class $$MemoriesTableOrderingComposer
     column: $table.createdBy,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get pushError => $composableBuilder(
+    column: $table.pushError,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MemoriesTableAnnotationComposer
@@ -7772,6 +8420,9 @@ class $$MemoriesTableAnnotationComposer
 
   GeneratedColumn<String> get createdBy =>
       $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<String> get pushError =>
+      $composableBuilder(column: $table.pushError, builder: (column) => column);
 }
 
 class $$MemoriesTableTableManager
@@ -7815,6 +8466,7 @@ class $$MemoriesTableTableManager
                 Value<String?> localPhotoPath = const Value.absent(),
                 Value<String> firstTag = const Value.absent(),
                 Value<String?> createdBy = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MemoriesCompanion(
                 isDeleted: isDeleted,
@@ -7830,6 +8482,7 @@ class $$MemoriesTableTableManager
                 localPhotoPath: localPhotoPath,
                 firstTag: firstTag,
                 createdBy: createdBy,
+                pushError: pushError,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7847,6 +8500,7 @@ class $$MemoriesTableTableManager
                 Value<String?> localPhotoPath = const Value.absent(),
                 Value<String> firstTag = const Value.absent(),
                 Value<String?> createdBy = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MemoriesCompanion.insert(
                 isDeleted: isDeleted,
@@ -7862,6 +8516,7 @@ class $$MemoriesTableTableManager
                 localPhotoPath: localPhotoPath,
                 firstTag: firstTag,
                 createdBy: createdBy,
+                pushError: pushError,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -7900,6 +8555,7 @@ typedef $$MomEntriesTableCreateCompanionBuilder =
       Value<String?> title,
       Value<String?> note,
       Value<String?> createdBy,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 typedef $$MomEntriesTableUpdateCompanionBuilder =
@@ -7916,6 +8572,7 @@ typedef $$MomEntriesTableUpdateCompanionBuilder =
       Value<String?> title,
       Value<String?> note,
       Value<String?> createdBy,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 
@@ -7985,6 +8642,11 @@ class $$MomEntriesTableFilterComposer
 
   ColumnFilters<String> get createdBy => $composableBuilder(
     column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pushError => $composableBuilder(
+    column: $table.pushError,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8057,6 +8719,11 @@ class $$MomEntriesTableOrderingComposer
     column: $table.createdBy,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get pushError => $composableBuilder(
+    column: $table.pushError,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MomEntriesTableAnnotationComposer
@@ -8107,6 +8774,9 @@ class $$MomEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get createdBy =>
       $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<String> get pushError =>
+      $composableBuilder(column: $table.pushError, builder: (column) => column);
 }
 
 class $$MomEntriesTableTableManager
@@ -8152,6 +8822,7 @@ class $$MomEntriesTableTableManager
                 Value<String?> title = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<String?> createdBy = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MomEntriesCompanion(
                 isDeleted: isDeleted,
@@ -8166,6 +8837,7 @@ class $$MomEntriesTableTableManager
                 title: title,
                 note: note,
                 createdBy: createdBy,
+                pushError: pushError,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8182,6 +8854,7 @@ class $$MomEntriesTableTableManager
                 Value<String?> title = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<String?> createdBy = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MomEntriesCompanion.insert(
                 isDeleted: isDeleted,
@@ -8196,6 +8869,7 @@ class $$MomEntriesTableTableManager
                 title: title,
                 note: note,
                 createdBy: createdBy,
+                pushError: pushError,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -8247,6 +8921,7 @@ typedef $$CycleSettingsTableTableCreateCompanionBuilder =
       Value<bool> predictionsHidden,
       Value<DateTime?> lastLossDate,
       Value<int?> learningWindow,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
@@ -8273,6 +8948,7 @@ typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
       Value<bool> predictionsHidden,
       Value<DateTime?> lastLossDate,
       Value<int?> learningWindow,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 
@@ -8392,6 +9068,11 @@ class $$CycleSettingsTableTableFilterComposer
 
   ColumnFilters<int> get learningWindow => $composableBuilder(
     column: $table.learningWindow,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pushError => $composableBuilder(
+    column: $table.pushError,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8514,6 +9195,11 @@ class $$CycleSettingsTableTableOrderingComposer
     column: $table.learningWindow,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get pushError => $composableBuilder(
+    column: $table.pushError,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CycleSettingsTableTableAnnotationComposer
@@ -8620,6 +9306,9 @@ class $$CycleSettingsTableTableAnnotationComposer
     column: $table.learningWindow,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get pushError =>
+      $composableBuilder(column: $table.pushError, builder: (column) => column);
 }
 
 class $$CycleSettingsTableTableTableManager
@@ -8684,6 +9373,7 @@ class $$CycleSettingsTableTableTableManager
                 Value<bool> predictionsHidden = const Value.absent(),
                 Value<DateTime?> lastLossDate = const Value.absent(),
                 Value<int?> learningWindow = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion(
                 isDeleted: isDeleted,
@@ -8708,6 +9398,7 @@ class $$CycleSettingsTableTableTableManager
                 predictionsHidden: predictionsHidden,
                 lastLossDate: lastLossDate,
                 learningWindow: learningWindow,
+                pushError: pushError,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8734,6 +9425,7 @@ class $$CycleSettingsTableTableTableManager
                 Value<bool> predictionsHidden = const Value.absent(),
                 Value<DateTime?> lastLossDate = const Value.absent(),
                 Value<int?> learningWindow = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion.insert(
                 isDeleted: isDeleted,
@@ -8758,6 +9450,7 @@ class $$CycleSettingsTableTableTableManager
                 predictionsHidden: predictionsHidden,
                 lastLossDate: lastLossDate,
                 learningWindow: learningWindow,
+                pushError: pushError,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -8803,6 +9496,7 @@ typedef $$CycleEntriesTableCreateCompanionBuilder =
       Value<String> symptoms,
       Value<int?> mood,
       Value<String?> note,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 typedef $$CycleEntriesTableUpdateCompanionBuilder =
@@ -8819,6 +9513,7 @@ typedef $$CycleEntriesTableUpdateCompanionBuilder =
       Value<String> symptoms,
       Value<int?> mood,
       Value<String?> note,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 
@@ -8888,6 +9583,11 @@ class $$CycleEntriesTableFilterComposer
 
   ColumnFilters<String> get note => $composableBuilder(
     column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pushError => $composableBuilder(
+    column: $table.pushError,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8960,6 +9660,11 @@ class $$CycleEntriesTableOrderingComposer
     column: $table.note,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get pushError => $composableBuilder(
+    column: $table.pushError,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CycleEntriesTableAnnotationComposer
@@ -9012,6 +9717,9 @@ class $$CycleEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<String> get pushError =>
+      $composableBuilder(column: $table.pushError, builder: (column) => column);
 }
 
 class $$CycleEntriesTableTableManager
@@ -9057,6 +9765,7 @@ class $$CycleEntriesTableTableManager
                 Value<String> symptoms = const Value.absent(),
                 Value<int?> mood = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleEntriesCompanion(
                 isDeleted: isDeleted,
@@ -9071,6 +9780,7 @@ class $$CycleEntriesTableTableManager
                 symptoms: symptoms,
                 mood: mood,
                 note: note,
+                pushError: pushError,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9087,6 +9797,7 @@ class $$CycleEntriesTableTableManager
                 Value<String> symptoms = const Value.absent(),
                 Value<int?> mood = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleEntriesCompanion.insert(
                 isDeleted: isDeleted,
@@ -9101,6 +9812,7 @@ class $$CycleEntriesTableTableManager
                 symptoms: symptoms,
                 mood: mood,
                 note: note,
+                pushError: pushError,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -9278,6 +9990,10 @@ typedef $$HealthStatusesTableCreateCompanionBuilder =
       required String itemKey,
       Value<bool> done,
       Value<DateTime?> statusDate,
+      Value<bool> dirty,
+      Value<DateTime?> clientUpdatedAt,
+      Value<DateTime?> serverUpdatedAt,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 typedef $$HealthStatusesTableUpdateCompanionBuilder =
@@ -9287,6 +10003,10 @@ typedef $$HealthStatusesTableUpdateCompanionBuilder =
       Value<String> itemKey,
       Value<bool> done,
       Value<DateTime?> statusDate,
+      Value<bool> dirty,
+      Value<DateTime?> clientUpdatedAt,
+      Value<DateTime?> serverUpdatedAt,
+      Value<String?> pushError,
       Value<int> rowid,
     });
 
@@ -9321,6 +10041,26 @@ class $$HealthStatusesTableFilterComposer
 
   ColumnFilters<DateTime> get statusDate => $composableBuilder(
     column: $table.statusDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get clientUpdatedAt => $composableBuilder(
+    column: $table.clientUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pushError => $composableBuilder(
+    column: $table.pushError,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9358,6 +10098,26 @@ class $$HealthStatusesTableOrderingComposer
     column: $table.statusDate,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get clientUpdatedAt => $composableBuilder(
+    column: $table.clientUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pushError => $composableBuilder(
+    column: $table.pushError,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$HealthStatusesTableAnnotationComposer
@@ -9385,6 +10145,22 @@ class $$HealthStatusesTableAnnotationComposer
     column: $table.statusDate,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get clientUpdatedAt => $composableBuilder(
+    column: $table.clientUpdatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pushError =>
+      $composableBuilder(column: $table.pushError, builder: (column) => column);
 }
 
 class $$HealthStatusesTableTableManager
@@ -9429,6 +10205,10 @@ class $$HealthStatusesTableTableManager
                 Value<String> itemKey = const Value.absent(),
                 Value<bool> done = const Value.absent(),
                 Value<DateTime?> statusDate = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<DateTime?> clientUpdatedAt = const Value.absent(),
+                Value<DateTime?> serverUpdatedAt = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => HealthStatusesCompanion(
                 baby: baby,
@@ -9436,6 +10216,10 @@ class $$HealthStatusesTableTableManager
                 itemKey: itemKey,
                 done: done,
                 statusDate: statusDate,
+                dirty: dirty,
+                clientUpdatedAt: clientUpdatedAt,
+                serverUpdatedAt: serverUpdatedAt,
+                pushError: pushError,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9445,6 +10229,10 @@ class $$HealthStatusesTableTableManager
                 required String itemKey,
                 Value<bool> done = const Value.absent(),
                 Value<DateTime?> statusDate = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<DateTime?> clientUpdatedAt = const Value.absent(),
+                Value<DateTime?> serverUpdatedAt = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => HealthStatusesCompanion.insert(
                 baby: baby,
@@ -9452,6 +10240,10 @@ class $$HealthStatusesTableTableManager
                 itemKey: itemKey,
                 done: done,
                 statusDate: statusDate,
+                dirty: dirty,
+                clientUpdatedAt: clientUpdatedAt,
+                serverUpdatedAt: serverUpdatedAt,
+                pushError: pushError,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

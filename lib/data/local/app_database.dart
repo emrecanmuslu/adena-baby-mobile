@@ -53,6 +53,11 @@ class Babies extends Table with _SyncCols {
   // Aile ayarları (units, enabled_types, defaults, reminder_schedule,
   // feed_reminder, quiet_hours) — yerel JSON. Premium'da /babies/{id}/settings.
   TextColumn get settings => text().withDefault(const Constant('{}'))();
+  // v15 (O4/R6): aile ayarı profilden AYRI bayrak; `settingsBase` = sunucunun
+  // son onayladığı JSON (K-5 değişen-alan diff'i için). `pushError` K-1.
+  BoolColumn get settingsDirty => boolean().withDefault(const Constant(false))();
+  TextColumn get settingsBase => text().nullable()();
+  TextColumn get pushError => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -71,6 +76,7 @@ class Memories extends Table with _SyncCols {
   TextColumn get localPhotoPath => text().nullable()(); // yerel kopya (free)
   TextColumn get firstTag => text().withDefault(const Constant(''))();
   TextColumn get createdBy => text().nullable()();
+  TextColumn get pushError => text().nullable()(); // v15, K-1
 
   @override
   Set<Column> get primaryKey => {id};
@@ -87,6 +93,7 @@ class MomEntries extends Table with _SyncCols {
   TextColumn get title => text().nullable()();
   TextColumn get note => text().nullable()();
   TextColumn get createdBy => text().nullable()();
+  TextColumn get pushError => text().nullable()(); // v15, K-1
 
   @override
   Set<Column> get primaryKey => {id};
@@ -125,6 +132,7 @@ class CycleSettingsTable extends Table with _SyncCols {
   DateTimeColumn get lastLossDate => dateTime().nullable()();
   // Akıllı tahmin öğrenme penceresi (kaç döngü ortalanır): null → 6 varsayılan.
   IntColumn get learningWindow => integer().nullable()();
+  TextColumn get pushError => text().nullable()(); // v15, K-1
 
   @override
   Set<Column> get primaryKey => {id};
@@ -141,6 +149,8 @@ class CycleEntries extends Table with _SyncCols {
   TextColumn get symptoms => text().withDefault(const Constant('[]'))(); // JSON list
   IntColumn get mood => integer().nullable()();
   TextColumn get note => text().nullable()();
+
+  TextColumn get pushError => text().nullable()(); // v15, K-1
 
   @override
   Set<Column> get primaryKey => {id};
@@ -172,6 +182,14 @@ class HealthStatuses extends Table {
   TextColumn get itemKey => text()();
   BoolColumn get done => boolean().withDefault(const Constant(false))();
   DateTimeColumn get statusDate => dateTime().nullable()();
+  // v15 (K4/O21, R5/R6): satır başına delta push. `dirty` varsayılanı FALSE
+  // (diğer tabloların tersine): pull'dan gelen/katalogdan türeyen satır temiz
+  // doğar, yalnız kullanıcı işaretlemesi dirty yapar. `serverUpdatedAt` backend
+  // #1 gelince pull'da dolar. `pushError` K-1.
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get clientUpdatedAt => dateTime().nullable()();
+  DateTimeColumn get serverUpdatedAt => dateTime().nullable()();
+  TextColumn get pushError => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {baby, kind, itemKey};
@@ -230,7 +248,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -324,6 +342,38 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(medicationPlans, medicationPlans.isDeleted);
             await m.addColumn(medicationPlans, medicationPlans.clientUpdatedAt);
             await m.addColumn(medicationPlans, medicationPlans.dirty);
+          }
+          if (from < 15) {
+            // v15 (TASARIM-SENKRON.md §5A): pushError (K-1), sağlık delta
+            // kolonları (K4), aile ayarı bayrağı (O4). addColumn YALNIZ tablo bu
+            // upgrade'de yeniden kurulmadıysa (from<4 / from<7 yolları tabloyu
+            // zaten v15 şemasıyla createTable etti).
+            if (from >= 4) {
+              await m.addColumn(babies, babies.settingsDirty);
+              await m.addColumn(babies, babies.settingsBase);
+              await m.addColumn(babies, babies.pushError);
+              await m.addColumn(memories, memories.pushError);
+              await m.addColumn(momEntries, momEntries.pushError);
+              await m.addColumn(cycleSettingsTable, cycleSettingsTable.pushError);
+              await m.addColumn(cycleEntries, cycleEntries.pushError);
+            }
+            if (from >= 7) {
+              await m.addColumn(healthStatuses, healthStatuses.dirty);
+              await m.addColumn(healthStatuses, healthStatuses.clientUpdatedAt);
+              await m.addColumn(healthStatuses, healthStatuses.serverUpdatedAt);
+              await m.addColumn(healthStatuses, healthStatuses.pushError);
+            }
+            // Backfill (kararlar, §5A/§5B/§5C):
+            // - K-4: gelişim/dişte done=true → dirty (bir kez push); AŞIDA YOK
+            //   (ilk v15 turunda sunucu kazanır — yanlış "yapıldı" tehlikeli).
+            // - O4: yalnız SAHİP satırlarında (my_role NULL/owner) dolu ayar JSON'u
+            //   → settingsDirty (bir kez tam sözlük PATCH). Üye/caregiver yok.
+            await m.database.customStatement(
+                "UPDATE health_statuses SET dirty = 1 "
+                "WHERE done = 1 AND kind IN ('milestone', 'tooth')");
+            await m.database.customStatement(
+                "UPDATE babies SET settings_dirty = 1 "
+                "WHERE settings != '{}' AND (my_role IS NULL OR my_role = 'owner')");
           }
         },
       );
