@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../data/activity_notif_cache.dart';
@@ -266,8 +267,7 @@ class PushService {
       _refreshSubscribed = true;
       FirebaseMessaging.instance.onTokenRefresh.listen((t) {
         if (t == _lastRegistered) return;
-        _lastRegistered = t;
-        _post(api, t);
+        postToken(api, t);
       });
     }
     try {
@@ -284,8 +284,7 @@ class PushService {
       }
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token != _lastRegistered) {
-        _lastRegistered = token;
-        await _post(api, token);
+        await postToken(api, token);
       }
     } catch (_) {
       // İzin reddi / ağ / APNs hatası → sessiz; onTokenRefresh backstop kalır.
@@ -305,16 +304,32 @@ class PushService {
     }
   }
 
-  Future<void> _post(ApiClient api, String token) async {
+  /// Token'ı sunucuya kaydeder; `_lastRegistered` YALNIZ başarılı POST'ta
+  /// işaretlenir (O1 artığı): zorunlu çıkış → `deleteToken` → FCM yeni token
+  /// üretir → `onTokenRefresh` oturum yokken gelir. Eskiden token önce
+  /// işaretlenip POST 401 ile düşüyordu; yeniden girişte `registerToken` aynı
+  /// token'ı "zaten kayıtlı" sanıp hiç göndermiyordu → aile push'u ölü kalırdı.
+  /// Oturum yoksa istek hiç atılmaz (yetkisiz 401 → refresh yolu tetiklenmesin).
+  @visibleForTesting
+  Future<bool> postToken(ApiClient api, String token) async {
     try {
+      if (!await api.hasSession) return false;
       await api.dio.post('/me/devices', data: {
         'push_token': token,
         'platform': Platform.isIOS ? 'ios' : 'android',
       });
+      _lastRegistered = token;
+      return true;
     } catch (_) {
-      // Oturum yoksa 401 → giriş sonrası tekrar denenir.
+      return false; // ağ/401 → giriş sonrası / sonraki öne gelişte tekrar denenir
     }
   }
+
+  @visibleForTesting
+  String? get lastRegistered => _lastRegistered;
+
+  @visibleForTesting
+  void resetForTests() => _lastRegistered = null;
 
   /// Çıkışta çağrılır: bu cihazın FCM token'ını sunucudan siler (token HÂLÂ
   /// geçerliyken, yani _repo.logout()'tan ÖNCE çağır). Böylece çıkılan hesaba bu
