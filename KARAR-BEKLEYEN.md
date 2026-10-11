@@ -90,3 +90,17 @@ Düzeltilenler (`1b2696d`): `cycle_engine._diffDays`, `pregnancyFromLmp` (TDT �
 - **Seçenekler:** (a) `GET /babies` yanıtındaki `updated_at` değiştiğinde ya da tam turda bir kez çek; (b) backend `GET /babies` yanıtına `settings` gömsün (tek istek); (c) mevcut (basit, doğru).
 - **Uygulanan varsayılan:** (c) — kod değişikliği yok; yayın sonrası (a) ya da (b).
 - **Etkilenen:** `lib/features/babies/baby_controller.dart:149-153`, `lib/data/baby_repository.dart` (`pullSettings`).
+
+## KB-12 — Lapse→yeniden abonelikte sağlık yeniden-tohumlama semantiği (INCELEME-2 J2)
+- **KARARLAŞTI: birleşim — UYGULANDI (`8d3945b`)**
+- **Soru:** `_reseedHealth` tam kümeyi (damgasız `done=false` dahil) damgasız son-yazan-kazanır backend'e yazıyordu → çok cihazlı ailede diğer cihazın işaretleri eziliyordu (K4'ün orijinal hatası); sunucu `GET /auth/me/subscription`'ın geçici "free" dönmesi (yenileme webhook'u gecikmesi / RC faturalama grace) de aynı yolu tetikliyordu.
+- **Seçenekler:** (a) tam küme (yerel = tek kaynak); (b) birleşim: yalnız `done=true` + `clientUpdatedAt != null` satırlar; (c) önce pull, sonra yalnız fark push.
+- **Karar/uygulanan:** (b) — `HealthRepository.pushReseed`; damgasız `done=false` gönderilmez; gönderilecek satır yoksa istek yok. İlk göç (`pushAll`) tam küme kalır. **Sahte lapse tetiği bu semantikle zararsız:** diğer cihazın `done` işaretleri ezilmez; bu cihazın done/damgalı değişiklikleri birleşir. Kalıcı çözüm: backend #11 (`client_updated_at` + kalem bazında LWW).
+- **Etkilenen:** `lib/data/health_repository.dart` (`pushReseed`), `lib/data/migration_service.dart` (`_reseedHealth`), `test/data/health_reseed_merge_j2_test.dart`, `health_pull_gate_i1_test` "lapse".
+
+## KB-13 — İlaç bildirimi id şeması (`planId % 1000`, INCELEME-2 J13(1), yayın sonrası iş)
+- **Tanım:** `_medIdFor = 670000 + (planId % 1000) * 10 + idx` → localId 7 ile 1007 aynı 10'luk bloğu paylaşır; `cancelMedicationPlan(1007)` plan 7'nin dozlarını da siler, K5 mutabakatı `% 1000` ile kurulduğundan çakışan yetimi temizlemez. Drift AUTOINCREMENT id geri kullanmadığından ≥1000 plan ekleme/pull gerekir — düşük olasılık.
+- **Neden şimdi yapılmadı:** id şeması değişimi mevcut cihazlardaki kurulu bildirimleri **yetim bırakır** (eski id'ler yeni mutabakat aralığında değilse iptal edilmez); geçiş dönemi için K5 mutabakatı iki aralığı da (`[670000,680000)` eski + yeni) kapsamalı ve bir sürüm boyunca eski id'leri de iptal etmeli.
+- **Seçenekler:** (a) aralığı genişlet (670000–699999 boş: 3000 plan) + geçiş mutabakatı; (b) id'yi plan `uuid` hash'inden türet + geçiş; (c) mevcut + Crashlytics non-fatal ile izle.
+- **Uygulanan varsayılan:** (c)'siz mevcut; yayın sonrası (a).
+- **Etkilenen:** `lib/core/notification_service.dart` (`_medIdFor`, `cancelMedicationPlan`, `_syncMedicationPlansNow` keep kümesi).

@@ -1,6 +1,6 @@
 # DEVAM NOTU — fix/audit-bulgular
 
-Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1243 geçti, 0 başarısız**, `flutter analyze` temiz.
+Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1322 geçti, 0 başarısız**, `flutter analyze` temiz.
 
 ## Tamamlananlar (commit sırasıyla)
 1. aşama: K3 `37f05f8`, K1 `00cd3fb`, K5 `e5f1a66`
@@ -25,6 +25,9 @@ N1+N2 `e77a23d` (canFullWriteProvider; yerel-only plan KB-10), N3 `e5b9db7` (çe
 
 ## Düzeltme turu 3 (2026-10-11, INCELEME.md I1–I16) — TAMAMLANDI
 I1 `a4161f9` (KRİTİK: sağlık pull kapısı + lapse reseed + telemetri; aşı backfill'i yine yok), I2 `562618e`, I3 `1f51066`, I4 `d5fe1fc`, I5 `92c5818`, I6 `1f68344`, I7 `d2ac131`, I8/I16 `ce58ad2`, I9 `6b5518c`, I11 `63df484`, I10/I13 `593b531`, R4 telemetri `d028b43`, GRUP D testleri `37260e1`; I12 → KB-11, I14/I15 belgelendi. Tam suite 1289/0, analyze temiz. Yeni çeviri anahtarı yok. Cihaz adımları YAYIN-KONTROL §1 H (41-46).
+
+## Düzeltme turu 4 (2026-10-11, INCELEME-2.md J1–J16) — TAMAMLANDI
+J1+J8 `a011bb1` (YÜKSEK: premiumSynced yalnız sağlık yüklemesi başarılıysa; lazy sunucu kümesi uygulanmaz), J2 `8d3945b` (KB-12 birleşim), J4 `a529003` (bg "Ertele" O16 regresyonu), J3 `9c88b76`, J5 `d83aa4e`, J6 `ae4f224`, J7 `0f287b4`, J9 `852214e`, J10 `9475b03`, J11 `e47dd61`, J12 `e6d14c2`, J13(2,3) `c393571` (J13(1) → KB-13), J16 `42642d9`, J14 `24d9305`, J15 `eb358d6`. Tam suite 1322/0, analyze temiz. Yeni çeviri anahtarı yok. Kontrat güncellenen testler: `health_pull_gate_i1_test` (sunucu ≥1 done; lapse birleşim), `baby_repository_r5_i2_test` (DELETE dalı). `shared_preferences_platform_interface` dev_dependency (J7 testi). I11 CI dalı `CI=true` + api dizini geçici taşınarak kırmızı görüldü. Cihaz adımları YAYIN-KONTROL §1-I (47–58). Backend #11 (health LWW). main'e merge EDİLMEDİ, push YOK.
 
 ## Kalan iş sırası
 c) ~~Şema v15~~ TAMAMLANDI (GRUP 1; v15'in ayrı sürüm olup olmayacağı yayın öncesi kullanıcı kararı, K-10).

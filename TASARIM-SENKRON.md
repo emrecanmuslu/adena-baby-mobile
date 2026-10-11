@@ -139,6 +139,10 @@ Durum (2.–5. aşamadan sonra): `pushError` **kolon yok**; K2/O5/O7 repo'ları 
 - **Telemetri:** `SyncTelemetry.report('health_pull_cleared_done', {baby, kind: n})` — pull temiz `done=true` satıra sunucunun pending'ini yazdığında Crashlytics non-fatal (davranış değişmez). Aynı kanal R4 koruması için `stale_delete_skipped` (INCELEME §5.6).
 - Testler: `test/data/health_pull_gate_i1_test.dart` (free→premium tam tur aşıyı sıfırlamaz / göç sonrası sunucu kazanır / parent'ta kapı yok / lapse → reseed → pull açılır / boş hesapta premiumSynced / lapse dinleyicisi), `health_repository_k4_test.dart:186` kontratı "senkronize hesapta" diye yeniden adlandırıldı + telemetri assert'i.
 
+**Düzeltme turu 4 — J1/J2 (INCELEME-2.md):**
+- **J1 (`a011bb1`):** `premiumSynced` yalnız sağlık `pushAll` TÜM sahip bebeklerde başarılıysa yazılır; aksi hâlde `health_reseed` kurulur (kapı kapalı, sonraki false→true geçişinde yeniden). `_dirtyCount` hatası "bilinmiyor" (kısayol yok, bayrak yok). Repo çağrıları başta yakalanan `acct` ile; göç sırasında kapsam değişirse bayrak yazılmaz. J8: tam göç/"veri yok" yolu `clearHealthReseedForAccount` da çağırır. **(b) Ek güvence (`pull`):** sunucu aşı listesi TAMAMEN pending iken yerelde temiz `done=true` aşı satırı varsa aşı kalemleri UYGULANMAZ, reseed kurulur, `health_pull_lazy_server_skipped` telemetrisi — "hiç yüklenmemiş/lazy sunucu kümesi otoriter değildir". Gelişim/diş etkilenmez. K-4 "sunucu kazanır" kontratı yalnız sunucuda ≥1 done varken (testler buna göre güncellendi).
+- **J2 / KB-12 (`8d3945b`):** yeniden-tohumlama TAM küme DEĞİL, **birleşim**: `HealthRepository.pushReseed` yalnız (1) `done=true` ve (2) `clientUpdatedAt != null` (v15'te kullanıcı eliyle değişti; açık kaldırma dahil) satırları gönderir; damgasız `done=false` (v14 varsayılanı) gönderilmez; gönderilecek satır yoksa istek yok. İlk göç `pushAll` tam küme olarak kalır. Sahte lapse tetiği (sunucu GET geçici "free") bu semantikle zararsızlaşır (diğer cihazın done'ları ezilmez). Kalıcı çözüm backend #11.
+
 ### 5C. O4 `settingsDirty` backfill'i ve K-5 değişen-alan PATCH'i
 
 | Seçenek | Risk | Not |
@@ -160,7 +164,7 @@ Durum (2.–5. aşamadan sonra): `pushError` **kolon yok**; K2/O5/O7 repo'ları 
 ## 6. Sağlık durumu (K4 / O21) — 6. aşama tasarımı
 
 - **Yazım (`_setStatus`):** satır `done/statusDate` + `dirty=true` + `clientUpdatedAt=now` ile yazılır; ağ **beklenmez**: `onStatusChanged?.call(babyId)` → `syncService.requestSyncSoon()` (ilaç planı deseni, 1,2 sn debounce). Ekran yerel yazımdan hemen sonra tazelenir (O21). Free/bulutsuz bebekte dirty yine yazılır (göçte `pushAll` tam küme gönderir ve dirty'leri temizler).
-- **Delta push (`pushDirty(babyId)`):** yalnız `dirty=true` satırlar → `POST /babies/{id}/health/sync` (`vaccines[{name,done,done_date}]`, `milestones[{key,…}]`, `teeth[{key,…}]`; `reminders` anahtarı gönderilmez). Backend yalnız gönderilen kalemleri `update` eder (`HealthSyncView`, `filter().update()`), listede olmayana dokunmaz → tam-küme ezmesi biter (R7). 2xx → gönderilen satırlar için `clientUpdatedAt` değişmediyse `dirty=false, pushError=null` (R5). Kalıcı 4xx → `pushError` (R3); 403 geçici (`cloudReadonly` kapısı syncAll'da). `pushAll` yalnız göç için kalır.
+- **Delta push (`pushDirty(babyId)`):** yalnız `dirty=true` satırlar → `POST /babies/{id}/health/sync` (`vaccines[{name,done,done_date}]`, `milestones[{key,…}]`, `teeth[{key,…}]`; `reminders` anahtarı gönderilmez). Backend yalnız gönderilen kalemleri `update` eder (`HealthSyncView`, `filter().update()`), listede olmayana dokunmaz → tam-küme ezmesi biter (R7). 2xx → gönderilen satırlar için `clientUpdatedAt` değişmediyse `dirty=false, pushError=null` (R5). Kalıcı 4xx → `pushError` (R3); 403 geçici (`cloudReadonly` kapısı syncAll'da). `pushAll` yalnız ilk göç (free→premium) için kalır; lapse→yeniden abonelikte `pushReseed` (birleşim, J2/KB-12).
 - **Pull (`pull(babyId)`; eski `importFromCloud` yerine, R1 tam uygulanır):** `GET /vaccines|/milestones|/teeth` (200 + List parse şart; boş liste → o tür atlanır, K-2 ruhu). Her sunucu kalemi için: yerel satır **dirty ise dokunma**; temiz/yok ise `done/date` sunucudan yazılır — **işaret kaldırma da yayılır** (`done=false`). Sunucuda olmayan yerel satır silinmez (katalog × durum, kullanıcı varlığı değil; R4 uygulanmaz). Bitince ilgili `vaccinesProvider/milestonesProvider/teethProvider(babyId)` invalidate.
 - **Tetikler (K-3):** `syncAll` tam turlarında (`sharedOnly=false`: açılış, öne geliş, `requestSyncSoon`) bebek döngüsünde `repo.sync` + `_syncMedicationPlans`'tan sonra `_syncHealth(b.id)` = `pushDirty` → `pull` (aynı try: 403 → readonly). 1 dk polling (`sharedOnly=true`) turlarında **yalnız dirty satır varsa push** (ucuz), pull yok (K-3). `InitialImport`/`MigrationService` pull adımı `pull`'u çağırır (artık işaret kaldırmayı da uygular).
 - **İki cihaz aynı kalemi ters yöne çekerse (backend #1 yokken):** ikisi de dirty → ikisi de push → sunucuda **son push kazanır**; önce push eden cihazın satırı temizlendiği için bir sonraki pull'da diğerinin değerini alır → iki cihaz da son yazana yakınsar (kalem bazında). #1 gelince: push `client_updated_at` taşır, sunucu yalnız daha yeniyse uygular, pull `updated_at`'i `serverUpdatedAt`'e yazar ve `decideServerRow` damga karşılaştırmasına geçer (kolon v15'te hazır).
@@ -275,6 +279,25 @@ Sıra: **7a → 7b → 8 → 9 → docs.** 8b (O26 kalanı) bu aşamaya DAHİL D
 | I10/I13 | `593b531` | Pull katalog dışı aşı kalemini yazmaz; KB-10 localOnly = sunucuya hiç gitmemiş plan (prefs `med_server_plan_ids_<baby>`). |
 | telemetri | `d028b43` | R4 `stale_delete_skipped` non-fatal. |
 | I15 (not) | — | **Şüpheli, belgelendi:** `ensureLoaded` disk ∪ bellek birleşimi, bellekte duran bir bayrağı başka isolate diskten sildiyse diriltebilir (`premiumSynced` → purge sonrası tam yeniden yükleme atlanır). Bg isolate bu bayrakları yazmadığı (K9) ve `ensureLoaded` açılışta bir kez koştuğu için pratikte gerçekleşmesi zor; izlenecek, kod değişikliği yok. |
+
+### Düzeltme turu 4 — INCELEME-2.md bulguları (2026-10-11)
+
+| # | Commit | Kapsam / not |
+|---|---|---|
+| J1+J8 | `a011bb1` | `premiumSynced` yalnız sağlık yüklemesi başarılıysa; sayım hatası bilinmiyor; kapsam değişimi; (b) lazy sunucu kümesi uygulanmaz + `health_pull_lazy_server_skipped`. Bkz. §5B "Düzeltme turu 4". |
+| J2 | `8d3945b` | KB-12 birleşim: `pushReseed` (done=true + damgalı), damgasız done=false gitmez. |
+| J4 | `a529003` | Bg "Ertele 10 dk": `NotificationService.alarmModeFor` paylaşımlı, izin yoksa inexact, try/catch + Crashlytics non-fatal. |
+| J3 | `9c88b76` | `watchSettings/watchEntries(accountId:)`; provider'lar kapsamı açıkça geçirir; guest migrate/_postLogin invalidate. |
+| J5 | `d83aa4e` | Silmede slot `SlotRegistry`'den (loading'de de iptal); `NotificationService.instance` test için değiştirilebilir. |
+| J6 | `ae4f224` | `_scheduleDaily` → `_alarmMode()` (ilaç dozu/özel günlük exact). |
+| J7 | `0f287b4` | `nextActivityId` Future zinciri. |
+| J9 | `852214e` | Bebek DELETE dalında R5. |
+| J10/J11 | `9475b03` / `e47dd61` | Testler: deleteBaby uçtan uca; migration (1b) penceresi. |
+| J12 | `e6d14c2` | `ExactAlarmPrompt.onGranted` + `resyncAfterExactAlarmGranted`; bayrak diyalogdan sonra. |
+| J13 | `c393571` | `notif_interval_` anahtarı iptalde silinir; bg dil `readPrefsOnly`. (1) → KB-13. |
+| J16 | `42642d9` | Test hijyeni. |
+| J14 | `24d9305` | Bebek/anı push'u karşılaştır+yaz tek transaction. |
+| J15 | `eb358d6` | `_syncNow` aktif ∩ keep. |
 
 ### Backend talepleriyle kesişim (#1, #2, #3) — v15 onlarsız ne kadar güvenli?
 

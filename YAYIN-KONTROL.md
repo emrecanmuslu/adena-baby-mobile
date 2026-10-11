@@ -60,11 +60,25 @@ Branch `fix/audit-bulgular`, main'e merge EDİLMEDİ. Bu dosya yayın öncesi te
 
 ### H. Düzeltme turu 3 (INCELEME)
 41. **I1 (KRİTİK senaryo):** v14 kurulu, FREE hesapla 3 aşı işaretle → v15'e güncelle → premium satın al (mağaza sayfasından dönüş = öne geliş) → aşı ekranı: 3 işaret DURUYOR; sunucu logunda `GET /babies/{id}/vaccines` göç `POST /health/sync` (tam küme) tamamlanmadan ÖNCE GELMEMELİ; göç bitince `GET` gelir, işaretler sunucuda da `done`. Crashlytics'te `health_pull_cleared_done` olayı 0 olmalı.
-42. **I1 (lapse):** premium bitir (isPremium false) → birkaç aşı daha işaretle → yeniden abone ol → işaretler durur; sunucu logunda önce tek `POST /health/sync` (tam küme), sonra `GET`'ler.
+42. **I1 (lapse) + J2:** premium bitir (isPremium false) → birkaç aşı daha işaretle → yeniden abone ol → işaretler durur; sunucu logunda önce tek `POST /health/sync` (**birleşim**: yalnız done=true + damgalı kalemler; damgasız `done:false` gövdede YOK), sonra `GET`'ler.
 43. **I4:** v14 kurulu cihazda v15'e güncelleme sırasında `adb shell am force-stop com.adenababy.adena_baby` ile ilk açılışı kes (zamanlama şansa bağlı; birkaç deneme) → sonraki açılış sorunsuz, Crashlytics'te `duplicate column` YOK.
 44. **I8/I16:** hesabı sil → doğrudan giriş ekranı (onboarding'e uğramaz); silme sırasında senkron turu çalışıyorsa bile cihazda bebek/kayıt kalmaz.
 45. **I6:** aile üyesi 3 kaydı 1-2 sn arayla girsin → bu cihazda 3 ayrı aile bildirimi (üst üste yazılmaz).
 46. **I13:** bakıcı cihazında sunucuda olan bir plan KB-8 öncesi düzenlenmiş gibi dirty bırakılamaz (artık StateError); yalnız gerçekten yerel-only plan "yalnız bu cihazda" etiketi alır.
+
+### I. Düzeltme turu 4 (INCELEME-2)
+47. **J1 (göçte ağ kesintisi):** v14 free, 3 aşı işaretli → v15 → premium satın al → göç sırasında (foto yüklenirken) uçak modu → ağ gelince aşı ekranı: 3 tik DURUYOR; prefs'te `premium_synced_accounts_v1` hesabı İÇERMEZ, `health_reseed_accounts_v1` içerir; sonraki açılışta önce `POST /health/sync` (birleşim), sonra `GET`'ler; Crashlytics `health_pull_cleared_done` 0.
+48. **J1(b) (lazy sunucu kümesi):** sunucuda aşı kaydı hiç olmayan (yeni oluşturulmuş) bebek + yerelde temiz done=true tik → tam turda `GET /vaccines` hepsi pending gelir → tikler DURUR, Crashlytics `health_pull_lazy_server_skipped` 1 olay, sonraki açılışta `POST /health/sync` (tikler sunucuya gider), ardından pull normal.
+49. **J1 (v14'te sağlık yüklemesi düşmüş premium, mümkünse):** v14'te premium iken çevrimdışı 2 aşı işaretle, hiç online olmadan v15'e güncelle → online ol → tikler durur (48 ile aynı yol); yeniden işaretleme gerekmez.
+50. **J2 iki cihaz:** sahip A + ebeveyn B; A çevrimdışıyken B 2 aşı işaretler (sunucuda done); A premium'u biter → A online → yeniden abone olur → B'nin cihazında 2 tik DURUR (A'nın `POST /health/sync` gövdesinde damgasız `done:false` yok).
+51. **J3 (misafir→hesap):** misafir "bebeğim yok — adet takibi" → sihirbazı doldur, 2 adet kaydı → kayıt ol → "Aktar" → adet sekmesi: ayar/kayıtlar görünür, sihirbaz AÇILMAZ; sunucu logunda `PATCH /cycle/settings` yalnız değişen alanlarla (sihirbaz yeniden doldurulmadığı için eski ayar ezilmez).
+52. **J3 (çıkış→giriş):** adet sekmesi açıkken çıkış yap → aynı hesapla giriş → adet sekmesi hesabın ayarını gösterir (restart gerekmez).
+53. **J4 (Android 14+):** uygulama arka plandayken beslenme bildirimi → "Ertele 10 dk" → 10 dk (±dakika) sonra "Beslenme zamanı (ertelendi)" GELİR; Android 12/13'te tam dakikasında. Crashlytics'te `bg_snooze_schedule` non-fatal YOK (kesin alarm izni yokken `ExactAlarmPermissionException` araması).
+54. **J5:** bebek değiştiriciden geçiş / misafir göçü hemen ardından bebek sil → Geliştirici → bekleyen bildirimler: silinen bebeğin feed/sağlık/ilaç/özel hatırlatıcı id'leri YOK.
+55. **J6/J12:** Android 14+ ilaç planı oluştur (ilk plan → M4 diyaloğu) → "İzin ver" → sistem sayfasında izin ver → geri dön → bekleyen ilaç dozu bildirimleri exact (adb `dumpsys alarm` içinde `*walarm*` / exact); beslenme hatırlatıcısı da yeniden kurulmuş (bekleyenlerde aynı id, exact). Diyalog bir daha çıkmaz; Bildirimler → "Tam zamanında bildirim" "İzin verildi".
+56. **J7 (uygulama KAPALI):** aile üyesi 1 sn arayla 3 kayıt girsin → bu cihazda 3 AYRI aile bildirimi (FCM açılış kuyruğu; 45 "uygulama açık" varyantıydı).
+57. **J13:** özel periyodik hatırlatıcı oluştur → sil → prefs'te `notif_interval_<id>` anahtarı YOK; bg bildirim metni (uygulama kapalı, EN dilinde) İngilizce.
+58. **J15:** tek bebekli hesapta özel hatırlatıcı varken bebeği sil → bekleyenlerde hatırlatıcı YOK (yeniden kurulmadı).
 
 ## 2. Bekleyen çeviri anahtarları (api repo, commit'lenmedi)
 Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 32 anahtar — `test/i18n/translation_keys_test.dart` listeyle birebir doğrular). Yayın öncesi api'de commit + prod'da `seed_translations --locale <en|es|fr|ar|hi|zh>`. **I11:** test, `CI=true` ya da `REQUIRE_API_TRANSLATIONS=1` ortamında api dizini yoksa FAIL eder (yerelde uyarıyla atlar); CI'da `flutter test` koşulacaksa api repo'su yan yana checkout edilmeli. Bu turda yeni çeviri anahtarı EKLENMEDİ (kullanıcıya görünen yeni metin yok).
