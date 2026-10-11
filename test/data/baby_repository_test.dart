@@ -594,7 +594,7 @@ void k2Tests() {
       await repo.pushDirty();
 
       expect((await rawRow('p1'))!.dirty, isTrue);
-      expect(repo.pushErrors['p1'], contains('422'));
+      expect((await rawRow('p1'))!.pushError, contains('422'));
     });
 
     test('geçici hata (503): dirty kalır, pushError YOK', () async {
@@ -605,7 +605,7 @@ void k2Tests() {
       await repo.pushDirty();
 
       expect((await rawRow('p2'))!.dirty, isTrue);
-      expect(repo.pushErrors.containsKey('p2'), isFalse);
+      expect((await rawRow('p2'))!.pushError, isNull);
     });
 
     test('başarılı push önceki pushError notunu temizler', () async {
@@ -613,14 +613,14 @@ void k2Tests() {
       adapter.onPost('/babies', (s) => s.reply(422, {'name': ['x']}),
           data: Matchers.any);
       await repo.pushDirty();
-      expect(repo.pushErrors.containsKey('p3'), isTrue);
+      expect((await rawRow('p3'))!.pushError, isNotNull);
 
       adapter.onPost('/babies', (s) => s.reply(201, {'id': 'p3', 'name': 'Düzeldi'}),
           data: Matchers.any);
       await repo.pushDirty();
 
       expect((await rawRow('p3'))!.dirty, isFalse);
-      expect(repo.pushErrors.containsKey('p3'), isFalse);
+      expect((await rawRow('p3'))!.pushError, isNull);
     });
   });
 }

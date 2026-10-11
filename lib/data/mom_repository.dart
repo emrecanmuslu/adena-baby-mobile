@@ -32,8 +32,52 @@ class MomRepository {
 
   MomRepository(this._db, this._api, this._localUserId, this._cloudEnabled);
 
-  /// Kalıcı reddedilen push'lar: id → açıklama (bellek-içi; kolon v15'te, K-1).
-  final Map<String, String> pushErrors = {};
+  /// Kalıcı reddedilen push'lar `pushError` kolonunda (K-1).
+  Future<bool> _isCaregiver(String babyId) async {
+    final b = await (_db.select(_db.babies)..where((x) => x.id.equals(babyId)))
+        .getSingleOrNull();
+    return b?.myRole == 'caregiver';
+  }
+
+  Future<void> _setPushError(String id, String? err) =>
+      (_db.update(_db.momEntries)..where((m) => m.id.equals(id)))
+          .write(MomEntriesCompanion(pushError: Value(err)));
+
+  /// K-1 "geri al": sunucu listesinde satır varsa uygulanır; yoksa `notOnServer`.
+  Future<RevertResult> revertToServer(String babyId, String id) async {
+    try {
+      final resp = await _api.dio.get('/babies/$babyId/mom-entries');
+      if (resp.statusCode != 200 || resp.data is! List) return RevertResult.failed;
+      for (final e in resp.data as List) {
+        if (e is! Map || e['id'] != id) continue;
+        final m = e.cast<String, dynamic>();
+        await _db.into(_db.momEntries).insertOnConflictUpdate(
+              MomEntriesCompanion.insert(
+                id: id,
+                baby: babyId,
+                kind: (m['kind'] as String?) ?? 'note',
+                date: DateTime.parse(m['date'] as String).toLocal(),
+                weightKg: Value(m['weight_kg'] == null
+                    ? null
+                    : double.tryParse(m['weight_kg'].toString())),
+                title: Value(m['title'] as String?),
+                note: Value(m['note'] as String?),
+                createdBy: Value(m['created_by'] as String?),
+                isDeleted: const Value(false),
+                dirty: const Value(false),
+                pushError: const Value(null),
+              ),
+            );
+        return RevertResult.applied;
+      }
+      return RevertResult.notOnServer;
+    } catch (_) {
+      return RevertResult.failed;
+    }
+  }
+
+  Future<void> discardLocal(String id) =>
+      (_db.delete(_db.momEntries)..where((m) => m.id.equals(id))).go();
 
   // ---- Yerel okuma ----
 
@@ -201,14 +245,13 @@ class MomRepository {
         await _api.dio.delete('/babies/$babyId/mom-entries/${r.id}');
       } on DioException catch (e) {
         if (e.response?.statusCode != 404) {
-          _noteFailure(r.id, e);
+          await _noteFailure(babyId, r.id, e);
           continue;
         }
       } catch (_) {
         continue;
       }
       await (_db.delete(_db.momEntries)..where((m) => m.id.equals(r.id))).go();
-      pushErrors.remove(r.id);
     }
     if (upserts.isEmpty) return;
 
@@ -229,26 +272,34 @@ class MomRepository {
         for (final r in upserts) {
           if (saved.contains(r.id)) {
             await (_db.update(_db.momEntries)..where((m) => m.id.equals(r.id)))
-                .write(const MomEntriesCompanion(dirty: Value(false)));
-            pushErrors.remove(r.id);
+                .write(const MomEntriesCompanion(
+                    dirty: Value(false), pushError: Value(null)));
           } else if (failed.containsKey(r.id)) {
-            pushErrors[r.id] = failed[r.id]!; // sunucu bu öğeyi reddetti (kalıcı)
+            // sunucu bu öğeyi reddetti (kalıcı)
+            await _setPushError(r.id, _short(failed[r.id]!));
           }
         }
       });
     } on DioException catch (e) {
       for (final r in upserts) {
-        _noteFailure(r.id, e);
+        await _noteFailure(babyId, r.id, e);
       }
     } catch (_) {
       // Beklenmeyen — dirty kalır, sonraki tur.
     }
   }
 
-  void _noteFailure(String id, DioException e) {
+  static String _short(String s) => s.length > 120 ? s.substring(0, 120) : s;
+
+  /// R3 + K-1: kalıcı 4xx → `pushError`; 403 + caregiver → `'role'`.
+  Future<void> _noteFailure(String babyId, String id, DioException e) async {
+    final code = e.response?.statusCode;
+    if (code == 403 && await _isCaregiver(babyId)) {
+      await _setPushError(id, 'role');
+      return;
+    }
     if (classifyDioError(e) == PushFailure.permanent) {
-      final code = e.response?.statusCode;
-      pushErrors[id] = 'HTTP $code';
+      await _setPushError(id, 'HTTP $code');
       debugPrint('[mom-push] kalıcı red $id: HTTP $code ${e.response?.data}');
     }
   }

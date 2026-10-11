@@ -38,9 +38,54 @@ class MemoryRepository {
 
   MemoryRepository(this._db, this._api, this._localUserId, this._cloudEnabled);
 
-  /// Kalıcı (4xx) reddedilen push'lar: id → açıklama. Bellek-içi; kalıcı
-  /// `pushError` kolonu şema v15'te (K-1). Başarılı push notu temizler.
-  final Map<String, String> pushErrors = {};
+  /// Kalıcı (4xx) reddedilen push'lar `pushError` kolonunda (K-1).
+  /// Bebek rolü caregiver mı (403 → `pushError='role'`, K-1).
+  Future<bool> _isCaregiver(String babyId) async {
+    final b = await (_db.select(_db.babies)..where((x) => x.id.equals(babyId)))
+        .getSingleOrNull();
+    return b?.myRole == 'caregiver';
+  }
+
+  Future<void> _setPushError(String id, String? err) =>
+      (_db.update(_db.memories)..where((m) => m.id.equals(id)))
+          .write(MemoriesCompanion(pushError: Value(err)));
+
+  /// K-1 "geri al": sunucu listesinde satır varsa uygulanır (tombstone kalkar,
+  /// dirty=false, pushError=null; yerel foto kopyası korunur); yoksa `notOnServer`.
+  Future<RevertResult> revertToServer(String babyId, String id) async {
+    try {
+      final resp = await _api.dio.get('/babies/$babyId/memories');
+      if (resp.statusCode != 200 || resp.data is! List) return RevertResult.failed;
+      for (final e in resp.data as List) {
+        if (e is! Map || e['id'] != id) continue;
+        final m = e.cast<String, dynamic>();
+        await _db.into(_db.memories).insertOnConflictUpdate(
+              MemoriesCompanion.insert(
+                id: id,
+                baby: babyId,
+                date: DateTime.parse(m['date'] as String),
+                title: Value((m['title'] as String?) ?? ''),
+                note: Value((m['note'] as String?) ?? ''),
+                photo: Value(m['photo'] as String?),
+                firstTag: Value((m['first_tag'] as String?) ?? ''),
+                createdBy: Value(m['created_by'] as String?),
+                serverUpdatedAt: Value(_parseTs(m['updated_at'])),
+                isDeleted: const Value(false),
+                dirty: const Value(false),
+                pushError: const Value(null),
+              ),
+            );
+        return RevertResult.applied;
+      }
+      return RevertResult.notOnServer;
+    } catch (_) {
+      return RevertResult.failed;
+    }
+  }
+
+  /// Kullanıcı onayıyla yerel satırı kaldırır (sunucuda hiç yoktu).
+  Future<void> discardLocal(String id) =>
+      (_db.delete(_db.memories)..where((m) => m.id.equals(id))).go();
 
   static String _ymd(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -222,7 +267,7 @@ class MemoryRepository {
           await _api.dio.delete('/babies/$babyId/memories/${r.id}');
         } on DioException catch (e) {
           if (e.response?.statusCode != 404) {
-            _noteFailure(r.id, e);
+            await _noteFailure(babyId, r.id, e);
             continue; // tombstone dirty kalır, sonraki tur yeniden dener
           }
           // 404: sunucuda zaten yok → yerel temizliğe düş.
@@ -230,7 +275,6 @@ class MemoryRepository {
           continue;
         }
         await (_db.delete(_db.memories)..where((m) => m.id.equals(r.id))).go();
-        pushErrors.remove(r.id);
         continue;
       }
       try {
@@ -252,23 +296,29 @@ class MemoryRepository {
             photo: Value(srv['photo'] as String?),
             serverUpdatedAt: Value(_parseTs(srv['updated_at'])),
             dirty: const Value(false),
+            pushError: const Value(null),
           ),
         );
-        pushErrors.remove(r.id);
       } on DioException catch (e) {
-        _noteFailure(r.id, e); // dirty kalır
+        await _noteFailure(babyId, r.id, e); // dirty kalır
       } catch (e) {
         // Yerel foto dosyası okunamadı vb. — kalıcı: bir daha başaramaz.
-        pushErrors[r.id] = 'local: $e';
+        await _setPushError(r.id, 'local');
         debugPrint('[memories-push] ${r.id}: $e');
       }
     }
   }
 
-  void _noteFailure(String id, DioException e) {
+  /// R3 + K-1: kalıcı 4xx → `pushError` kolonu; 403 + caregiver → `'role'`
+  /// (rol düşmüş, sonsuza dek 403 alırdı).
+  Future<void> _noteFailure(String babyId, String id, DioException e) async {
+    final code = e.response?.statusCode;
+    if (code == 403 && await _isCaregiver(babyId)) {
+      await _setPushError(id, 'role');
+      return;
+    }
     if (classifyDioError(e) == PushFailure.permanent) {
-      final code = e.response?.statusCode;
-      pushErrors[id] = 'HTTP $code';
+      await _setPushError(id, 'HTTP $code');
       debugPrint('[memories-push] kalıcı red $id: HTTP $code ${e.response?.data}');
     }
   }

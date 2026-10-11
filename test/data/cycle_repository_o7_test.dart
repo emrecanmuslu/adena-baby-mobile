@@ -239,7 +239,7 @@ void main() {
       await repo.migrateToCloud();
       expect((await row(ok.id))!.dirty, isFalse);
       expect((await row(bad.id))!.dirty, isTrue);
-      expect(repo.pushErrors[bad.id], contains('date gerekli'));
+      expect((await row(bad.id))!.pushError, contains('date gerekli'));
     });
 
     test('bulk 422 → dirty kalır + pushErrors; 503 → not yok', () async {
@@ -249,13 +249,14 @@ void main() {
       final repo = cloudRepo();
       await repo.migrateToCloud();
       expect((await row(e.id))!.dirty, isTrue);
-      expect(repo.pushErrors[e.id], contains('422'));
+      expect((await row(e.id))!.pushError, contains('422'));
 
       adapter.onPost('/cycle/entries/bulk', (s) => s.reply(503, {'detail': 'down'}),
           data: Matchers.any);
       final repo2 = cloudRepo();
       await repo2.migrateToCloud();
-      expect(repo2.pushErrors.containsKey(e.id), isFalse);
+      // K-1: kolon kalıcı — 503 notu yazmaz, önceki 422 notu durur.
+      expect((await row(e.id))!.pushError, contains('422'));
     });
   });
 

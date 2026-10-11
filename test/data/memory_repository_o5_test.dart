@@ -215,13 +215,14 @@ void main() {
           data: Matchers.any);
       await repo.pushDirty(baby);
       expect((await row(a.id))!.dirty, isTrue);
-      expect(repo.pushErrors[a.id], contains('422'));
+      expect((await row(a.id))!.pushError, contains('422'));
 
       adapter.onPost(path, (s) => s.reply(503, {'detail': 'down'}),
           data: Matchers.any);
       final repo2 = cloudRepo();
       await repo2.pushDirty(baby);
-      expect(repo2.pushErrors.containsKey(a.id), isFalse);
+      // K-1: kolon süreç/örnek ömrünü aşar — 503 notu YAZMAZ, 422 notu kalır.
+      expect((await row(a.id))!.pushError, contains('422'));
     });
 
     test('pull ağ hatasında hiçbir şey silinmez', () async {

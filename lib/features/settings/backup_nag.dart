@@ -7,10 +7,12 @@ import 'package:go_router/go_router.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/push_error_repository.dart';
 import '../../data/subscription_repository.dart';
 import '../../data/sync_gate.dart';
 import '../babies/baby_controller.dart';
 import '../records/record_controller.dart';
+import 'push_error_sheet.dart';
 
 /// Oturum-içi kapatma durumu (kapatınca o oturumda gizlenir, yeniden açılışta
 /// tekrar görünür — "sürekli uyarı" ilkesi: kalıcı olarak kapatılamaz).
@@ -259,6 +261,19 @@ class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
             : tr('Kayıtların telefonuna kaydediliyor — çevrimdışıyken de her şeyi '
                 'normal şekilde ekleyebilirsin.'),
         onTap: null,
+      );
+    }
+    // K-1: sunucunun KALICI reddettiği yerel değişiklikler (pushError) — eylem
+    // gerektirir ("geri al"), geçici "senkron sorunu"ndan önce gösterilir.
+    final errCount = ref.watch(pushErrorCountProvider).asData?.value ?? 0;
+    if (errCount > 0) {
+      return _banner(
+        context,
+        icon: Icons.error_outline_rounded,
+        color: const Color(0xFFB8860B),
+        title: trp('{n} değişiklik sunucuya gönderilemedi', {'n': '$errCount'}),
+        body: tr('Gönderilemeyen değişiklikler'),
+        onTap: () => showPushErrorSheet(context, ref),
       );
     }
     // Cihaz çevrimiçi görünse bile gerçek sync isteği sessizce başarısız olabilir

@@ -542,15 +542,15 @@ class BabyRepository {
           }
         }
         await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
-            .write(const BabiesCompanion(dirty: Value(false)));
-        pushErrors.remove(r.id);
+            .write(const BabiesCompanion(dirty: Value(false), pushError: Value(null)));
       } on DioException catch (e) {
         // R3: yerel değişiklik her durumda KORUNUR (dirty kalır). Kalıcı red
-        // (4xx; sunucu bunu hiç kabul etmeyecek) not edilir ki sessizce sonsuza
-        // dek yeniden denenmesin — banner/geri alma sonraki iş (K-1).
+        // (4xx; sunucu bunu hiç kabul etmeyecek) `pushError` kolonuna yazılır
+        // (K-1: banner + "geri al"); sessizce sonsuza dek yeniden denenmez.
         if (classifyDioError(e) == PushFailure.permanent) {
           final code = e.response?.statusCode;
-          pushErrors[r.id] = 'HTTP $code';
+          await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
+              .write(BabiesCompanion(pushError: Value('HTTP $code')));
           debugPrint('[baby-push] kalıcı red ${r.id}: HTTP $code ${e.response?.data}');
         }
       } catch (_) {
@@ -559,10 +559,57 @@ class BabyRepository {
     }
   }
 
-  /// Kalıcı (4xx) reddedilen bebek push'ları: id → 'HTTP `<kod>`'. Bellek-içi
-  /// (süreç ömrü); kalıcı `pushError` kolonu şema v15'te gelecek
-  /// (TASARIM-SENKRON.md §5, K-1). Başarılı push kaydı temizler.
-  final Map<String, String> pushErrors = {};
+  /// K-1 "geri al": `GET /babies/{id}` → 200: sunucu profili uygulanır
+  /// (ayar JSON'u dokunulmaz; dirty=false, pushError=null, tombstone kalkar).
+  /// 403/404: sunucuda yok → `notOnServer`. Diğer → `failed`.
+  Future<RevertResult> revertToServer(String babyId) async {
+    final Map<String, dynamic> data;
+    try {
+      final resp = await _api.dio.get('/babies/$babyId');
+      if (resp.statusCode != 200 || resp.data is! Map) return RevertResult.failed;
+      data = Map<String, dynamic>.from(resp.data as Map);
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 403 || code == 404) return RevertResult.notOnServer;
+      return RevertResult.failed;
+    } catch (_) {
+      return RevertResult.failed;
+    }
+    final b = Baby.fromJson(data);
+    await (_db.update(_db.babies)..where((x) => x.id.equals(babyId))).write(
+      BabiesCompanion(
+        name: Value(b.name),
+        gender: Value(b.gender.name),
+        photo: Value(b.photo),
+        status: Value(b.status.name),
+        birthDate: Value(b.birthDate),
+        dueDate: Value(b.dueDate),
+        lastMenstrualDate: Value(b.lastMenstrualDate),
+        gestationalWeeks: Value(b.gestationalWeeks),
+        gestationalDays: Value(b.gestationalDays),
+        myRole: Value(b.myRole),
+        memberCount: Value(b.memberCount),
+        isDeleted: const Value(false),
+        dirty: const Value(false),
+        pushError: const Value(null),
+      ),
+    );
+    return RevertResult.applied;
+  }
+
+  /// Sunucuda olmayan sahip bebeği SİLMEZ (yerel veri korunur, KARAR-BEKLEYEN):
+  /// bayraklar temizlenir, satır yalnız bu cihazda kalır. Tombstone (bekleyen
+  /// silme) + sunucuda yok → satır kaldırılır (çocuk verisi çağıranın işi).
+  Future<void> keepLocalOnly(String babyId) async {
+    final r = await _byIdRow(babyId);
+    if (r == null) return;
+    if (r.isDeleted) {
+      await (_db.delete(_db.babies)..where((x) => x.id.equals(babyId))).go();
+      return;
+    }
+    await (_db.update(_db.babies)..where((x) => x.id.equals(babyId))).write(
+        const BabiesCompanion(dirty: Value(false), pushError: Value(null)));
+  }
 
   // ---- Üyelik & davet (cloud/premium — paylaşım) ----
 

@@ -127,3 +127,16 @@ PushFailure classifyPushFailure({int? statusCode}) {
 /// Dio hatası için kısayol: yanıt yoksa (bağlantı/timeout) geçici.
 PushFailure classifyDioError(DioException e) =>
     classifyPushFailure(statusCode: e.response?.statusCode);
+
+/// "Değişikliği geri al" (K-1) sonucu.
+enum RevertResult {
+  /// Sunucu kopyası uygulandı; dirty=false, pushError=null.
+  applied,
+
+  /// Satır sunucuda yok (yerelde oluşturulmuş / sunucuda silinmiş) → çağıran
+  /// kullanıcı onayıyla yerelden siler ya da yerelde temiz bırakır.
+  notOnServer,
+
+  /// Ağ/sunucu hatası → hiçbir şey değişmedi.
+  failed,
+}

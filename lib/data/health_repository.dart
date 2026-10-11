@@ -544,8 +544,11 @@ class HealthRepository {
         ],
       });
     } on DioException catch (e) {
-      if (classifyDioError(e) == PushFailure.permanent) {
-        final code = 'HTTP ${e.response?.statusCode}';
+      final status = e.response?.statusCode;
+      // K-1: 403 + caregiver (rol düşmüş) → 'role'; kalıcı 4xx → 'HTTP n'.
+      final roleErr = status == 403 && await _isCaregiver(babyId);
+      if (roleErr || classifyDioError(e) == PushFailure.permanent) {
+        final code = roleErr ? 'role' : 'HTTP $status';
         for (final r in rows) {
           await _setPushError(babyId, r.kind, r.itemKey, code);
         }
@@ -562,6 +565,53 @@ class HealthRepository {
       }
       await _clearDirtyIfUnchanged(
           babyId, r.kind, r.itemKey, r.clientUpdatedAt, r.done, r.statusDate);
+    }
+  }
+
+  Future<bool> _isCaregiver(String babyId) async {
+    final b = await (_db.select(_db.babies)..where((x) => x.id.equals(babyId)))
+        .getSingleOrNull();
+    return b?.myRole == 'caregiver';
+  }
+
+  /// K-1 "geri al": ilgili türün sunucu listesinde kalem varsa sunucu değeri
+  /// yazılır (dirty=false, pushError=null); kalem yoksa yerel değer korunur,
+  /// yalnız bayraklar temizlenir (sağlıkta silinecek satır yok).
+  Future<RevertResult> revertToServer(String babyId, String kind, String key) async {
+    final path = switch (kind) {
+      'vaccine' => 'vaccines',
+      'milestone' => 'milestones',
+      _ => 'teeth',
+    };
+    try {
+      final r = await _api.dio.get('/babies/$babyId/$path');
+      if (r.statusCode != 200 || r.data is! List) return RevertResult.failed;
+      for (final e in r.data as List) {
+        if (e is! Map) continue;
+        final m = e.cast<String, dynamic>();
+        final k = kind == 'vaccine' ? m['vaccine_name'] : m['key'];
+        if (k != key) continue;
+        final done = switch (kind) {
+          'vaccine' => m['status'] == 'done',
+          'milestone' => m['achieved'] == true,
+          _ => m['erupted'] == true,
+        };
+        final date = _parse(m[switch (kind) {
+          'vaccine' => 'done_date',
+          'milestone' => 'achieved_date',
+          _ => 'erupted_date',
+        }]);
+        await _writeStatus(babyId, kind, key, done, date, dirty: false);
+        return RevertResult.applied;
+      }
+      await (_db.update(_db.healthStatuses)
+            ..where((s) =>
+                s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+          .write(const HealthStatusesCompanion(
+              dirty: Value(false), pushError: Value(null)));
+      return RevertResult.applied;
+    } catch (_) {
+      return RevertResult.failed;
     }
   }
 

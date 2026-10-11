@@ -109,6 +109,14 @@ class CycleRepository {
       }
       await _writeSettings(srv, dirty: false);
       return true;
+    } on DioException catch (e) {
+      if (classifyDioError(e) == PushFailure.permanent) {
+        await (_db.update(_db.cycleSettingsTable)
+              ..where((s) => s.id.equals(row.id)))
+            .write(CycleSettingsTableCompanion(
+                pushError: Value('HTTP ${e.response?.statusCode}')));
+      }
+      return false;
     } catch (_) {
       return false;
     }
@@ -218,6 +226,7 @@ class CycleRepository {
             learningWindow: Value(s.learningWindow),
             clientUpdatedAt: Value(DateTime.now().toUtc()),
             dirty: Value(dirty),
+            pushError: const Value(null),
           ),
         );
   }
@@ -398,8 +407,63 @@ class CycleRepository {
     await _pushDirtyEntries();
   }
 
-  /// Kalıcı reddedilen push'lar: id → açıklama (bellek-içi; kolon v15'te, K-1).
-  final Map<String, String> pushErrors = {};
+  Future<void> _setEntryPushError(String id, String? err) =>
+      (_db.update(_db.cycleEntries)..where((e) => e.id.equals(id)))
+          .write(CycleEntriesCompanion(pushError: Value(err)));
+
+  static String _short(String s) => s.length > 120 ? s.substring(0, 120) : s;
+
+  /// K-1 "geri al" (kayıt): `GET /cycle/entries/{id}` 200 → uygula; 404 →
+  /// `notOnServer`; diğer → `failed`.
+  Future<RevertResult> revertEntryToServer(String id) async {
+    final acct = _acct;
+    if (acct == null) return RevertResult.failed;
+    try {
+      final resp = await _api.dio.get('/cycle/entries/$id');
+      if (resp.statusCode != 200 || resp.data is! Map) return RevertResult.failed;
+      final m = Map<String, dynamic>.from(resp.data as Map);
+      final ce = CycleEntry.fromJson(m);
+      await _db.into(_db.cycleEntries).insertOnConflictUpdate(
+            CycleEntriesCompanion.insert(
+              id: ce.id,
+              accountId: Value(acct),
+              date: _dayOnly(ce.date),
+              flow: Value(ce.flow?.name),
+              lochiaColor: Value(ce.lochiaColor?.apiValue),
+              symptoms: Value(jsonEncode(ce.symptoms)),
+              mood: Value(ce.mood),
+              note: Value(ce.note),
+              serverUpdatedAt: Value(_parseTs(m['updated_at'])),
+              isDeleted: const Value(false),
+              dirty: const Value(false),
+              pushError: const Value(null),
+            ),
+          );
+      return RevertResult.applied;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return RevertResult.notOnServer;
+      return RevertResult.failed;
+    } catch (_) {
+      return RevertResult.failed;
+    }
+  }
+
+  Future<void> discardEntry(String id) =>
+      (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(id))).go();
+
+  /// K-1 "geri al" (ayar): `GET /cycle/settings` → sunucu kopyası uygulanır
+  /// (dirty=false, pushError=null). Ayar sunucuda her zaman vardır.
+  Future<RevertResult> revertSettingsToServer() async {
+    try {
+      final resp = await _api.dio.get('/cycle/settings');
+      if (resp.statusCode != 200 || resp.data is! Map) return RevertResult.failed;
+      final srv = CycleSettings.fromJson(Map<String, dynamic>.from(resp.data as Map));
+      await _writeSettings(srv, dirty: false);
+      return RevertResult.applied;
+    } catch (_) {
+      return RevertResult.failed;
+    }
+  }
 
   static DateTime? _parseTs(dynamic v) =>
       (v is String && v.isNotEmpty) ? DateTime.tryParse(v) : null;
@@ -495,14 +559,13 @@ class CycleRepository {
         await _api.dio.delete('/cycle/entries/${r.id}');
       } on DioException catch (e) {
         if (e.response?.statusCode != 404) {
-          _noteFailure(r.id, e);
+          await _noteFailure(r.id, e);
           continue; // tombstone dirty kalır, sonraki tur yeniden dener
         }
       } catch (_) {
         continue;
       }
       await (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(r.id))).go();
-      pushErrors.remove(r.id);
     }
     if (upserts.isEmpty) return;
 
@@ -523,26 +586,28 @@ class CycleRepository {
         for (final r in upserts) {
           if (saved.contains(r.id)) {
             await (_db.update(_db.cycleEntries)..where((e) => e.id.equals(r.id)))
-                .write(const CycleEntriesCompanion(dirty: Value(false)));
-            pushErrors.remove(r.id);
+                .write(const CycleEntriesCompanion(
+                    dirty: Value(false), pushError: Value(null)));
           } else if (failed.containsKey(r.id)) {
-            pushErrors[r.id] = failed[r.id]!; // sunucu bu öğeyi reddetti (kalıcı)
+            // sunucu bu öğeyi reddetti (kalıcı)
+            await _setEntryPushError(r.id, _short(failed[r.id]!));
           }
         }
       });
     } on DioException catch (e) {
       for (final r in upserts) {
-        _noteFailure(r.id, e);
+        await _noteFailure(r.id, e);
       }
     } catch (_) {
       // Beklenmeyen — dirty kalır, sonraki tur.
     }
   }
 
-  void _noteFailure(String id, DioException e) {
+  /// R3 + K-1: kalıcı 4xx → `pushError` kolonu (adet kişisel: rol yok).
+  Future<void> _noteFailure(String id, DioException e) async {
     if (classifyDioError(e) == PushFailure.permanent) {
       final code = e.response?.statusCode;
-      pushErrors[id] = 'HTTP $code';
+      await _setEntryPushError(id, 'HTTP $code');
       debugPrint('[cycle-push] kalıcı red $id: HTTP $code ${e.response?.data}');
     }
   }
