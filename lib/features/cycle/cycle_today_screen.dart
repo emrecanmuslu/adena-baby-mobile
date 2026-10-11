@@ -526,6 +526,39 @@ class _Today extends ConsumerWidget {
     return out;
   }
 
+  /// C4 (karar S11): TTC ipuçları + süreye göre hekim önerisi.
+  List<Widget> _ttcTips(BuildContext context) {
+    final months = ttcMonths(settings) ?? 0;
+    final doctor = months >= 12
+        ? tr('Bir yıldır (35 yaş üstünde 6 aydır) deniyorsan hekimine '
+            'danışmanı öneririz.')
+        : months >= 6
+            ? tr('35 yaş ve üzerindeysen ve 6 aydır deniyorsan hekimine '
+                'danışmanı öneririz.')
+            : null;
+    Widget gap() => const SizedBox(height: 12);
+    return [
+      if (doctor != null) ...[
+        gap(),
+        cycNote(context, icon: Icons.medical_services_outlined, body: doctor),
+      ],
+      gap(),
+      cycNote(context,
+          icon: Icons.favorite_border_rounded,
+          body: tr('Doğurgan pencerede 1–2 günde bir ilişki önerilir.')),
+      gap(),
+      cycNote(context,
+          icon: Icons.science_outlined,
+          body: tr('Ovülasyon testleri (LH) ve servikal mukus takibi tahmini '
+              'güçlendirebilir.')),
+      gap(),
+      cycNote(context,
+          icon: Icons.medication_outlined,
+          body: tr('Gebelik planlıyorsan genellikle günde 400 mikrogram folik asit '
+              'önerilir; risk grubundaysan doktorun farklı doz önerebilir.')),
+    ];
+  }
+
   /// B2: düzensiz döngüde sonraki adet aralığı ("19–27 Ekim").
   String _nextRange() {
     final a = status.nextPeriodEarliest, b = status.nextPeriodLatest;
@@ -630,6 +663,7 @@ class _Today extends ConsumerWidget {
       // A1: olasılık satırının altında kalıcı not.
       const SizedBox(height: 12),
       cycNoContraNote(context),
+      ..._ttcTips(context),
       if (inWindow) ...[
         const SizedBox(height: 12),
         cycNote(context,

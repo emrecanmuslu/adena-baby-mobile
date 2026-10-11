@@ -91,6 +91,16 @@ bool longPeriodWarning(List<CycleEntry> entries, CycleStatus st) {
   return run >= 9 || maxHeavy >= 7;
 }
 
+/// C4: TTC'ye geçişten bu yana tamamlanan takvim ayı (damga yoksa null).
+int? ttcMonths(CycleSettings s, {DateTime? today}) {
+  final st = s.ttcStartedAt;
+  if (st == null) return null;
+  final t = _d(today ?? DateTime.now());
+  var m = (t.year - st.year) * 12 + (t.month - st.month);
+  if (t.day < st.day) m -= 1;
+  return m < 0 ? 0 : m;
+}
+
 LamState lamState(CycleSettings s, {DateTime? today}) {
   final bf = s.breastfeeding;
   if (s.birthDate == null || bf == null || bf == Breastfeeding.none) {
