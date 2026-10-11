@@ -1,12 +1,12 @@
-# SAĞLIK METİNLERİ — Adet modülü düzeltme turu (2026-10-11)
+# SAĞLIK METİNLERİ — Adet modülü düzeltme turları 1–2 (2026-10-11)
 
-Branch `fix/adet-senkron`. Bu belge, ADET-INCELEME.md düzeltme turunda **eklenen ya da değişen** tüm sağlık metinlerini Türkçe ve İngilizce yan yana listeler; nerede ve hangi koşulda göründüğünü ve ilgili bulgu kimliğini verir. Amaç: bir kadın doğum uzmanına ya da ebeye tek belgeyle okutmak. Diğer diller (es, fr, ar, hi, zh) çeviri dosyalarında aynı anlamla bulunur; "112" yalnız Türkçe metinde, diğer dillerde "yerel acil numara".
+Branch `fix/adet-senkron`. Bu belge, ADET-INCELEME.md düzeltme turlarında (1 ve 2) **eklenen ya da değişen** tüm sağlık metinlerini Türkçe ve İngilizce yan yana listeler; nerede ve hangi koşulda göründüğünü ve ilgili bulgu kimliğini verir. Amaç: Türkçe sağlık içeriğini tek belgede toplamak; istenirse bir kadın doğum uzmanına ya da ebeye okutulabilir (isteğe bağlı). Diğer diller (es, fr, ar, hi, zh) çeviri dosyalarında aynı anlamla bulunur; "112" yalnız Türkçe metinde, diğer dillerde "yerel acil numara". Çeviriler doğrudan kullanılır — ayrıca ana dil kontrolü adımı yoktur (kullanıcı kararı).
 
 Genel ilke: temkinli dil ("tahmini", "olabilir", "genellikle"); kesinlik, garanti, "tamamen normal" ve tanı dili yok. Uzman sorularında daha temkinli seçenek uygulandı (ADET-INCELEME §6 kararları S1–S12).
 
-## Uzman onayı bekleyen metinler
+## Uzman onayı (isteğe bağlı) — tıbbi eşik içeren Türkçe metinler
 
-Aşağıdakiler tıbbi eşik, aciliyet ya da yönlendirme içerir; yayından önce bir uzmanın onaylaması önerilir. Eşikler uygulamaya kod olarak da işlenmiştir (ör. 42/56 gün, 90 gün, 8 hafta, 12 hafta, 8 gün, ≥7 gün yoğun akış, 6/12 ay) — metin değişirse eşik de gözden geçirilmeli.
+Aşağıdakiler tıbbi eşik, aciliyet ya da yönlendirme içerir; Türkçe içeriğin bir uzmana (kadın doğum uzmanı/ebe) okutulması **isteğe bağlıdır**, yayın için zorunlu adım değildir. Eşikler uygulamaya kod olarak da işlenmiştir (ör. 42/56 gün, 90 gün, 8 hafta, 12 hafta, 8 gün, ≥7 gün yoğun akış, 6/12 ay) — metin değişirse eşik de gözden geçirilmeli.
 
 ### Acil ve aynı gün belirtileri
 
@@ -37,8 +37,9 @@ Aşağıdakiler tıbbi eşik, aciliyet ya da yönlendirme içerir; yayından ön
 
 | Bulgu | Türkçe | English | Nerede | Ne zaman |
 |---|---|---|---|---|
-| A3/B5 | Loşia genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. Doğumdan sonraki ilk 6 haftada girdiğin kanama loşia sayılır, ilk adet olarak kabul edilmez. | Lochia usually lasts 4–6 weeks and can extend to 8 weeks. Bleeding you log in the first 6 weeks after birth is counted as lochia, not as your first period. | Bugün › Loşia modu | Loşia modu (doğumdan 0–42 gün ya da loşia kaydıyla ≤60 gün) |
+| A3/B5/N1 | Loşia genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. Doğumdan sonraki ilk 6 haftada girdiğin kanama loşia sayılır; ilk adetin olduğundan eminsen kayıt ekranında "Bu ilk adetim"i seçebilirsin. | Lochia usually lasts 4–6 weeks and can extend to 8 weeks. Bleeding you log in the first 6 weeks after birth is counted as lochia; if you are sure it is your first period, choose "This is my first period" on the log screen. | Bugün › Loşia modu | Loşia modu (doğumdan 0–42 gün ya da loşia kaydıyla ≤60 gün) |
 | B5 | Doğumdan 6 haftadan uzun süre sonra kanaman devam ediyorsa hekimine söyle. | If your bleeding continues for more than 6 weeks after birth, tell your doctor. | Bugün › Loşia modu | Doğumdan >42 gün ve hâlâ loşia modunda |
+| N1 | Doğumdan sonraki ilk haftalardaki kanama çoğunlukla loşiadır. Bunun ilk adetin olduğundan eminsen kaydedebilirsin; adet takvimin bu günden başlar. | Bleeding in the first weeks after birth is usually lochia. If you are sure this is your first period, you can log it; your period calendar will start from this day. | Kayıt sayfası › "Bu ilk adetim" onay diyaloğu | Doğumdan 0–42. gün, ilk adet henüz yok, kullanıcı açıkça "Bu ilk adetim"e dokundu |
 | A3 | Bu loşia (lohusa kanaması) mı, ilk adetin mi? | Is this lochia (postpartum bleeding) or your first period? | Kayıt sayfası (Kaydet sonrası diyalog) | Doğumdan 43–56. gün, ilk adet henüz yok, akış girilmiş ama loşia rengi seçilmemiş |
 | A3 | Doğumdan sonraki ilk 8 haftada kanama çoğunlukla loşiadır. İlk adetin olduğunu düşünüyorsan döngü takibi bu günden başlar. | In the first 8 weeks after birth, bleeding is usually lochia. If you think it is your first period, cycle tracking will start from this day. | aynı diyalog (açıklama) | aynı |
 | B4 | Kanama kesildikten sonra başlayan ve 4–7 gün süren düzenli bir kanama ilk adetin olabilir. Yeniden parlak kırmızı ve yoğunlaşan kanamada hekimine başvur. | Regular bleeding that starts after the bleeding has stopped and lasts 4–7 days may be your first period. If bleeding becomes bright red and heavy again, see your doctor. | Bugün › Loşia modu › renk kartı | Loşia modu |
@@ -94,6 +95,11 @@ Aşağıdakiler tıbbi eşik, aciliyet ya da yönlendirme içerir; yayından ön
 | A4 | Hangi belirtilerde beklemeden yardım alman gerektiğini öğren. | Learn which signs mean you should get help right away. | Bugün › Loşia modu (bilgi butonuyla) | Loşia modu |
 | B5 | Genellikle 4–6 hafta | Usually 4–6 weeks | Bugün › Loşia halkası alt etiketi | Loşia modu |
 | A3 | İlk adetim | My first period | Loşia/ilk adet diyaloğu butonu | 43–56. gün sorusu |
+| N1 | Bu ilk adetim | This is my first period | Kayıt sayfası (ikincil seçenek) + diyalog başlığı | Doğumdan 0–42. gün, ilk adet henüz yok |
+| N1 | İlk adetim olarak kaydet | Save as my first period | N1 diyaloğu butonu | aynı |
+| N1 | Loşia olarak kaydet | Save as lochia | N1 diyaloğu butonu | aynı |
+| N2 | Tipik döngü | Typical cycle | İstatistik › döngü değeri etiketi | Aktif takip |
+| N2 | Son döngülerin ortanca değeri; tek seferlik uzun döngüler hesabı bozmaz. | The median of your recent cycles; a one-off long cycle does not throw off the calculation. | İstatistik › "Tipik döngü" bilgi butonu | Aktif takip |
 | A3 | Loşia | Lochia | Loşia/ilk adet diyaloğu butonu | 43–56. gün sorusu |
 | A2 | Adet daha geç dönebilir | Period may return later | Kurulum adım 2 › "Sadece anne sütü" alt metni | Doğum sonrası kurulum |
 | C8 | Devam etmek için bir seçenek seç | Choose an option to continue | Kurulum adım 2 (bildirim) | Emzirme seçilmeden Devam |
@@ -101,6 +107,12 @@ Aşağıdakiler tıbbi eşik, aciliyet ya da yönlendirme içerir; yayından ön
 | B1 | Hayır, döngüm uzundu | No, my cycle was long | Bugün › soru kartı butonu | Uç değer döngü |
 | B6 | Gebeliğini hafta hafta, bebeğinin gelişimiyle takip etmek için ana gebelik ekranını kullan. Hafta ve tahmini doğum tarihi ana gebelik ekranındaki bilgiyle aynıdır. | Use the main pregnancy screen to follow your pregnancy week by week with your baby's development. The week and estimated due date match the main pregnancy screen. | Adet modülü › Gebelik ekranı | Bekleyen bebek kaydı var (TDT ondan okunur) |
 | C1 | Beklenen tarih (tahmini): {d} | Expected date (estimated): {d} | Bugün › halka alt etiketi | Beklenen tarih geçti |
+
+## Bilinen sınırlar
+
+- **"Hayır, döngüm uzundu" cevabı yalnız cihazda saklanır** (hesap başına, SharedPreferences; sunucu şemasında alan yok). Başka bir cihazda ya da uygulama yeniden kurulunca aynı uzun döngü için soru bir kez daha görünebilir.
+- **Uzun süre adet görmeme kartı:** düzenli döngüde son adetten ≥90 gün; **düzensiz döngüde (en kısa–en uzun farkı >9 gün) ≥180 gün** eşiği uygulanır (temkinli ek eşik). Emziren lohusada kart gösterilmez.
+- Doğumdan sonraki ilk 42 günde kanama varsayılan olarak loşia sayılır; ilk adet yalnız kullanıcı "Bu ilk adetim"i açıkça onaylarsa kaydedilir (N1). 43–56. günde kayıt sırasında sorulur.
 
 ## Kaldırılan metinler
 
@@ -112,6 +124,8 @@ Aşağıdakiler tıbbi eşik, aciliyet ya da yönlendirme içerir; yayından ön
 | C5 | TTC dışında "Bugün gebelik şansı en yüksek dönemde", "Doğurganlık penceresindesin — gebelik şansı artıyor." | "Doğurgan pencere (tahmini)" + korunma notu |
 | D3 | "Emzirme döneminde adetin geç dönmesi tamamen normaldir. Vücudun toparlanıyor." | "…sık görülür." |
 | C1 | "Gün gecikti", "{d} bekleniyordu" | "Gün geçti", "Beklenen tarih (tahmini): {d}" |
+| N1 | "…ilk 6 haftada girdiğin kanama loşia sayılır, ilk adet olarak kabul edilmez." | "…loşia sayılır; ilk adetin olduğundan eminsen kayıt ekranında "Bu ilk adetim"i seçebilirsin." |
+| N2 | İstatistik "Ort. döngü" | "Tipik döngü" (medyan) |
 | B4 | "…durup koyulaşıp 4–7 gün sürerse muhtemelen ilk adettir." | Dengeli cümle (yukarıda) |
 | B5 | "İyileşme · 0–6 hafta", "Doğumdan sonraki ilk ~6 hafta kanama loşiadır" | "Genellikle 4–6 hafta", "…8 haftaya uzayabilir" |
 | C7 | Ayar: "LAM / doğurganlık uyarıları" anahtarı | Kaldırıldı (sağlık uyarıları kapatılamaz) |

@@ -9,7 +9,7 @@ Referans: görevdeki "REFERANS BİLGİ" listesi (A–F). Kaynak doğrulaması we
 
 ## 0. Düzeltme turu durumu (2026-10-11)
 
-Tüm bulgular ele alındı: **23 DÜZELTİLDİ, 1 bilinçli tercih (B3)**. Kararlar §6 uzman sorularına verilen yanıtlara (S1–S12) göre uygulandı; uzman onayı bekleyen metinler kök dizindeki `SAGLIK-METINLERI.md`'de TR+EN yan yana. Ek: S12 (erken kayıp ifadesi) `bb58275`; kalıcı senaryo testi `b86b503`.
+Tüm bulgular ele alındı: **23 DÜZELTİLDİ, 1 bilinçli tercih (B3)**. Kararlar §6 uzman sorularına verilen yanıtlara (S1–S12) göre uygulandı; tüm sağlık metinleri kök dizindeki `SAGLIK-METINLERI.md`'de TR+EN yan yana (Türkçe içerik için uzman onayı isteğe bağlı; çeviriler doğrudan kullanılır, ayrıca ana dil kontrolü yok). Ek: S12 (erken kayıp ifadesi) `bb58275`; kalıcı senaryo testi `b86b503`.
 
 | ID | Durum |
 |---|---|
@@ -38,11 +38,14 @@ Tüm bulgular ele alındı: **23 DÜZELTİLDİ, 1 bilinçli tercih (B3)**. Karar
 | D5 | DÜZELTİLDİ `69f9287` |
 | B6 | DÜZELTİLDİ `29fcc79` |
 | S12 (K1 metni) | DÜZELTİLDİ `bb58275` |
+| N1 (tur 2: ilk 42 günde açık "Bu ilk adetim") | DÜZELTİLDİ `4c3ef2a` |
+| N2 (tur 2: "Tipik döngü") | DÜZELTİLDİ `efc2c49` |
+| N3 (tur 2: bayrak etiketleri sabit tr) | DÜZELTİLDİ `71a839d` |
 
 Uygulama notları (karar yorumları):
-- **S1/A3:** Doğum+0..56 gün içindeki kanama kaydı, kullanıcı açıkça "ilk adetim" demedikçe çapa kurmaz. 43–56. günde kayıt sayfası sorar; ilk 42 günde arayüz "ilk adetim" seçeneği sunmaz (loşia sayılır). Düzenleme takvimi açık adet işaretlemesidir ama ilk 42 günü hiçbir zaman ilk adet saymaz.
-- **S7/B1:** Uç değer kuralı "diğer döngülerin medyanı"yla uygulanır (kendisi hariç) — yalnız iki döngü olduğunda da çalışsın diye. Medyan döngü uzunluğuna uygulanır; adet süresi ortalaması değişmedi. "Döngüm uzundu" cevabı cihazda (hesap başına) saklanır, buluta senkronlanmaz (sunucu şemasında alan yok).
-- **S8/C1:** Düzenli döngüde ≥90 gün kuralına ek, temkinli olarak düzensiz döngüde ≥180 gün eşiği eklendi.
+- **S1/A3:** Doğum+0..56 gün içindeki kanama kaydı, kullanıcı açıkça "ilk adetim" demedikçe çapa kurmaz. 43–56. günde kayıt sayfası sorar. İlk 42 günde kanama varsayılan olarak loşiadır; kullanıcı kayıt sayfasındaki ikincil "Bu ilk adetim" seçeneği + onay diyaloğuyla açıkça ilk adetini kaydedebilir (tur 2, N1 `4c3ef2a`; emzirmeyende ilk adet ~5. haftada gelebilir). Düzenleme takvimi açık adet işaretlemesidir ama ilk 42 günü hiçbir zaman ilk adet saymaz.
+- **S7/B1:** Uç değer kuralı "diğer döngülerin medyanı"yla uygulanır (kendisi hariç) — yalnız iki döngü olduğunda da çalışsın diye. Medyan döngü uzunluğuna uygulanır; adet süresi ortalaması değişmedi. "Döngüm uzundu" cevabı yalnız cihazda (hesap başına) saklanır, buluta senkronlanmaz (sunucu şemasında alan yok) — **bilinen sınır:** başka cihazda soru bir kez daha görünebilir. İstatistikte değer "Tipik döngü" (medyan) olarak etiketlenir (N2).
+- **S8/C1:** Uzun süre adet görmeme kartı: düzenli döngüde ≥90 gün; **düzensiz döngüde (en kısa–en uzun farkı >9 gün) ≥180 gün** eşiği uygulanır (temkinli ek eşik).
 - **C8:** Sunucu `breastfeeding` alanı seçenekli olduğundan "Söylemek istemiyorum" yerine soru zorunlu yapıldı.
 
 ## 1. Özet
