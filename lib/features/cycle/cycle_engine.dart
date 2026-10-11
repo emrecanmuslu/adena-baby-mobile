@@ -79,7 +79,11 @@ class CycleStatus {
 }
 
 DateTime _d(DateTime x) => DateTime(x.year, x.month, x.day);
-int _diffDays(DateTime a, DateTime b) => _d(a).difference(_d(b)).inDays;
+/// O29: DST-güvenli gün farkı — yerel gece-yarısı farkı DST geçişinde 23/25
+/// saat olup `inDays` 1 eksik/fazla verirdi; UTC takvim günleriyle hesaplanır.
+int _diffDays(DateTime a, DateTime b) => DateTime.utc(a.year, a.month, a.day)
+    .difference(DateTime.utc(b.year, b.month, b.day))
+    .inDays;
 
 /// DST-güvenli gün ekleme. `.add(Duration(days: n))` bir DST (yaz saati) geçişini
 /// aşarsa yerel gece-yarısı 23:00'e (önceki gün) ya da 01:00'e kayabilir → işaretli

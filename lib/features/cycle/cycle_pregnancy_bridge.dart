@@ -34,10 +34,14 @@ PregnancyFromLmp? pregnancyFromLmp(DateTime? lmp, {DateTime? today}) {
   final t = today ?? DateTime.now();
   final l = DateTime(lmp.year, lmp.month, lmp.day);
   final n = DateTime(t.year, t.month, t.day);
-  final totalDays = n.difference(l).inDays;
+  // O29: DST-güvenli gün farkı ve +280 takvim günü (Duration(days:) DST
+  // geçişinde TDT'yi 1 gün erken üretiyordu → Baby.dueDate).
+  final totalDays = DateTime.utc(n.year, n.month, n.day)
+      .difference(DateTime.utc(l.year, l.month, l.day))
+      .inDays;
   if (totalDays < 0 || totalDays > 300) return null; // makul aralık dışı
   return PregnancyFromLmp(
-      totalDays ~/ 7, totalDays % 7, l.add(const Duration(days: 280)));
+      totalDays ~/ 7, totalDays % 7, DateTime(l.year, l.month, l.day + 280));
 }
 
 /// Gebeliğin GERÇEK kaynağını sağlar: bekleyen (expecting) bir Baby.
