@@ -27,6 +27,7 @@ import 'core/restart_widget.dart';
 import 'core/config.dart';
 import 'core/db_watchdog.dart';
 import 'core/revenuecat_service.dart';
+import 'core/sync_alert_telemetry.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_controller.dart';
 import 'data/activity_notif_cache.dart';
@@ -278,6 +279,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     // Uygulama ön planda başlar → push OS bildirimi yerine in-app banner göstersin.
     appInForeground = true;
+    // Senkron telemetrisi: soğuk açılış + "arka planda ne kadar kaldı" damgası.
+    SyncAlertTelemetry.instance.onAppStart();
     // Yerel DB nabzı: açılışta bir kez + ön planda periyodik. Sessiz "her yer
     // skeleton" arızası (bkz. DbWatchdog) nüksederse Crashlytics'e non-fatal düşer.
     final db = ref.read(databaseProvider);
@@ -344,6 +347,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // D4: `inactive` (bildirim paneli, iOS app switcher) de ön plandır — aksi
     // halde push hem OS bildirimi hem in-app banner olarak çift görünürdü.
     appInForeground = isForegroundLifecycle(state);
+    unawaited(SyncAlertTelemetry.instance.onLifecycle(state));
     if (state == AppLifecycleState.resumed) {
       _onForeground();
       DbWatchdog.instance.startPulse(ref.read(databaseProvider));

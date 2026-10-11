@@ -109,21 +109,25 @@ class DbWatchdog {
     unawaited(_send(kind, reason, ms, error));
   }
 
-  Future<void> _send(String kind, String reason, int ms, Object? error) async {
-    var bgInfo = 'unknown';
+  /// Son arka plan turunun özeti ("bitti, 12dk önce" / "hiç çalışmadı" /
+  /// "unknown"). Bu rapor + SyncAlertTelemetry ortak kullanır.
+  static Future<String> lastBackgroundSyncSummary() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final at = prefs.getInt(_kBgSyncMs);
       final outcome = prefs.getString(_kBgSyncOutcome) ?? '?';
-      if (at != null) {
-        final ago = DateTime.now()
-            .difference(DateTime.fromMillisecondsSinceEpoch(at))
-            .inMinutes;
-        bgInfo = '$outcome, ${ago}dk önce';
-      } else {
-        bgInfo = 'hiç çalışmadı';
-      }
-    } catch (_) {}
+      if (at == null) return 'hiç çalışmadı';
+      final ago = DateTime.now()
+          .difference(DateTime.fromMillisecondsSinceEpoch(at))
+          .inMinutes;
+      return '$outcome, ${ago}dk önce';
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
+  Future<void> _send(String kind, String reason, int ms, Object? error) async {
+    final bgInfo = await lastBackgroundSyncSummary();
     try {
       final c = FirebaseCrashlytics.instance;
       c.setCustomKey('db_probe_reason', reason);

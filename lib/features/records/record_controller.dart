@@ -12,6 +12,7 @@ import '../../core/notification_service.dart';
 import '../../core/review_service.dart';
 import '../../core/analytics_service.dart';
 import '../../core/providers.dart';
+import '../../core/sync_alert_telemetry.dart';
 import '../../data/cycle_repository.dart';
 import '../../data/health_repository.dart';
 import '../../data/local_session.dart';
@@ -285,6 +286,8 @@ class SyncService with WidgetsBindingObserver {
         lastSyncFailed: prevStatus.lastSyncFailed,
         isSyncing: true));
     var hadError = false; // gerçek sync hatası (403/izin dışı) — kullanıcıya gösterilir
+    final tel = SyncAlertTelemetry.instance;
+    tel.onTourStart();
     try {
       final babies = _ref.read(babyControllerProvider).asData?.value ?? [];
       final repo = _ref.read(recordRepositoryProvider);
@@ -296,6 +299,7 @@ class SyncService with WidgetsBindingObserver {
         // ELIGIBLE kapısı: readonly bebeği de DENE (synced değil, eligible) →
         // başarırsa aşağıda readonly'den çıkar (geçici 403'ten self-heal).
         if (!_ref.read(babyCloudEligibleProvider(b.id))) continue;
+        _stage = SyncStage.sync;
         try {
           await repo.sync(b.id);
           await _syncMedicationPlans(b.id);
@@ -305,7 +309,7 @@ class SyncService with WidgetsBindingObserver {
           await _syncHealth(b.id, pullToo: !sharedOnly);
           // Başarılı → geçici 403 işaretini kaldır (varsa). Artık restart gerekmez.
           _ref.read(cloudReadonlyBabiesProvider.notifier).remove(b.id);
-        } on DioException catch (e) {
+        } on DioException catch (e, st) {
           if (e.response?.statusCode == 403) {
             // Paylaşılan bebeğin bulutu artık yazılamıyor (sahip premium bitti) ya da
             // erişimim kaldırıldı. Bu oturumda bu bebeği "salt-okunur" işaretle (403
@@ -317,15 +321,18 @@ class SyncService with WidgetsBindingObserver {
             // 403 dışı (çevrimdışı/5xx) → yerel korunur, sonra tekrar denenir;
             // ama kullanıcıya görünür olsun diye işaretlenir (bkz syncStatusProvider).
             hadError = true;
+            await _noteError(e, st);
           }
-        } catch (_) {
+        } catch (e, st) {
           // Çevrimdışı/sunucu hatası — yerel veri korunur, sonra tekrar denenir.
           hadError = true;
+          await _noteError(e, st);
         }
       }
       // Adet modülü (kişisel, bebekten bağımsız): dirty ayar/kayıt yeniden
       // denenir + pull (O6/O7). Yalnız tam turlarda; hata kaydı turunu etkilemez.
       if (!sharedOnly) await _syncCycle();
+      tel.onTourFinished(failed: hadError);
       _ref.read(syncStatusProvider.notifier).set(hadError
           ? SyncStatus(
               lastSyncedAt: _ref.read(syncStatusProvider).lastSyncedAt,
@@ -360,6 +367,26 @@ class SyncService with WidgetsBindingObserver {
   /// O11: tur sürerken gelen `syncAll` çağrılarının beklediği takip turu.
   Completer<void>? _pendingDone;
 
+  /// Telemetri: bebek döngüsünde o an hangi aşama koşuyor (hata yakalanınca
+  /// rapora yazılır). `_syncHealth` push/pull'a göre günceller.
+  String _stage = SyncStage.sync;
+
+  /// Uyarıyı tetikleyen hatayı Crashlytics'e (non-fatal) düşür — davranış
+  /// değişmez; yalnız saha teşhisi (bkz. SyncAlertTelemetry).
+  Future<void> _noteError(Object e, StackTrace st) async {
+    try {
+      await SyncAlertTelemetry.instance.onSyncError(
+        stage: _stage,
+        error: e,
+        stack: st,
+        online: _ref.read(onlineProvider).asData?.value,
+        api: _ref.read(apiClientProvider),
+      );
+    } catch (_) {
+      // Telemetri hiçbir zaman senkronu düşürmez.
+    }
+  }
+
   /// Adet ayarı + kayıtlarının bulut senkronu (yalnız kendi premium'um;
   /// cycleRepository kapıyı kendisi uygular). Bilinçli sessiz.
   Future<void> _syncCycle() async {
@@ -377,6 +404,7 @@ class SyncService with WidgetsBindingObserver {
   Future<void> _syncHealth(String babyId, {required bool pullToo}) async {
     final repo = _ref.read(healthRepositoryProvider);
     // M9(a): polling turunda (pullToo=false) yankılanmamış aşılar yeniden denenmez.
+    _stage = SyncStage.healthPush;
     await repo.pushDirty(babyId, retryUnechoed: pullToo);
     if (!pullToo) return;
     // I1 kapısı: sahip bebekte pull yalnız bu hesabın yerel kümesi bir kez tam
@@ -399,6 +427,7 @@ class SyncService with WidgetsBindingObserver {
       debugPrint('[health-sync] pull kapalı (göç/yeniden-tohumlama bekliyor): $babyId');
       return;
     }
+    _stage = SyncStage.healthPull;
     if (await repo.pull(babyId)) {
       _ref.invalidate(vaccinesProvider(babyId));
       _ref.invalidate(milestonesProvider(babyId));

@@ -112,6 +112,19 @@ class ApiClient {
   /// Son geçici refresh hatasının Dio tipi (bekleyenlere aynı tipte yansıtılır).
   DioExceptionType? _lastTransientType;
 
+  // Telemetri (SyncAlertTelemetry): refresh kilidinin durumu. Davranışı
+  // etkilemez; "Senkron sorunu" raporunda kilit uçuşta mı / yaşı ne / son tur
+  // nasıl bitti sorularını yanıtlar (H1 hipotezi).
+  DateTime? _refreshStartedAt;
+  DateTime? _lastRefreshFinishedAt;
+  RefreshResult? _lastRefreshResult;
+
+  /// Tek-uçuş refresh turu şu an sürüyorsa başlangıç anı; değilse null.
+  DateTime? get refreshInFlightSince =>
+      _refreshing == null ? null : _refreshStartedAt;
+  DateTime? get lastRefreshFinishedAt => _lastRefreshFinishedAt;
+  RefreshResult? get lastRefreshResult => _lastRefreshResult;
+
   /// 401 alan istek için token tazeleme kararı:
   /// - Bu arada BAŞKA bir istek token'ı yenilediyse (istekteki Bearer artık
   ///   güncel değilse) refresh'e hiç gerek yok → doğrudan retry.
@@ -123,6 +136,7 @@ class ApiClient {
     }
     final inflight = _refreshing;
     if (inflight != null) return inflight;
+    _refreshStartedAt = DateTime.now();
     final run = _runRefresh();
     _refreshing = run;
     return run;
@@ -132,9 +146,12 @@ class ApiClient {
   /// kalır → sonraki 401 yeni tur açabilir.
   Future<RefreshResult> _runRefresh() async {
     try {
-      return await _refresh();
+      final r = await _refresh();
+      _lastRefreshResult = r;
+      return r;
     } finally {
       _refreshing = null;
+      _lastRefreshFinishedAt = DateTime.now();
     }
   }
 
