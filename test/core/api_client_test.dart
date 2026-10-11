@@ -179,12 +179,13 @@ void main() {
     });
 
     test(
-        '401 + refresh POST AĞ HATASI → tokens KORUNUR (clear yok), orijinal 401 yüzeye çıkar',
+        '401 + refresh POST AĞ HATASI → tokens KORUNUR (clear yok), istek AĞ hatasıyla düşer (O2)',
         () async {
       // _refresh() kod-içi yeni Dio ile /auth/refresh POST atar; test ortamında
       // ağ yok → POST connectionError (response yok) ile patlar. GEÇİCİ hata →
       // token'lar SİLİNMEZ (offline-first: sonraki açılışta oturum sürer).
-      // shouldRetry false olur, orijinal 401 handler.next(e) ile yüzeye çıkar.
+      // O2: bekleyen istek 401 ("oturum gerekli") olarak DEĞİL, ağ hatası olarak
+      // yüzeye çıkar — oturum düşmedi, yalnız sunucuya ulaşılamadı.
       final tokens = _FakeTokens(access: 'OLD', refresh: 'REF');
       final api = ApiClient(tokens);
       final adapter = DioAdapter(dio: api.dio);
@@ -198,7 +199,8 @@ void main() {
       }
 
       expect(thrown, isNotNull);
-      expect(thrown!.response?.statusCode, 401);
+      expect(thrown!.response, isNull, reason: '401 yüzeye çıkmamalı');
+      expect(thrown.error, 'refresh_transient');
       expect(tokens.clearCount, 0,
           reason: 'ağ hatasında oturum korunmalı (geçici), clear çağrılmamalı');
       expect(tokens.saveCount, 0, reason: 'başarısız refresh saveTokens yapmamalı');
