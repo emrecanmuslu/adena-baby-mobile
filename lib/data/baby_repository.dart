@@ -511,7 +511,13 @@ class BabyRepository {
           // Yalnız sahip silebilir (backend 403 döner değilse) — üyenin "ayrılma"sı
           // ayrı bir akıştır (removeMember), buradan sunucuya silme gönderilmez.
           if (!isOwner) continue;
-          await _api.dio.delete('/babies/${b.id}');
+          try {
+            await _api.dio.delete('/babies/${b.id}');
+          } on DioException catch (e) {
+            // I7: 404 = sunucuda zaten yok → başarı (anı/anne/adet ile tutarlı;
+            // aksi hâlde pushError='HTTP 404' + "Silme gönderilemedi" banner'ı).
+            if (e.response?.statusCode != 404) rethrow;
+          }
         } else {
           // `photo` yerel bir dosya yoluysa (henüz yüklenmemiş) multipart ekle;
           // zaten sunucu URL'i (http) ise partial=True update'te dokunmadan
