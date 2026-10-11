@@ -92,7 +92,8 @@ const int correctedAgeCutoffMonths = 24;
   final earlyDays = dd.difference(bd).inDays; // doğum due'dan önce → pozitif
   final gestTotalDays = 280 - earlyDays;
   if (gestTotalDays >= 280) return null; // zamanında / geç doğum
-  if (gestTotalDays < 0) return (weeks: 0, days: 0);
+  // D31: 22 haftanın altı tıbben anlamsız (form alt sınırı) → 22+0'a çekilir.
+  if (gestTotalDays < 22 * 7) return (weeks: 22, days: 0);
   return (weeks: gestTotalDays ~/ 7, days: gestTotalDays % 7);
 }
 

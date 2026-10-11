@@ -54,18 +54,28 @@ class _PrematureSectionState extends State<PrematureSection> {
   }
 
   void _onText() {
-    if (_on) _emit();
+    if (_on && !_syncingFromWidget) _emit();
   }
 
   @override
   void didUpdateWidget(covariant PrematureSection old) {
     super.didUpdateWidget(old);
     // Dışarıdan ön-doldurma (ör. tahmini doğum tarihinden türetme) yansısın.
-    final w = widget.weeks?.toString() ?? '';
-    if (w != _weeks.text) _weeks.text = w;
-    final d = widget.days.toString();
-    if (d != _days.text) _days.text = d;
+    // D31: controller ataması listener'ı tetikleyip üst `setState`'i build
+    // fazında çağırıyordu → dıştan senkronda `_emit` bastırılır (değer zaten
+    // üst durumdan geliyor).
+    _syncingFromWidget = true;
+    try {
+      final w = widget.weeks?.toString() ?? '';
+      if (w != _weeks.text) _weeks.text = w;
+      final d = widget.days.toString();
+      if (d != _days.text) _days.text = d;
+    } finally {
+      _syncingFromWidget = false;
+    }
   }
+
+  bool _syncingFromWidget = false;
 
   @override
   void dispose() {
