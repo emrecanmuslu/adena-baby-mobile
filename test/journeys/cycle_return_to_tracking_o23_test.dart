@@ -88,7 +88,7 @@ void main() {
     });
   }
 
-  testWidgets('bekleyen bebek kaldırılır, baby=null, mod tracking, çapa korunur',
+  testWidgets('bekleyen bebek kaldırılır, baby=null, mod tracking, çapa sıfırlanır (KB-5 b)',
       (tester) async {
     await withRef(tester, (ref) async {
       final babies = await ref.read(babyControllerProvider.future);
@@ -105,7 +105,7 @@ void main() {
       expect(after.lifecycleMode, CycleLifecycleMode.tracking);
       expect(after.babyId, isNull);
       expect(after.predictionsHidden, isFalse);
-      expect(after.firstPeriodDate, DateTime(2026, 5, 1), reason: 'çapa korunur (KB-5)');
+      expect(after.firstPeriodDate, isNull, reason: 'KB-5 (b): çapa sıfırlanır, bekleme moduna dönülür');
     });
   });
 }

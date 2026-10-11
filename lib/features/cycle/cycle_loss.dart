@@ -49,8 +49,10 @@ Future<void> returnToTrackingFromLoss(WidgetRef ref) async {
 
 /// Gebelik modundan "Adet takibine dön" (O23): bekleyen (expecting) bebek
 /// YETİM BIRAKILMAZ — kayıp akışındaki gibi sessizce kaldırılır, ayarlardaki
-/// bağ kopar (`baby: null`). Çapa (`first_period_date`) KORUNUR: yanlış-alarm
-/// senaryosunda kullanıcı yeni adetini loglar (KARAR-BEKLEYEN KB-5).
+/// bağ kopar (`baby: null`). KB-5 (b): çapa (`first_period_date`) SIFIRLANIR →
+/// adet ekranı bekleme moduna döner, kullanıcı ilk adetini girer (kayıp
+/// akışıyla aynı). K6 çapa politikası (`_maintainAnchorAfterRemoval`) yalnız
+/// kayıt silmede devreye girer; bu açık mod geçişiyle çelişmez.
 Future<void> returnToTrackingFromPregnancy(
     WidgetRef ref, CycleSettings settings) async {
   await _removeExpectingBabyForLoss(ref, settings);
@@ -58,6 +60,7 @@ Future<void> returnToTrackingFromPregnancy(
     'lifecycle_mode': CycleLifecycleMode.tracking.name,
     'predictions_hidden': false,
     'baby': null,
+    'first_period_date': null,
   });
 }
 
