@@ -11,7 +11,7 @@ Branch `fix/audit-bulgular` (main'e merge YOK, push YOK, `../api` commit YOK). K
 | KABUL / DÜZELTİLMEYECEK | O19 (backend #3), D2 D8 D11 D15 D17 D20 D21 D27 D35 D44 = 11 |
 | DOĞRULANAMAZ | D16, D19 (yalnız doğrulama adımı) |
 | GEÇERSİZ | D7, D12, D25, D45 |
-| Toplam branch commit | 91 (bu koşuda 62: 2 GRUP 0, 10 GRUP 1, 1 GRUP 2, 19 GRUP 3, 29 GRUP 4, 1 docs-GRUP 3, docs kontrol noktaları) |
+| Toplam branch commit | 90 (bu koşuda 62: GRUP 0 2, GRUP 1 10, GRUP 2 1, GRUP 3 19, GRUP 4 29, docs kontrol noktaları ve GRUP 6 raporu dahil) |
 | Test | denetim başı 1100 → koşu başı 1126 → son **1203 geçti, 0 başarısız** |
 | `flutter analyze` | temiz |
 
