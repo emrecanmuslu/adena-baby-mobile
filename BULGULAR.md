@@ -99,7 +99,15 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 
 | Düzeltme turu 2 | N1+N2 `e77a23d`, N3 `e5b9db7` | rol kilidi bebek-bazlı; yerel-only plan (KB-10); çeviri bütünlüğü testi |
 
-Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
+| Düzeltme turu 3 (INCELEME.md I1–I16) | I1 `a4161f9` (KRİTİK: sağlık pull kapısı + lapse reseed), I2 `562618e`, I3 `1f51066`, I4 `d5fe1fc`, I5 `92c5818`, I6 `1f68344`, I7 `d2ac131`, I8/I16 `ce58ad2`, I9 `6b5518c`, I11 `63df484`, I10/I13 `593b531`, R4 telemetri `d028b43`, testler `37260e1` | I12 → KB-11; I14/I15 belgelendi |
+
+| Düzeltme turu 4 (INCELEME-2.md J1–J16) | J1+J8 `a011bb1`, J2 `8d3945b` (KB-12), J4 `a529003`, J3 `9c88b76`, J5 `d83aa4e`, J6 `ae4f224`, J7 `0f287b4`, J9 `852214e`, J10 `9475b03`, J11 `e47dd61`, J12 `e6d14c2`, J13(2,3) `c393571`, J16 `42642d9`, J14 `24d9305`, J15 `eb358d6` | J13(1) → KB-13 |
+
+| Düzeltme turu 5 (INCELEME-3.md K1–K6) | K2+K3 `5a841bc` (`serverUpdatedAt` onay damgası; J1(b) daraltıldı), K1 `ac8f779` (sunucuda var olan bebek sinyali; iki bayrak birlikte), K5 `370c1b3` | K4/K6 iş yok |
+
+| Yayın hazırlığı (1.5.0+66) | CI `3e62340`, sürüm `9c8b636`, sürüm notları `d79a4f2`, runbook `6478b3f` | kod davranışı değişmedi; sıradaki iş YAYIN-KONTROL §6 |
+
+**Son durum (2026-10-11):** KOD TAMAM — yayın hazırlığında; `flutter test` 1334/0, `flutter analyze` temiz; main'e merge/push yok. Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`, runbook `YAYIN-KONTROL.md` §6.
 
 ---
 

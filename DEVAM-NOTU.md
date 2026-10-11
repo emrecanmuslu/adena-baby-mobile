@@ -1,6 +1,9 @@
 # DEVAM NOTU — fix/audit-bulgular
 
-Güncelleme: 2026-10-11 (tur 5) · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1334 geçti, 0 başarısız**, `flutter analyze` temiz.
+Güncelleme: 2026-10-11 (yayın hazırlığı) · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ, push YOK) · Son test: **1334 geçti, 0 başarısız**, `flutter analyze` temiz.
+
+## DURUM: KOD TAMAM — YAYIN HAZIRLIĞINDA (1.5.0+66)
+Kod değişikliği bitti (düzeltme turu 5 sonu). Yayın hazırlığı commit'leri (kod davranışı değişmedi): CI `test.yml` `3e62340` (analyze + tam suite, Flutter 3.44.1 sabit, TZ matrisi UTC/Berlin/New_York, api çeviri sparse checkout — secret `API_REPO_TOKEN`), sürüm `9c8b636` (pubspec **1.5.0+66**), sürüm notları `d79a4f2` (`SURUM-NOTLARI.md`, 7 dil), runbook `6478b3f` (`YAYIN-KONTROL.md` §6). **Sıradaki iş kullanıcıda, sırası YAYIN-KONTROL §6:** (1) api 32 çeviri anahtarı commit+push+seed, (2) `API_REPO_TOKEN` secret → CI yeşil, (3) 15 zorunlu cihaz adımı (§6.3), (4) TZ = CI, (5) `git merge --no-ff` + tag `v1.5.0` / `ios-v1.5.0` (`+66` tag'e girmez), (6) kademeli yayın, (7) 7 gün izleme eşikleri (§6.7), (8) backend #11 > #8 önceliği, (9) yayın sonrası liste (§6.9). Hotfix gerekirse 1.5.1 (şema geri alınamaz).
 
 ## Tamamlananlar (commit sırasıyla)
 1. aşama: K3 `37f05f8`, K1 `00cd3fb`, K5 `e5f1a66`
