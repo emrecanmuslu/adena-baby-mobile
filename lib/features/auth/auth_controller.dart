@@ -10,6 +10,7 @@ import '../../core/push_service.dart';
 import '../../core/revenuecat_service.dart';
 import '../../core/session_end.dart';
 import '../../data/auth_repository.dart';
+import '../../data/cycle_repository.dart';
 import '../../data/initial_import.dart';
 import '../../data/local_session.dart';
 import '../../data/slot_registry.dart';
@@ -189,6 +190,12 @@ class AuthController extends AsyncNotifier<User?> {
       // Misafir verisi varsa "aktaralım mı?" sorusu AdenaApp dinleyicisinde sorulur.
       await ref.read(guestModeProvider.notifier).exit();
       LocalSession.setActiveAccount(u.id);
+      // J3: adet provider'ları state değişiminde (statik kapsam set edilmeden)
+      // kurulmuş olabilir → statik güncellenince yeniden kur (syncIfCloud dahil).
+      if (ref.mounted) {
+        ref.invalidate(cycleSettingsProvider);
+        ref.invalidate(cycleEntriesProvider);
+      }
       // Offline açılış yedeği: taze login/kayıtta build() yeniden koşmadığı
       // için /auth/me önbelleği burada da yazılır — yoksa ilk soğuk açılış
       // çevrimdışıyken oturum çözülemez (repo'lar hesapsız kalır).

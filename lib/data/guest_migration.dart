@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
 import '../features/babies/baby_controller.dart';
 import 'baby_repository.dart';
+import 'cycle_repository.dart';
 import 'health_repository.dart';
 import 'local/app_database.dart';
 import 'local_session.dart';
@@ -78,9 +79,12 @@ class GuestMigration {
     // olabilir: register anında rebuild olurken statik activeAccountId henüz gerçek
     // hesaba geçmemişti. refresh() (=cloud pull) yerel stream'i yeniden kurmaz → tam
     // invalidate ile temiz yeniden kur; yeni watchAll güncel hesabı sorgular ve rebound
-    // bebeği görür (aksi halde onboarding'de takılı kalır). Adet provider'ları Stream
-    // ve aktif hesabı izliyor → satır değişimi akışa düşer, yenileme gerekmez.
+    // bebeği görür (aksi halde onboarding'de takılı kalır). Adet provider'ları da
+    // yeniden kurulur (J3): stream'leri login anında kurulmuş olabilir; misafir
+    // satırı silinip hesaba taşındığında kapsam/akış taze olsun.
     ref.invalidate(babyControllerProvider);
+    ref.invalidate(cycleSettingsProvider);
+    ref.invalidate(cycleEntriesProvider);
 
     // Premium ise buluta tam yükleme (overlay ile). Free ise veri yerelde hesap
     // altında kalır; kullanıcı sonradan premium olursa migrasyon zaten yükler.

@@ -51,17 +51,21 @@ class CycleRepository {
   }
 
   /// Reaktif ayar akışı — ekranlar bunu dinler (satır yoksa varsayılan).
-  Stream<CycleSettings> watchSettings() {
-    final acct = _acct;
+  /// [accountId] (J3): provider'lar kapsamı AÇIKÇA geçirir — login geçişinde
+  /// statik `activeAccountId` provider'dan sonra set edildiği için stream
+  /// eski kapsama (null/misafir) bağlanıp kalıyordu (BabyController deseni).
+  Stream<CycleSettings> watchSettings({String? accountId}) {
+    final acct = accountId ?? _acct;
     if (acct == null) return Stream.value(const CycleSettings());
     return (_db.select(_db.cycleSettingsTable)..where((s) => s.id.equals(acct)))
         .watchSingleOrNull()
         .map(_rowToSettings);
   }
 
-  /// Reaktif kayıt akışı (yeni→eski, tombstone gizli).
-  Stream<List<CycleEntry>> watchEntries() {
-    final acct = _acct;
+  /// Reaktif kayıt akışı (yeni→eski, tombstone gizli). [accountId]: bkz.
+  /// [watchSettings] (J3).
+  Stream<List<CycleEntry>> watchEntries({String? accountId}) {
+    final acct = accountId ?? _acct;
     if (acct == null) return Stream.value(const []);
     final q = _db.select(_db.cycleEntries)
       ..where((e) => e.isDeleted.equals(false) & e.accountId.equals(acct))
@@ -700,10 +704,11 @@ final cycleSettingsProvider = StreamProvider<CycleSettings>((ref) async* {
   // null olur ve boş ayarlar "kurulmamış" sanılıp sihirbaz açılırdı. Auth
   // sonuçlanana dek bekle → shell bu sürede spinner gösterir.
   await ref.watch(authControllerProvider.future);
-  ref.watch(activeAccountIdProvider);
+  // J3: kapsam provider değeriyle AÇIKÇA geçirilir (statik geç set edilir).
+  final acct = ref.watch(activeAccountIdProvider);
   final repo = ref.watch(cycleRepositoryProvider);
   unawaited(repo.syncIfCloud());
-  yield* repo.watchSettings();
+  yield* repo.watchSettings(accountId: acct);
 });
 
 /// Tüm adet kayıtları (yeni→eski) — yerel drift akışı (R8).
@@ -711,6 +716,6 @@ final cycleEntriesProvider = StreamProvider<List<CycleEntry>>((ref) async* {
   // bkz. cycleSettingsProvider — aynı açılış yarışı koruması. Senkron tetiği
   // ayar provider'ında (iki kez ağ turu açmamak için).
   await ref.watch(authControllerProvider.future);
-  ref.watch(activeAccountIdProvider);
-  yield* ref.watch(cycleRepositoryProvider).watchEntries();
+  final acct = ref.watch(activeAccountIdProvider); // J3: bkz. cycleSettingsProvider
+  yield* ref.watch(cycleRepositoryProvider).watchEntries(accountId: acct);
 });
