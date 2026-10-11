@@ -68,6 +68,11 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 | O2 | `e2bc85c` | refresh zaman aşımı; geçici hata ağ hatası |
 | O34 | `6c9581e` | auth kuşağı (epoch) |
 | O1 | `177018a` | zorunlu çıkış + neden banner'ı + bg 'oturum yok' |
+| O1 (artık) | `9789951`, `c7ba8ad` | refresh token yokken neden ezilmez; FCM kaydı yalnız başarılı POST'ta |
+| v15 şema | `c5ffa58` | pushError/sağlık delta/settingsDirty kolonları + migration + backfill (7a) |
+| K4 (+O21) | `e328ee8` | sağlık delta push, pull R1, işaretleme ağı beklemez, aşı yankı güvencesi |
+| O4 | `beda831`, `6c70672` | settingsDirty, değişen-alan PATCH, GET /settings pull |
+| K-1 (banner) | `3c7d94c` | pushError kolonu, sayaç, banner + "değişikliği geri al" |
 
 Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 
@@ -102,6 +107,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Premium/paylaşımlı bebekte birden fazla cihazın işaretleme yapması.
 - **Etki:** Aşı/gelişim/diş işaretleri cihazlar arasında yakınsamıyor, sunucuda kaybolabiliyor; UI "ailen görür" vaadiyle çelişiyor.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`c5ffa58` şema + `e328ee8`, 2026-10-11):** `health_statuses.dirty/clientUpdatedAt/serverUpdatedAt/pushError` (v15). `pushDirty` yalnız dirty satırları `/health/sync`'e gönderir (R7; backend yalnız gönderilen kalemleri günceller), gelişim/diş 2xx'te R5 ile temizlenir; `pull` (= `importFromCloud`) R1 ile tam uygulanır — temiz satıra işaret kaldırma da yazılır, dirty korunur, boş liste/200 dışı atlanır. Aşı: push sonrası pull'da aynı ad + aynı değer yankılanmadan `dirty=false` yazılmaz (O19 dil uyuşmazlığında tik kaybolmaz). Tetik: `syncAll` her turda push, tam turlarda pull (K-3). Backfill: gelişim/diş done→dirty, aşıda yok (ilk turda sunucu kazanır). `pushAll` yalnız göç.
 
 ### K5. Silinen/duraklatılan ilaç planının bildirimleri bayat provider listesinden yeniden kuruluyor
 - **Dosya:** `lib/features/babies/notification_sync.dart:252-263` (`medPlans = ref.watch(medicationPlansProvider(baby.id)).asData?.value` → `syncMedicationPlan(enabled: … p.active …)`); `lib/features/health/medication_plan_sheet.dart:320-325` (`_togglePause`), `:327-336` (`_delete`)
@@ -174,6 +180,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Paylaşımlı bebek / yeniden kurulum / ikinci cihaz.
 - **Etki:** Birim (ml/oz) ve sessiz saat cihazlar arasında tutarsız; sahibin ayarı üyenin varsayılanıyla ezilebilir.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`beda831`, 2026-10-11):** `babies.settingsDirty/settingsBase` (v15). `updateFamilySettings` yalnız `settingsDirty` açar (profil dirty değil, R6). `pushSettings` `settingsBase` ile üst-düzey anahtar diff'i → yalnız değişen anahtarlar PATCH (K-5), 2xx → yerel=base=yanıt, R5, kalıcı 4xx → pushError. `pullSettings` (`BabyController._pull`, yalnız bulut-uygun bebekler): temiz satır sunucuyu alır; dirty satırda değişmemiş anahtarlar dolar. Backfill: sahip + dolu JSON → settingsDirty (karar). Caregiver hiç PATCH atmaz.
 
 #### O5. Anı ve anne-takibi pull'u sunucudaki silmeleri yansıtmıyor; başarısız push'tan sonra dirty satırları eziyor
 - **Dosya:** `lib/data/memory_repository.dart:36-48, 108-129, 148-182`; `lib/data/mom_repository.dart:26-38, 96-119`
@@ -296,6 +303,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Bağlı-ama-internetsiz ağ; premium/paylaşımlı bebek.
 - **Etki:** Satır 15-35 sn tepkisiz; sunucuya gitmeyen işaret.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`e328ee8`, 2026-10-11):** `_setStatus` yerel yazım + dirty; ağ beklenmez, `onStatusChanged` → `requestSyncSoon` (1,2 sn debounce). Ekranların `await`'i anında döner; çevrimdışı işaret dirty kalır ve sonraki turda gider (test: gecikmeli adapter, istek atılmadan döner).
 
 #### O22. Doz "verildi" düğmesinde çift-dokunma/uçuş koruması yok → aynı doz için iki kayıt
 - **Dosya:** `lib/features/health/medication_widgets.dart:111-116, 165-191`
