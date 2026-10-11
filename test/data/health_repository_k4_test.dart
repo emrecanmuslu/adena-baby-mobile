@@ -275,4 +275,27 @@ void main() {
       expect((await row('tooth', 'll1'))!.done, isFalse);
     });
   });
+  group('M9(a) — yankılanmayan aşı polling turunda yeniden gönderilmez', () {
+    test('tam turda denenir, polling (retryUnechoed=false) atlar; yankı gelince normale döner',
+        () async {
+      await seed('vaccine', 'BCG', true, dirty: true, date: DateTime(2026, 3, 4));
+      stubSync();
+      await repo.pushDirty('b1');
+      stubGets(vaccines: [
+        {'vaccine_name': 'Other', 'status': 'pending', 'done_date': null},
+      ]);
+      await repo.pull('b1'); // yankı yok → işaretlendi
+      requests.clear();
+      stubSync();
+      await repo.pushDirty('b1', retryUnechoed: false);
+      expect(requests, isEmpty, reason: 'polling turunda POST atılmaz');
+      await repo.pushDirty('b1'); // tam tur
+      expect(requests, hasLength(1));
+      stubGets(vaccines: [
+        {'vaccine_name': 'BCG', 'status': 'done', 'done_date': '2026-03-04'},
+      ]);
+      await repo.pull('b1');
+      expect((await row('vaccine', 'BCG'))!.dirty, isFalse);
+    });
+  });
 }

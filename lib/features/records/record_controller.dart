@@ -374,7 +374,8 @@ class SyncService with WidgetsBindingObserver {
   /// hatası (ağ/5xx/403) dışarı fırlar → çağıran bebek döngüsü ele alır.
   Future<void> _syncHealth(String babyId, {required bool pullToo}) async {
     final repo = _ref.read(healthRepositoryProvider);
-    await repo.pushDirty(babyId);
+    // M9(a): polling turunda (pullToo=false) yankılanmamış aşılar yeniden denenmez.
+    await repo.pushDirty(babyId, retryUnechoed: pullToo);
     if (!pullToo) return;
     if (await repo.pull(babyId)) {
       _ref.invalidate(vaccinesProvider(babyId));
