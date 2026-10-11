@@ -763,9 +763,16 @@ class NotificationService {
   /// O15: bebek silinince / erişim kalkınca o bebeğin TÜM planlı bildirimleri —
   /// beslenme (ana/ön/unuttun), sayaçlar, aşı/atak/büyüme/gebelik haftası,
   /// periyodik gelişim/diş dürtmeleri ve ilaç planları — iptal edilir.
+  /// [reminderIds]: bebeğin özel/randevu hatırlatıcıları (`localReminders`
+  /// id'leri, I5) — satırlar silinmez ama bildirimleri burada iptal edilir.
   Future<void> cancelBabyScheduled(
-      {required int slot, Iterable<int> medicationPlanIds = const []}) async {
+      {required int slot,
+      Iterable<int> medicationPlanIds = const [],
+      Iterable<int> reminderIds = const []}) async {
     if (!_ready) await init();
+    for (final id in reminderIds) {
+      await _plugin.cancel(id: id);
+    }
     for (final id in [
       feedMainIdFor(slot),
       feedPreIdFor(slot),

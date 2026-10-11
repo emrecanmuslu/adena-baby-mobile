@@ -102,14 +102,15 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     final s = slot ?? baby?.notifSlot;
     if (s == null) return;
     List<int> planIds = const [];
+    List<int> reminderIds = const [];
     try {
-      planIds = (await ref.read(healthRepositoryProvider).medicationPlans(id))
-          .map((p) => p.id)
-          .toList();
+      final health = ref.read(healthRepositoryProvider);
+      planIds = (await health.medicationPlans(id)).map((p) => p.id).toList();
+      reminderIds = await health.reminderIdsForBaby(id); // I5: özel/randevu
     } catch (_) {}
     try {
-      await NotificationService.instance
-          .cancelBabyScheduled(slot: s, medicationPlanIds: planIds);
+      await NotificationService.instance.cancelBabyScheduled(
+          slot: s, medicationPlanIds: planIds, reminderIds: reminderIds);
     } catch (_) {}
   }
 

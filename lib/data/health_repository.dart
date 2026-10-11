@@ -237,11 +237,25 @@ class HealthRepository {
   /// Cihazdaki TÜM bebeklerin AÇIK hatırlatıcı id'leri — `NotificationService.sync`
   /// mutabakatı bununla yapılır (tek bebeğin listesiyle yapılınca diğer bebeklerin
   /// bildirimleri yetim sanılıp siliniyordu, BULGULAR.md K1).
+  /// I5: tombstone (silinmiş) bebeğin hatırlatıcıları "aktif" sayılmaz — aksi
+  /// hâlde mutabakat onları hiç yetim görmez, silinmiş bebek için çalmaya
+  /// devam ederlerdi.
   Future<Set<int>> activeReminderIds() async {
+    final q = _db.select(_db.localReminders).join([
+      innerJoin(_db.babies, _db.babies.id.equalsExp(_db.localReminders.baby)),
+    ])
+      ..where(_db.localReminders.enabled.equals(true) &
+          _db.babies.isDeleted.equals(false));
+    final rows = await q.get();
+    return {for (final r in rows) r.readTable(_db.localReminders).localId};
+  }
+
+  /// Bir bebeğin TÜM özel/randevu hatırlatıcı id'leri (bildirim iptali için, I5).
+  Future<List<int>> reminderIdsForBaby(String babyId) async {
     final rows = await (_db.select(_db.localReminders)
-          ..where((r) => r.enabled.equals(true)))
+          ..where((r) => r.baby.equals(babyId)))
         .get();
-    return {for (final r in rows) r.localId};
+    return [for (final r in rows) r.localId];
   }
 
   Future<void> setReminderEnabled(int id, bool enabled) async {
