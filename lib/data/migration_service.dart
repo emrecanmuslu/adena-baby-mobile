@@ -70,8 +70,22 @@ class MigrationController extends Notifier<MigrationState> {
   @override
   MigrationState build() => const MigrationState.idle();
 
+  /// D10: guard ile `state=running` arasındaki await'lerde ikinci `run()`
+  /// (GuestMigration + localToCloudMigrationProvider) paralel tam yükleme
+  /// başlatmasın.
+  bool _starting = false;
+
   Future<void> run() async {
-    if (state.phase == MigrationPhase.running) return;
+    if (state.phase == MigrationPhase.running || _starting) return;
+    _starting = true;
+    try {
+      await _run();
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<void> _run() async {
     final ref = this.ref;
 
     final acct = LocalSession.activeAccountId;
