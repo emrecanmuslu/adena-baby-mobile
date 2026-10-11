@@ -76,9 +76,12 @@ class HealthRepository {
 
   /// [dirty] true = kullanıcı işareti (push bekler, pull ezmez — R1);
   /// false = sunucudan gelen/onaylanan değer (`pushError` da temizlenir).
+  /// [serverSeen] (K2): değer sunucudan geldi/onaylandı → `serverUpdatedAt`
+  /// damgalanır ("sunucudan en az bir kez onay görüldü"; sunucu damgası
+  /// olmadığından istemci anı). Kullanıcı yazımında damgaya dokunulmaz.
   Future<void> _writeStatus(
       String babyId, String kind, String key, bool done, DateTime? date,
-      {required bool dirty}) async {
+      {required bool dirty, bool serverSeen = false}) async {
     await _db.into(_db.healthStatuses).insertOnConflictUpdate(
           HealthStatusesCompanion.insert(
             baby: babyId,
@@ -88,6 +91,9 @@ class HealthRepository {
             statusDate: Value(done ? date : null),
             dirty: Value(dirty),
             clientUpdatedAt: Value(dirty ? DateTime.now().toUtc() : null),
+            serverUpdatedAt: serverSeen
+                ? Value(DateTime.now().toUtc())
+                : const Value.absent(),
             pushError: const Value(null),
           ),
         );
@@ -727,7 +733,8 @@ class HealthRepository {
           'milestone' => 'achieved_date',
           _ => 'erupted_date',
         }]);
-        await _writeStatus(babyId, kind, key, done, date, dirty: false);
+        await _writeStatus(babyId, kind, key, done, date,
+            dirty: false, serverSeen: true);
         return RevertResult.applied;
       }
       await (_db.update(_db.healthStatuses)
@@ -764,11 +771,14 @@ class HealthRepository {
         cur.statusDate != sentDate) {
       return;
     }
+    // K2: 2xx/yankı = sunucu bu kalemi tanıdı → onay damgası.
     await (_db.update(_db.healthStatuses)
           ..where((s) =>
               s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
-        .write(const HealthStatusesCompanion(
-            dirty: Value(false), pushError: Value(null)));
+        .write(HealthStatusesCompanion(
+            dirty: const Value(false),
+            pushError: const Value(null),
+            serverUpdatedAt: Value(DateTime.now().toUtc())));
   }
 
   /// Pull (K-3 tetikleri; R1 tam uygulanır — işaret KALDIRMA da yayılır):
@@ -798,12 +808,23 @@ class HealthRepository {
         return; // R1: dirty satır ezilmez
       }
       if (cur != null && cur.done == done && cur.statusDate == (done ? date : null)) {
+        // K2: sunucu aynı değeri gösteriyor → "onay görüldü" damgası (bir kez).
+        if (cur.serverUpdatedAt == null) {
+          await (_db.update(_db.healthStatuses)
+                ..where((s) =>
+                    s.baby.equals(babyId) &
+                    s.kind.equals(kind) &
+                    s.itemKey.equals(key)))
+              .write(HealthStatusesCompanion(
+                  serverUpdatedAt: Value(DateTime.now().toUtc())));
+        }
         return;
       }
       if (cur != null && cur.done && !done) {
         clearedDone[kind] = (clearedDone[kind] ?? 0) + 1;
       }
-      await _writeStatus(babyId, kind, key, done, date, dirty: false);
+      await _writeStatus(babyId, kind, key, done, date,
+          dirty: false, serverSeen: true);
       changed = true;
     }
 
@@ -826,9 +847,16 @@ class HealthRepository {
     // temiz done=true aşı satırı varsa sunucu kümesi lazy üretilmiş/hiç
     // yüklenmemiştir → otoriter değildir: aşı kalemleri UYGULANMAZ, hesap
     // yeniden-tohumlama (lapse ile aynı yol) bekler. Gelişim/diş etkilenmez.
+    // K2 daraltması: yalnız sunucudan HİÇ onay görmemiş (`serverUpdatedAt`
+    // NULL — v14 tiki) ve sunucunun TANIDIĞI (adı listede) satırlar sayılır.
+    // Pull/yankı ile onaylanmış tik lazy değildir → diğer cihazın "son done
+    // tiki kaldırma"sı meşru sunucu durumudur, uygulanır. Sunucunun tanımadığı
+    // ad (dil uyuşmazlığı, I10) reseed ile de düzelmez → sayılmaz (K3: reseed
+    // ↔ pull ping-pong'u kesilir).
     if (vac != null &&
         !vac.any((m) => m['status'] == 'done') &&
-        await _hasCleanDoneVaccine(babyId)) {
+        await _hasUnconfirmedDoneVaccine(
+            babyId, {for (final m in vac) m['vaccine_name'] as String? ?? ''})) {
       final acct = LocalSession.activeAccountId;
       if (acct != null) await LocalSession.markHealthReseedForAccount(acct);
       await SyncTelemetry.report('health_pull_lazy_server_skipped', {
@@ -884,14 +912,20 @@ class HealthRepository {
   }
 
   /// Geriye uyumlu ad (ilk import / göç): artık R1 ile tam pull.
-  /// J1(b): yerelde temiz (dirty=0) `done=true` aşı satırı var mı?
-  Future<bool> _hasCleanDoneVaccine(String babyId) async {
+  /// J1(b)+K2: yerelde temiz (dirty=0), sunucudan hiç onay görmemiş
+  /// (`serverUpdatedAt` NULL) ve adı [serverNames] içinde olan `done=true` aşı
+  /// satırı var mı?
+  Future<bool> _hasUnconfirmedDoneVaccine(
+      String babyId, Set<String> serverNames) async {
+    if (serverNames.isEmpty) return false;
     final row = await (_db.select(_db.healthStatuses)
           ..where((s) =>
               s.baby.equals(babyId) &
               s.kind.equals('vaccine') &
               s.done.equals(true) &
-              s.dirty.equals(false))
+              s.dirty.equals(false) &
+              s.serverUpdatedAt.isNull() &
+              s.itemKey.isIn(serverNames))
           ..limit(1))
         .getSingleOrNull();
     return row != null;
