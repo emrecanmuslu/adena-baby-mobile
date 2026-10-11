@@ -7,6 +7,7 @@ import '../../core/age.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../data/sync_gate.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
@@ -131,7 +132,7 @@ class _MilestonesScreenState extends ConsumerState<MilestonesScreen> {
   Future<void> _toggle(
       BuildContext context, WidgetRef ref, String babyId, Milestone m) async {
     // Sağlık/gelişim yalnız owner/parent — bakıcı salt-okunur.
-    if (!(ref.read(activeBabyProvider)?.canFullWrite ?? true)) {
+    if (!ref.read(canFullWriteProvider(babyId))) { // N1: kartın bebeği
       showAdToast(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
       return;
     }
@@ -473,7 +474,7 @@ class _MilestoneSheetState extends ConsumerState<_MilestoneSheet> {
 
   Future<void> _set(bool achieved) async {
     // Gelişim yalnız owner/parent — bakıcı salt-okunur.
-    if (!(ref.read(activeBabyProvider)?.canFullWrite ?? true)) {
+    if (!ref.read(canFullWriteProvider(widget.babyId))) { // N1
       showAdToast(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
       return;
     }

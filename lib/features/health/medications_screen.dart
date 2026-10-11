@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/i18n.dart';
+import '../../core/notification_service.dart';
+import '../../data/sync_gate.dart';
 import '../../core/medication.dart';
 import '../../core/skeleton.dart';
 import '../../core/theme.dart';
@@ -133,11 +135,7 @@ class _PlansBody extends ConsumerWidget {
         if (active.isNotEmpty) ...[
           adSec(trp('Aktif planlar · {n}', {'n': active.length})),
           for (final p in active)
-            _PlanCard(
-                babyId: babyId,
-                plan: p,
-                row: rows[p.id],
-                canEdit: ref.read(activeBabyProvider)?.canFullWrite ?? true), // KB-8
+            _PlanCard(babyId: babyId, plan: p, row: rows[p.id]),
         ],
         if (paused.isNotEmpty) ...[
           adSec(tr('Duraklatılan')),
@@ -182,7 +180,7 @@ class _PlansBody extends ConsumerWidget {
         _InfoNote(
           icon: 'family',
           // KB-8: rol farkı — bakıcı yalnız doz işaretler.
-          text: (ref.read(activeBabyProvider)?.canFullWrite ?? true)
+          text: ref.watch(canFullWriteProvider(babyId)) // N1
               ? tr('Verilen dozlar ve plan listesi ailenle paylaşılır.')
               : tr('Bakıcı rolünde planları ebeveyn/sahip düzenler; sen dozları işaretleyebilirsin.'),
         ),
@@ -191,24 +189,22 @@ class _PlansBody extends ConsumerWidget {
   }
 }
 
-class _PlanCard extends StatelessWidget {
+class _PlanCard extends ConsumerWidget {
   final String babyId;
   final MedicationPlan plan;
   final MedicationPlanDay? row;
-  final bool canEdit;
-  const _PlanCard(
-      {required this.babyId, required this.plan, required this.row, this.canEdit = true});
+  const _PlanCard({required this.babyId, required this.plan, required this.row});
 
   @override
-  Widget build(BuildContext context) {
-    // KB-8: bakıcı düzenleyemez (sheet açılmaz; repo da StateError ile korur).
-    void edit() {
-      if (!canEdit) return;
-      showMedicationPlanSheet(context, babyId, existing: plan);
-    }
+  Widget build(BuildContext context, WidgetRef ref) {
+    // KB-8/N1: kilit KARTIN bebeğinin rolüne göre (aktif bebek değil); bakıcı
+    // düzenleyemez (düğme çizilmez; repo da StateError ile korur).
+    final canEdit = ref.watch(canFullWriteProvider(babyId));
+    void edit() => showMedicationPlanSheet(context, babyId, existing: plan);
     final meta = [
       if (plan.dose.isNotEmpty) plan.dose,
       trp('her gün · {n} doz', {'n': plan.times.length}),
+      if (plan.localOnly) tr('Bu plan yalnız bu cihazda; ailenle paylaşılmadı'), // N2
     ].join(' · ');
 
     return Container(
@@ -228,6 +224,27 @@ class _PlanCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(child: _PlanTitle(name: plan.name, meta: meta)),
               const SizedBox(width: 8),
+              if (plan.localOnly) // N2/KB-10: yerel-only plan — bakıcı silebilir
+                Semantics(
+                  button: true,
+                  label: tr('Sil'),
+                  child: GestureDetector(
+                    onTap: () async {
+                      await ref.read(healthRepositoryProvider).deleteMedicationPlan(plan.id);
+                      await NotificationService.instance.cancelMedicationPlan(plan.id);
+                      ref.invalidate(medicationPlansProvider(babyId));
+                    },
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                          color: fieldBg(context), borderRadius: BorderRadius.circular(12)),
+                      alignment: Alignment.center,
+                      child: AdenaIcon('trash', size: 18, color: AppColors.ink2),
+                    ),
+                  ),
+                )
+              else if (canEdit)
               Semantics(
                 button: true,
                 label: tr('Düzenle'),
@@ -279,7 +296,7 @@ class _PausedCard extends ConsumerWidget {
         painter: MedDashedBorder(color: AppColors.line2, radius: 20),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          onTap: (ref.read(activeBabyProvider)?.canFullWrite ?? true)
+          onTap: ref.watch(canFullWriteProvider(babyId)) // N1
               ? () => showMedicationPlanSheet(context, babyId, existing: plan)
               : null, // KB-8
           child: Padding(

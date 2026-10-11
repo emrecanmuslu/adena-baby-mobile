@@ -245,13 +245,15 @@ class HealthRepository {
   // ile paylaşılıyordu. Bildirim cihaz-yerel kalır (herkes kendi telefonunda
   // açıp kapatır). Yerel yazım → dirty; `syncMedicationPlans` gönderir/çeker.
 
-  MedicationPlan _toPlan(MedicationPlanRow r) => MedicationPlan(
+  MedicationPlan _toPlan(MedicationPlanRow r, {bool localOnly = false}) =>
+      MedicationPlan(
         id: r.localId,
         name: r.name,
         dose: r.dose,
         times: (jsonDecode(r.timesJson) as List).cast<String>(),
         active: r.active,
         createdAt: r.createdAt ?? DateTime.now(),
+        localOnly: localOnly,
       );
 
   /// Son-yazan-kazanır damgası. drift DateTime'ı saniyeye yuvarlar → aynı
@@ -266,6 +268,8 @@ class HealthRepository {
   }
 
   Future<List<MedicationPlan>> medicationPlans(String babyId) async {
+    // N2/KB-10: bakıcıda dirty satır = sunucuya hiç gitmemiş yerel-only plan.
+    final caregiver = await _isCaregiver(babyId);
     final rows = await (_db.select(_db.medicationPlans)
           ..where((r) => r.baby.equals(babyId) & r.isDeleted.equals(false))
           // Her cihazda aynı sıra (yerel ekleme sırası cihazdan cihaza değişir).
@@ -274,7 +278,9 @@ class HealthRepository {
             (r) => OrderingTerm(expression: r.localId),
           ]))
         .get();
-    return rows.map(_toPlan).toList();
+    return rows
+        .map((r) => _toPlan(r, localOnly: caregiver && r.dirty))
+        .toList();
   }
 
   /// Cihazdaki TÜM bebeklerin aktif (silinmemiş) ilaç planı yerel id'leri —
@@ -346,7 +352,14 @@ class HealthRepository {
           ..where((r) => r.localId.equals(id)))
         .getSingleOrNull();
     if (row == null) return;
-    await _requireFullWrite(row.baby); // KB-8
+    // N2/KB-10: bakıcı yalnız KB-8 öncesinden kalmış yerel-only (dirty) planını
+    // silebilir — sunucuya hiç gitmemiştir, yerelden kaldırılır (senkron yok).
+    if (await _isCaregiver(row.baby)) {
+      if (!row.dirty) throw StateError('caregiver_readonly: ${row.baby}');
+      await (_db.delete(_db.medicationPlans)..where((r) => r.localId.equals(id))).go();
+      onPlansChanged?.call(row.baby);
+      return;
+    }
     if (row.uuid != null && _cloudEnabled(row.baby)) {
       await (_db.update(_db.medicationPlans)..where((r) => r.localId.equals(id)))
           .write(MedicationPlansCompanion(

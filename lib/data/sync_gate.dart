@@ -76,3 +76,14 @@ final babyCloudSyncedProvider = Provider.family<bool, String>((ref, babyId) {
   if (ref.watch(cloudReadonlyBabiesProvider).contains(babyId)) return false;
   return ref.watch(babyCloudEligibleProvider(babyId));
 });
+
+/// N1: verilen bebeğin tam yazma yetkisi (owner/parent) — AKTİF bebeğe değil,
+/// id'si verilen bebeğe bakar. Liste yüklenmemiş/bebek bulunamamışsa `true`
+/// (eski varsayım; repo `StateError` son savunma hattı).
+final canFullWriteProvider = Provider.family<bool, String>((ref, babyId) {
+  final babies = ref.watch(babyControllerProvider).asData?.value ?? const [];
+  for (final b in babies) {
+    if (b.id == babyId) return b.canFullWrite;
+  }
+  return true;
+});
