@@ -253,11 +253,15 @@ class AuthController extends AsyncNotifier<User?> {
   }
 
   Future<void> deleteAccount() async {
-    _epoch++; // O34
+    // O10: geri alınamayan YEREL yan etkiler (bildirim iptali, slot haritası)
+    // ağ isteği BAŞARDIKTAN sonra — istek düşerse hesap da oturum da yerel
+    // hatırlatıcılar da olduğu gibi kalır. Cihaz kaydı silme sunucu işi, yerel
+    // etkisi yok → auth hâlâ geçerliyken önce.
     await PushService.instance.unregister(ref.read(apiClientProvider));
+    await _repo.deleteAccount();
+    _epoch++; // O34
     await NotificationService.instance.cancelAll(); // eski hesabın bildirimleri kalmasın
     await SlotRegistry.instance.clear(); // slot haritası sıfırlansın (yeni hesap 0'dan)
-    await _repo.deleteAccount();
     // logout ile AYNI temizlik: sonraki kullanıcıya premium/RC kimliği/yerel kapsam
     // sızmasın (deleteAccount eksikti → aynı cihazda yeni free kullanıcıya premium flaşı).
     await RevenueCatService.instance.logoutUser();

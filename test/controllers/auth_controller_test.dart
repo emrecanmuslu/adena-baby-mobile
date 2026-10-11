@@ -351,6 +351,29 @@ void main() {
       verify(() => repo.deleteAccount()).called(1);
       expect(c.read(authControllerProvider).value, isNull);
     });
+
+    test('O10: ağ isteği düşerse yerel yan etkiler (slot haritası, abonelik önbelleği) dokunulmaz, oturum kalır',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'baby_notif_slots': '{"b1":2}',
+        'sub_is_premium': '1',
+      });
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd2'));
+      when(() => repo.deleteAccount()).thenThrow(Exception('offline'));
+
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      final ctrl = c.read(authControllerProvider.notifier);
+
+      await expectLater(ctrl.deleteAccount(), throwsA(isA<Exception>()));
+
+      expect(c.read(authControllerProvider).value?.id, 'd2', reason: 'oturum sürer');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('baby_notif_slots'), '{"b1":2}',
+          reason: 'SlotRegistry ağ hatasında sıfırlanmamalı');
+      expect(prefs.getString('sub_is_premium'), '1');
+    });
   });
 
   group('activeAccountIdProvider', () {
