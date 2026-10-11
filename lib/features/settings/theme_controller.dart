@@ -21,7 +21,10 @@ class ThemeController extends AsyncNotifier<ThemeMode> {
     // Oturum yoksa son seçilen yerel temayı kullan (system'e düşme → splash flaş'ı yok).
     final cached = ref.read(cachedThemeProvider);
     final user = ref.watch(authControllerProvider).asData?.value;
-    if (user == null) return cached;
+    // D13: misafirde auth state her değişince (yanlış şifre, sosyal iptal)
+    // build yeniden koşar; kullanıcının bu oturumda seçtiği tema açılış
+    // cache'ine geri dönmesin.
+    if (user == null) return _chosen ?? cached;
     try {
       final s = await ref.read(authRepositoryProvider).settings();
       final mode = _fromApi(s['theme'] as String?);
@@ -32,7 +35,11 @@ class ThemeController extends AsyncNotifier<ThemeMode> {
     }
   }
 
+  /// Bu süreçte kullanıcının seçtiği tema (D13).
+  ThemeMode? _chosen;
+
   Future<void> setMode(ThemeMode mode) async {
+    _chosen = mode;
     state = AsyncData(mode);
     unawaited(ThemeCache().write(mode)); // açılışta flaş'sız okunsun
     try {
