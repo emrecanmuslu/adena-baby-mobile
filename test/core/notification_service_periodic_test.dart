@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart';
 
 import 'package:adena_baby/core/notification_service.dart';
@@ -91,6 +92,7 @@ void main() {
   late NotificationService svc;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({}); // M3: aralık kalıcılığı prefs'te
     plugin = _FakePlugin();
     svc = NotificationService.withPlugin(plugin);
   });

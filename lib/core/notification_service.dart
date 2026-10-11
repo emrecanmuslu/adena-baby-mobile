@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -12,6 +13,7 @@ import '../models/medication_plan.dart';
 import '../models/quiet_hours.dart';
 import '../models/reminder.dart';
 import 'i18n.dart';
+import 'i18n_warm.dart';
 
 /// Yerel bildirim servisi — hatırlatıcıları cihaz bildirimlerine bağlar.
 /// Üç tür: özel/randevu hatırlatıcıları (günlük veya tek-sefer), beslenme uyarısı
@@ -543,7 +545,9 @@ class NotificationService {
         // yalnız bekleyen yoksa ya da aralık değiştiyse kurulur.
         final every = s['every_min'] is num ? (s['every_min'] as num).toInt() : 0;
         if (every < 1) continue;
-        if (pendingIds.contains(r.id) && _intervalMin[r.id] == every) continue;
+        if (pendingIds.contains(r.id) && await _storedInterval(r.id) == every) {
+          continue;
+        }
         await _scheduleInterval(r.id, every, title);
       } else if (s['repeat'] == 'once' || s['at'] != null) {
         // Tek-seferlik: belirli tarih-saatte bir kez (geçmişse kurma).
@@ -565,14 +569,28 @@ class NotificationService {
   /// Periyodik hatırlatıcı — ilk bildirim çağrıdan [everyMin] dk sonra, ardından
   /// hatırlatıcı kapatılana/silinene dek her [everyMin] dakikada bir (ateş takibi
   /// gibi kısa aralıklı kontroller için). Kesin alarm izni yoksa inexact kurulur.
-  /// Kurulu periyodik planların aralığı (O14: değişmeyen plan yeniden
-  /// kurulmaz). Süreç ömrü; soğuk açılışta bekleyen plan varsa aralık değişmemiş
-  /// sayılır (aralık düzenlemesi aynı süreçte sync'i tetikler).
-  final Map<int, int> _intervalMin = {};
+  /// Kurulu periyodik planların aralığı — KALICI (prefs, M3): süreç yeniden
+  /// başlasa da "bekleyen varsa kurma" kuralı aralık değiştiyse yeniden kurar,
+  /// değişmediyse tetik zamanını korur.
+  static const _kIntervalPrefix = 'notif_interval_';
+
+  Future<int?> _storedInterval(int id) async {
+    try {
+      return (await SharedPreferences.getInstance()).getInt('$_kIntervalPrefix$id');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _storeInterval(int id, int everyMin) async {
+    try {
+      await (await SharedPreferences.getInstance()).setInt('$_kIntervalPrefix$id', everyMin);
+    } catch (_) {}
+  }
 
   Future<void> _scheduleInterval(int id, int everyMin, String? title) async {
     await _ensureExactAlarm();
-    _intervalMin[id] = everyMin;
+    await _storeInterval(id, everyMin);
     await _plugin.periodicallyShowWithDuration(
       id: id,
       title: title != null && title.isNotEmpty ? title : tr('Hatırlatıcı'),
@@ -931,6 +949,7 @@ void notificationBackgroundHandler(NotificationResponse response) {
 
 Future<void> _snoozeFeedInBackground(
     ({bool sound, int slot, String babyName}) fp) async {
+  await warmI18nFromCache(); // M7: "Ertele 10 dk"/başlık kullanıcının dilinde
   final sound = fp.sound;
   final plugin = FlutterLocalNotificationsPlugin();
   const init = InitializationSettings(

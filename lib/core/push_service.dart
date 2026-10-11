@@ -9,6 +9,7 @@ import '../data/feed_reminder_cache.dart';
 import '../data/notification_prefs.dart';
 import '../data/slot_registry.dart';
 import 'api_client.dart';
+import 'i18n_warm.dart';
 import 'background_sync.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
@@ -37,6 +38,7 @@ bool feedAnchorPlausible(DateTime lastFeed, {DateTime? now}) =>
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
+  await warmI18nFromCache(); // M7: bildirim metinleri kullanıcının dilinde
   await handlePushMessage(message);
 }
 

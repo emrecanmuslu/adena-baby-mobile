@@ -3,6 +3,8 @@ import 'dart:io' show Platform;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
+
+import 'i18n_warm.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -66,6 +68,7 @@ const bgOutcomeNoSession = 'oturum yok';
 /// `ProviderContainer` ile repo.sync doğrudan sürülür.
 Future<void> runBackgroundSync() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await warmI18nFromCache(); // M7: bg turunun kurduğu hatırlatıcı metinleri
   // Turun başladığını KALICI olarak işaretle: bu isolate ön planla bellek
   // paylaşmadığı için, ön plandaki [DbWatchdog] raporuna "son BGTask turu ne
   // zaman/nasıl bitti" bilgisini ancak böyle taşıyabiliyoruz. Tur ortada
