@@ -24,6 +24,19 @@ class LocaleCache {
     }
   }
 
+  /// J13: yalnız prefs — Keychain göçü DENENMEZ. Arka plan isolate'leri için
+  /// (iOS kilitliyken Keychain takılıp 2 sn bekletip `null` dönebiliyordu →
+  /// EN kullanıcısına TR bildirim). Göç ön planda [read] ile yapılır.
+  Future<String?> readPrefsOnly() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final t = prefs.getString(_kLocale)?.trim();
+      return (t == null || t.isEmpty) ? null : t;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> write(String locale) async {
     try {
       final prefs = await SharedPreferences.getInstance();

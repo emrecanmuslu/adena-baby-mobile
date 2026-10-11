@@ -10,7 +10,8 @@ import 'i18n.dart';
 /// Ağ YOK; cache yoksa Türkçe kalır (sunucu sözlüğü ön planda indirilir).
 Future<void> warmI18nFromCache() async {
   try {
-    final locale = await LocaleCache().read() ?? 'tr';
+    // J13: bg'de Keychain'e hiç dokunma (saf prefs okuması).
+    final locale = await LocaleCache().readPrefsOnly() ?? 'tr';
     if (locale == 'tr') {
       I18n.instance.apply('tr', const {});
       return;

@@ -378,6 +378,7 @@ class NotificationService {
   Future<void> cancelReminder(int id) async {
     if (!_ready) return;
     await _plugin.cancel(id: id);
+    await _clearInterval(id); // J13
   }
 
   /// Beslenme hatırlatıcısını planlar: ana uyarı (kesin/sesli + "Ertele") ve
@@ -561,7 +562,10 @@ class NotificationService {
         final stale = keep != null
             ? !keep.contains(p.id)
             : (listIds.contains(p.id) && !activeIds.contains(p.id));
-        if (stale) await _plugin.cancel(id: p.id);
+        if (stale) {
+          await _plugin.cancel(id: p.id);
+          await _clearInterval(p.id); // J13: prefs anahtarı birikmesin
+        }
       }
     } catch (_) {
       // Bekleyenler okunamazsa eski davranışa düş: listedekileri iptal et.
@@ -620,6 +624,13 @@ class NotificationService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// J13: iptal edilen hatırlatıcının aralık anahtarı silinir (prefs sızıntısı).
+  Future<void> _clearInterval(int id) async {
+    try {
+      await (await SharedPreferences.getInstance()).remove('$_kIntervalPrefix$id');
+    } catch (_) {}
   }
 
   Future<void> _storeInterval(int id, int everyMin) async {
@@ -814,6 +825,7 @@ class NotificationService {
     if (!_ready) await init();
     for (final id in reminderIds) {
       await _plugin.cancel(id: id);
+      await _clearInterval(id); // J13
     }
     for (final id in [
       feedMainIdFor(slot),

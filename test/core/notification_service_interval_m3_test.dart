@@ -98,4 +98,22 @@ void main() {
     expect(plugin.intervals, hasLength(2));
     expect(plugin.intervals.last, const Duration(minutes: 30));
   });
+
+  test('J13: hatırlatıcı iptal edilince notif_interval_<id> prefs anahtarı silinir',
+      () async {
+    final plugin = _FakePlugin();
+    final svc = NotificationService.withPlugin(plugin);
+    await svc.sync([_interval(7, 15)], allActiveIds: () async => {7});
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt('notif_interval_7'), 15);
+
+    await svc.cancelReminder(7);
+    expect(prefs.getInt('notif_interval_7'), isNull, reason: 'prefs sızıntısı');
+
+    // Mutabakatla yetim düşen plan da anahtarını bırakmaz.
+    await svc.sync([_interval(8, 20)], allActiveIds: () async => {8});
+    expect(prefs.getInt('notif_interval_8'), 20);
+    await svc.sync(const [], allActiveIds: () async => <int>{});
+    expect(prefs.getInt('notif_interval_8'), isNull);
+  });
 }
