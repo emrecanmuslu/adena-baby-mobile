@@ -260,7 +260,19 @@ class PushService {
   }
 
   /// FCM token'ını al ve sunucuya kaydet (oturum açıkken çağır). İzin de ister.
-  Future<void> registerToken(ApiClient api) async {
+  /// D5: eşzamanlı çağrılar (resume + auth listener) tek uçuşta birleşir —
+  /// iOS'ta 15 sn APNs yoklaması paralel koşmasın, çift POST atılmasın.
+  Future<void>? _registering;
+
+  Future<void> registerToken(ApiClient api) {
+    final inflight = _registering;
+    if (inflight != null) return inflight;
+    final run = _registerTokenNow(api).whenComplete(() => _registering = null);
+    _registering = run;
+    return run;
+  }
+
+  Future<void> _registerTokenNow(ApiClient api) async {
     // Açılışta Firebase.initializeApp() timeout'a ya da bir eklenti (Crashlytics)
     // component hatasına takılıp başarısız olmuş olabilir → FirebaseMessaging.instance
     // [core/no-app] fırlatır ve token kaydı sessizce düşerdi. FCM'e dokunmadan önce
