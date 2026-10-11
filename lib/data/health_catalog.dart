@@ -137,12 +137,18 @@ class HealthCatalogRepository {
       final data = resp.data;
       if (data is Map<String, dynamic> &&
           (data['vaccines'] is List || data['milestones'] is List)) {
+        // D26: önce PARSE, sonra cache — bozuk yanıt cache'i zehirlemesin.
+        final cat = HealthCatalog.fromJson(data);
         await _writeCache(locale, data);
-        return HealthCatalog.fromJson(data);
+        return cat;
       }
     } catch (_) {}
-    final cached = await _readCache(locale);
-    if (cached != null) return HealthCatalog.fromJson(cached);
+    try {
+      final cached = await _readCache(locale);
+      if (cached != null) return HealthCatalog.fromJson(cached);
+    } catch (_) {
+      // Bozuk cache → gömülü asset'e düş (D26).
+    }
     final asset = await _readAsset(locale) ?? await _readAsset('tr');
     if (asset != null) return HealthCatalog.fromJson(asset);
     return HealthCatalog.empty;
