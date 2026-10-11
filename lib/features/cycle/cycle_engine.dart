@@ -145,10 +145,13 @@ CycleStatus computeStatus(
     final sinceBirth = birth == null ? null : _diffDays(now, birth);
     final hasLochia = entries.any((e) => e.lochiaColor != null);
     final inLochiaWindow = sinceBirth != null && sinceBirth >= 0 && sinceBirth <= 42;
-    if (inLochiaWindow || (hasLochia && (sinceBirth == null || sinceBirth <= 60))) {
+    // O24: loşia yalnız DOĞUM TARİHİ bilinirken (0–60 gün) — doğum girilmemiş
+    // kullanıcının yanlışlıkla seçtiği tek renk motoru süresiz kilitlemesin.
+    if (inLochiaWindow ||
+        (hasLochia && sinceBirth != null && sinceBirth >= 0 && sinceBirth <= 60)) {
       return CycleStatus(
         mode: CycleMode.lochia,
-        lochiaDay: sinceBirth ?? 0,
+        lochiaDay: sinceBirth,
         lochiaStart: birth,
       );
     }

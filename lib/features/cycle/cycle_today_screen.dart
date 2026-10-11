@@ -82,7 +82,7 @@ class _Today extends ConsumerWidget {
   void _record(BuildContext context, WidgetRef ref) => showCycleEntrySheet(
         context, ref,
         existing: _todayEntry,
-        lochiaMode: status.mode != CycleMode.active,
+        lochiaMode: status.mode == CycleMode.lochia, // O24
       );
 
   /// My Calendar hero-buton aksiyonu: adet ayarlama takvimini açar.

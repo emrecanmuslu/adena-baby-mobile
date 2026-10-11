@@ -286,7 +286,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
             showCycleEntrySheet(context, ref,
                 date: d,
                 existing: entry,
-                lochiaMode: status.mode != CycleMode.active);
+                lochiaMode: status.mode == CycleMode.lochia);
           } else {
             setState(() => _selected = d);
           }
@@ -469,7 +469,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       onTap: () => showCycleEntrySheet(context, ref,
           date: e.date,
           existing: e,
-          lochiaMode: status.mode != CycleMode.active),
+          lochiaMode: status.mode == CycleMode.lochia),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(12),
@@ -659,7 +659,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
                 onTap: () => showCycleEntrySheet(context, ref,
                     date: _selected,
                     existing: entry,
-                    lochiaMode: status.mode != CycleMode.active),
+                    lochiaMode: status.mode == CycleMode.lochia),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
