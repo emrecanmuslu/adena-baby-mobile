@@ -117,4 +117,21 @@ void main() {
     expect(patches, isEmpty);
     expect((await (db.select(db.cycleSettingsTable)).getSingle()).dirty, isFalse);
   });
+
+  test('I9: importFromCloud base yazar → import sonrası (çevrimdışı) tek alan değişikliği '
+      "PATCH'te yalnız o alan (baby yok)", () async {
+    adapter
+      ..onGet('/cycle/settings', (s) => s.reply(200, serverJson(baby: 'b1')))
+      ..onGet('/cycle/entries', (s) => s.reply(200, []));
+    await repo.importFromCloud();
+
+    await repo.patchSettings({'expected_cycle_length': 30}); // satır içi ağ yok
+    adapter.onPatch('/cycle/settings',
+        (s) => s.reply(200, serverJson(baby: 'b1', cycleLen: 30)),
+        data: Matchers.any);
+    await repo.syncIfCloud();
+
+    expect(patches, hasLength(1));
+    expect(patches.single, {'expected_cycle_length': 30});
+  });
 }

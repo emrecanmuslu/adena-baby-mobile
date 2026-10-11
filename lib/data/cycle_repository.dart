@@ -405,9 +405,10 @@ class CycleRepository {
       // gelen kurulum gibi — sunucunun (çoğu kez boş varsayılan) satırı onu ezmez.
       final local = await _settingsRow();
       if (local == null || !local.dirty) {
-        await _writeSettings(
-            CycleSettings.fromJson(resp.data as Map<String, dynamic>),
-            dirty: false);
+        // I9: base de yazılır → import sonrası ilk dirty PATCH yalnız değişen
+        // alanı taşır (M2); eskiden base NULL kalıp tam sözlük (baby dahil) gidiyordu.
+        final srv = CycleSettings.fromJson(resp.data as Map<String, dynamic>);
+        await _writeSettings(srv, dirty: false, base: _baseOf(srv));
       }
     } catch (_) {}
     await _pullEntries();
