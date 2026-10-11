@@ -124,8 +124,19 @@ class NotificationService {
   static const _kActivitySeq = 'notif_activity_seq_v1';
   static const activityIdRing = 50;
 
+  /// J7: `reload → oku → yaz` atomik değildir; FCM arka plan servisi isolate
+  /// açılırken kuyruktaki mesajları eşzamanlı sevk eder → iki çağrı aynı
+  /// sayacı okurdu. Isolate-içi Future zinciriyle serileştirilir (`sync` deseni).
   @visibleForTesting
-  Future<int> nextActivityId() async {
+  Future<int> nextActivityId() {
+    final run = _activityIdChain.then((_) => _nextActivityIdNow());
+    _activityIdChain = run.then((_) {}, onError: (_) {});
+    return run;
+  }
+
+  Future<void> _activityIdChain = Future.value();
+
+  Future<int> _nextActivityIdNow() async {
     try {
       final p = await SharedPreferences.getInstance();
       try {
