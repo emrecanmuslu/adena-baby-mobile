@@ -274,6 +274,10 @@ class SyncService with WidgetsBindingObserver {
         try {
           await repo.sync(b.id);
           await _syncMedicationPlans(b.id);
+          // K4/K-3: sağlık delta push her turda (ucuz, yalnız dirty varsa istek
+          // atar); pull yalnız tam turlarda (açılış/öne geliş/işaretleme) —
+          // 1 dk polling'e eklenmez.
+          await _syncHealth(b.id, pullToo: !sharedOnly);
           // Başarılı → geçici 403 işaretini kaldır (varsa). Artık restart gerekmez.
           _ref.read(cloudReadonlyBabiesProvider.notifier).remove(b.id);
         } on DioException catch (e) {
@@ -337,6 +341,19 @@ class SyncService with WidgetsBindingObserver {
   /// yönetimi: burada düşen bir istek (çevrimdışı, premium 403'ü) kayıt turunu
   /// başarısız saydırmaz, bebeği salt-okunur işaretlemez — plan yerelde kalır,
   /// sonraki turda yeniden denenir.
+  /// Sağlık durumu (aşı/gelişim/diş) delta push (+ pull). Push'un geçici
+  /// hatası (ağ/5xx/403) dışarı fırlar → çağıran bebek döngüsü ele alır.
+  Future<void> _syncHealth(String babyId, {required bool pullToo}) async {
+    final repo = _ref.read(healthRepositoryProvider);
+    await repo.pushDirty(babyId);
+    if (!pullToo) return;
+    if (await repo.pull(babyId)) {
+      _ref.invalidate(vaccinesProvider(babyId));
+      _ref.invalidate(milestonesProvider(babyId));
+      _ref.invalidate(teethProvider(babyId));
+    }
+  }
+
   Future<void> _syncMedicationPlans(String babyId) async {
     try {
       final r =

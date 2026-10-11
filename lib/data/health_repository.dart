@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -15,6 +17,7 @@ import '../models/vaccine.dart';
 import 'health_catalog.dart';
 import 'local/app_database.dart';
 import 'sync_gate.dart';
+import 'sync_merge.dart';
 
 /// Sağlık (aşı/gelişim/diş/hatırlatıcı) — **local-first**. Liste = içerik
 /// kataloğu (cache'li/asset) + bebeğe özel durum (Drift). Cloud yalnız premium'da
@@ -31,8 +34,11 @@ class HealthRepository {
   final bool Function(String babyId) _cloudEnabled;
   /// İlaç planı yerelde değişince çağrılır (senkron tetiklemek için; bkz. provider).
   final void Function(String babyId)? onPlansChanged;
+  /// Aşı/gelişim/diş işareti yerelde değişince çağrılır (K4/O21: ağ beklenmez,
+  /// senkron `requestSyncSoon` ile arka planda).
+  final void Function(String babyId)? onStatusChanged;
   HealthRepository(this._db, this._api, this._catalog, this._cloudEnabled,
-      {this.onPlansChanged});
+      {this.onPlansChanged, this.onStatusChanged});
 
   static const _uuid = Uuid();
 
@@ -52,8 +58,11 @@ class HealthRepository {
     return {for (final r in rows) r.itemKey: (done: r.done, date: r.statusDate)};
   }
 
+  /// [dirty] true = kullanıcı işareti (push bekler, pull ezmez — R1);
+  /// false = sunucudan gelen/onaylanan değer (`pushError` da temizlenir).
   Future<void> _writeStatus(
-      String babyId, String kind, String key, bool done, DateTime? date) async {
+      String babyId, String kind, String key, bool done, DateTime? date,
+      {required bool dirty}) async {
     await _db.into(_db.healthStatuses).insertOnConflictUpdate(
           HealthStatusesCompanion.insert(
             baby: babyId,
@@ -61,19 +70,27 @@ class HealthRepository {
             itemKey: key,
             done: Value(done),
             statusDate: Value(done ? date : null),
+            dirty: Value(dirty),
+            clientUpdatedAt: Value(dirty ? DateTime.now().toUtc() : null),
+            pushError: const Value(null),
           ),
         );
   }
 
+  /// Yerel yazım + dirty; AĞ BEKLENMEZ (O21). Bulut açıksa senkron tetiklenir
+  /// (`onStatusChanged` → `requestSyncSoon`), delta push `pushDirty` ile gider.
   Future<void> _setStatus(
       String babyId, String kind, String key, bool done, DateTime? date) async {
-    await _writeStatus(babyId, kind, key, done, date);
-    if (_cloudEnabled(babyId)) {
-      try {
-        await pushAll(babyId);
-      } catch (_) {/* çevrimdışı — yerel korunur */}
-    }
+    await _writeStatus(babyId, kind, key, done, date, dirty: true);
+    if (_cloudEnabled(babyId)) onStatusChanged?.call(babyId);
   }
+
+  /// Push'tan sonra yankı bekleyen aşı işaretleri: babyId → {itemKey: (done, damga)}.
+  /// O19 güvencesi: sunucu aşıyı ADLA eşler; dil uyuşmazlığında 2xx ama sessiz
+  /// no-op olur. `dirty=false` yalnız pull'da aynı ad + aynı değer yankılanınca
+  /// yazılır; yankı yoksa satır dirty kalır (R1 pull'dan korur, tik kaybolmaz).
+  final Map<String, Map<String, ({bool done, DateTime? date, DateTime? stamp})>>
+      _vaccineEcho = {};
 
   /// birth_date + ay → due_date (Python add_months ile birebir).
   DateTime _addMonths(DateTime d, int months) {
@@ -488,41 +505,178 @@ class HealthRepository {
     });
   }
 
-  /// Premium giriş/göçte bulutu yerele çeker (mevcut salt-okuma GET uçlarından).
-  /// Yereldeki işaretleri korur; yalnız buluttaki "yapıldı"ları ekler.
-  Future<void> importFromCloud(String babyId) async {
-    try {
-      final r = await _api.dio.get('/babies/$babyId/vaccines');
-      for (final e in (r.data as List? ?? const [])) {
-        final m = e as Map<String, dynamic>;
-        if (m['status'] == 'done') {
-          await _writeStatus(babyId, 'vaccine',
-              m['vaccine_name'] as String? ?? '', true, _parse(m['done_date']));
-        }
+  /// Delta push (K4, R7): yalnız `dirty=true` satırlar `/health/sync`'e gider;
+  /// backend yalnız gönderilen kalemleri günceller. 2xx → gelişim/diş satırları
+  /// damga değişmediyse temizlenir (R5); aşılar yankı bekler (`pull`, O19).
+  /// Kalıcı 4xx → `pushError` (R3), dirty kalır, fırlatmaz. Geçici hata (ağ/5xx/
+  /// 401/403) → fırlatır (syncAll 403'ü salt-okunur kapısına, diğerini hadError'a
+  /// düşürür), dirty kalır.
+  Future<void> pushDirty(String babyId) async {
+    final rows = await (_db.select(_db.healthStatuses)
+          ..where((s) => s.baby.equals(babyId) & s.dirty.equals(true)))
+        .get();
+    if (rows.isEmpty) return;
+    final cat = await _catalog();
+    String vaccineName(String key) {
+      for (final v in cat.vaccines) {
+        if (v.key == key) return v.name;
       }
-    } catch (_) {}
+      return key; // katalogta yok (dil değişti) → ad olarak gönder, yankı bekler
+    }
+
     try {
-      final r = await _api.dio.get('/babies/$babyId/milestones');
-      for (final e in (r.data as List? ?? const [])) {
-        final m = e as Map<String, dynamic>;
-        if (m['achieved'] == true) {
-          await _writeStatus(babyId, 'milestone', m['key'] as String? ?? '', true,
-              _parse(m['achieved_date']));
+      await _api.dio.post('/babies/$babyId/health/sync', data: {
+        'vaccines': [
+          for (final r in rows.where((r) => r.kind == 'vaccine'))
+            {
+              'name': vaccineName(r.itemKey),
+              'done': r.done,
+              'done_date': _d(r.statusDate)
+            }
+        ],
+        'milestones': [
+          for (final r in rows.where((r) => r.kind == 'milestone'))
+            {'key': r.itemKey, 'achieved': r.done, 'achieved_date': _d(r.statusDate)}
+        ],
+        'teeth': [
+          for (final r in rows.where((r) => r.kind == 'tooth'))
+            {'key': r.itemKey, 'erupted': r.done, 'erupted_date': _d(r.statusDate)}
+        ],
+      });
+    } on DioException catch (e) {
+      if (classifyDioError(e) == PushFailure.permanent) {
+        final code = 'HTTP ${e.response?.statusCode}';
+        for (final r in rows) {
+          await _setPushError(babyId, r.kind, r.itemKey, code);
         }
+        return;
       }
-    } catch (_) {}
-    try {
-      final r = await _api.dio.get('/babies/$babyId/teeth');
-      for (final e in (r.data as List? ?? const [])) {
-        final m = e as Map<String, dynamic>;
-        if (m['erupted'] == true) {
-          await _writeStatus(babyId, 'tooth', m['key'] as String? ?? '', true,
-              _parse(m['erupted_date']));
-        }
+      rethrow;
+    }
+    final echo = _vaccineEcho.putIfAbsent(babyId, () => {});
+    for (final r in rows) {
+      if (r.kind == 'vaccine') {
+        echo[r.itemKey] =
+            (done: r.done, date: r.statusDate, stamp: r.clientUpdatedAt);
+        continue;
       }
-    } catch (_) {}
-    // Hatırlatıcılar KİŞİSEL (karar 2026-07-07) → buluttan içeri alınmaz.
+      await _clearDirtyIfUnchanged(
+          babyId, r.kind, r.itemKey, r.clientUpdatedAt, r.done, r.statusDate);
+    }
   }
+
+  Future<void> _setPushError(
+      String babyId, String kind, String key, String? err) async {
+    await (_db.update(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+        .write(HealthStatusesCompanion(pushError: Value(err)));
+  }
+
+  /// R5: gönderim sırasında satır yeniden değiştiyse dirty kalır. Damga saniye
+  /// çözünürlüklü saklandığından (drift DateTime = unix saniye) değer de
+  /// karşılaştırılır: aynı saniyede geri alınan işaret temizlenmez.
+  Future<void> _clearDirtyIfUnchanged(String babyId, String kind, String key,
+      DateTime? sentStamp, bool sentDone, DateTime? sentDate) async {
+    final cur = await (_db.select(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+        .getSingleOrNull();
+    if (cur == null ||
+        cur.clientUpdatedAt != sentStamp ||
+        cur.done != sentDone ||
+        cur.statusDate != sentDate) {
+      return;
+    }
+    await (_db.update(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+        .write(const HealthStatusesCompanion(
+            dirty: Value(false), pushError: Value(null)));
+  }
+
+  /// Pull (K-3 tetikleri; R1 tam uygulanır — işaret KALDIRMA da yayılır):
+  /// mevcut GET uçlarından üç liste; her sunucu kalemi için yerel satır dirty
+  /// ise dokunulmaz, temiz/yoksa sunucu değeri yazılır. Sunucuda olmayan yerel
+  /// satır silinmez (katalog × durum; R4 uygulanmaz). Yalnız 200 + List ve boş
+  /// olmayan liste uygulanır (K-2 ruhu). Aşı yankısı burada çözülür (O19).
+  /// Döner: yerelde bir şey değişti mi (çağıran provider'ları invalidate eder).
+  Future<bool> pull(String babyId) async {
+    var changed = false;
+    final echo = _vaccineEcho[babyId] ??
+        const <String, ({bool done, DateTime? date, DateTime? stamp})>{};
+    Future<void> apply(String kind, String key, bool done, DateTime? date) async {
+      final cur = await (_db.select(_db.healthStatuses)
+            ..where((s) =>
+                s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+          .getSingleOrNull();
+      if (cur != null && cur.dirty) {
+        // Yankı: push ettiğimiz aşı sunucuda aynı değerle görünüyorsa onaylandı.
+        final e = kind == 'vaccine' ? echo[key] : null;
+        if (e != null && e.done == done) {
+          await _clearDirtyIfUnchanged(babyId, kind, key, e.stamp, e.done, e.date);
+        }
+        return; // R1: dirty satır ezilmez
+      }
+      if (cur != null && cur.done == done && cur.statusDate == (done ? date : null)) {
+        return;
+      }
+      await _writeStatus(babyId, kind, key, done, date, dirty: false);
+      changed = true;
+    }
+
+    Future<List<Map<String, dynamic>>?> fetch(String path) async {
+      try {
+        final r = await _api.dio.get('/babies/$babyId/$path');
+        if (r.statusCode != 200 || r.data is! List) return null;
+        final list = (r.data as List)
+            .whereType<Map>()
+            .map((m) => m.cast<String, dynamic>())
+            .toList();
+        return list.isEmpty ? null : list;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final vac = await fetch('vaccines');
+    if (vac != null) {
+      for (final m in vac) {
+        final name = m['vaccine_name'] as String? ?? '';
+        if (name.isEmpty) continue;
+        await apply('vaccine', name, m['status'] == 'done', _parse(m['done_date']));
+      }
+      // Yankılanmayan aşılar dirty kalır (dil uyuşmazlığı); bir kez logla.
+      final missing =
+          echo.keys.where((k) => !vac.any((m) => m['vaccine_name'] == k)).toList();
+      if (missing.isNotEmpty) {
+        debugPrint(
+            '[health-pull] aşı yankısı yok (dil uyuşmazlığı?): ${missing.join(', ')}');
+      }
+    }
+    _vaccineEcho.remove(babyId);
+    final mil = await fetch('milestones');
+    if (mil != null) {
+      for (final m in mil) {
+        final key = m['key'] as String? ?? '';
+        if (key.isEmpty) continue;
+        await apply('milestone', key, m['achieved'] == true, _parse(m['achieved_date']));
+      }
+    }
+    final tee = await fetch('teeth');
+    if (tee != null) {
+      for (final m in tee) {
+        final key = m['key'] as String? ?? '';
+        if (key.isEmpty) continue;
+        await apply('tooth', key, m['erupted'] == true, _parse(m['erupted_date']));
+      }
+    }
+    // Hatırlatıcılar KİŞİSEL (karar 2026-07-07) → buluttan içeri alınmaz.
+    return changed;
+  }
+
+  /// Geriye uyumlu ad (ilk import / göç): artık R1 ile tam pull.
+  Future<void> importFromCloud(String babyId) => pull(babyId);
 
   Future<void> purgeBaby(String babyId) async {
     await (_db.delete(_db.healthStatuses)..where((s) => s.baby.equals(babyId))).go();
@@ -539,6 +693,8 @@ final healthRepositoryProvider = Provider<HealthRepository>(
     (babyId) => ref.read(babyCloudSyncedProvider(babyId)),
     // Plan değişti → aile senkronunu (debounce'lu) tetikle; planlar syncAll içinde gider.
     onPlansChanged: (_) => ref.read(syncServiceProvider).requestSyncSoon(),
+    // İşaret değişti (K4/O21) → aynı yol; delta push + pull syncAll'da.
+    onStatusChanged: (_) => ref.read(syncServiceProvider).requestSyncSoon(),
   ),
 );
 
