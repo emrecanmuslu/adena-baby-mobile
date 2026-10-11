@@ -12,7 +12,7 @@ import '../drift/generated/schema.dart';
 /// gelişim/dişte done→dirty; O4: yalnız sahip satırında dolu ayar → settingsDirty),
 /// eski kolonların korunması, pushError NULL.
 ///
-/// v14 anlık görüntüsü: `drift_schemas/drift_schema_v14.json` (90df7b7'deki
+/// v14 anlık görüntüsü: `test/drift/schemas/drift_schema_v14.json` (90df7b7'deki
 /// şemadan dump), yardımcılar `test/drift/generated/` (drift_dev schema generate).
 void main() {
   late SchemaVerifier verifier;
