@@ -16,6 +16,7 @@ import '../../data/slot_registry.dart';
 import '../../data/social_auth_service.dart';
 import '../../data/subscription_cache.dart';
 import '../../models/user.dart';
+import '../records/record_controller.dart' show SyncService;
 
 /// Oturum durumu. State == null → çıkış yapılmış, User → oturum açık.
 /// build() açılışta token varsa /auth/me ile kullanıcıyı doğrular.
@@ -265,9 +266,15 @@ class AuthController extends AsyncNotifier<User?> {
     // (drift satırları + foto dosyaları); başka hesap/misafir verisi kalır.
     // Başarısız olsaydı buraya gelinmez, yerelde hiçbir şey silinmezdi.
     final acct = LocalSession.activeAccountId;
+    // I8/I16: ÖNCE kapsam + state kapanır (router doğrudan login'e; bebek akışı
+    // boşalınca onboarding'e uğramaz, bulut işlemleri loggedIn=false ile durur),
+    // SONRA yerel silme `whileWiping` içinde (süren tur satır geri eklemesin).
+    LocalSession.setActiveAccount(null);
+    if (ref.mounted) state = const AsyncData(null);
     if (acct != null) {
       try {
-        final wiped = await ref.read(databaseProvider).wipeAccountData(acct);
+        final wiped = await SyncService.whileWiping(
+            () => ref.read(databaseProvider).wipeAccountData(acct));
         for (final path in wiped.photoPaths) {
           try {
             final f = File(path);
@@ -285,8 +292,7 @@ class AuthController extends AsyncNotifier<User?> {
     await RevenueCatService.instance.logoutUser();
     await SubscriptionCache().clear();
     await LocalSession.clearCachedAuthUser();
-    LocalSession.setActiveAccount(null);
-    state = const AsyncData(null);
+    if (ref.mounted) state = const AsyncData(null);
   }
 
   Future<void> logout() async {

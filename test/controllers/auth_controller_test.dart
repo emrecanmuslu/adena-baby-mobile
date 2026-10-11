@@ -20,6 +20,7 @@ import 'package:adena_baby/data/initial_import.dart';
 import 'package:adena_baby/data/local_session.dart';
 import 'package:adena_baby/data/social_auth_service.dart';
 import 'package:adena_baby/features/auth/auth_controller.dart';
+import 'package:adena_baby/features/records/record_controller.dart' show SyncService;
 import 'package:adena_baby/models/user.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
@@ -73,6 +74,21 @@ User _user({String id = 'u1', bool consentRequired = false}) => User(
       name: 'Ada',
       consentRequired: consentRequired,
     );
+
+/// I8/I16: wipe anındaki durumu gözlemleyen DB.
+class _SpyDb extends AppDatabase {
+  _SpyDb() : super(NativeDatabase.memory());
+  ({bool wiping, bool stateNull, String? acct}) Function()? onWipe;
+  ({bool wiping, bool stateNull, String? acct})? seen;
+  String? wipedAccount;
+  @override
+  Future<({List<String> babyIds, List<String> photoPaths})> wipeAccountData(
+      String accountId) async {
+    wipedAccount = accountId;
+    seen = onWipe?.call();
+    return super.wipeAccountData(accountId);
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -365,6 +381,36 @@ void main() {
 
       verify(() => repo.deleteAccount()).called(1);
       expect(c.read(authControllerProvider).value, isNull);
+    });
+
+    test('I8/I16: yerel silme whileWiping içinde ve state/kapsam ÖNCE kapanır', () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd3'));
+      when(() => repo.deleteAccount()).thenAnswer((_) async {});
+      final db = _SpyDb();
+      addTearDown(db.close);
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        databaseProvider.overrideWithValue(db),
+      ]);
+      addTearDown(c.dispose);
+      await c.read(authControllerProvider.future);
+      expect(LocalSession.activeAccountId, 'd3');
+      db.onWipe = () => (
+            wiping: SyncService.wiping,
+            stateNull: c.read(authControllerProvider).value == null,
+            acct: LocalSession.activeAccountId,
+          );
+
+      await c.read(authControllerProvider.notifier).deleteAccount();
+
+      expect(db.wipedAccount, 'd3', reason: 'silinen hesap kapsamı');
+      expect(db.seen!.wiping, isTrue, reason: 'süren tur satır geri eklemesin');
+      expect(db.seen!.stateNull, isTrue, reason: "router önce login'e; onboarding'e uğramaz");
+      expect(db.seen!.acct, isNull, reason: "kapsam wipe'tan önce kapanır");
+      expect(SyncService.wiping, isFalse, reason: 'bayrak sıfırlanır');
     });
 
     test('O10: ağ isteği düşerse yerel yan etkiler (slot haritası, abonelik önbelleği) dokunulmaz, oturum kalır',
