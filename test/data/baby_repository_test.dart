@@ -167,15 +167,21 @@ void main() {
   });
 
   group('familySettings (yerel JSON)', () {
-    test('updateFamilySettings birleştirir ve dirty açar', () async {
+    test('updateFamilySettings birleştirir ve settingsDirty açar (profil dirty DEĞİL — O4/R6)',
+        () async {
       await repo.create(baby('b1', 'X'));
+      // create → dirty=true; profil push edilmiş gibi temizle ki ayar değişimi
+      // profil dirty'sini AÇMADIĞI görülsün.
+      await (db.update(db.babies)..where((b) => b.id.equals('b1')))
+          .write(const BabiesCompanion(dirty: Value(false)));
       await repo.updateFamilySettings('b1', {'units': 'metric'});
       final merged = await repo.updateFamilySettings('b1', {'theme': 'dark'});
       expect(merged, {'units': 'metric', 'theme': 'dark'});
 
       final row = await rawRow('b1');
       expect(jsonDecode(row!.settings), {'units': 'metric', 'theme': 'dark'});
-      expect(row.dirty, isTrue);
+      expect(row.settingsDirty, isTrue);
+      expect(row.dirty, isFalse, reason: 'ayar profili dirty yapmaz (R6)');
     });
   });
 
@@ -206,7 +212,8 @@ void main() {
       expect(row!.dirty, isFalse); // başarılı push → temiz
     });
 
-    test('settings varsa PATCH /babies/{id}/settings gönderir', () async {
+    test('profil push\'u ayar PATCH\'i İÇERMEZ; ayar pushSettings ile ayrı gider (O4/R6)',
+        () async {
       await repo.create(baby('b1', 'X'));
       await repo.updateFamilySettings('b1', {'units': 'metric'});
 
@@ -220,10 +227,12 @@ void main() {
         h.next(o);
       }));
       adapter.onPost('/babies', (s) => s.reply(200, {}), data: Matchers.any);
-      adapter.onPatch('/babies/b1/settings', (s) => s.reply(200, {}),
+      adapter.onPatch('/babies/b1/settings', (s) => s.reply(200, {'units': 'metric'}),
           data: Matchers.any);
 
       await repo.pushDirty();
+      expect(patched, isFalse, reason: 'profil push\'u ayarı taşımaz');
+      await repo.pushSettings();
       expect(patched, isTrue);
       expect(patchBody, {'units': 'metric'});
     });

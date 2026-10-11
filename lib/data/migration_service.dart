@@ -147,7 +147,10 @@ class MigrationController extends Notifier<MigrationState> {
       state = state.withStep(key, StepStatus.done);
     }
 
-    await step('babies', () => babyRepo.pushDirty());
+    await step('babies', () async {
+      await babyRepo.pushDirty();
+      await babyRepo.pushSettings(); // O4: ayar ayrı bayrakla
+    });
     await step('records', () async {
       for (final b in babies) {
         await ref.read(recordRepositoryProvider).sync(b.id);

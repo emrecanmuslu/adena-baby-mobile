@@ -208,6 +208,9 @@ class BabyRepository {
     }
   }
 
+  /// O4/R6: aile ayarı bebek profilinden AYRI bayrak (`settingsDirty`) taşır;
+  /// profil `dirty` açılmaz (profil push'u ayar PATCH'i içermez). Değişen alan
+  /// `settingsBase` (sunucunun son onayladığı JSON) ile diff'lenir (K-5).
   Future<Map<String, dynamic>> updateFamilySettings(
       String babyId, Map<String, dynamic> fields) async {
     await _requireFullWrite(babyId);
@@ -216,11 +219,137 @@ class BabyRepository {
     await (_db.update(_db.babies)..where((b) => b.id.equals(babyId))).write(
       BabiesCompanion(
         settings: Value(jsonEncode(current)),
-        clientUpdatedAt: Value(DateTime.now().toUtc()),
-        dirty: const Value(true),
+        settingsDirty: const Value(true),
       ),
     );
     return current;
+  }
+
+  // ---- Aile ayarı senkronu (O4; TASARIM-SENKRON.md §5C) ----
+
+  static Map<String, dynamic> _decodeMap(String? json) {
+    if (json == null) return <String, dynamic>{};
+    try {
+      final v = jsonDecode(json);
+      return v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  /// Anahtar sırası bağımsız kanonik JSON (sunucu/yerel sözlük eşitliği için).
+  static String _canon(dynamic v) {
+    if (v is Map) {
+      final keys = v.keys.map((k) => k.toString()).toList()..sort();
+      return '{${keys.map((k) => '${jsonEncode(k)}:${_canon(v[k])}').join(',')}}';
+    }
+    if (v is List) return '[${v.map(_canon).join(',')}]';
+    return jsonEncode(v);
+  }
+
+  /// Yerelde değişmiş üst-düzey anahtarlar (K-5): `local[k] != base[k]`.
+  /// `base` yoksa (ilk kez / migration) yerelde olan her anahtar değişmiş sayılır.
+  static List<String> changedSettingsKeys(
+      Map<String, dynamic> local, Map<String, dynamic>? base) {
+    return [
+      for (final k in local.keys)
+        if (base == null || _canon(local[k]) != _canon(base[k])) k
+    ];
+  }
+
+  /// `settingsDirty` bebeklerin ayarını PATCH'ler — YALNIZ değişen anahtarlar
+  /// (K-5). Rol filtresi `pushDirty` ile aynı (owner/null + parent; caregiver
+  /// asla). 2xx → yerel = base = sunucu yanıtı, `settingsDirty=false` (R5: PATCH
+  /// sırasında yerel yeniden değiştiyse dirty kalır, yalnız base güncellenir).
+  /// Kalıcı 4xx → `pushError` (R3); geçici → dirty kalır, sessiz.
+  Future<void> pushSettings({String? accountId, bool includeOwned = true}) async {
+    final acct = accountId ?? LocalSession.activeAccountId;
+    if (acct == null) return;
+    final ownerCond = _db.babies.myRole.equals('owner') | _db.babies.myRole.isNull();
+    final roleCond = includeOwned
+        ? (ownerCond | _db.babies.myRole.equals('parent'))
+        : _db.babies.myRole.equals('parent');
+    final rows = await (_db.select(_db.babies)
+          ..where((b) =>
+              b.settingsDirty.equals(true) &
+              b.isDeleted.equals(false) &
+              b.accountId.equals(acct) &
+              roleCond))
+        .get();
+    for (final r in rows) {
+      final local = _decodeMap(r.settings);
+      final base = r.settingsBase == null ? null : _decodeMap(r.settingsBase);
+      final changed = changedSettingsKeys(local, base);
+      if (changed.isEmpty) {
+        await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
+            .write(const BabiesCompanion(settingsDirty: Value(false)));
+        continue;
+      }
+      try {
+        final resp = await _api.dio.patch('/babies/${r.id}/settings',
+            data: {for (final k in changed) k: local[k]});
+        final server = resp.data is Map
+            ? Map<String, dynamic>.from(resp.data as Map)
+            : local;
+        final cur = await _byIdRow(r.id);
+        final unchangedMeanwhile = cur != null && cur.settings == r.settings;
+        await (_db.update(_db.babies)..where((x) => x.id.equals(r.id))).write(
+          BabiesCompanion(
+            settingsBase: Value(jsonEncode(server)),
+            settings: unchangedMeanwhile
+                ? Value(jsonEncode(server))
+                : const Value.absent(),
+            settingsDirty: Value(!unchangedMeanwhile),
+            pushError: const Value(null),
+          ),
+        );
+      } on DioException catch (e) {
+        if (classifyDioError(e) == PushFailure.permanent) {
+          await (_db.update(_db.babies)..where((x) => x.id.equals(r.id))).write(
+              BabiesCompanion(pushError: Value('HTTP ${e.response?.statusCode}')));
+        }
+        // geçici (ağ/5xx/401/403) → settingsDirty kalır, sonraki tur.
+      } catch (_) {}
+    }
+  }
+
+  /// `GET /babies/{id}/settings` → yerele uygular (O4). Çağıran YALNIZ bulut
+  /// senkronlu bebekler için çağırmalı (free sahibin yerel ayarını sunucu
+  /// varsayılanı ezmesin). Temiz satır: yerel = base = sunucu. `settingsDirty`
+  /// satır: yalnız DEĞİŞMEMİŞ anahtarlar (`local[k] == base[k]`) sunucudan
+  /// güncellenir, değişmişler korunur (R1); base = sunucu. Yalnız 200 + Map.
+  /// Döner: yerel ayar değişti mi.
+  Future<bool> pullSettings(String babyId) async {
+    final r = await _byIdRow(babyId);
+    if (r == null || r.isDeleted) return false;
+    final Map<String, dynamic> server;
+    try {
+      final resp = await _api.dio.get('/babies/$babyId/settings');
+      if (resp.statusCode != 200 || resp.data is! Map) return false;
+      server = Map<String, dynamic>.from(resp.data as Map);
+    } catch (_) {
+      return false;
+    }
+    final local = _decodeMap(r.settings);
+    Map<String, dynamic> next;
+    if (!r.settingsDirty) {
+      next = server;
+    } else {
+      final base = r.settingsBase == null ? null : _decodeMap(r.settingsBase);
+      final changed = changedSettingsKeys(local, base).toSet();
+      next = Map<String, dynamic>.from(server);
+      for (final k in changed) {
+        next[k] = local[k]; // yerel değişiklik korunur
+      }
+    }
+    final changedLocally = _canon(next) != _canon(local);
+    await (_db.update(_db.babies)..where((x) => x.id.equals(babyId))).write(
+      BabiesCompanion(
+        settings: changedLocally ? Value(jsonEncode(next)) : const Value.absent(),
+        settingsBase: Value(jsonEncode(server)),
+      ),
+    );
+    return changedLocally;
   }
 
   // ---- Cloud senkron (premium) ----
@@ -346,6 +475,14 @@ class BabyRepository {
               b.accountId.equals(acct) &
               (b.myRole.equals('owner') | b.myRole.isNull())))
         .write(const BabiesCompanion(dirty: Value(true)));
+    // Dolu yerel ayar da ilk yüklemede gitsin (O4; pushSettings tam sözlük
+    // PATCH'ler çünkü base yok).
+    await (_db.update(_db.babies)
+          ..where((b) =>
+              b.accountId.equals(acct) &
+              (b.myRole.equals('owner') | b.myRole.isNull()) &
+              b.settings.equals('{}').not()))
+        .write(const BabiesCompanion(settingsDirty: Value(true)));
   }
 
   /// Yerel dirty bebekleri sunucuya gönderir (premium push). Migrasyon/edit sonrası.
@@ -394,10 +531,7 @@ class BabyRepository {
           final resp = isOwner
               ? await _api.dio.post('/babies', data: body)
               : await _api.dio.patch('/babies/${b.id}', data: body);
-          final settings = await familySettings(b.id);
-          if (settings.isNotEmpty) {
-            await _api.dio.patch('/babies/${b.id}/settings', data: settings);
-          }
+          // Aile ayarı artık ayrı bayrakla, ayrı turda gider (pushSettings, O4/R6).
           if (needsPhotoUpload) {
             // Sunucudan dönen imzalı foto URL'ini yerele yaz (yeniden yüklenmesin).
             final srvPhoto = (resp.data as Map<String, dynamic>)['photo'] as String?;

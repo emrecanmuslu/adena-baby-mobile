@@ -15,6 +15,7 @@ import '../../data/record_repository.dart';
 import '../../data/sync_gate.dart';
 import '../../models/baby.dart';
 import '../auth/auth_controller.dart';
+import 'family_settings.dart';
 
 const _uuid = Uuid();
 
@@ -117,9 +118,19 @@ class BabyController extends AsyncNotifier<List<Baby>> {
       // free'de kendi verim telefonda kalır); paylaşımlı (parent) bebeğin profil/foto
       // değişikliği ise sahibin bulutuna bağlı → oturum yeterli, premium'um şart değil.
       // pullFromServer her oturumda koşar → paylaşılan bebek profilini/üyeliği tazeler.
-      await _repo.pushDirty(
-          accountId: acct, includeOwned: ref.read(cloudSyncEnabledProvider));
+      final includeOwned = ref.read(cloudSyncEnabledProvider);
+      await _repo.pushDirty(accountId: acct, includeOwned: includeOwned);
+      // O4: ayar önce PUSH (yerel dirty sunucuya), sonra PULL (yeni cihaz/üye
+      // sahibin ayarını görür). Yalnız bulut-uygun bebekler çekilir — free
+      // sahibin yerel ayarını sunucu varsayılanı ezmesin.
+      await _repo.pushSettings(accountId: acct, includeOwned: includeOwned);
       removed = await _repo.pullFromServer(accountId: acct);
+      for (final b in await _repo.getAll(accountId: acct)) {
+        if (!ref.read(babyCloudEligibleProvider(b.id))) continue;
+        if (await _repo.pullSettings(b.id)) {
+          ref.invalidate(familySettingsProvider(b.id));
+        }
+      }
     } catch (_) {
       return; // çevrimdışı/hata → yerel korunur
     }
