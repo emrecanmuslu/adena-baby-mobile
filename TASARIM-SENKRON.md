@@ -150,6 +150,14 @@ Commit 3b (K2 ek): paylaşılan temiz bebek listeden düşünce silinmeden önce
 | K9 (`e6edcd5`) | `runningInBackgroundProvider`; bg'de `/auth/me` tazeleme + ilk import, RC identify, exitGuest başlamaz; bg girişlerinde zaman aşımlı `ensureLoaded` | |
 | O36 (`00ebb90`) | `runBackgroundSyncWith` (bebekler yerel repo'dan, BabyController/subscription kurulmaz), dispose en sonda, zaman aşımı damgası; Android 4 dk / iOS 25 sn / FCM 20 sn | 403'te purge/salt-okunur yazımı yok |
 
+### Bu sürüm — 5. aşama (auth)
+
+| # | Commit | Kapsam |
+|---|---|---|
+| O2 (`e2bc85c`) | refresh Dio'suna 8/10 sn zaman aşımı; `RefreshResult {ok, rejected, transient}`; geçici hata → bekleyen istekler AĞ hatasıyla (`refresh_transient`) düşer, token korunur; tek-uçuş kilidi `finally` ile serbest | |
+| O34 (`6c9581e`) | `AuthController._epoch`: `logout`/`deleteAccount`/`sessionExpired` kuşağı artırır; `_refreshInBackground`/`_postLogin`/`recordConsent`/`updateName` geç yanıtı yalnız kuşak aynıysa uygular | |
+| O1 (`177018a`) | `SessionEndReason` yalnız gövde `code` ile (`session_superseded`/`token_not_valid`/diğer→unknown); `ApiClient.onSessionRejected` + prefs `auth_session_end_reason`; `sessionExpired` (token/abonelik/önbellek/kapsam temiz + FCM `deleteToken` + RC logOut; yerel veri/hatırlatıcı/SlotRegistry/cihaz kaydı dokunulmaz); `verifySession` öne gelişte; bg `'oturum yok'`; giriş banner'ı tek seferlik | backend #8 gelene dek superseded kodsuz → "Oturumun sonlandırıldı" genel metni; #9 gelene dek sunucu tarafında eski cihaz kaydı kalır (deleteToken ile push düşmez) |
+
 ### Sonraki sürüm (şema v15; commit 7-8)
 
 | # | Commit | Kapsam | Risk | Testler |

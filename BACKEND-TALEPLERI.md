@@ -1,6 +1,6 @@
 # Backend talepleri — senkron tutarlılığı
 
-Kaynak: `BULGULAR.md` (mobil kod denetimi, 2026-10-11) ve `TASARIM-SENKRON.md`. Mobil tarafta istemciyle çözülebilenler ayrıca yapılıyor; aşağıdakiler backend değişikliği gerektiriyor. Mevcut davranış `../api/apps/*` kaynağından okunarak yazıldı.
+Kaynak: `BULGULAR.md` (mobil kod denetimi, 2026-10-11; #8-#9 auth, 5. aşama) ve `TASARIM-SENKRON.md`. Mobil tarafta istemciyle çözülebilenler ayrıca yapılıyor; aşağıdakiler backend değişikliği gerektiriyor. Mevcut davranış `../api/apps/*` kaynağından okunarak yazıldı.
 
 | # | Başlık | Neden (bulgu) | Önerilen değişiklik | Öncelik |
 |---|---|---|---|---|
@@ -11,6 +11,8 @@ Kaynak: `BULGULAR.md` (mobil kod denetimi, 2026-10-11) ve `TASARIM-SENKRON.md`. 
 | 5 | Anı listesinde tombstone / `include_deleted` | O5: `GET /babies/{id}/memories` `is_deleted=False` filtreliyor; başka üyenin sildiği anı diğer cihazlardan hiç silinemiyor. İstemci geçici olarak "listede yok + yerel temiz → sil" kuralıyla çözecek, ama bu kural boş/kısmi yanıtta riskli. | `?include_deleted=1` (yanıta `is_deleted`, `deleted_at`) **veya** `?since=<updated_at>` ile delta (tombstone dahil). | Orta |
 | 6 | Anne kaydına `updated_at` | O5: `MomEntry` modelinde `updated_at` yok, serializer döndürmüyor; istemci iki cihazın aynı kaydı düzenlemesinde son-yazan-kazanır uygulayamıyor. Sunucu hard delete yaptığından tombstone da yok. | Modele `updated_at` (auto_now), serializer'a ekle; tercihen soft-delete (`SyncModel`'e geçiş) + #5'teki gibi `include_deleted`. | Düşük |
 | 7 | Records `/sync` batch sınırı | O9: istemci tüm dirty kayıtları tek POST'ta gönderiyor; büyük göçte 20 sn timeout → sonsuz başarısız tur. İstemci sayfalayacak, ama sunucu da üst sınır koymalı. | `changes` için `max_items` (ör. 500) ve aşımda `413` + `{"error":"too_many_changes","max":500}`; istemci sayfalar. | Orta |
+| 8 | Oturum düşürme yanıtında makine-okunur kod | O1: `apps/accounts/session.py` `AuthenticationFailed(..., code="session_superseded")` fırlatıyor ama DRF gövdeye yalnız `detail` (dil bağımlı metin) yazıyor; istemci "başka cihazdan giriş" ile "süre doldu"yu ayıramıyor (metin eşlemesi bilerek yapılmıyor). simplejwt reddi `code: "token_not_valid"` gönderiyor, aynı şekil istenir. | 401 gövdesine `"code": "session_superseded"` ekle (özel exception handler ya da `{"detail": ..., "code": exc.get_codes()}`); `/auth/refresh` ve korumalı uçlarda aynı. İstemci bu kodla "Hesabına başka bir cihazdan giriş yapıldı" banner'ını gösterir; kod gelmezse genel "Oturumun sonlandırıldı" metni. | Orta |
+| 9 | Oturum düşürülünce eski cihaz kaydını kapat | O1: yeni cihaz girişi eski oturumu düşürür ama eski cihazın `/me/devices` (FCM) kaydı sunucuda kalır → aile push'ları düşürülmüş cihaza gitmeye devam eder. İstemci yetkisi olmadığından `DELETE /me/devices` atamıyor; şimdilik `deleteToken` ile token'ı geçersizleştiriyor (geçersiz token sunucuda hata/temizlik üretir). | Supersede anında eski session'a bağlı cihaz kayıtlarını sil/pasifle (session ↔ device ilişkisi yoksa: login'de `device_id` al, supersede'de o cihaz dışındakileri temizle). | Orta |
 
 Not (karar K-8, backend işi değil): `PATCH /cycle/settings {"baby": null}` mevcut `CycleSettingsSerializer` tarafından kabul ediliyor (`baby` `null=True`); istemci tarafı düzeltilecek.
 

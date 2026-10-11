@@ -65,6 +65,9 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 | O35 | `91e8b14` | bayraklar diskle birleşir |
 | K9 | `e6edcd5` | bg'de yan işler başlamaz |
 | O36 | `00ebb90` | bg turu dispose en sonda, zaman aşımı |
+| O2 | `e2bc85c` | refresh zaman aşımı; geçici hata ağ hatası |
+| O34 | `6c9581e` | auth kuşağı (epoch) |
+| O1 | `177018a` | zorunlu çıkış + neden banner'ı + bg 'oturum yok' |
 
 Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 
@@ -148,6 +151,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Refresh token'ın süresi dolması / sunucunun oturumu düşürmesi (tek-cihaz-oturum özelliği: başka cihazdan giriş!).
 - **Etki:** Başka cihazdan giriş yapılan ilk cihazda saatlerce "senkron sorunu", bulut verisi gelmez; neden görünmez.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`177018a`, 2026-10-11):** `lib/core/session_end.dart` — `SessionEndReason` yalnız yanıt gövdesindeki `code`'dan (`session_superseded` → superseded, `token_not_valid` → expired, diğer her 401/400 → unknown; `detail` metni eşlenmez). `ApiClient._refresh` reddinde (ve refresh token yokken) `tokens.clear` → prefs `auth_session_end_reason` → `onSessionRejected` kancası; geçici hatada kanca yok. `AuthController.build` kancayı ön planda atar (oturum yokken de — login rebuild yapmaz), `onDispose` hâlâ kendisininse sıfırlar. `sessionExpired(reason)`: epoch++, token/abonelik önbelleği/önbellekli kullanıcı/kapsam temiz, `FirebaseMessaging.deleteToken` (aile push'u bu cihaza gelmesin), RC logOut, provider + state null; kullanıcı çıkışından farklı olarak yerel veri, hatırlatıcılar, SlotRegistry ve sunucu cihaz kaydı dokunulmaz (yetki yok). `verifySession` (`main._onForeground`): state User ama token yok (bg isolate düşürdü) → prefs nedeniyle çıkış. Bg turu 401'de `'oturum yok'` damgası. Giriş ekranı nedeni bir kez banner olarak gösterir (provider, yoksa prefs) ve temizler; başarılı giriş/çıkış da temizler. Backend talebi #8/#9.
 
 #### O2. Refresh isteği için zaman aşımı yok; tek-uçuş kilidi nedeniyle tüm 401'ler askıda kalır
 - **Dosya:** `lib/core/api_client.dart:24-25` (`Dio(BaseOptions(baseUrl: …))` — connect/receiveTimeout yok), `:61-73`
@@ -155,6 +159,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Token süresi dolmuşken bağlı-ama-internetsiz ağ.
 - **Etki:** Açılış turu (babies/sync/me) ve "Kaydet" bekleyişi dakikalarca takılabilir.
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`e2bc85c`, 2026-10-11):** refresh Dio'su `connectTimeout 8 sn / receiveTimeout 10 sn` (toplam 18 sn < FCM 20 sn bütçesi). `_refresh` → `RefreshResult {ok, rejected, transient}`; geçici (ağ/zaman aşımı/5xx/parse) sonuçta bekleyen istekler artık orijinal 401 değil `refresh_transient` işaretli AĞ hatasıyla düşer (token korunur, O1 yolu tetiklenmez); red (401/400) orijinal 401'i yüzeye çıkarır. Tek-uçuş kilidi `finally` ile her durumda serbest.
 
 #### O3. `isPremiumProvider` hata durumunda açılışta okunan SABİT cache'e düşüyor; satın alma sonrası çevrimdışı kalan kullanıcı free görünür
 - **Dosya:** `lib/data/subscription_repository.dart:111, 135-139`; `lib/main.dart:224` (`cachedPremiumProvider.overrideWithValue(cachedPremium)` — bir kez)
@@ -385,6 +390,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Açılıştan hemen sonra çıkış, yavaş `/auth/me`.
 - **Etki:** Çıkış yapılmış kullanıcı oturumda görünür (token yok → 401'ler, O1 ile birleşir).
 - **Şüpheli:** evet (pencere dar)
+- **DÜZELTİLDİ (`6c9581e`, 2026-10-11):** `AuthController._epoch` kuşak sayacı; `logout`/`deleteAccount` (ve O1 `sessionExpired`) önce artırır. `_refreshInBackground`, `_postLogin` (import), `recordConsent`, `updateName` yanıtı yalnız kuşak aynı + `ref.mounted` + token hâlâ varsa uygular; aksi halde state/önbellek/kapsam/import dokunulmaz. Test: Completer ile geciktirilen `/auth/me`/`updateName` çıkıştan sonra tamamlanınca oturum geri gelmiyor.
 
 #### O35. `LocalSession` bayrak setleri bellek-içi; arka plan isolate ve zaman aşımı sonrası yazımlar prefs'i eziyor
 - **Dosya:** `lib/data/local_session.dart:40-42, 259-284`
