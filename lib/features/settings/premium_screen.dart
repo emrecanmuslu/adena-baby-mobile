@@ -100,7 +100,8 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
   @override
   Widget build(BuildContext context) {
     final sub = ref.watch(subscriptionProvider).asData?.value;
-    final isPremium = sub?.isPremium ?? false;
+    // D22: çevrimdışı premium kullanıcıya "Premium ol" gösterilmesin.
+    final isPremium = ref.watch(isPremiumProvider);
     // Yönetilebilir fiyatlar (DB) — RC fiyatı yoksa fallback + indirim gösterimi.
     final pricing = ref.watch(pricingProvider).asData?.value ??
         const <String, PlanPricing>{};

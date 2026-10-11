@@ -24,8 +24,7 @@ class SettingsScreen extends ConsumerWidget {
     final user = ref.watch(authControllerProvider).asData?.value;
     final baby = ref.watch(activeBabyProvider);
 
-    final isPremium =
-        ref.watch(subscriptionProvider).asData?.value.isPremium ?? false;
+    final isPremium = ref.watch(isPremiumProvider); // D22
     // Rozetleri yalnız "kesin free" iken göster — açılışta yüklenirken flaş olmasın.
     final showProBadge = ref.watch(isDefinitelyFreeProvider);
     // Bekleme (gebelik) modu: bebek doğmadan anlamsız olan menüler gizlenir
