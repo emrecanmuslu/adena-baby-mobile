@@ -84,8 +84,12 @@ class MemoryRepository {
   }
 
   /// Kullanıcı onayıyla yerel satırı kaldırır (sunucuda hiç yoktu).
-  Future<void> discardLocal(String id) =>
-      (_db.delete(_db.memories)..where((m) => m.id.equals(id))).go();
+  Future<void> discardLocal(String id) async {
+    final r = await (_db.select(_db.memories)..where((m) => m.id.equals(id)))
+        .getSingleOrNull();
+    await _deletePhotoFile(r?.localPhotoPath); // O33
+    await (_db.delete(_db.memories)..where((m) => m.id.equals(id))).go();
+  }
 
   static String _ymd(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -174,7 +178,23 @@ class MemoryRepository {
 
   /// Erişim kaldırılınca (paylaşımdan düşme) bu bebeğin tüm anılarını yerelden sil.
   Future<void> purgeBaby(String babyId) async {
+    final rows =
+        await (_db.select(_db.memories)..where((m) => m.baby.equals(babyId))).get();
+    for (final r in rows) {
+      await _deletePhotoFile(r.localPhotoPath);
+    }
     await (_db.delete(_db.memories)..where((m) => m.baby.equals(babyId))).go();
+  }
+
+  /// O33: satır yerelden KALICI silinince yerel fotoğraf dosyası da gitsin
+  /// (purge, pull R4, discard, tombstone DELETE başarısı). Sunucu URL'i ve
+  /// olmayan dosya sessizce atlanır.
+  Future<void> _deletePhotoFile(String? path) async {
+    if (path == null || path.startsWith('http')) return;
+    try {
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
   }
 
   static DateTime? _parseTs(dynamic v) =>
@@ -233,6 +253,7 @@ class MemoryRepository {
       }
       // R4: sunucuda artık olmayan temiz satırlar (başka üye sildi).
       for (final id in stale.ids) {
+        await _deletePhotoFile(localById[id]?.localPhotoPath); // O33
         await (_db.delete(_db.memories)..where((m) => m.id.equals(id))).go();
       }
     });
@@ -274,6 +295,7 @@ class MemoryRepository {
         } catch (_) {
           continue;
         }
+        await _deletePhotoFile(r.localPhotoPath); // O33
         await (_db.delete(_db.memories)..where((m) => m.id.equals(r.id))).go();
         continue;
       }
