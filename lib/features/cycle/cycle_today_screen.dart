@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
+import '../../core/age.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
@@ -10,7 +11,9 @@ import '../../core/in_flight_guard.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../data/cycle_long_answers.dart';
+import '../../models/baby.dart';
 import '../../models/cycle.dart';
+import '../babies/baby_controller.dart';
 import '../content/article_list_screen.dart';
 import 'cycle_dial.dart';
 import 'cycle_engine.dart';
@@ -619,7 +622,26 @@ class _Today extends ConsumerWidget {
   // ════════ GEBELİK (yaşam-döngüsü köprüsü) ════════
   // Kaynak = ana gebelik modülü; burada LMP'den türetilmiş salt-okunur özet.
   List<Widget> _pregnant(BuildContext context, WidgetRef ref) {
-    final info = pregnancyFromLmp(settings.firstPeriodDate);
+    // B6: hafta + TDT ana gebelik modülüyle AYNI kaynaktan (Baby.dueDate;
+    // ultrasonla düzeltilmiş olabilir). Bekleyen bebek yoksa SAT'tan türetilir.
+    final babies = ref.watch(babyControllerProvider).asData?.value ?? const <Baby>[];
+    final expecting = babies
+            .where((b) =>
+                b.status == BabyStatus.expecting &&
+                b.id == settings.babyId &&
+                b.dueDate != null)
+            .firstOrNull ??
+        babies
+            .where((b) => b.status == BabyStatus.expecting && b.dueDate != null)
+            .firstOrNull;
+    final fromBaby = expecting != null;
+    final PregnancyFromLmp? info;
+    if (fromBaby) {
+      final days = pregnancyDays(expecting.dueDate!);
+      info = PregnancyFromLmp(days ~/ 7, days % 7, expecting.dueDate!);
+    } else {
+      info = pregnancyFromLmp(settings.firstPeriodDate);
+    }
     return [
       _heroEyebrow(tr('Gebelik')),
       _dialCenter(CycleDial(
@@ -653,8 +675,12 @@ class _Today extends ConsumerWidget {
       const SizedBox(height: 12),
       cycNote(context,
           icon: Icons.info_outline_rounded,
-          body: tr('Gebeliğini hafta hafta, bebeğinin gelişimiyle takip etmek için '
-              'ana gebelik ekranını kullan. Buradaki tarih son adetinden hesaplanır.')),
+          body: fromBaby
+              ? tr('Gebeliğini hafta hafta, bebeğinin gelişimiyle takip etmek için '
+                  'ana gebelik ekranını kullan. Hafta ve tahmini doğum tarihi ana '
+                  'gebelik ekranındaki bilgiyle aynıdır.')
+              : tr('Gebeliğini hafta hafta, bebeğinin gelişimiyle takip etmek için '
+                  'ana gebelik ekranını kullan. Buradaki tarih son adetinden hesaplanır.')),
       const SizedBox(height: 14),
       cycCta(context, tr('Gebelik ekranına git'),
           onTap: () => openPregnancyScreen(context, ref, settings)),
