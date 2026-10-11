@@ -59,17 +59,24 @@ class _CommunityFeedScreenState extends ConsumerState<CommunityFeedScreen> {
     super.dispose();
   }
 
+  /// D36: reset (kategori/arama/sıralama) süren loadMore'u geçersiz kılar —
+  /// eski sorgunun sayfası yeni listeye eklenmesin.
+  int _fetchEpoch = 0;
+
   Future<void> _fetch({bool reset = false}) async {
     if (reset) {
+      _fetchEpoch++;
       setState(() {
         _loading = true;
         _error = null;
         _hasMore = true;
+        _loadingMore = false;
       });
     } else {
       if (_loadingMore || !_hasMore || _loading) return;
       setState(() => _loadingMore = true);
     }
+    final epoch = _fetchEpoch;
     final offset = reset ? 0 : _items.length;
     try {
       final page = await _repo.feed(
@@ -78,7 +85,7 @@ class _CommunityFeedScreenState extends ConsumerState<CommunityFeedScreen> {
           search: _search,
           offset: offset,
           limit: _pageSize);
-      if (!mounted) return;
+      if (!mounted || epoch != _fetchEpoch) return; // bayat yanıt (D36)
       setState(() {
         if (reset) {
           _items
@@ -92,7 +99,7 @@ class _CommunityFeedScreenState extends ConsumerState<CommunityFeedScreen> {
         _loadingMore = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || epoch != _fetchEpoch) return;
       setState(() {
         _error = e;
         _loading = false;
