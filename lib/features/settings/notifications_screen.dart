@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
+import '../../core/exact_alarm_prompt.dart';
 import '../../core/adena_icons.dart';
 import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
@@ -135,6 +136,8 @@ class NotificationsScreen extends ConsumerWidget {
               value: prefs[NotificationPrefs.growth] ?? true,
               onChanged: (v) => setPref(NotificationPrefs.growth, v),
             ),
+            // M4/KB-4: kesin alarm izni durumu (yalnız Android; iOS'ta boş).
+            const ExactAlarmTile(),
             AdMenuItem(
               icon: 'med',
               color: AppColors.med,
@@ -260,7 +263,7 @@ class _FeedSection extends ConsumerWidget {
           value: cfg.enabled,
           onChanged: (v) {
             final next = cfg.copyWith(enabled: v);
-            updateFeedReminder(ref, babyId, next);
+            updateFeedReminder(ref, babyId, next, context: context);
             if (v) showFeedReminderSheet(context, ref, babyId, next);
           },
           onTap: () => showFeedReminderSheet(context, ref, babyId, cfg),

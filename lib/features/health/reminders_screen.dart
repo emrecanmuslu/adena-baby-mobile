@@ -679,7 +679,7 @@ class _FeedReminderCard extends ConsumerWidget {
                   activeThumbColor: AppColors.coral,
                   onChanged: (v) {
                     final next = cfg.copyWith(enabled: v);
-                    updateFeedReminder(ref, babyId, next);
+                    updateFeedReminder(ref, babyId, next, context: context);
                     // Açılınca ayar sheet'i otomatik açılır (detayları ayarlasın).
                     if (v) showFeedReminderSheet(context, ref, babyId, next);
                   },

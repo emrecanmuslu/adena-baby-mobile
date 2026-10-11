@@ -1,7 +1,9 @@
+import 'package:flutter/widgets.dart';
 import 'dart:ui';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/exact_alarm_prompt.dart';
 import '../../core/i18n.dart';
 import '../../core/in_app_notification.dart';
 import '../../core/locale_util.dart';
@@ -164,9 +166,16 @@ final feedReminderKnownProvider = Provider.family<bool, String>((ref, babyId) {
 });
 
 /// Beslenme hatırlatıcı ayarını CİHAZA-YEREL kaydeder (sunucuya gitmez).
+/// [context] verilirse ve hatırlatıcı KAPALIDAN AÇIĞA geçiyorsa, kesin alarm
+/// izni yoksa tek seferlik açıklama diyaloğu gösterilir (M4/KB-4, yalnız Android).
 Future<void> updateFeedReminder(
-    WidgetRef ref, String babyId, FeedReminderConfig cfg) async {
+    WidgetRef ref, String babyId, FeedReminderConfig cfg,
+    {BuildContext? context}) async {
+  final wasEnabled = ref.read(feedReminderProvider(babyId)).enabled;
   await ref.read(feedReminderStoreProvider.notifier).set(babyId, cfg);
+  if (context != null && cfg.enabled && !wasEnabled && context.mounted) {
+    await ExactAlarmPrompt().maybeShow(context);
+  }
 }
 
 /// Aktif bebeğin sessiz saat ayarı (yüklenene kadar varsayılan/kapalı).
