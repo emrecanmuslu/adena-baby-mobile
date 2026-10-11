@@ -706,6 +706,7 @@ class _Today extends ConsumerWidget {
       _dialCenter(CycleDial(
         mode: DialMode.heal,
         day: info?.weeks ?? 0,
+        healSpan: 40, // D1: gebelik halkası hafta ölçeğinde
         num: info == null ? '—' : '${info.weeks}',
         numSize: 54,
         label: tr('Hafta'),
