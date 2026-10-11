@@ -135,10 +135,28 @@ void main() {
       expect(await prefsReason(), 'unknown');
     });
 
-    test('refresh token yok → unknown (sunucuya gidilmeden)', () async {
+    test(
+        'oturum HİÇ yokken 401 (ör. çıkış sonrası geç istek / onTokenRefresh POST) → prefs nedeni EZİLMEZ, kanca çağrılmaz',
+        () async {
+      // sessionExpired(superseded) sonrası: token'lar silindi, neden prefs'te.
+      tokens.access = null;
+      tokens.refresh = null;
+      await SessionEndCache.write(SessionEndReason.superseded);
+
+      await call();
+
+      expect(await prefsReason(), 'superseded',
+          reason: 'banner "başka cihazdan giriş" yerine genel metne düşmemeli');
+      expect(received, isEmpty);
+      expect(tokens.clearCount, 0);
+    });
+
+    test('access var ama refresh yok (bozuk depo) → unknown kancası (temizlik controller tarafinda)',
+        () async {
       tokens.refresh = null;
       await call();
       expect(received, [SessionEndReason.unknown]);
+      expect(tokens.clearCount, 0); // eski kontrat: ApiClient burada clear etmez
       expect(await prefsReason(), 'unknown');
     });
 

@@ -87,6 +87,9 @@ class ApiClient {
   @visibleForTesting
   Dio get debugRefreshClient => _refreshClient;
 
+  /// Yerelde oturum (access token) var mı — yetkisiz istek atmamak için.
+  Future<bool> get hasSession => _tokens.hasSession;
+
   /// Sunucu oturumu AÇIKÇA reddettiğinde (refresh 401/400 → token silindi)
   /// çağrılır (O1). AuthController ön planda atar/sıfırlar; bg'de atanmaz.
   /// Çağrıdan ÖNCE neden prefs'e yazılır ([SessionEndCache]) — başka isolate ya
@@ -134,7 +137,11 @@ class ApiClient {
   Future<RefreshResult> _refresh() async {
     final refresh = await _tokens.refreshToken;
     if (refresh == null) {
-      await _rejected(SessionEndReason.unknown);
+      // Oturum HİÇ yoksa (çıkış/zorunlu çıkış sonrası geç istek, onTokenRefresh
+      // POST'u) bitirilecek oturum da yok: prefs'teki neden EZİLMEZ, kanca yok.
+      // Access var ama refresh yoksa (bozuk depo) → bildir; temizliği
+      // AuthController.sessionExpired yapar (clear burada çağrılmaz — eski kontrat).
+      if (await _tokens.hasSession) await _rejected(SessionEndReason.unknown);
       return RefreshResult.rejected;
     }
     try {
