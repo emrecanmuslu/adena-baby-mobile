@@ -173,8 +173,7 @@ class _PlansBody extends ConsumerWidget {
         const SizedBox(height: 14),
         _InfoNote(
           icon: 'family',
-          text: tr('Verilen dozları ailen anında görür. Plan listesi yalnızca bu '
-              'telefonda saklanır.'),
+          text: tr('Verilen dozlar ve plan listesi ailenle paylaşılır.'),
         ),
       ],
     );
