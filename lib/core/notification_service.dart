@@ -66,7 +66,6 @@ class NotificationService {
   static String get _activityChannelName => tr('Aile etkinliği');
   static const _activityGroup = 'adena_family_activity'; // Android bildirim grubu
   static const _activityBaseId = 700000;
-  int _activitySeq = 0;
 
   /// iOS bildirim ayarları (kategori = ertele aksiyonu). İzinler açılışta DEĞİL,
   /// gerektiğinde (_ensurePermission) istenir → açılış engellenmez.
@@ -305,7 +304,9 @@ class NotificationService {
   Future<void> showActivity({required String title, required String body}) async {
     if (!_ready) await init();
     await _ensurePermission();
-    final id = _activityBaseId + (_activitySeq++ % 50);
+    // D18: FCM bg isolate her kurulduğunda bellek sayacı 0'dan başlıyordu →
+    // ardışık bildirimler üst üste yazılıyordu; zaman tabanlı id (50'lik halka).
+    final id = _activityBaseId + (DateTime.now().millisecondsSinceEpoch ~/ 10) % 50;
     final android = AndroidNotificationDetails(
       _activityChannelId,
       _activityChannelName,
