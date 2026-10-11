@@ -40,6 +40,13 @@ void main() {
         includeOwned: any(named: 'includeOwned'))).thenAnswer((_) async {});
     when(() => repo.pullFromServer(accountId: any(named: 'accountId')))
         .thenAnswer((_) async => const <Baby>[]);
+    // O4: ayar push/pull aynı turda (named argümanlı → any(named:)).
+    when(() => repo.pushSettings(
+        accountId: any(named: 'accountId'),
+        includeOwned: any(named: 'includeOwned'))).thenAnswer((_) async {});
+    when(() => repo.getAll(accountId: any(named: 'accountId')))
+        .thenAnswer((_) async => const <Baby>[]);
+    when(() => repo.pullSettings(any())).thenAnswer((_) async => false);
     // Active account must be set so the controller is scoped to a session.
     LocalSession.setActiveAccount('acct1');
   });
