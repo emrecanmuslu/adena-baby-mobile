@@ -341,7 +341,10 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Ön plan/arka plan bayrağı: ön planda push OS bildirimi yerine in-app banner
     // gösterir (handlePushMessage appInForeground'a bakar).
-    appInForeground = state == AppLifecycleState.resumed;
+    // D4: `inactive` (bildirim paneli, iOS app switcher) de ön plandır — aksi
+    // halde push hem OS bildirimi hem in-app banner olarak çift görünürdü.
+    appInForeground = state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive;
     if (state == AppLifecycleState.resumed) {
       _onForeground();
       DbWatchdog.instance.startPulse(ref.read(databaseProvider));
