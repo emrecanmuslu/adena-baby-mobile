@@ -114,6 +114,29 @@ class NotificationService {
     return _plugin.pendingNotificationRequests();
   }
 
+  /// D18 / I6: aile bildirimi id'si — prefs'te KALICI sayaç (FCM bg isolate her
+  /// kurulduğunda bellek sayacı sıfırlanıyordu; zaman tabanlı halka ise 500 ms
+  /// periyotluydu → ~%2 çarpışma). O35 deseni: reload → artır → yaz. Aralık
+  /// 700000..700049 döngüsel. Prefs okunamazsa zaman tabanlı yedek.
+  static const _kActivitySeq = 'notif_activity_seq_v1';
+  static const activityIdRing = 50;
+
+  @visibleForTesting
+  Future<int> nextActivityId() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      try {
+        await p.reload();
+      } catch (_) {}
+      final n = ((p.getInt(_kActivitySeq) ?? -1) + 1) % activityIdRing;
+      await p.setInt(_kActivitySeq, n);
+      return _activityBaseId + n;
+    } catch (_) {
+      return _activityBaseId +
+          (DateTime.now().millisecondsSinceEpoch ~/ 10) % activityIdRing;
+    }
+  }
+
   /// Android 12+ kesin alarm izni — O16: planlama yolunda ARTIK OTOMATİK
   /// İSTENMEZ (Android 14+'ta varsayılan ret; plugin izin yoksa açıklamasız
   /// sistem Ayarlar sayfasına atıyordu, her soğuk açılışta). İzin yoksa
@@ -306,9 +329,7 @@ class NotificationService {
   Future<void> showActivity({required String title, required String body}) async {
     if (!_ready) await init();
     await _ensurePermission();
-    // D18: FCM bg isolate her kurulduğunda bellek sayacı 0'dan başlıyordu →
-    // ardışık bildirimler üst üste yazılıyordu; zaman tabanlı id (50'lik halka).
-    final id = _activityBaseId + (DateTime.now().millisecondsSinceEpoch ~/ 10) % 50;
+    final id = await nextActivityId();
     final android = AndroidNotificationDetails(
       _activityChannelId,
       _activityChannelName,
