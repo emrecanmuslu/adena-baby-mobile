@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/api_client.dart';
@@ -295,9 +296,35 @@ class HealthRepository {
     return now;
   }
 
+  // I13 / KB-10: "yalnız bu cihazda" = bakıcıda dirty VE sunucunun bildiği bir
+  // plan DEĞİL. Sunucunun bildiği plan id'leri her başarılı senkronda prefs'e
+  // yazılır (şema değişikliği yok); senkron henüz hiç koşmadıysa küme boştur ve
+  // eski kontrat (dirty → yerel-only) geçerli kalır.
+  static String _kServerPlanIds(String babyId) => 'med_server_plan_ids_$babyId';
+
+  Future<Set<String>> _serverKnownPlanIds(String babyId) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return (p.getStringList(_kServerPlanIds(babyId)) ?? const []).toSet();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> _rememberServerPlanIds(String babyId, Iterable<String> ids) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(_kServerPlanIds(babyId), ids.toSet().toList());
+    } catch (_) {}
+  }
+
+  bool _isLocalOnly(MedicationPlanRow r, Set<String> serverKnown) =>
+      r.dirty && !(r.uuid != null && serverKnown.contains(r.uuid));
+
   Future<List<MedicationPlan>> medicationPlans(String babyId) async {
-    // N2/KB-10: bakıcıda dirty satır = sunucuya hiç gitmemiş yerel-only plan.
+    // N2/KB-10: bakıcıda sunucuya hiç gitmemiş dirty satır = yerel-only plan.
     final caregiver = await _isCaregiver(babyId);
+    final known = caregiver ? await _serverKnownPlanIds(babyId) : const <String>{};
     final rows = await (_db.select(_db.medicationPlans)
           ..where((r) => r.baby.equals(babyId) & r.isDeleted.equals(false))
           // Her cihazda aynı sıra (yerel ekleme sırası cihazdan cihaza değişir).
@@ -307,7 +334,7 @@ class HealthRepository {
           ]))
         .get();
     return rows
-        .map((r) => _toPlan(r, localOnly: caregiver && r.dirty))
+        .map((r) => _toPlan(r, localOnly: caregiver && _isLocalOnly(r, known)))
         .toList();
   }
 
@@ -383,7 +410,9 @@ class HealthRepository {
     // N2/KB-10: bakıcı yalnız KB-8 öncesinden kalmış yerel-only (dirty) planını
     // silebilir — sunucuya hiç gitmemiştir, yerelden kaldırılır (senkron yok).
     if (await _isCaregiver(row.baby)) {
-      if (!row.dirty) throw StateError('caregiver_readonly: ${row.baby}');
+      if (!_isLocalOnly(row, await _serverKnownPlanIds(row.baby))) {
+        throw StateError('caregiver_readonly: ${row.baby}'); // I13: sunucu planı
+      }
       await (_db.delete(_db.medicationPlans)..where((r) => r.localId.equals(id))).go();
       onPlansChanged?.call(row.baby);
       return;
@@ -449,6 +478,8 @@ class HealthRepository {
     final data = resp.data as Map<String, dynamic>;
     final applied = (data['applied'] as List? ?? const []).cast<String>().toSet();
     final plans = (data['plans'] as List? ?? const []).cast<Map<String, dynamic>>();
+    // I13: sunucunun bildiği plan kümesi (bakıcı "yalnız bu cihazda" ayrımı için).
+    await _rememberServerPlanIds(babyId, [for (final sp in plans) sp['id'] as String]);
 
     var changed = false;
     final removed = <int>[];
@@ -760,9 +791,13 @@ class HealthRepository {
 
     final vac = await fetch('vaccines');
     if (vac != null) {
+      // I10: katalogta karşılığı olmayan (başka dilde adlandırılmış) sunucu
+      // kalemleri yerelde satır üretmez — ekranda görünmez yetim satırlar
+      // birikiyordu. Yankı (echo) kontrolü sunucu listesine bakar, etkilenmez.
+      final catKeys = {for (final v in (await _catalog()).vaccines) v.key};
       for (final m in vac) {
         final name = m['vaccine_name'] as String? ?? '';
-        if (name.isEmpty) continue;
+        if (name.isEmpty || !catKeys.contains(name)) continue;
         await apply('vaccine', name, m['status'] == 'done', _parse(m['done_date']));
       }
       // Yankılanmayan aşılar dirty kalır (dil uyuşmazlığı); bir kez logla.

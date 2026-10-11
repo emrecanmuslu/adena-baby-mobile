@@ -290,6 +290,18 @@ void main() {
       expect(requests, hasLength(1));
     });
 
+    test('I10: katalogta olmayan (başka dildeki) sunucu aşı kalemi yerelde satır üretmez',
+        () async {
+      stubGets(vaccines: [
+        {'vaccine_name': 'Bacillus Calmette-Guérin', 'status': 'done', 'done_date': '2026-03-04'},
+        {'vaccine_name': 'BCG', 'status': 'done', 'done_date': '2026-03-04'},
+      ]);
+      await repo.pull('b1');
+      expect(await row('vaccine', 'Bacillus Calmette-Guérin'), isNull,
+          reason: 'katalog dışı ad → yetim satır yok');
+      expect((await row('vaccine', 'BCG'))!.done, isTrue);
+    });
+
     test('importFromCloud (ilk giriş/göç) = pull: artık kaldırma da uygulanır',
         () async {
       await seed('tooth', 'll1', true);
