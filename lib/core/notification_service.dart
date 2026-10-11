@@ -534,7 +534,22 @@ class NotificationService {
     Future<Set<int>> Function() allActiveIds,
   ) async {
     if (!_ready) await init();
-    final active = reminders.where((r) => r.enabled).toList();
+    // Küme, zincirde sıra bize gelince TAZE okunur (çağıranın listesi o ana kadar
+    // bayatlamış olabilir). J15: listedeki aktif hatırlatıcı bu kümede değilse
+    // (bebeği silinmiş / tombstone) KURULMAZ — silme yarışında `_ReminderSync`
+    // rebuild'i yetim plan bırakmasın.
+    Set<int>? keep;
+    try {
+      keep = await allActiveIds();
+    } catch (_) {
+      // Kaynak okunamadı → başka bebeklerin bildirimlerine DOKUNMA; yalnız bu
+      // listede olup kapalı olanlar iptal edilir (aşağıda keep == null dalı).
+      keep = null;
+    }
+    final k = keep;
+    final active = reminders
+        .where((r) => r.enabled && (k == null || k.contains(r.id)))
+        .toList();
     if (active.isNotEmpty) await _ensurePermission();
 
     // cancelAll yerine yalnız hatırlatıcı id aralığını temizle (feed 800xxx /
@@ -547,14 +562,6 @@ class NotificationService {
     // (çağıranın listesi o ana kadar bayatlamış olabilir).
     final listIds = {for (final r in reminders) r.id};
     final activeIds = {for (final r in active) r.id};
-    Set<int>? keep;
-    try {
-      keep = await allActiveIds();
-    } catch (_) {
-      // Kaynak okunamadı → başka bebeklerin bildirimlerine DOKUNMA; yalnız bu
-      // listede olup kapalı olanlar iptal edilir (aşağıda keep == null dalı).
-      keep = null;
-    }
     try {
       final pending = await _plugin.pendingNotificationRequests();
       for (final p in pending) {

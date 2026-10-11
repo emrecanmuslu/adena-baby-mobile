@@ -140,4 +140,10 @@ void main() {
     await svc.sync([_daily(b.id)], allActiveIds: repo.activeReminderIds);
     expect(plugin.ids, {b.id}, reason: 'silinmiş bebeğin hatırlatıcısı pending\'de kalmamalı');
   });
+
+  test('J15: listede aktif olup allActiveIds dışında kalan (bebeği silinmiş) hatırlatıcı KURULMAZ',
+      () async {
+    await svc.sync([_daily(11), _daily(22)], allActiveIds: () async => {22});
+    expect(plugin.ids, {22}, reason: 'silme yarışında yetim plan kurulmamalı');
+  });
 }
