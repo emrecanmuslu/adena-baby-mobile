@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -447,6 +449,63 @@ void main() {
       verify(() => repo.me()).called(1);
       verifyNever(() => import.runIfNeeded());
       expect(rcIdentified, isEmpty);
+    });
+  });
+
+  // ───────── O34: logout ile arka plan /auth/me yarışı (epoch) ─────────
+  group('O34 — logout sonrası geç gelen /auth/me oturumu geri getirmez', () {
+    setUp(() => LocalSession.resetForTests());
+    tearDown(() => LocalSession.resetForTests());
+
+    Future<void> settle() async {
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    test('_refreshInBackground: me() çıkıştan SONRA dönerse state/cache/kapsam/import dokunulmaz',
+        () async {
+      await LocalSession.cacheAuthUser(_user(id: 'r1').toJson());
+      tokens.access = 'ACC';
+      final gate = Completer<User>();
+      when(() => repo.me()).thenAnswer((_) => gate.future);
+      when(() => repo.logout()).thenAnswer((_) async {});
+
+      final c = makeContainer();
+      final u = await c.read(authControllerProvider.future);
+      expect(u!.id, 'r1');
+
+      await c.read(authControllerProvider.notifier).logout();
+      expect(c.read(authControllerProvider).value, isNull);
+
+      gate.complete(_user(id: 'r1')); // geç gelen /auth/me
+      await settle();
+
+      expect(c.read(authControllerProvider).value, isNull,
+          reason: 'çıkış sonrası oturum geri gelmemeli');
+      expect(await LocalSession.cachedAuthUser(), isNull,
+          reason: 'önbellek yeniden yazılmamalı');
+      expect(LocalSession.activeAccountId, isNull);
+      verifyNever(() => import.runIfNeeded());
+    });
+
+    test('updateName: çıkıştan sonra dönen yanıt state\'i geri getirmez', () async {
+      tokens.access = 'ACC';
+      await LocalSession.cacheAuthUser(_user(id: 'n1').toJson());
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'n1'));
+      when(() => repo.logout()).thenAnswer((_) async {});
+      final gate = Completer<User>();
+      when(() => repo.updateName('Yeni')).thenAnswer((_) => gate.future);
+
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      await settle();
+      final ctrl = c.read(authControllerProvider.notifier);
+      final pending = ctrl.updateName('Yeni');
+      await ctrl.logout();
+      gate.complete(User(id: 'n1', email: 'a@b.com', name: 'Yeni'));
+      await pending;
+      expect(c.read(authControllerProvider).value, isNull);
     });
   });
 }

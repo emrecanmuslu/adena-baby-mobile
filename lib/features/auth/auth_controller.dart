@@ -19,6 +19,18 @@ import '../../models/user.dart';
 class AuthController extends AsyncNotifier<User?> {
   AuthRepository get _repo => ref.read(authRepositoryProvider);
 
+  /// Oturum kuşağı (O34). Çıkış / hesap silme / zorunlu çıkış artırır. Ağ
+  /// beklemiş her auth yolu başta değeri yakalar; yanıt dönünce değer değişmişse
+  /// (ya da token gitmişse) state/önbellek/kapsam/import'a DOKUNMAZ — aksi hâlde
+  /// geç gelen `/auth/me` çıkış yapılmış kullanıcıyı geri getiriyordu.
+  int _epoch = 0;
+
+  /// Yakalanan kuşak hâlâ geçerli mi (çıkış olmadı + token duruyor)?
+  Future<bool> _stillCurrent(int epoch) async {
+    if (epoch != _epoch || !ref.mounted) return false;
+    return ref.read(tokenStorageProvider).hasSession;
+  }
+
   @override
   Future<User?> build() async {
     final storage = ref.read(tokenStorageProvider);
@@ -72,13 +84,15 @@ class AuthController extends AsyncNotifier<User?> {
   /// (kullanıcı önbellekli veriyle kalmaya devam eder — gerçek red zaten
   /// api_client._refresh tarafından ele alınır).
   Future<void> _refreshInBackground() async {
+    final epoch = _epoch;
     try {
       final user = await _repo.me();
+      if (!await _stillCurrent(epoch)) return; // O34: bu arada çıkış yapıldı
       await LocalSession.cacheAuthUser(user.toJson());
       _syncRevenueCat(user);
       LocalSession.setActiveAccount(user.id);
       await ref.read(initialImportProvider).runIfNeeded();
-      if (ref.mounted) state = AsyncData(user);
+      if (ref.mounted && epoch == _epoch) state = AsyncData(user);
     } catch (_) {
       // Geçici hata — önbellekli kullanıcıyla devam edilir, sessizce geç.
     }
@@ -114,6 +128,7 @@ class AuthController extends AsyncNotifier<User?> {
   /// Giriş/kayıt sonrası: oturum açıldıysa mevcut hesabın sunucu verisini bir
   /// kez yerele indir (taze login'de build() yeniden koşmaz; bu yolu da kapsar).
   Future<void> _postLogin() async {
+    final epoch = _epoch;
     final u = state.value;
     if (u != null) {
       // Misafir modundan çık (varsa) — yerel veri kapsamı gerçek hesaba geçer.
@@ -124,6 +139,7 @@ class AuthController extends AsyncNotifier<User?> {
       // için /auth/me önbelleği burada da yazılır — yoksa ilk soğuk açılış
       // çevrimdışıyken oturum çözülemez (repo'lar hesapsız kalır).
       await LocalSession.cacheAuthUser(u.toJson());
+      if (epoch != _epoch) return; // O34: await'ler sırasında çıkış yapıldı
       await ref.read(initialImportProvider).runIfNeeded();
     }
   }
@@ -166,17 +182,22 @@ class AuthController extends AsyncNotifier<User?> {
   /// Yasal rıza kapısından onay kaydı: backend'e yazar, oturum kullanıcısının
   /// consentRequired'ını düşürür → router rıza kapısından çıkarır.
   Future<void> recordConsent() async {
+    final epoch = _epoch;
     await _repo.recordConsent();
+    if (epoch != _epoch) return; // O34
     final u = state.value;
     if (u != null) state = AsyncData(u.copyWith(consentRequired: false));
   }
 
   Future<void> updateName(String name) async {
+    final epoch = _epoch;
     final user = await _repo.updateName(name);
+    if (epoch != _epoch) return; // O34: çıkış sonrası geç yanıt state'i geri getirmesin
     state = AsyncData(user);
   }
 
   Future<void> deleteAccount() async {
+    _epoch++; // O34
     await PushService.instance.unregister(ref.read(apiClientProvider));
     await NotificationService.instance.cancelAll(); // eski hesabın bildirimleri kalmasın
     await SlotRegistry.instance.clear(); // slot haritası sıfırlansın (yeni hesap 0'dan)
@@ -191,6 +212,7 @@ class AuthController extends AsyncNotifier<User?> {
   }
 
   Future<void> logout() async {
+    _epoch++; // O34: uçuştaki /auth/me, updateName vb. yanıtları artık geçersiz
     // Token HÂLÂ geçerliyken bu cihazın FCM kaydını sil (çıkıştan önce).
     await PushService.instance.unregister(ref.read(apiClientProvider));
     // Önceki hesabın zamanlanmış yerel bildirimlerini iptal et → yeni hesaba
