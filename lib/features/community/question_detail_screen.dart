@@ -53,20 +53,32 @@ class _QuestionDetailScreenState extends ConsumerState<QuestionDetailScreen> {
   }
 
   // ── Oylama (yerel iyimser değil; sunucu yanıtını uygular) ──
+  /// D37: oy/en-iyi isteği sürerken ikinci dokunuş yutulur (son yanıt eskisi
+  /// olmasın); await sonrası `mounted` kontrolü.
+  bool _voting = false;
+
   Future<void> _voteQuestion(int value) async {
+    if (_voting) return;
+    _voting = true;
     try {
       final r = await _repo.vote(
           targetType: 'question', targetId: _q!.id, value: value);
+      if (!mounted) return;
       setState(() => _q = _q!.copyWith(score: r.score, myVote: r.myVote));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
+    } finally {
+      _voting = false;
     }
   }
 
   Future<void> _voteAnswer(Answer a, int value) async {
+    if (_voting) return;
+    _voting = true;
     try {
       final r = await _repo.vote(
           targetType: 'answer', targetId: a.id, value: value);
+      if (!mounted) return;
       setState(() {
         _q = _q!.copyWith(
           answers: [
@@ -77,12 +89,17 @@ class _QuestionDetailScreenState extends ConsumerState<QuestionDetailScreen> {
       });
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
+    } finally {
+      _voting = false;
     }
   }
 
   Future<void> _setBest(Answer a) async {
+    if (_voting) return;
+    _voting = true;
     try {
       await _repo.setBest(_q!.id, a.id);
+      if (!mounted) return;
       setState(() {
         final answers = [
           for (final x in _q!.answers) x.copyWith(isBest: x.id == a.id),
@@ -95,6 +112,8 @@ class _QuestionDetailScreenState extends ConsumerState<QuestionDetailScreen> {
       if (mounted) showAdToast(context, tr('En iyi cevap işaretlendi ✓'));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
+    } finally {
+      _voting = false;
     }
   }
 
