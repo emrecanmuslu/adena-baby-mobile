@@ -23,6 +23,9 @@ M1 `2e67b4e` (10 şema sürümü, duplicate-column fix), M2 `daf7947`, M3/M7 `98
 ## Düzeltme turu 2 (2026-10-11) — TAMAMLANDI
 N1+N2 `e77a23d` (canFullWriteProvider; yerel-only plan KB-10), N3 `e5b9db7` (çeviri bütünlüğü testi: 1595 anahtar, 0 eksik/0 placeholder sorunu), N4 docs. Çeviri 32 anahtar.
 
+## Düzeltme turu 3 (2026-10-11, INCELEME.md I1–I16) — TAMAMLANDI
+I1 `a4161f9` (KRİTİK: sağlık pull kapısı + lapse reseed + telemetri; aşı backfill'i yine yok), I2 `562618e`, I3 `1f51066`, I4 `d5fe1fc`, I5 `92c5818`, I6 `1f68344`, I7 `d2ac131`, I8/I16 `ce58ad2`, I9 `6b5518c`, I11 `63df484`, I10/I13 `593b531`, R4 telemetri `d028b43`, GRUP D testleri `37260e1`; I12 → KB-11, I14/I15 belgelendi. Tam suite 1289/0, analyze temiz. Yeni çeviri anahtarı yok. Cihaz adımları YAYIN-KONTROL §1 H (41-46).
+
 ## Kalan iş sırası
 c) ~~Şema v15~~ TAMAMLANDI (GRUP 1; v15'in ayrı sürüm olup olmayacağı yayın öncesi kullanıcı kararı, K-10).
 d) ~~O26 kalanı~~ TAMAMLANDI (`f93c849`).

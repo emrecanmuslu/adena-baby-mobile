@@ -171,7 +171,7 @@ Durum (2.–5. aşamadan sonra): `pushError` **kolon yok**; K2/O5/O7 repo'ları 
 
 - **Tablolar:** `babies` (profil), `memories`, `mom_entries`, `cycle_entries`, `cycle_settings_table`, `health_statuses`. **Dışında:** `records` (tek `POST /sync` batch; kalıcı red = O9 batch sınırı işi), `medication_plans` (yanıt otoriter; kalem reddi dönmüyor). `pushError` değeri kısa kod: `'HTTP 400'`, `'HTTP 422'`, `'role'`.
 - **Yazılma:** R3 kalıcı (4xx, 401/403/408/429 hariç). **Ek kural (caregiver/403):** push 403 aldıysa **ve** bebek satırının `myRole == 'caregiver'` ise (rol düşmüş, dirty satır sonsuza dek 403 alır) → `pushError='role'` (banner'a düşer, geri al sunucu kopyasını yükler). Bebek-düzeyi geçici 403 (sahip premium bitti) geçici kalır (self-heal). Bellek-içi `pushErrors` haritaları kaldırılır (testler kolona bakar).
-- **Temizlenme:** başarılı push (`dirty=false` ile birlikte), "geri al", satırın **hard delete**'i. Tombstone (`isDeleted=true`) push'u kalıcı reddedildiyse `pushError` yazılır ve satır listede "silme gönderilemedi" olarak görünür.
+- **Temizlenme:** başarılı push (`dirty=false` ile birlikte), "geri al", satırın **hard delete**'i. **(I14, INCELEME)** Adet ayarında her YEREL yeni yazım (`_writeSettings`) `pushError`'u da temizler: yeni değişiklik = yeni deneme; yeni deneme reddedilirse banner geri gelir. Bilinçli; görünürlük kaybı kabul edildi. Tombstone (`isDeleted=true`) push'u kalıcı reddedildiyse `pushError` yazılır ve satır listede "silme gönderilemedi" olarak görünür.
 - **Sayaç:** `pushErrorCountProvider` (StreamProvider) — tek custom SELECT: 6 tablonun `push_error IS NOT NULL` sayıları toplamı, aktif hesabın bebekleri/hesap kapsamıyla; `readsFrom` 6 tablo. `syncStatusProvider`'a eklenmez (o tur-durumu; bu kalıcı satır durumu).
 - **Banner:** mevcut `SyncStatusBanner` (`backup_nag.dart`; `home_screen` + `expecting_home`) üçüncü duruma genişler: sayaç > 0 → "{n} değişiklik sunucuya gönderilemedi" (uyarı rengi, "Senkron sorunu"ndan ayrı), dokununca `PushErrorSheet`: satır başına tür etiketi + başlık/tarih + kod, "Geri al" ve altta "Tümünü geri al". Giriş/onboarding'de görünmez (bebek yokken banner zaten yok).
 - **"Geri al" tablo başına** (hepsi: önce sunucu kopyasını GET, 200 → uygula `dirty=false, pushError=null`; **404/403 (sunucuda yok/erişim yok)** → satır yerel-oluşturulmuş ya da sunucuda silinmiş):
@@ -260,6 +260,21 @@ Sıra: **7a → 7b → 8 → 9 → docs.** 8b (O26 kalanı) bu aşamaya DAHİL D
 | KB-9 | `cfd9daa` | hesap silme başarılı → `wipeAccountData` (hesap kapsamı) + foto dosyaları |
 | M9a | `fb7259d` | yankılanmamış aşı satırları polling turunda yeniden gönderilmez |
 | M4 | `689c58d` | kesin alarm izni diyaloğu + ayar satırı (Android) |
+
+### Düzeltme turu 3 — INCELEME.md bulguları (2026-10-11)
+
+| # | Commit | Kapsam / not |
+|---|---|---|
+| I1 | `a4161f9` | Sağlık pull kapısı (`healthPullAllowed`), lapse `health_reseed` bayrağı + yeniden abonelikte yalnız sağlık `pushAll`, boş hesapta `premiumSynced`, `SyncTelemetry` `health_pull_cleared_done`. Bkz. §5B "Düzeltme turu 2 — I1". |
+| I2 | `562618e` | Bebek profil push'u R5: gönderilen anlık görüntüyle karşılaştırma (`_samePushedState`); foto URL'i yeni yerel yolu ezmez. |
+| I3 | `1f51066` | Adet bulk `saved` / anne bulk / anı POST: uçuş-içi değişiklik → dirty kalır (R5). |
+| I4 | `d5fe1fc` | v15 migration tek transaction + `_addColumnIfMissing` (yarıda kesilme). |
+| I7 | `d2ac131` | Bebek DELETE 404 = başarı. |
+| I8/I16 | `ce58ad2` | KB-9 wipe `whileWiping` içinde; kapsam+state önce kapanır. |
+| I9 | `6b5518c` | `importFromCloud` `baseJson` yazar (M2 penceresi kapandı). |
+| I10/I13 | `593b531` | Pull katalog dışı aşı kalemini yazmaz; KB-10 localOnly = sunucuya hiç gitmemiş plan (prefs `med_server_plan_ids_<baby>`). |
+| telemetri | `d028b43` | R4 `stale_delete_skipped` non-fatal. |
+| I15 (not) | — | **Şüpheli, belgelendi:** `ensureLoaded` disk ∪ bellek birleşimi, bellekte duran bir bayrağı başka isolate diskten sildiyse diriltebilir (`premiumSynced` → purge sonrası tam yeniden yükleme atlanır). Bg isolate bu bayrakları yazmadığı (K9) ve `ensureLoaded` açılışta bir kez koştuğu için pratikte gerçekleşmesi zor; izlenecek, kod değişikliği yok. |
 
 ### Backend talepleriyle kesişim (#1, #2, #3) — v15 onlarsız ne kadar güvenli?
 

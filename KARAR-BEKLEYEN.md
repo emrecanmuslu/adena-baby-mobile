@@ -82,5 +82,11 @@ Düzeltilenler (`1b2696d`): `cycle_engine._diffDays`, `pregnancyFromLmp` (TDT �
 - **Tanım:** bakıcı rolündeki bebekte `medication_plans.dirty = true` satırlar — bakıcıda push yok, pull sunucudakileri `dirty=false` yazar → dirty olan tek şey sunucuya hiç gitmemiş yerel plandır. Senkron bunları silmiyor (sunucuda olmayan dirty satıra dokunmuyor), hatırlatıcıları çalışıyor; KB-8 sonrası bakıcı silemiyordu.
 - **Soru:** Silinsin mi, taşınsın mı (ebeveyn onaylasın), kalsın mı?
 - **Seçenekler:** (a) sessiz silme — veri kaybı; (b) kalsın + "yalnız bu cihazda" notu + bakıcı silebilsin; (c) ebeveyne "bu planı paylaşıma al" akışı (backend yazma izni gerekir).
-- **Uygulanan varsayılan:** (b) — `MedicationPlan.localOnly`, kart notu + Sil; düzenleme kapalı (`e77a23d`). KARARLAŞTI: varsayılan uygulandı.
+- **Uygulanan varsayılan:** (b) — `MedicationPlan.localOnly`, kart notu + Sil; düzenleme kapalı (`e77a23d`). KARARLAŞTI: varsayılan uygulandı. **I13 (`593b531`):** localOnly tanımı "bakıcıda dirty VE sunucunun bilmediği plan" oldu (sunucu plan id'leri her senkronda prefs'e yazılır); sunucuda olan ama KB-8 öncesi düzenlenmiş plan etiket almaz, silinemez.
 - **Etkilenen:** `health_repository.dart` (`medicationPlans`, `deleteMedicationPlan`), `medications_screen.dart`, `models/medication_plan.dart`.
+
+## KB-11 — `pullSettings` yükü (INCELEME I12, yayın sonrası iş)
+- **Tanım:** `BabyController._pull` her çağrıda (öne geliş, login, geri-al sonrası `refresh`) bulut-uygun **her** bebek için `GET /babies/{id}/settings` atar → N ek istek/tur. Doğruluk sorunu yok, yalnız yük.
+- **Seçenekler:** (a) `GET /babies` yanıtındaki `updated_at` değiştiğinde ya da tam turda bir kez çek; (b) backend `GET /babies` yanıtına `settings` gömsün (tek istek); (c) mevcut (basit, doğru).
+- **Uygulanan varsayılan:** (c) — kod değişikliği yok; yayın sonrası (a) ya da (b).
+- **Etkilenen:** `lib/features/babies/baby_controller.dart:149-153`, `lib/data/baby_repository.dart` (`pullSettings`).

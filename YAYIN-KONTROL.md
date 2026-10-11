@@ -25,7 +25,7 @@ Branch `fix/audit-bulgular`, main'e merge EDİLMEDİ. Bu dosya yayın öncesi te
 ### D. GRUP 3 (ORTA)
 13. O16 (Android 14+): yeni kurulumda açılışta Ayarlar'a zıplama OLMAMALI; kesin alarm izni yokken beslenme hatırlatıcısı ±dakika gecikmeyle gelir. (KB-4: UI girişi yok.)
 14. O14: uygulamayı birkaç kez aç/kapa → bekleyen bildirimlerde gelişim/diş dürtmesinin tetik zamanı DEĞİŞMEMELİ.
-15. O15: bebek sil → o bebeğin aşı/ilaç/beslenme bildirimleri bekleyenlerden düşer.
+15. O15 (+I5): bebek sil → o bebeğin aşı/ilaç/beslenme bildirimleri VE özel/randevu hatırlatıcıları (Hatırlatıcılar ekranından eklenmiş) bekleyenlerden düşer; ikinci bebeğin hatırlatıcıları kalır (Ayarlar → Geliştirici → bekleyen bildirimler).
 16. O12: satın alma sırasında bağlantıyı kes → "Premium etkinleştirildi" + kilitler açık; sonraki açılışta sunucu senkron.
 17. O17 iOS NSE: eşin ileri tarihli (yarın) beslenme girişi → bu cihazda widget/hatırlatıcı günler sonrasına KURULMAMALI (Swift değişikliği Dart testiyle doğrulanamaz).
 18. O18: dil değiştir → push gönder → tek banner/tek senkron; Crashlytics'te sahte fatal yok.
@@ -58,8 +58,16 @@ Branch `fix/audit-bulgular`, main'e merge EDİLMEDİ. Bu dosya yayın öncesi te
 39. N1: iki bebekli hesap (biri bakıcı, biri sahip) — bakıcı bebeğin ilaç ekranında Düzenle/ekle yok, sahip bebeğin ekranında var; aşı/gelişim/diş işaretleme bakıcı bebekte toast, sahip bebekte çalışır.
 40. N2: bakıcı cihazında KB-8 öncesi oluşmuş plan → kartta "Bu plan yalnız bu cihazda; ailenle paylaşılmadı" + Sil; hatırlatıcısı çalmaya devam eder; Sil → yerelden kalkar, sunucuya istek yok; ebeveynde görünmez (zaten görünmüyordu).
 
+### H. Düzeltme turu 3 (INCELEME)
+41. **I1 (KRİTİK senaryo):** v14 kurulu, FREE hesapla 3 aşı işaretle → v15'e güncelle → premium satın al (mağaza sayfasından dönüş = öne geliş) → aşı ekranı: 3 işaret DURUYOR; sunucu logunda `GET /babies/{id}/vaccines` göç `POST /health/sync` (tam küme) tamamlanmadan ÖNCE GELMEMELİ; göç bitince `GET` gelir, işaretler sunucuda da `done`. Crashlytics'te `health_pull_cleared_done` olayı 0 olmalı.
+42. **I1 (lapse):** premium bitir (isPremium false) → birkaç aşı daha işaretle → yeniden abone ol → işaretler durur; sunucu logunda önce tek `POST /health/sync` (tam küme), sonra `GET`'ler.
+43. **I4:** v14 kurulu cihazda v15'e güncelleme sırasında `adb shell am force-stop com.adenababy.adena_baby` ile ilk açılışı kes (zamanlama şansa bağlı; birkaç deneme) → sonraki açılış sorunsuz, Crashlytics'te `duplicate column` YOK.
+44. **I8/I16:** hesabı sil → doğrudan giriş ekranı (onboarding'e uğramaz); silme sırasında senkron turu çalışıyorsa bile cihazda bebek/kayıt kalmaz.
+45. **I6:** aile üyesi 3 kaydı 1-2 sn arayla girsin → bu cihazda 3 ayrı aile bildirimi (üst üste yazılmaz).
+46. **I13:** bakıcı cihazında sunucuda olan bir plan KB-8 öncesi düzenlenmiş gibi dirty bırakılamaz (artık StateError); yalnız gerçekten yerel-only plan "yalnız bu cihazda" etiketi alır.
+
 ## 2. Bekleyen çeviri anahtarları (api repo, commit'lenmedi)
-Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 32 anahtar — `test/i18n/translation_keys_test.dart` listeyle birebir doğrular). Yayın öncesi api'de commit + prod'da `seed_translations --locale <en|es|fr|ar|hi|zh>`.
+Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 32 anahtar — `test/i18n/translation_keys_test.dart` listeyle birebir doğrular). Yayın öncesi api'de commit + prod'da `seed_translations --locale <en|es|fr|ar|hi|zh>`. **I11:** test, `CI=true` ya da `REQUIRE_API_TRANSLATIONS=1` ortamında api dizini yoksa FAIL eder (yerelde uyarıyla atlar); CI'da `flutter test` koşulacaksa api repo'su yan yana checkout edilmeli. Bu turda yeni çeviri anahtarı EKLENMEDİ (kullanıcıya görünen yeni metin yok).
 
 | Anahtar (TR) | Kaynak |
 |---|---|
@@ -113,7 +121,7 @@ Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 32 
 Kod aynı branch'te; `schemaVersion` 14→15 tek sıçrama, migration testli (`migration_v15_test.dart`, SchemaVerifier + veri dolu geçiş). Karar yayın öncesi kullanıcıda: (a) tek sürüm (tüm bulgular + v15) — tek mağaza turu, migration riski aynı sürümde; (b) önce v15'siz sürüm, sonra v15 — iki tur, risk ayrışır. Öneri: (a) **tek sürüm**, çünkü K4/O4/K-1 davranışları v15 kolonlarına bağlı ve ayrıştırmak branch'i bölmeyi gerektirir. Yayın kademeli: **Google Play kademeli yayın %10 → %50 → %100** (her kademede Crashlytics'te migration/startup hatası ve `db_last_bg_sync_outcome` dağılımı izlenir; v2..v14'ten gelen cihazlar M1 ile testli) ve **App Store phased release** (7 gün, aynı izleme). Geri alma planı: şema geri alınamaz (v15 ek kolon; eski sürüm v15 DB'yi açamaz) → kademe durdurma + hotfix, downgrade değil.
 
 ## 5. main'e merge öncesi adımlar
-1. `flutter analyze` temiz, `flutter test` 1203/0 (bu koşu sonu). `flutter build apk --debug` ile Android hattı.
+1. `flutter analyze` temiz, `flutter test` 1243 (inceleme) → **1289/0 (düzeltme turu 3 sonu)**. `flutter build apk --debug` ile Android hattı.
 2. Cihaz listesi §1'den en az: 4, 5, 9, 10, 12, 13, 15, 17 (iOS), 22.
 3. `KARAR-BEKLEYEN.md` KB-1..KB-9 kararları (özellikle KB-4 exact-alarm UI, KB-9 hesap silmede yerel veri).
 4. api repo: §2 çeviri anahtarları commit + `seed_translations`; backend #8 (küçük) tercihen aynı yayında.
