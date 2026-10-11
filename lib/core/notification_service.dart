@@ -21,7 +21,9 @@ import 'i18n_warm.dart';
 /// (son beslenme + aralık) ve süren uyku/emzirme sayaçları.
 class NotificationService {
   NotificationService._() : _plugin = FlutterLocalNotificationsPlugin();
-  static final NotificationService instance = NotificationService._();
+  /// Tekil örnek. Yalnız testler sahte plugin'li bir örnekle DEĞİŞTİRİR
+  /// (`NotificationService.withPlugin`); üretim kodu atama yapmaz.
+  static NotificationService instance = NotificationService._();
 
   /// Yalnız test: sahte eklentiyle bağımsız bir örnek (platform kanalı yok).
   @visibleForTesting

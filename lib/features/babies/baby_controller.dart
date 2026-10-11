@@ -12,6 +12,7 @@ import '../../data/health_repository.dart';
 import '../../data/memory_repository.dart';
 import '../../data/mom_repository.dart';
 import '../../data/record_repository.dart';
+import '../../data/slot_registry.dart';
 import '../../data/sync_gate.dart';
 import '../../models/baby.dart';
 import '../auth/auth_controller.dart';
@@ -98,9 +99,10 @@ class BabyController extends AsyncNotifier<List<Baby>> {
   /// periyodik dürtmeler, ilaç planları, beslenme, sayaçlar) iptal edilir —
   /// `_HealthNotifSync` ağaçtan düştüğü için bir daha temizlenmezdi.
   Future<void> _cancelBabyNotifications(String id, {int? slot}) async {
-    final baby = state.asData?.value.where((b) => b.id == id).firstOrNull;
-    final s = slot ?? baby?.notifSlot;
-    if (s == null) return;
+    // J5: slot `state`'ten DEĞİL registry'den — riverpod 3'te `asData`
+    // AsyncLoading'de null (önceki değer olsa da) → iptal sessizce atlanıyordu.
+    // `Baby.notifSlot` zaten `SlotRegistry.slotFor(id)`; bebek nesnesi gerekmez.
+    final s = slot ?? SlotRegistry.instance.slotFor(id);
     List<int> planIds = const [];
     List<int> reminderIds = const [];
     try {

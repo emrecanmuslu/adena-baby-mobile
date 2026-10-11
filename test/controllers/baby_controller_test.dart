@@ -2,9 +2,13 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:drift/native.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mocktail/mocktail.dart';
 
+import 'package:adena_baby/core/providers.dart';
 import 'package:adena_baby/data/baby_repository.dart';
+import 'package:adena_baby/data/local/app_database.dart';
 import 'package:adena_baby/data/local_session.dart';
 import 'package:adena_baby/data/subscription_repository.dart';
 import 'package:adena_baby/data/sync_gate.dart';
@@ -27,6 +31,7 @@ void main() {
   late StreamController<List<Baby>> watchCtrl;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({}); // J5: SlotRegistry._persist
     repo = MockBabyRepository();
     watchCtrl = StreamController<List<Baby>>.broadcast();
     when(() => repo.watchAll()).thenAnswer((_) => watchCtrl.stream);
@@ -62,7 +67,13 @@ void main() {
   /// kendi premium'uma (cloudSync) bağlı. Premium daima oturum açık demektir →
   /// loggedIn verilmezse cloudSync'i izler.
   ProviderContainer makeContainer({bool cloudSync = false, bool? loggedIn}) {
+    // J5: deleteBaby artık (loading'de de) bildirim iptali için sağlık repo'suna
+    // (DB) ve SlotRegistry'ye (prefs) dokunur → gerçek DB/path_provider yerine
+    // bellek-içi DB; iptal çağrıları gerçek plugin'de MissingPlugin → yutulur.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
     final c = ProviderContainer(overrides: [
+      databaseProvider.overrideWithValue(db),
       babyRepositoryProvider.overrideWithValue(repo),
       loggedInProvider.overrideWithValue(loggedIn ?? cloudSync),
       cloudSyncEnabledProvider.overrideWithValue(cloudSync),
