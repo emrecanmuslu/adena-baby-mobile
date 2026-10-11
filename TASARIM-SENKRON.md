@@ -250,4 +250,4 @@ Sıra: **7a → 7b → 8 → 9 → docs.** 8b (O26 kalanı) bu aşamaya DAHİL D
 | #5/#6/#4 | Bu aşamayı etkilemez. | — |
 
 | 10 | (backend sonrası) | sağlık kalem damgası, `bulk` id eşlemesi, anı tombstone, anne `updated_at` | — | sözleşme güncellenince |
-| 8b | (ayrı iş, bu aşama DIŞI) O26 kalanı: `patchSettings`/`saveEntry` bulut açıkken PATCH/push'u satır içinde bekliyor → `requestSyncSoon` | düşük | repo testi: patch sonrası ağ beklenmez |
+| 8b (`f93c849`) | O26 kalanı (GRUP 2'de yapıldı): `patchSettings`/`saveEntry` bulut açıkken PATCH/push'u satır içinde bekliyor → `requestSyncSoon` | düşük | repo testi: patch sonrası ağ beklenmez |

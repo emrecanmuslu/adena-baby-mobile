@@ -1,6 +1,6 @@
 # DEVAM NOTU — fix/audit-bulgular
 
-Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1165 geçti, 0 başarısız**, `flutter analyze` temiz.
+Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1170 geçti, 0 başarısız**, `flutter analyze` temiz.
 
 ## Tamamlananlar (commit sırasıyla)
 1. aşama: K3 `37f05f8`, K1 `00cd3fb`, K5 `e5f1a66`
@@ -12,14 +12,14 @@ Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ
 Tasarım: `TASARIM-SENKRON.md` (kararlar K-1..K-10, R1-R9, §8 plan + hash'ler). Backend talepleri: `BACKEND-TALEPLERI.md` (9 madde).
 
 ## Otonom koşu (2026-10-11) — durum
-- **Tamamlanan grup:** GRUP 0 (5. aşama artığı), GRUP 1 (şema v15: 7a/7b/8/9).
-- **Sıradaki grup:** GRUP 2 — O26 kalanı (`patchSettings`/`saveEntry`/`deleteEntry`/`_maintainAnchorAfterRemoval` bulut açıkken satır içi ağ beklemesin → `requestSyncSoon`).
+- **Tamamlanan grup:** GRUP 0 (5. aşama artığı), GRUP 1 (şema v15: 7a/7b/8/9), GRUP 2 (O26 `f93c849`).
+- **Sıradaki grup:** GRUP 3 — kalan ORTA; alt gruplar: 3a bildirim (O14, O15, O16), 3b premium (O3, O12), 3c adet (O23, O24, O25), 3d sağlık/ilaç (O19, O22), 3e kayıt/form (O27, O28, O37, O13, O11), 3f veri/yasal (O30, O31, O32, O33), 3g senkron/push (O9, O10, O17, O18, O29).
 - **KARAR-BEKLEYEN sayısı:** 3 (`KARAR-BEKLEYEN.md`: KB-1 sunucuda olmayan sahip bebek, KB-2 records/ilaç geri al, KB-3 toplu geri al).
 - Sonra: GRUP 3 (kalan ORTA), GRUP 4 (DÜŞÜK triyaj), GRUP 5 (şüpheliler), GRUP 6 (YAYIN-KONTROL.md), FINAL-RAPOR.md.
 
 ## Kalan iş sırası
 c) ~~Şema v15~~ TAMAMLANDI (GRUP 1; v15'in ayrı sürüm olup olmayacağı yayın öncesi kullanıcı kararı, K-10).
-d) **O26 kalanı** + `_maintainAnchorAfterRemoval`'ın bulut açıkken anlık PATCH'i → `requestSyncSoon`'a bırak (TASARIM §8 satır 8b).
+d) ~~O26 kalanı~~ TAMAMLANDI (`f93c849`).
 e) **Kalan ORTA:** O3, O9, O10, O11, O12, O13, O14, O15, O16, O17, O18, O19, O22, O23, O24, O25, O27, O28, O29, O30, O31, O32, O33, O37.
 f) **DÜŞÜK:** D1–D45 (D33 kapandı; O33/D33 notlarına bakın).
 g) **Şüpheliler:** BULGULAR §6 listesi (cihaz/backend doğrulaması gerekenler).

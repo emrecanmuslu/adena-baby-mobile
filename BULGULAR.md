@@ -73,6 +73,7 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 | K4 (+O21) | `e328ee8` | sağlık delta push, pull R1, işaretleme ağı beklemez, aşı yankı güvencesi |
 | O4 | `beda831`, `6c70672` | settingsDirty, değişen-alan PATCH, GET /settings pull |
 | K-1 (banner) | `3c7d94c` | pushError kolonu, sayaç, banner + "değişikliği geri al" |
+| O26 (yazma) | `f93c849` | adet yazımları satır içi ağ beklemez |
 
 Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 
@@ -341,6 +342,7 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 - **Koşul:** Premium + bağlı-ama-erişimsiz ağ.
 - **Etki:** Her kayıttan sonra 15-35 sn spinner; kullanıcı tekrar basar (O8'i tetikler).
 - **Şüpheli:** hayır
+- **DÜZELTİLDİ (`89cc58f` okuma tarafı + `f93c849` yazma tarafı, 2026-10-11):** Stream provider'lar (R8) + `patchSettings`/`saveEntry`/`deleteEntry` (ve D33 çapa taşıması) bulut açıkken satır içi PATCH/POST atmaz; dirty yazılır, `onChanged` → `requestSyncSoon`, gönderim `syncIfCloud` turunda. Satır içi PATCH'in "değişmeyen null baby'yi atlama" kuralı kalktı; tek yol dirty-retry kontratı (yerel gerçek).
 
 ### Ana sayfa / kayıt
 
