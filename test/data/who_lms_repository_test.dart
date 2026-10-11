@@ -46,20 +46,22 @@ class _FakePathProvider extends PathProviderPlatform
 const _newKey = 'wt_TEST';
 final _apiSeries = {
   'key': _newKey,
-  'l': [1.0, 2.0, 3.0],
-  'm': [10.0, 20.0, 30.0],
-  's': [0.1, 0.2, 0.3],
+  // D29: gerçek seri 61 nokta (0..60 ay); kısa seri artık reddedilir.
+  'l': List<double>.filled(61, 1.0),
+  'm': List<double>.filled(61, 10.0),
+  's': List<double>.filled(61, 0.1),
 };
 
 /// Gömülüdeki mevcut bir anahtarı (wt_M) üzerine yazan veri.
 final _overrideEmbedded = {
   'key': 'wt_M',
-  'l': [9.9],
-  'm': [99.9],
-  's': [0.99],
+  'l': List<double>.filled(61, 9.9),
+  'm': List<double>.filled(61, 99.9),
+  's': List<double>.filled(61, 0.99),
 };
 
 void main() {
+  mainD29();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late ApiClient api;
@@ -90,7 +92,7 @@ void main() {
 
       // Yeni anahtar global tabloya eklendi.
       expect(whoLms.containsKey(_newKey), isTrue);
-      expect(whoLms[_newKey]!.m, [10.0, 20.0, 30.0]);
+      expect(whoLms[_newKey]!.m, List<double>.filled(61, 10.0));
       // Gömülü anahtarlar korunur (applyWhoLms gömülüden kopyalar).
       expect(whoLms.containsKey('wt_M'), isTrue);
       // Cache yazıldı.
@@ -103,7 +105,7 @@ void main() {
 
       await WhoLmsRepository(api).load();
 
-      expect(whoLms['wt_M']!.m, [99.9]);
+      expect(whoLms['wt_M']!.m, List<double>.filled(61, 99.9));
     });
   });
 
@@ -125,7 +127,7 @@ void main() {
       await WhoLmsRepository(api2).load();
 
       expect(whoLms.containsKey(_newKey), isTrue);
-      expect(whoLms[_newKey]!.s, [0.1, 0.2, 0.3]);
+      expect(whoLms[_newKey]!.s, List<double>.filled(61, 0.1));
     });
   });
 
@@ -179,6 +181,29 @@ void main() {
       await WhoLmsRepository(api).load();
       expect(whoLms.containsKey('wt_M'), isTrue);
       expect(whoLms.containsKey(_newKey), isFalse);
+    });
+  });
+}
+
+/// D29 — kısa/uyumsuz LMS serisi gömülüyü ezmesin (61 nokta zorunlu).
+void mainD29() {
+  group('D29 — applyWhoLms seri uzunluğu doğrulaması', () {
+    tearDown(() => applyWhoLms(const []));
+    test('61 noktadan kısa seri atlanır, gömülü kalır', () {
+      final before = whoLms['wt_M']!.m.length;
+      applyWhoLms([
+        {'key': 'wt_M', 'l': [0.1, 0.2], 'm': [3.0, 4.0], 's': [0.1, 0.1]},
+      ]);
+      expect(whoLms['wt_M']!.m.length, before);
+      expect(whoLms['wt_M']!.m.length, greaterThanOrEqualTo(61));
+    });
+    test('uyumsuz uzunluklar (l≠m) atlanır', () {
+      final ok = List<double>.filled(61, 1.0);
+      applyWhoLms([
+        {'key': 'wt_F', 'l': ok, 'm': List<double>.filled(60, 1.0), 's': ok},
+      ]);
+      expect(whoLms['wt_F']!.m.length, greaterThanOrEqualTo(61));
+      expect(whoLms['wt_F']!.m.first, isNot(1.0));
     });
   });
 }
