@@ -13,6 +13,7 @@ import 'package:adena_baby/core/providers.dart';
 import 'package:adena_baby/core/token_storage.dart';
 import 'package:adena_baby/data/baby_repository.dart';
 import 'package:adena_baby/data/health_catalog.dart';
+import 'package:adena_baby/data/health_repository.dart';
 import 'package:adena_baby/data/local/app_database.dart';
 import 'package:adena_baby/data/local_session.dart';
 import 'package:adena_baby/data/slot_registry.dart';
@@ -120,5 +121,26 @@ void main() {
     expect(plugin.canceled, contains(NotificationService.feedMainIdFor(slot)),
         reason: 'loading durumunda da O15 iptali çalışmalı');
     verify(() => repo.delete('b1')).called(1);
+  });
+
+  test('J10: liste yüklüyken silme → özel/randevu hatırlatıcı id\'leri + slot id\'leri iptal (I5 uçtan uca)',
+      () async {
+    when(() => repo.getAll(accountId: any(named: 'accountId')))
+        .thenAnswer((_) async => [_baby('b1'), _baby('b2')]);
+    final c = container();
+    await c.read(babyControllerProvider.future);
+    final health = c.read(healthRepositoryProvider);
+    final r1 = await health.createReminder('b1',
+        type: 'custom', schedule: const {'repeat': 'daily', 'time': '09:00'});
+    final r2 = await health.createReminder('b1',
+        type: 'appointment', schedule: const {'repeat': 'once', 'at': '2030-01-01T09:00:00'});
+    final other = await health.createReminder('b2',
+        type: 'custom', schedule: const {'repeat': 'daily', 'time': '10:00'});
+
+    await c.read(babyControllerProvider.notifier).deleteBaby('b1');
+
+    final slot = SlotRegistry.instance.slotFor('b1');
+    expect(plugin.canceled, containsAll([r1.id, r2.id, NotificationService.feedMainIdFor(slot)]));
+    expect(plugin.canceled, isNot(contains(other.id)), reason: 'diğer bebeğin hatırlatıcısı kalır');
   });
 }
