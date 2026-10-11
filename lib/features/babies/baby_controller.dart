@@ -89,8 +89,28 @@ class BabyController extends AsyncNotifier<List<Baby>> {
   }
 
   Future<void> deleteBaby(String id) async {
+    await _cancelBabyNotifications(id);
     await _repo.delete(id);
     _pushSoon();
+  }
+
+  /// O15: silinen / erişimi kalkan bebeğin TÜM planlı bildirimleri (sağlık,
+  /// periyodik dürtmeler, ilaç planları, beslenme, sayaçlar) iptal edilir —
+  /// `_HealthNotifSync` ağaçtan düştüğü için bir daha temizlenmezdi.
+  Future<void> _cancelBabyNotifications(String id, {int? slot}) async {
+    final baby = state.asData?.value.where((b) => b.id == id).firstOrNull;
+    final s = slot ?? baby?.notifSlot;
+    if (s == null) return;
+    List<int> planIds = const [];
+    try {
+      planIds = (await ref.read(healthRepositoryProvider).medicationPlans(id))
+          .map((p) => p.id)
+          .toList();
+    } catch (_) {}
+    try {
+      await NotificationService.instance
+          .cancelBabyScheduled(slot: s, medicationPlanIds: planIds);
+    } catch (_) {}
   }
 
   /// Yerel dirty bebekleri arka planda sunucuya gönderir. Kendi (sahip) bebeklerimin
@@ -139,6 +159,8 @@ class BabyController extends AsyncNotifier<List<Baby>> {
       // TÜM yerel verisini temizle. Veri sahibe aitti, cihazda kalmamalı:
       // kayıt + anı + anne + SAĞLIK (aşı/gelişim/diş) + hatırlatıcılar. Bebek
       // satırının kendisi pullFromServer'da zaten silinir.
+      // O15: ilaç plan id'leri purge'den ÖNCE okunmalı (bildirim iptali için).
+      await _cancelBabyNotifications(b.id, slot: b.notifSlot);
       try {
         await ref.read(recordRepositoryProvider).purgeBaby(b.id);
         await ref.read(memoryRepositoryProvider).purgeBaby(b.id);
@@ -146,13 +168,6 @@ class BabyController extends AsyncNotifier<List<Baby>> {
         await ref.read(healthRepositoryProvider).purgeBaby(b.id);
       } catch (_) {}
       await ActivityNotifCache().clearSeen(b.id);
-      final slot = b.notifSlot;
-      NotificationService.instance
-          .cancelTimer(NotificationService.sleepIdFor(slot));
-      NotificationService.instance
-          .cancelTimer(NotificationService.breastIdFor(slot));
-      NotificationService.instance.scheduleFeedReminder(
-          enabled: false, nextTime: null, preMin: 0, slot: slot, babyName: b.name);
       NotificationService.instance.showActivity(
           title: b.name, body: tr('Bu bebeğe erişimin kaldırıldı'));
     }

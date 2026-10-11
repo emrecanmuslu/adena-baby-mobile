@@ -60,7 +60,6 @@ class NotificationService {
   static int breastIdFor(int slot) => _breastBase + slot;
   static const snoozeAction = 'snooze_feed';
   static const snoozeCategoryId = 'feed_snooze'; // iOS: "Ertele" aksiyonlu kategori
-  bool _exactAsked = false;
 
   // Aile etkinlik bildirimleri (başka üye kayıt ekleyince) — ayrı kanal + dönen id.
   static const _activityChannelId = 'family_activity';
@@ -114,14 +113,30 @@ class NotificationService {
     return _plugin.pendingNotificationRequests();
   }
 
-  /// Android 12+ kesin alarm iznini ister (yalnız bir kez). Beslenme uyarısının
-  /// tam dakikasında gelmesi için gerekir.
-  Future<void> _ensureExactAlarm() async {
-    if (_exactAsked) return;
-    _exactAsked = true;
+  /// Android 12+ kesin alarm izni — O16: planlama yolunda ARTIK OTOMATİK
+  /// İSTENMEZ (Android 14+'ta varsayılan ret; plugin izin yoksa açıklamasız
+  /// sistem Ayarlar sayfasına atıyordu, her soğuk açılışta). İzin yoksa
+  /// `_alarmMode` inexact'e düşer (±dakikalar, bildirim kaybolmaz). Açık istek
+  /// yalnız kullanıcı eylemiyle: [requestExactAlarmPermission] (ayar ekranı,
+  /// KARAR-BEKLEYEN KB-4).
+  Future<void> _ensureExactAlarm() async {}
+
+  /// Kullanıcı açıkça isteyince (açıklama gösterildikten sonra) kesin alarm
+  /// izni sayfasını açar. Döner: izin şu an var mı.
+  Future<bool> requestExactAlarmPermission() async {
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    await android?.requestExactAlarmsPermission();
+    if (android == null) return true;
+    await android.requestExactAlarmsPermission();
+    return await android.canScheduleExactNotifications() ?? false;
+  }
+
+  /// Kesin alarm izni var mı (Android; diğer platformlarda true).
+  Future<bool> canScheduleExact() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+    return await android.canScheduleExactNotifications() ?? false;
   }
 
   /// Kesin alarm izni varsa exact, yoksa inexact döner. Android 12+ kullanıcı
@@ -512,13 +527,22 @@ class NotificationService {
       }
     }
     final now = DateTime.now();
+    Set<int> pendingIds;
+    try {
+      pendingIds = {for (final p in await _plugin.pendingNotificationRequests()) p.id};
+    } catch (_) {
+      pendingIds = const {};
+    }
     for (final r in active) {
       final s = r.schedule;
       final title = (s['title'] as String?)?.trim();
       if (s['repeat'] == 'interval' || s['every_min'] != null) {
-        // Periyodik: her X dakikada bir tekrar eden bildirim.
+        // Periyodik: her X dakikada bir tekrar eden bildirim. O14: kurulu plan
+        // her sync'te YENİDEN KURULMAZ (ilk tetik "şimdi + aralık"a kayıyordu);
+        // yalnız bekleyen yoksa ya da aralık değiştiyse kurulur.
         final every = s['every_min'] is num ? (s['every_min'] as num).toInt() : 0;
         if (every < 1) continue;
+        if (pendingIds.contains(r.id) && _intervalMin[r.id] == every) continue;
         await _scheduleInterval(r.id, every, title);
       } else if (s['repeat'] == 'once' || s['at'] != null) {
         // Tek-seferlik: belirli tarih-saatte bir kez (geçmişse kurma).
@@ -540,8 +564,14 @@ class NotificationService {
   /// Periyodik hatırlatıcı — ilk bildirim çağrıdan [everyMin] dk sonra, ardından
   /// hatırlatıcı kapatılana/silinene dek her [everyMin] dakikada bir (ateş takibi
   /// gibi kısa aralıklı kontroller için). Kesin alarm izni yoksa inexact kurulur.
+  /// Kurulu periyodik planların aralığı (O14: değişmeyen plan yeniden
+  /// kurulmaz). Süreç ömrü; soğuk açılışta bekleyen plan varsa aralık değişmemiş
+  /// sayılır (aralık düzenlemesi aynı süreçte sync'i tetikler).
+  final Map<int, int> _intervalMin = {};
+
   Future<void> _scheduleInterval(int id, int everyMin, String? title) async {
     await _ensureExactAlarm();
+    _intervalMin[id] = everyMin;
     await _plugin.periodicallyShowWithDuration(
       id: id,
       title: title != null && title.isNotEmpty ? title : tr('Hatırlatıcı'),
@@ -680,10 +710,21 @@ class NotificationService {
   Future<void> syncMilestoneCheckReminder({required bool enabled, int slot = 0}) async {
     if (!_ready) await init();
     final id = _milestoneBase + slot;
-    await _plugin.cancel(id: id);
-    if (!enabled) return;
+    if (!enabled) {
+      await _plugin.cancel(id: id);
+      return;
+    }
+    if (await _isPending(id)) return; // O14: 14 günlük sayaç sıfırlanmasın
     await _ensurePermission();
     await _scheduleInterval(id, 14 * 24 * 60, tr('Gelişim basamaklarını kontrol et'));
+  }
+
+  Future<bool> _isPending(int id) async {
+    try {
+      return (await _plugin.pendingNotificationRequests()).any((p) => p.id == id);
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Diş çıkışlarını işaretlemeyi unutmamak için periyodik (2 haftada bir)
@@ -691,10 +732,39 @@ class NotificationService {
   Future<void> syncToothCheckReminder({required bool enabled, int slot = 0}) async {
     if (!_ready) await init();
     final id = _toothBase + slot;
-    await _plugin.cancel(id: id);
-    if (!enabled) return;
+    if (!enabled) {
+      await _plugin.cancel(id: id);
+      return;
+    }
+    if (await _isPending(id)) return; // O14
     await _ensurePermission();
     await _scheduleInterval(id, 14 * 24 * 60, tr('Diş çıkışlarını kontrol et'));
+  }
+
+  /// O15: bebek silinince / erişim kalkınca o bebeğin TÜM planlı bildirimleri —
+  /// beslenme (ana/ön/unuttun), sayaçlar, aşı/atak/büyüme/gebelik haftası,
+  /// periyodik gelişim/diş dürtmeleri ve ilaç planları — iptal edilir.
+  Future<void> cancelBabyScheduled(
+      {required int slot, Iterable<int> medicationPlanIds = const []}) async {
+    if (!_ready) await init();
+    for (final id in [
+      feedMainIdFor(slot),
+      feedPreIdFor(slot),
+      feedForgotIdFor(slot),
+      sleepIdFor(slot),
+      breastIdFor(slot),
+      _vaccineBase + slot,
+      _leapBase + slot,
+      _growthBase + slot,
+      _pregWeekBase + slot,
+      _milestoneBase + slot,
+      _toothBase + slot,
+    ]) {
+      await _plugin.cancel(id: id);
+    }
+    for (final planId in medicationPlanIds) {
+      await cancelMedicationPlan(planId);
+    }
   }
 
   /// İlaç/vitamin planının TÜM zamanlanmış bildirimlerini iptal eder (plan
