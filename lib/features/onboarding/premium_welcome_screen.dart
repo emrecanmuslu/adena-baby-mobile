@@ -15,6 +15,7 @@ import '../../core/i18n.dart';
 import '../../core/legal_links.dart';
 import '../../core/revenuecat_service.dart';
 import '../../core/theme.dart';
+import '../../data/subscription_cache.dart';
 import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
 import '../../models/pricing.dart';
@@ -140,7 +141,12 @@ class _PremiumWelcomeScreenState extends ConsumerState<PremiumWelcomeScreen> {
       if (ok) {
         unawaited(AnalyticsService.instance
             .log('purchase_completed', {'plan': _plan, 'source': 'onboarding'}));
-        await ref.read(subscriptionRepositoryProvider).refresh();
+        // O12: RC doğruladı → backend refresh düşse de premium açılır.
+        ref.read(cachedPremiumProvider.notifier).set(true);
+        unawaited(SubscriptionCache().write(true));
+        try {
+          await ref.read(subscriptionRepositoryProvider).refresh();
+        } catch (_) {}
         ref.invalidate(subscriptionProvider);
         if (mounted) {
           showAdToast(context, tr('Premium etkinleştirildi 🎉'));

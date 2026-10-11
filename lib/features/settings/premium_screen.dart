@@ -23,6 +23,7 @@ import '../../core/legal_links.dart';
 import '../../core/revenuecat_service.dart';
 import '../../core/theme.dart';
 import '../../data/migration_service.dart';
+import '../../data/subscription_cache.dart';
 import '../../data/subscription_repository.dart';
 
 /// Premium / paywall (design ScrPremium): özellik listesi + planlar + CTA + kod.
@@ -472,7 +473,14 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
       final ok = await RevenueCatService.instance.purchase(pkg);
       if (ok) {
         unawaited(AnalyticsService.instance.log('purchase_completed', {'plan': _plan}));
-        await ref.read(subscriptionRepositoryProvider).refresh();
+        // O12: satın alma RevenueCat'te DOĞRULANDI → premium artık gerçek.
+        // Backend refresh (webhook kısayolu) düşerse hata GÖSTERİLMEZ: son
+        // bilinen durum premium yapılır, RC webhook / sonraki açılış senkronlar.
+        ref.read(cachedPremiumProvider.notifier).set(true);
+        unawaited(SubscriptionCache().write(true));
+        try {
+          await ref.read(subscriptionRepositoryProvider).refresh();
+        } catch (_) {}
         ref.invalidate(subscriptionProvider);
         if (mounted) {
           showAdToast(context, tr('Premium etkinleştirildi 🎉'));
