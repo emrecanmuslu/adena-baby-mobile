@@ -123,7 +123,7 @@ Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 32 
 | İzin yok — hatırlatıcılar birkaç dakika gecikebilir | M4 |
 | Bu plan yalnız bu cihazda; ailenle paylaşılmadı | N2 |
 
-## 3. Backend talepleri özeti (`BACKEND-TALEPLERI.md`, 10 madde) — istemci hangi maddede bekliyor
+## 3. Backend talepleri özeti (`BACKEND-TALEPLERI.md`, 11 madde) — istemci hangi maddede bekliyor
 | # | Başlık | İstemci bağımlılığı |
 |---|---|---|
 | 1 | Sağlık kalemlerine damga | K4: `serverUpdatedAt` kolonu hazır; gelince gerçek LWW (migration gerekmez) |
@@ -136,17 +136,101 @@ Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 32 
 | 8 | 401 gövdesine `code: session_superseded` | O1: banner genel metni gösteriyor |
 | 9 | Supersede'de eski cihaz kaydını kapat | O1: eski token'a push denenir (deleteToken ile düşer) |
 | 10 | family_activity `last_feed_ts` = en yeni kayıt | O17: istemci yalnız ileri-tarih eşiği uyguluyor |
+| 11 | `/health/sync` kalem bazında `client_updated_at` + LWW | J2/K2: istemci birleşim semantiği + `serverUpdatedAt` onay damgasıyla güvenli düşüyor; iki cihaz aynı kalemi ters yöne çekerse "son istek kazanır" |
 
 ## 4. v15 ayrı sürüm mü? (K-10)
 Kod aynı branch'te; `schemaVersion` 14→15 tek sıçrama, migration testli (`migration_v15_test.dart`, SchemaVerifier + veri dolu geçiş). Karar yayın öncesi kullanıcıda: (a) tek sürüm (tüm bulgular + v15) — tek mağaza turu, migration riski aynı sürümde; (b) önce v15'siz sürüm, sonra v15 — iki tur, risk ayrışır. Öneri: (a) **tek sürüm**, çünkü K4/O4/K-1 davranışları v15 kolonlarına bağlı ve ayrıştırmak branch'i bölmeyi gerektirir. Yayın kademeli: **Google Play kademeli yayın %10 → %50 → %100** (her kademede Crashlytics'te migration/startup hatası ve `db_last_bg_sync_outcome` dağılımı izlenir; v2..v14'ten gelen cihazlar M1 ile testli) ve **App Store phased release** (7 gün, aynı izleme). Geri alma planı: şema geri alınamaz (v15 ek kolon; eski sürüm v15 DB'yi açamaz) → kademe durdurma + hotfix, downgrade değil.
 
 ## 5. main'e merge öncesi adımlar
-1. `flutter analyze` temiz, `flutter test` 1243 (inceleme) → **1289/0 (düzeltme turu 3 sonu)**. `flutter build apk --debug` ile Android hattı.
+1. `flutter analyze` temiz, `flutter test` 1243 (inceleme) → 1289/0 (düzeltme turu 3) → **1334/0 (düzeltme turu 5 sonu)**; CI `test.yml` üç TZ'de aynı suite. `flutter build apk --debug` ile Android hattı.
 2. Cihaz listesi §1'den en az: 4, 5, 9, 10, 12, 13, 15, 17 (iOS), 22.
 3. `KARAR-BEKLEYEN.md` KB-1..KB-9 kararları (özellikle KB-4 exact-alarm UI, KB-9 hesap silmede yerel veri).
 4. api repo: §2 çeviri anahtarları commit + `seed_translations`; backend #8 (küçük) tercihen aynı yayında.
 5. `BULGULAR.md` §2b ve `DEVAM-NOTU.md` güncel; `TASARIM-SENKRON.md` §8 hash'leri.
 6. Mağaza metadata güncelleme borcu: yeni görünür özellikler (geri al banner'ı, zorunlu çıkış banner'ı) için Play/App Store metin/SS kontrolü (bkz. hafıza "mağaza metadata güncelleme borcu").
-7. **Sürüm numarası artırımı:** şema v15 (ek kolon) → `pubspec.yaml` version (ör. 1.4.27+66) ve `ios-v…`/Android tag'leri; eski sürüm v15 DB'yi açamaz, geri alma yok (kademeli yayın).
-8. **Sürüm notları 6 dilde:** Play "Yenilikler" ve App Store "What's New" (tr/en/es/fr/ar/hi/zh): oturum banner'ı, gönderilemeyen değişiklik/geri al, aile ayarı ve sağlık işaretlerinin aile arasında eşitlenmesi, ilaç hatırlatıcı izni (Android), düzeltmeler. Mağaza metadata borcu notu (hafıza) ile birlikte.
+7. **Sürüm numarası artırımı:** YAPILDI (`9c8b636`): `pubspec.yaml` **1.5.0+66** (şema v15 + geniş davranış değişikliği). Tag'ler `v1.5.0` (Android) / `ios-v1.5.0` (iOS) — workflow'lar tag'i pubspec'in x.y.z kısmıyla karşılaştırır, `+66` tag'e YAZILMAZ; CI build numarası `run_number+100`. Eski sürüm v15 DB'yi açamaz, geri alma yok (kademeli yayın).
+8. **Sürüm notları 7 dilde:** YAPILDI (`d79a4f2`): `SURUM-NOTLARI.md` (tr/en/zh/hi/es/fr/ar; Play kısa ≤500, App Store uzun ≤4000, karakter sayılarıyla). Mağaza metadata borcu notu (hafıza) ile birlikte: yeni görünür özellikler için SS kontrolü.
 9. Merge: `git merge --no-ff fix/audit-bulgular` (kullanıcı yapacak; bu koşuda merge/push YOK).
+
+## 6. Yayın sırası (runbook) — 1.5.0+66
+
+Önkoşul: kod tamam (`fix/audit-bulgular` @ düzeltme turu 5 + yayın hazırlığı commit'leri), `flutter test` 1334/0, `flutter analyze` temiz. Kod davranışı bu bölümle DEĞİŞMEZ.
+
+### 6.1 api: çeviri anahtarları
+- `../api/apps/translations/data/{ar,en,es,fr,hi,zh}.json` değişiklikleri (32 anahtar, §2) **commit + push** (api repo `main`).
+- Prod'da (Hetzner, `/opt/adena/api`): `manage.py seed_translations --locale <x>` tüm diller (tr dahil; tr kaynak metin) → `GET /content/translations?locale=…` ile 3-4 anahtar örneklemesi.
+- **Sıra bağımlılığı:** bu push yapılmadan CI'daki `translation_keys_test` (I11, `CI=true`) KIRMIZIDIR — api checkout'u `main`'i çeker.
+
+### 6.2 CI secret'ı → CI yeşil
+- GitHub → mobil repo → Settings → Secrets and variables → Actions → **`API_REPO_TOKEN`**: `emrecanmuslu/adena-baby-api` için fine-grained PAT, izin **Contents: Read-only** (classic PAT ise `repo`). Workflow `permissions: contents: read` ile koşar; api repo'su `api/` dizinine sparse checkout (`apps/translations/data`).
+- Push sonrası `Test (analyze + flutter test)` iş akışı 3 job (UTC / Europe/Berlin / America/New_York) yeşil olmalı. Mevcut `android.yml`/`ios.yml` test koşmaz (yalnız build+yükleme); release tag'leri onları tetikler.
+- Yerelde doğrulanamayan tek şey workflow'un kendisi (actionlint yok; YAML parse + yapısal kontrol yapıldı). İlk koşuda kırmızı olursa en olası neden secret/izin ya da 6.1'in henüz yapılmamış olması.
+
+### 6.3 Zorunlu cihaz testleri (15 adım; §1 numaralarıyla)
+Öncelik: veri kaybı riski > sessiz bozulma > görünür UX. En az bir Android 14+ ve bir iOS cihaz; iki hesap (sahip + ebeveyn) ve bir bakıcı; v14 (1.4.26) kurulu bir cihaz.
+
+| # | §1 | Senaryo | Neden zorunlu |
+|---|---|---|---|
+| 1 | 9 | v14 → v15 migration (güncelle, aç; gelişim/diş done satırları bir kez push, aşıya istek yok, ayar bir kez PATCH) | şema geri alınamaz |
+| 2 | 29 | Daha eski sürümden (v2/v3 arşiv APK, mümkünse) güncelleme → açılış sorunsuz (M1 duplicate-column) | prod'da görülmüş çökme sınıfı |
+| 3 | 43 | Migration'ı `force-stop` ile kes → sonraki açılış sorunsuz (I4) | kesinti penceresi |
+| 4 | 41 | I1 KRİTİK: free'de 3 aşı işaretli → v15 → premium → tikler durur, göç `POST /health/sync` pull'dan önce | veri kaybı kapısı |
+| 5 | 42 | I1 lapse + J2: premium biter → işaretle → yeniden abone → tek birleşim `POST`, tikler durur | reseed semantiği |
+| 6 | 47 | J1 + K1(a): göçte ağ kesintisi → iki bayrak, sonraki açılış overlay'siz hafif yol | döngü yok |
+| 7 | 59 | K1 uçtan uca kurtarma zinciri (bebek POST'u düşer → bebek oluşur → lazy pull → reseed → K-4) | yeni kod yolu |
+| 8 | 61 | K2 iki cihaz: ebeveyn son tiki kaldırır → sahipte kalkar, reseed geri yazmaz | regresyon düzeltmesi |
+| 9 | 10 | İki cihaz aşı/gelişim/diş: işaretle/kaldır karşı cihazda görünür (sürüm notu vaadi) | ana vaat |
+| 10 | 53 | J4 Android 14+: arka planda "Ertele 10 dk" → bildirim gelir, Crashlytics `bg_snooze_schedule` yok | O16 regresyonu |
+| 11 | 32 (+55) | M4 kesin alarm diyaloğu: ilk ilaç planında bir kez; "İzin ver" sonrası planlar exact ve yeniden kurulur (J12) | izin akışı |
+| 12 | 4 | Zorunlu çıkış + banner: ikinci cihazdan giriş → ilk cihaz `/login` + banner bir kez | sürüm notu vaadi |
+| 13 | 12 | K-1 geri al: kalıcı 4xx → banner → sheet → "Geri al" → onay → sayaç 0 | sürüm notu vaadi |
+| 14 | 51 | J3 misafir→hesap "Aktar": adet ayar/kayıt görünür, sihirbaz açılmaz, PATCH yalnız değişen alan | veri ezme riski |
+| 15 | 15 | O15/I5: bebek sil → tüm bildirimleri (aşı/ilaç/beslenme/özel/randevu) bekleyenlerden düşer; ikinci bebeğinkiler kalır | yetim bildirim |
+
+Ek olarak 36 (KB-9 hesap silme → cihaz verisi silinir) sürüm notunda vaat edildiğinden 15'e **sığmadıysa 16. adım olarak** koşulması önerilir.
+
+**Yayın sonrası gözlem (zorunlu değil):** 1–3, 5–8, 11, 13–14, 16–28, 30–31, 33–35, 37–40, 44–46, 48–50, 52, 54, 56–58, 60, 62. Bunlar ya testle örtülü (I6/J7 serileştirme, O25, K3) ya düşük olasılıklı (D16/D19) ya da telemetriyle izlenebilir (6.7).
+
+### 6.4 TZ testleri
+CI (6.2) üç TZ'de yeşilse M6/KB-6 TZ doğrulaması TAMAM sayılır (§1-37 kapanır). CI koşulamıyorsa Mac/Linux'ta elle: `TZ=Europe/Berlin flutter test` ve `TZ=America/New_York flutter test` (tam suite; ~1 dk).
+
+### 6.5 Merge + tag
+```
+git checkout main && git pull
+git merge --no-ff fix/audit-bulgular        # kullanıcı yapar
+git tag v1.5.0 && git push origin main v1.5.0          # android.yml → Play (alpha track)
+git tag ios-v1.5.0 && git push origin ios-v1.5.0       # ios.yml → TestFlight
+```
+Not: workflow tag doğrulaması `v1.5.0` ↔ pubspec `1.5.0` (build numarası `+66` tag'e girmez; CI `run_number+100` kullanır). Play'de incelemeye gönderme ELLE (`changesNotSentForReview`), üretim track'ine terfi Play Console'dan.
+
+### 6.6 Kademeli yayın
+- **Google Play:** production'a **%10** staged rollout → **48 saat** izleme (6.7) → %50 → 48 saat → %100.
+- **App Store:** Phased Release (7 gün otomatik: %1→2→5→10→20→50→100); eşik aşılırsa "Pause".
+- Geri alma yok (v15 şema): durdur + hotfix (1.5.1) — downgrade değil.
+
+### 6.7 İlk 7 gün izleme ve DURDURMA eşikleri
+Kaynak: Crashlytics (fatal + non-fatal `SyncTelemetry` olayları), sunucu logu (`/opt/adena/api`, 15 gün), Play/ASC vitals. "Durdur" = rollout'u o kademede duraklat, kök neden + hotfix.
+
+| Sinyal | Nerede | Beklenen | İncele | DURDUR |
+|---|---|---|---|---|
+| Migration çökmesi (`duplicate column name`, `no such column`, `SqliteException` onUpgrade/`_addColumnIfMissing`, açılış watchdog) | Crashlytics fatal, sürüm 1.5.0 filtreli | 0 | ≥1 kullanıcı | **> %0,1** güncellenen kullanıcı ya da **≥3 kullanıcı** 24 saatte |
+| Crash-free kullanıcı oranı | Crashlytics / Play vitals | ≥ 1.4.26 oranı (−0,2 pt tolerans) | −0,2…−0,5 pt | **< %99,0** ya da 1.4.26'ya göre **−0,5 pt** |
+| `health_pull_cleared_done` (temiz done=true → sunucu pending) | Crashlytics non-fatal | sahip cihazlarda ~0; ebeveyn cihazında meşru kaldırmalarda tekil | kullanıcı başına **≥3 aşı** tek olayda | **≥10 farklı kullanıcı** 48 saatte (kapı/J1(b) delinmiş demektir) |
+| `health_pull_lazy_server_skipped` | Crashlytics non-fatal | sahip bebek başına **en çok 1** (göç sonrası ilk pull) | aynı bebekte ≥3 / gün (döngü) | premium kullanıcıların **> %5**'inde tekrar |
+| R4 `stale_delete_skipped` (sunucu listesi şüpheli küçük → silme atlandı) | Crashlytics non-fatal | 0 | ≥1 | **> 20 olay / gün** (sunucu sayfalama/liste kesilmesi) |
+| `ExactAlarmPermissionException` / `bg_snooze_schedule` | Crashlytics non-fatal + fatal | 0 | ≥1 | **≥5 kullanıcı** (J4 düzeltmesi delinmiş) — Android 14+ |
+| Push-error banner yükü (kalıcı 4xx) | Sunucu logu: `POST /sync`, `/babies`, `/memories`, `/health/sync`, `/cycle/*` 4xx oranı (401/403 hariç) | < %0,5 istek | %0,5–1 | **> %1** 24 saatte ya da tek uçta ani sıçrama (istemci bu durumda sessiz değil, banner gösterir) |
+| `db_last_bg_sync_outcome` = `zaman aşımı` payı | Crashlytics non-fatal (DbWatchdog) | < %5 | %5–10 | **> %10** |
+| Zorunlu çıkış banner'ı / `session_superseded` yokken 401 fırtınası | Sunucu logu 401 oranı, `/auth/refresh` 403 | 1.4.26 ile aynı | +%50 | **2×** (O34 epoch hatası) |
+
+### 6.8 Backend talepleri #1–#11 — bu yayın için gerekli olan var mı?
+**Yok.** Her madde istemcide güvenli düşüşle karşılanıyor (§3 tablosu): #1/#11 (damga) → birleşim semantiği + `serverUpdatedAt` onay damgası, çakışmada "son istek kazanır"; #2 → post-push GET yankısı; #3 → farklı dilde aşı işareti yerelde dirty kalır; #4 → id farklıysa dirty kalır; #5 → R4 koruması + telemetri; #6 → damgasız LWW; #7 → istemci 500'lük sayfalar; #8 → genel banner metni; #9 → eski token'a push `deleteToken` ile düşer; #10 → ileri-tarih eşiği. Önerilen öncelik: **#11** (sağlık LWW — KB-12 kalıntısını ve K2 kabulünü kapatır) > **#8** (küçük; banner metni doğru olur) > #3 (dil-bağımsız aşı anahtarı; KB-7) > #1/#2 (sağlık damga/yanıt kümesi; #11 ile birlikte) > #9 > #10 > #5 > #4 > #6 > #7.
+
+### 6.9 Yayın sonrası iş listesi
+- **KB-6 ek:** DST'de 1 gün kayabilen görünür hesaplar (`cycleAddDays`/UTC-gün yardımcısına taşıma; liste KARAR-BEKLEYEN'de).
+- **KB-11:** `pullSettings` yükü (`GET /settings` tur başına N istek) → `updated_at` koşullu ya da `GET /babies` gömülü.
+- **KB-13:** ilaç bildirimi id şeması (`planId % 1000`) → aralık genişletme + geçiş mutabakatı.
+- **J-düşükler:** J13(1) (= KB-13); INCELEME-3 K4 (adet eylem-anı okumalarına `accountId` — tutarlılık, iş zorunlu değil).
+- **Bilinen kalıntılar:** KB-12 ek (v14'ten kalan onaysız tik + sunucuda sıfır done → tik korunur ve reseed ile gider; backend #11 ile kapanır); O19/KB-7 (farklı dilde aşı işaretleri paylaşılmaz; backend #3); KB-4 (exact-alarm için ayrı UI girişi yok).
+- Mağaza metadata borcu (SS'ler: geri al banner'ı, oturum banner'ı, "tam zamanında bildirim" satırı).
+
