@@ -1,6 +1,6 @@
 # DEVAM NOTU — fix/audit-bulgular
 
-Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1322 geçti, 0 başarısız**, `flutter analyze` temiz.
+Güncelleme: 2026-10-11 (tur 5) · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1334 geçti, 0 başarısız**, `flutter analyze` temiz.
 
 ## Tamamlananlar (commit sırasıyla)
 1. aşama: K3 `37f05f8`, K1 `00cd3fb`, K5 `e5f1a66`
@@ -28,6 +28,9 @@ I1 `a4161f9` (KRİTİK: sağlık pull kapısı + lapse reseed + telemetri; aşı
 
 ## Düzeltme turu 4 (2026-10-11, INCELEME-2.md J1–J16) — TAMAMLANDI
 J1+J8 `a011bb1` (YÜKSEK: premiumSynced yalnız sağlık yüklemesi başarılıysa; lazy sunucu kümesi uygulanmaz), J2 `8d3945b` (KB-12 birleşim), J4 `a529003` (bg "Ertele" O16 regresyonu), J3 `9c88b76`, J5 `d83aa4e`, J6 `ae4f224`, J7 `0f287b4`, J9 `852214e`, J10 `9475b03`, J11 `e47dd61`, J12 `e6d14c2`, J13(2,3) `c393571` (J13(1) → KB-13), J16 `42642d9`, J14 `24d9305`, J15 `eb358d6`. Tam suite 1322/0, analyze temiz. Yeni çeviri anahtarı yok. Kontrat güncellenen testler: `health_pull_gate_i1_test` (sunucu ≥1 done; lapse birleşim), `baby_repository_r5_i2_test` (DELETE dalı). `shared_preferences_platform_interface` dev_dependency (J7 testi). I11 CI dalı `CI=true` + api dizini geçici taşınarak kırmızı görüldü. Cihaz adımları YAYIN-KONTROL §1-I (47–58). Backend #11 (health LWW). main'e merge EDİLMEDİ, push YOK.
+
+## Düzeltme turu 5 (2026-10-11, INCELEME-3.md K1–K6) — TAMAMLANDI
+INCELEME-3 `8e5b083` (dar kapsam, yalnız oku). K2+K3 `5a841bc` (karar (a) daraltma: `serverUpdatedAt` "sunucu onayı" damgası; J1(b) yalnız damgasız + sunucunun tanıdığı ad; dil uyuşmazlığı ping-pong'u kesildi), K1 `ac8f779` ((b) "sunucuda var" sinyali = bebek satırı `dirty=false`; sunucuda olmayan bebek göçü/reseed'i kilitlemez; (a) düşerse `premiumSynced`+`healthReseed` birlikte → hafif yol), K5 `370c1b3` (`_vaccineName` ortak; d26 key == name sabitlemesi). K4/K6 iş yok. Tam suite 1334/0, analyze temiz. Yeni çeviri anahtarı yok. Kontrat güncellenen test: `migration_health_flag_j1_test` ("sağlık düşerse bayrak yok" → "iki bayrak birlikte, pull kapalı"); fixture: `health_pull_gate_i1_test`/`health_reseed_merge_j2_test` bebek `dirty=false`. Cihaz adımları YAYIN-KONTROL §1-J (59–62); 47 güncellendi. main'e merge EDİLMEDİ, push YOK.
 
 ## Kalan iş sırası
 c) ~~Şema v15~~ TAMAMLANDI (GRUP 1; v15'in ayrı sürüm olup olmayacağı yayın öncesi kullanıcı kararı, K-10).

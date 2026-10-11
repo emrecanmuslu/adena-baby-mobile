@@ -302,6 +302,15 @@ Sıra: **7a → 7b → 8 → 9 → docs.** 8b (O26 kalanı) bu aşamaya DAHİL D
 | J14 | `24d9305` | Bebek/anı push'u karşılaştır+yaz tek transaction. |
 | J15 | `eb358d6` | `_syncNow` aktif ∩ keep. |
 
+### Düzeltme turu 5 — INCELEME-3.md bulguları (2026-10-11)
+
+| # | Commit | Kapsam / not |
+|---|---|---|
+| K2 (+K3) | `5a841bc` | J1(b) sezgiseli daraltıldı: `serverUpdatedAt` "sunucudan en az bir kez onay görüldü" damgası (pull uygulama/aynı değer, push 2xx/yankı, geri-al); `_hasUnconfirmedDoneVaccine` yalnız damgasız + sunucunun tanıdığı ad → kaldırma yayılır, reseed geri yazmaz, dil uyuşmazlığında ping-pong yok. Bkz. §5A/§5B/§6. |
+| K1 | `ac8f779` | (b) Göç/reseed sağlık adımı yalnız sunucuda var olan (bebek satırı `dirty=false`, `_onServerIds`) sahip bebeklerde zorunlu; sunucuda olmayan bebek atlanır (J1(b)+reseed zinciri sonra tamamlar). (a) Sunucudaki bebekte düşerse `premiumSynced`+`healthReseed` birlikte → sonraki açılışlar hafif yol (overlay/markAllDirty yok). `migration_health_flag_j1_test` kontratı güncellendi. |
+| K5 | `370c1b3` | `pushReseed` aşı kimliği `_vaccineName` (katalog adı, `pushDirty`/`pushAll` ile aynı); d26 testine asset `key == name` sabitlemesi. |
+| K4 / K6 | — | İş yok (eylem-anı statik adet okumaları; dev bağımlılık). |
+
 ### Backend talepleriyle kesişim (#1, #2, #3) — v15 onlarsız ne kadar güvenli?
 
 | Talep | v15 onsuz | Backend gelince değişen |
