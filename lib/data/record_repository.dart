@@ -236,9 +236,14 @@ class RecordRepository {
                 'client_updated_at': r.clientUpdatedAt?.toUtc().toIso8601String(),
               })
           .toList();
-      // Gönderilen damgayı id başına sakla → applied temizlemesini buna koşulla
-      // (uçuş sırasında yeniden düzenlenen kayıt dirty kalmalı, kaybolmamalı).
-      final sentStamp = {for (final r in chunk) r.id: r.clientUpdatedAt};
+      // Gönderilen damga + içerik id başına saklanır → applied temizlemesi buna
+      // koşullu (uçuş sırasında yeniden düzenlenen kayıt dirty kalmalı). D3:
+      // damga drift'te SANİYE hassasiyetli; aynı saniyedeki ikinci düzenlemeyi
+      // yakalamak için data/ts/isDeleted de karşılaştırılır.
+      final sentStamp = {
+        for (final r in chunk)
+          r.id: (stamp: r.clientUpdatedAt, data: r.data, ts: r.ts, deleted: r.isDeleted)
+      };
 
       final resp = await _api.dio.post('/sync', data: {
         'baby': babyId,
@@ -253,8 +258,11 @@ class RecordRepository {
   }
 
   /// Bir /sync yanıtını uygular; yeni cursor'ı (varsa) döner.
-  Future<String?> _applySyncResponse(String babyId, Map<String, dynamic> data,
-      Map<String, DateTime?> sentStamp) async {
+  Future<String?> _applySyncResponse(
+      String babyId,
+      Map<String, dynamic> data,
+      Map<String, ({DateTime? stamp, String data, DateTime ts, bool deleted})>
+          sentStamp) async {
     final applied = (data['applied'] as List? ?? []).cast<String>();
     final conflicts = (data['conflicts'] as List? ?? []);
     final serverChanges = (data['server_changes'] as List? ?? []);
@@ -266,10 +274,16 @@ class RecordRepository {
       // kalsın → yeni düzenleme bir sonraki sync'te gönderilsin (veri kaybı önlenir).
       for (final id in applied) {
         final sent = sentStamp[id];
-        await (_db.update(_db.records)
-              ..where((t) => sent == null
-                  ? t.id.equals(id) & t.clientUpdatedAt.isNull()
-                  : t.id.equals(id) & t.clientUpdatedAt.equals(sent)))
+        if (sent == null) continue;
+        final cur = await (_db.select(_db.records)..where((t) => t.id.equals(id)))
+            .getSingleOrNull();
+        if (cur == null) continue;
+        final unchanged = cur.clientUpdatedAt == sent.stamp &&
+            cur.data == sent.data &&
+            cur.ts == sent.ts &&
+            cur.isDeleted == sent.deleted;
+        if (!unchanged) continue; // uçuşta düzenlendi → dirty kalır (D3)
+        await (_db.update(_db.records)..where((t) => t.id.equals(id)))
             .write(const RecordsCompanion(dirty: Value(false)));
       }
       // Çakışmalar: sunucu OTORİTER kazandı (LWW veya bakıcı-yetki) → her zaman
