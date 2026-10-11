@@ -13,7 +13,7 @@ Tasarım: `TASARIM-SENKRON.md` (kararlar K-1..K-10, R1-R9, §8 plan + hash'ler).
 
 ## Otonom koşu (2026-10-11) — durum
 - **Tamamlanan grup:** GRUP 0, 1, 2, 3, 4 (D1–D45 triyajı: 27 DÜZELTİLDİ, 9 KABUL, 2 DOĞRULANAMAZ, 4 GEÇERSİZ, 1 KARAR-BEKLEYEN, D33 önceden kapalı), 5 (şüpheliler — BULGULAR §6 durum notu).
-- **Sıradaki grup:** GRUP 6 — YAYIN-KONTROL.md + FINAL-RAPOR.md (yalnız doküman).
+- **Sıradaki grup:** GRUP 6 — YAYIN-KONTROL.md + FINAL-RAPOR.md (yalnız doküman). GRUP 5 kontrol noktası: şüpheliler BULGULAR §6'da durumlandı; kod değişikliği gerektirenler GRUP 3/4'te yapıldı, kalanlar yalnız doğrulama adımı (YAYIN-KONTROL.md).
 - **KARAR-BEKLEYEN sayısı:** 9 (`KARAR-BEKLEYEN.md`: KB-1..KB-3 geri al; KB-4 exact-alarm UI; KB-5 çapa; KB-6 DST kapsamı; KB-7 aşı anahtarı; KB-8 bakıcı ilaç planı; KB-9 hesap silmede yerel veri).
 - Sonra: GRUP 3 (kalan ORTA), GRUP 4 (DÜŞÜK triyaj), GRUP 5 (şüpheliler), GRUP 6 (YAYIN-KONTROL.md), FINAL-RAPOR.md.
 
