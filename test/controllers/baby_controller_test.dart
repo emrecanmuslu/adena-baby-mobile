@@ -6,6 +6,7 @@ import 'package:mocktail/mocktail.dart';
 
 import 'package:adena_baby/data/baby_repository.dart';
 import 'package:adena_baby/data/local_session.dart';
+import 'package:adena_baby/data/subscription_repository.dart';
 import 'package:adena_baby/data/sync_gate.dart';
 import 'package:adena_baby/features/babies/baby_controller.dart';
 import 'package:adena_baby/models/baby.dart';
@@ -284,7 +285,27 @@ void main() {
       expect(c.read(activeBabyProvider), isNull);
     });
   });
-}
+  group('M5 — O4 pullSettings yalnız bulut-uygun bebekte', () {
+    test('free sahip + yerel dolu ayar → GET /settings çağrılmaz, ayar değişmez', () async {
+      when(() => repo.getAll(accountId: any(named: 'accountId')))
+          .thenAnswer((_) async => [_baby(id: 'own')]);
+      when(() => repo.getAll()).thenAnswer((_) async => [_baby(id: 'own')]);
+      final c = ProviderContainer(overrides: [
+        babyRepositoryProvider.overrideWithValue(repo),
+        loggedInProvider.overrideWithValue(true),
+        cloudSyncEnabledProvider.overrideWithValue(false),
+        isPremiumProvider.overrideWithValue(false),
+      ]);
+      addTearDown(c.dispose);
+      await c.read(babyControllerProvider.future);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      verify(() => repo.pullFromServer(accountId: any(named: 'accountId'))).called(1);
+      verifyNever(() => repo.pullSettings(any()));
+      verify(() => repo.pushSettings(
+          accountId: any(named: 'accountId'), includeOwned: false)).called(1);
+    });
+  });}
 
 BabyController ctrlOf(ProviderContainer c) =>
     c.read(babyControllerProvider.notifier);
