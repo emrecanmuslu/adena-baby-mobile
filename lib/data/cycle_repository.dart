@@ -12,6 +12,7 @@ import '../core/providers.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/cycle/cycle_anchor.dart';
 import '../models/cycle.dart';
+import '../features/records/record_controller.dart';
 import 'local/app_database.dart';
 import 'local_session.dart';
 import 'sync_gate.dart';
@@ -26,7 +27,10 @@ class CycleRepository {
   final ApiClient _api;
   final bool Function() _cloudEnabled;
 
-  CycleRepository(this._db, this._api, this._cloudEnabled);
+  /// Yerel değişiklik sonrası (bulut açıkken) senkron tetikleyici — O26:
+  /// ekran ağı beklemez, push `syncIfCloud` (syncAll turu) ile arka planda.
+  final void Function()? onChanged;
+  CycleRepository(this._db, this._api, this._cloudEnabled, {this.onChanged});
 
   /// Adet modülü kullanıcıya özel → yerel satırlar aktif hesaba göre kapsamlanır.
   /// Settings tekil satırının id'si = hesap id'si.
@@ -174,30 +178,11 @@ class CycleRepository {
     }
     final merged = {...current.toPatchJson(), ...fields};
     final next = CycleSettings.fromJson(merged);
-    // `baby` yalnız açıkça null'landıysa (fields'ta null ya da dolu→null) gider;
-    // alan hiç değişmediyse gönderilmez (K-8).
-    final babyNulled = (fields.containsKey('baby') && fields['baby'] == null) ||
-        (current.babyId != null && next.babyId == null);
     await _writeSettings(next, dirty: true);
-    if (_cloudEnabled()) {
-      try {
-        final resp = await _api.dio.patch('/cycle/settings',
-            data: next.toPatchJson(includeNullBaby: babyNulled));
-        // Başarı: sunucu yanıtı otoriter (uçuşta düzenlenmediyse) + temiz.
-        final srv = CycleSettings.fromJson(resp.data as Map<String, dynamic>);
-        final again = await _settingsRow();
-        if (again != null && again.dirty) {
-          final mine = _rowToSettings(again);
-          if (mine.toPatchJson(includeNullBaby: true).toString() ==
-              next.toPatchJson(includeNullBaby: true).toString()) {
-            await _writeSettings(srv, dirty: false);
-            return srv;
-          }
-        }
-      } catch (_) {
-        // Çevrimdışı/hata → dirty kalır; syncIfCloud (syncAll turu) yeniden dener.
-      }
-    }
+    // O26: satır içi PATCH YOK — dirty satır `syncIfCloud` (syncAll turu,
+    // `requestSyncSoon` debounce) ile `_pushDirtySettings` üzerinden gider; gövde
+    // yerel gerçeği (`baby` null dahil, K-8 retry kontratı) taşır.
+    if (_cloudEnabled()) onChanged?.call();
     return next;
   }
 
@@ -318,11 +303,7 @@ class CycleRepository {
     }
     // D33: çapa gününün adet işareti bu kayıtla kalktıysa çapayı taşı.
     if (!entry.isPeriod) await _maintainAnchorAfterRemoval(entry.date);
-    if (_cloudEnabled()) {
-      try {
-        await _pushDirtyEntries();
-      } catch (_) {}
-    }
+    if (_cloudEnabled()) onChanged?.call(); // O26: push arka planda
     final r = await (_db.select(_db.cycleEntries)..where((e) => e.id.equals(id)))
         .getSingle();
     return _toEntry(r);
@@ -361,11 +342,7 @@ class CycleRepository {
       ),
     );
     if (row != null) await _maintainAnchorAfterRemoval(row.date); // D33
-    if (_cloudEnabled()) {
-      try {
-        await _pushDirtyEntries();
-      } catch (_) {}
-    }
+    if (_cloudEnabled()) onChanged?.call(); // O26: push arka planda
   }
 
   // ---- Cloud senkron (premium) ----
@@ -641,6 +618,8 @@ final cycleRepositoryProvider = Provider<CycleRepository>(
     ref.watch(databaseProvider),
     ref.watch(apiClientProvider),
     () => ref.read(cloudSyncEnabledProvider),
+    // O26: yerel değişiklik → debounce'lu senkron turu (syncAll → _syncCycle).
+    onChanged: () => ref.read(syncServiceProvider).requestSyncSoon(),
   ),
 );
 

@@ -119,12 +119,15 @@ void main() {
   });
 
   group('O6 — baby alanı (K-8)', () {
-    test('baby açıkça null\'lanınca PATCH gövdesinde "baby": null gider', () async {
+    test('baby açıkça null\'lanınca (syncIfCloud turunda) PATCH gövdesinde "baby": null gider', () async {
       await localRepo().patchSettings({'baby': 'baby-1'});
       adapter.onPatch('/cycle/settings', (s) => s.reply(200, serverJson()),
           data: Matchers.any);
 
-      await cloudRepo().patchSettings({'baby': null});
+      final repo = cloudRepo();
+      await repo.patchSettings({'baby': null}); // O26: satır içi PATCH yok
+      expect(rec.sent('PATCH', '/cycle/settings'), isFalse);
+      await repo.syncIfCloud();
 
       final body = rec.body('PATCH', '/cycle/settings');
       expect(body, isNotNull);
@@ -132,13 +135,19 @@ void main() {
       expect(body['baby'], isNull);
     });
 
-    test('baby zaten null ve değişmediyse PATCH gövdesinde alan gitmez', () async {
+    test('dirty satırın tur PATCH\'i yerel gerçeği taşır (baby null dahil — retry kontratı, O26 sonrası tek yol)',
+        () async {
       adapter.onPatch('/cycle/settings', (s) => s.reply(200, serverJson()),
           data: Matchers.any);
-      await cloudRepo().patchSettings({'enabled': false});
+      final repo = cloudRepo();
+      await repo.patchSettings({'enabled': false});
+      await repo.syncIfCloud();
       final body = rec.body('PATCH', '/cycle/settings');
       expect(body, isNotNull);
-      expect(body!.containsKey('baby'), isFalse);
+      // Eski satır içi PATCH "değişmeyen null baby'yi atlardı"; artık tüm
+      // gönderimler `_pushDirtySettings` (yerel gerçek, includeNullBaby) ile.
+      expect(body!.containsKey('baby'), isTrue);
+      expect(body['baby'], isNull);
     });
   });
 

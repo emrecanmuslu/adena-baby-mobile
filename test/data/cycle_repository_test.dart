@@ -118,19 +118,25 @@ void main() {
       expect(row.lutealPhaseLength, 12);
     });
 
-    test('cloud açık: PATCH /cycle/settings gönderir, dirty temizlenir',
+    test('cloud açık: patchSettings ağı beklemez (dirty); PATCH syncIfCloud turunda gider, dirty temizlenir (O26)',
         () async {
-      // getSettings cloud açıkken /cycle/settings GET de yapar → stub'la
       adapter
         ..onGet('/cycle/settings', (s) => s.reply(200, _settingsJson()))
         ..onPatch('/cycle/settings', (s) => s.reply(200, _settingsJson()),
             data: Matchers.any);
 
-      await cloudRepo().patchSettings({'enabled': true});
-      final row = await (db.select(db.cycleSettingsTable)
+      final repo = cloudRepo();
+      await repo.patchSettings({'enabled': true});
+      var row = await (db.select(db.cycleSettingsTable)
             ..where((r) => r.id.equals(acct)))
           .getSingle();
-      expect(row.dirty, isFalse); // _markSettingsClean
+      expect(row.dirty, isTrue, reason: 'satır içi PATCH yok; tur bekler');
+
+      await repo.syncIfCloud();
+      row = await (db.select(db.cycleSettingsTable)
+            ..where((r) => r.id.equals(acct)))
+          .getSingle();
+      expect(row.dirty, isFalse);
     });
   });
 
