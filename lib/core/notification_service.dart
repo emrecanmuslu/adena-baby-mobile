@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -166,8 +167,13 @@ class NotificationService {
   /// Kesin alarm izni varsa exact, yoksa inexact döner. Android 12+ kullanıcı
   /// "kesin alarm"ı reddederse beslenme/randevu uyarısı TAMAMEN kaybolmasın —
   /// ±birkaç dakika gecikmeyle de olsa gelsin.
-  Future<AndroidScheduleMode> _alarmMode() async {
-    final android = _plugin.resolvePlatformSpecificImplementation<
+  Future<AndroidScheduleMode> _alarmMode() => alarmModeFor(_plugin);
+
+  /// Ön plan ve arka plan (bildirim eylemi isolate'i, J4) için ORTAK kural:
+  /// Android'de kesin alarm izni yoksa inexact, varsa exact; iOS'ta exact.
+  static Future<AndroidScheduleMode> alarmModeFor(
+      FlutterLocalNotificationsPlugin plugin) async {
+    final android = plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return AndroidScheduleMode.exactAllowWhileIdle; // iOS
     final can = await android.canScheduleExactNotifications() ?? true;
@@ -975,11 +981,19 @@ void notificationBackgroundHandler(NotificationResponse response) {
   _snoozeFeedInBackground(NotificationService.parseFeedPayload(response.payload));
 }
 
+/// Yalnız test: arka plan erteleme gövdesi, sahte plugin ile.
+@visibleForTesting
+Future<void> debugSnoozeFeedInBackground(
+        ({bool sound, int slot, String babyName}) fp,
+        {required FlutterLocalNotificationsPlugin plugin}) =>
+    _snoozeFeedInBackground(fp, plugin: plugin);
+
 Future<void> _snoozeFeedInBackground(
-    ({bool sound, int slot, String babyName}) fp) async {
+    ({bool sound, int slot, String babyName}) fp,
+    {FlutterLocalNotificationsPlugin? plugin}) async {
   await warmI18nFromCache(); // M7: "Ertele 10 dk"/başlık kullanıcının dilinde
   final sound = fp.sound;
-  final plugin = FlutterLocalNotificationsPlugin();
+  plugin ??= FlutterLocalNotificationsPlugin();
   const init = InitializationSettings(
     android: AndroidInitializationSettings('@mipmap/ic_launcher'),
     iOS: DarwinInitializationSettings(
@@ -1014,13 +1028,28 @@ Future<void> _snoozeFeedInBackground(
     categoryIdentifier: NotificationService.snoozeCategoryId,
   );
   final prefix = fp.babyName.isNotEmpty ? '${fp.babyName} · ' : '';
-  await plugin.zonedSchedule(
-    id: NotificationService.feedMainIdFor(fp.slot),
-    title: '$prefix${tr('Beslenme zamanı (ertelendi)')}',
-    body: tr('10 dk ertelendi 🍼'),
-    scheduledDate: when,
-    notificationDetails: NotificationDetails(android: android, iOS: ios),
-    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    payload: NotificationService.feedPayload(fp.sound, fp.slot, fp.babyName),
-  );
+  // J4 (O16 regresyonu): ön planla AYNI kural — Android 14+'ta kesin alarm izni
+  // varsayılan ret; `exact` sabit kurulum plugin'in fırlatmasına, ertelemenin
+  // sessizce kaybolmasına yol açıyordu. İzin yoksa inexact (±dakikalar).
+  final mode = await NotificationService.alarmModeFor(plugin);
+  try {
+    await plugin.zonedSchedule(
+      id: NotificationService.feedMainIdFor(fp.slot),
+      title: '$prefix${tr('Beslenme zamanı (ertelendi)')}',
+      body: tr('10 dk ertelendi 🍼'),
+      scheduledDate: when,
+      notificationDetails: NotificationDetails(android: android, iOS: ios),
+      androidScheduleMode: mode,
+      payload: NotificationService.feedPayload(fp.sound, fp.slot, fp.babyName),
+    );
+  } catch (e, st) {
+    // Eylem isolate'inde yakalanmayan hata sessizce kaybolurdu; görünür olsun.
+    debugPrint('[notif] bg erteleme kurulamadı ($mode): $e');
+    try {
+      await FirebaseCrashlytics.instance
+          .recordError(e, st, reason: 'bg_snooze_schedule', fatal: false);
+    } catch (_) {
+      // Firebase bu isolate'te hazır değil → yalnız konsol.
+    }
+  }
 }
