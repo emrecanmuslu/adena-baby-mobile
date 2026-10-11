@@ -233,8 +233,9 @@ void main() {
       expect(s.predictionsHidden, isTrue);
       expect(s.lifecycleMode, CycleLifecycleMode.postpartum);
 
-      // Doğum sonrası gerçek adet → onarım çalışır.
-      await logFlow(DateTime(2026, 7, 15), flow: FlowLevel.medium);
+      // Doğum sonrası gerçek adet → onarım çalışır. A3 (S1): doğumdan sonraki
+      // ilk 56 gün loşia/onay penceresi → fikstür 75. güne taşındı.
+      await logFlow(DateTime(2026, 8, 15), flow: FlowLevel.medium);
       s = await repo.getSettings();
       expect(s.predictionsHidden, isFalse);
       expect(s.lifecycleMode, CycleLifecycleMode.tracking);

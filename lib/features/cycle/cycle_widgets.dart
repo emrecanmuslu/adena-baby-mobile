@@ -201,8 +201,8 @@ Widget cycNoteLite(BuildContext context,
 // ── M2 — Bilgi rozeti metinleri (AdInfoDot body'leri) ──────────────────────
 class CycleInfo {
   static String get lochiaVsPeriod => tr(
-      'Doğumdan sonraki ~6 haftalık kanama loşiadır — iyileşme sürecinin parçası, '
-      'adet değildir. Akış zamanla azalırsa loşia; başlayıp koyulaşıp 4–7 gün '
+      'Doğumdan sonraki kanama loşiadır — iyileşme sürecinin parçası, adet '
+      'değildir. Genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. Akış zamanla azalırsa loşia; başlayıp koyulaşıp 4–7 gün '
       'sürerse muhtemelen ilk adettir.');
   static String get lam => tr(
       'Emzirme yumurtlamayı baskılayıp adeti geciktirebilir. LAM (Laktasyonel '

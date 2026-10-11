@@ -10,6 +10,7 @@ import '../../core/in_flight_guard.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
+import 'cycle_anchor.dart';
 import 'cycle_engine.dart';
 import 'cycle_entry_sheet.dart';
 import 'cycle_period_adjust_sheet.dart';
@@ -30,6 +31,8 @@ class CycleCalendarScreen extends ConsumerStatefulWidget {
 class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
   late DateTime _month;
   late DateTime _selected;
+  // A3: ilk-adet çapası öncesi doğum sonrası kanamayı loşia boyamak için.
+  CycleSettings _settings = const CycleSettings();
   String _view = 'month'; // month | week | list
   final Set<int> _faqOpen = {};
 
@@ -62,6 +65,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
                 error: (e, _) => Center(child: Text(apiErrorText(e))),
                 data: (entries) {
                   final status = computeStatus(settings, entries);
+                  _settings = settings;
                   final byDay = <String, CycleEntry>{
                     for (final e in entries) _key(e.date): e,
                   };
@@ -385,8 +389,13 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
   String? _kindOf(DateTime d, Map<String, CycleEntry> byDay, CycleStatus status) {
     final e = byDay[_key(d)];
     if (e != null) {
-      if (e.isPeriod) return 'period';
-      if (e.lochiaColor != null) return 'lochia';
+      // A3: doğum sonrası 56 gün içindeki, çapa öncesi kanama loşia sayılır.
+      final anchor = _settings.firstPeriodDate;
+      final ppBleed = e.isPeriod &&
+          inPostpartumBleedWindow(d, _settings) &&
+          (anchor == null || d.isBefore(_dOnly(anchor)));
+      if (e.isPeriod && !ppBleed) return 'period';
+      if (e.lochiaColor != null || ppBleed) return 'lochia';
     }
     if (status.mode == CycleMode.active) {
       // Devam eden adetin tahmini kalan günleri: yalnız ilk gün kaydedilse bile

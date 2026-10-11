@@ -169,22 +169,27 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
     setState(() => _saving = true);
     final repo = ref.read(cycleRepositoryProvider);
     final byDay = {for (final e in widget.entries) _dOnly(e.date): e};
+    final settingsNow = await repo.getSettings();
     final toAdd = _marked.difference(_original);
     final toRemove = _original.difference(_marked);
     try {
       for (final d in toAdd) {
         final existing = byDay[d];
-        await repo.saveEntry(CycleEntry(
-          id: existing?.id ?? '',
-          date: d,
-          flow: (existing != null && existing.isPeriod)
-              ? existing.flow
-              : FlowLevel.medium,
-          lochiaColor: existing?.lochiaColor,
-          symptoms: existing?.symptoms ?? const [],
-          mood: existing?.mood,
-          note: existing?.note,
-        ));
+        await repo.saveEntry(
+            CycleEntry(
+              id: existing?.id ?? '',
+              date: d,
+              flow: (existing != null && existing.isPeriod)
+                  ? existing.flow
+                  : FlowLevel.medium,
+              lochiaColor: existing?.lochiaColor,
+              symptoms: existing?.symptoms ?? const [],
+              mood: existing?.mood,
+              note: existing?.note,
+            ),
+            // A3: düzenleme takvimi AÇIK adet işaretlemesidir; yalnız doğumdan
+            // sonraki ilk 42 gün (loşia) hiçbir zaman ilk adet sayılmaz.
+            confirmedFirstPeriod: !inPostpartumLochiaWindow(d, settingsNow));
       }
       for (final d in toRemove) {
         final existing = byDay[d];

@@ -13,6 +13,7 @@ import '../../models/cycle.dart';
 import '../content/article_list_screen.dart';
 import 'cycle_dial.dart';
 import 'cycle_engine.dart';
+import 'cycle_anchor.dart';
 import 'cycle_entry_sheet.dart';
 import 'cycle_guidance.dart';
 import 'cycle_loss.dart';
@@ -117,7 +118,9 @@ class _Today extends ConsumerWidget {
         note: e?.note,
       );
       try {
-        await ref.read(cycleRepositoryProvider).saveEntry(entry);
+        // A3: "İlk adetimi kaydet" açık beyandır (loşia penceresi hariç).
+        await ref.read(cycleRepositoryProvider).saveEntry(entry,
+            confirmedFirstPeriod: !inPostpartumLochiaWindow(t, settings));
         if (context.mounted) showAdToast(context, tr('Adet başlangıcı kaydedildi'));
       } catch (err) {
         if (context.mounted) showAdError(context, apiErrorText(err));
@@ -609,12 +612,29 @@ class _Today extends ConsumerWidget {
         num: '${status.lochiaDay}',
         numSize: 54,
         label: tr('Lohusalık · gün'),
-        sub: tr('İyileşme · 0–6 hafta'),
+        sub: tr('Genellikle 4–6 hafta'),
         accent: AppColors.lochia,
       )),
       const SizedBox(height: 16),
       cycCta(context, tr('Kanama kaydet'),
           color: AppColors.lochia, onTap: () => _record(context, ref)),
+      const SizedBox(height: 12),
+      // B5: süre + A3: ilk 6 haftada kanama ilk adet sayılmaz.
+      cycNote(context,
+          clay: true,
+          icon: Icons.schedule_rounded,
+          body: tr('Loşia genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. '
+              'Doğumdan sonraki ilk 6 haftada girdiğin kanama loşia sayılır, '
+              'ilk adet olarak kabul edilmez.'),
+          infoTitle: tr('Loşia ve adet farkı'),
+          info: CycleInfo.lochiaVsPeriod),
+      if (status.lochiaDay > postpartumLochiaDays) ...[
+        const SizedBox(height: 12),
+        cycNote(context,
+            icon: Icons.medical_services_outlined,
+            body: tr('Doğumdan 6 haftadan uzun süre sonra kanaman devam ediyorsa '
+                'hekimine söyle.')),
+      ],
       CycEyebrow(tr('Loşia rengi'), suffix: tr('· tahmin yok')),
       cycCard(context, soft: true, child: Column(children: [
         Row(children: [

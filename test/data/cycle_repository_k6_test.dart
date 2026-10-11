@@ -75,9 +75,10 @@ void main() {
         'lifecycle_mode': 'postpartum',
         'predictions_hidden': true,
       });
-      await period(3, 5); // doğum sonrası ilk gerçek adet → tracking
+      // A3 (S1): doğumdan sonraki ilk 56 gün loşia/onay penceresi → fikstür 63. güne taşındı.
+      await period(4, 5); // doğum sonrası ilk gerçek adet → tracking
       final s = await repo().getSettings();
-      expect(s.firstPeriodDate, DateTime(2026, 3, 5));
+      expect(s.firstPeriodDate, DateTime(2026, 4, 5));
       expect(s.lifecycleMode, CycleLifecycleMode.tracking);
       expect(s.predictionsHidden, isFalse);
     });
@@ -147,11 +148,12 @@ void main() {
       await period(1, 10); // doğum öncesi (backfill)
       final s1 = await repo().getSettings();
       expect(s1.firstPeriodDate, isNull, reason: 'backfill çapa kurmaz');
-      final a = await period(3, 5); // ilk gerçek adet → çapa
-      await period(3, 6);
+      // A3 (S1): doğumdan sonraki ilk 56 gün loşia/onay penceresi → fikstür 63. güne taşındı.
+      final a = await period(4, 5); // ilk gerçek adet → çapa
+      await period(4, 6);
       await repo().deleteEntry(a.id);
       final s2 = await repo().getSettings();
-      expect(s2.firstPeriodDate, DateTime(2026, 3, 6),
+      expect(s2.firstPeriodDate, DateTime(2026, 4, 6),
           reason: '10 Ocak değil, sıfırlama sonrası kalan en eski gün');
     });
   });

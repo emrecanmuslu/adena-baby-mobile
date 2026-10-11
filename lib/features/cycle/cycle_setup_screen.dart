@@ -235,7 +235,8 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
               cycNote(context,
                   clay: true,
                   icon: Icons.favorite_rounded,
-                  body: tr('Doğumdan sonraki ilk ~6 hafta kanama loşiadır, adet değildir.'),
+                  body: tr('Doğumdan sonraki kanama (loşia) adet değildir; genellikle '
+                      '4–6 hafta sürer, 8 haftaya uzayabilir.'),
                   infoTitle: tr('Loşia ve adet farkı'),
                   info: CycleInfo.lochiaVsPeriod),
             ]),
