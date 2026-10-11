@@ -207,6 +207,12 @@ class RecordRepository {
 
   /// Bekleyen yerel değişiklikleri gönderir, sunucu değişikliklerini çeker.
   /// Hata atarsa (çevrimdışı vb.) çağıran yutar; yerel veri korunur.
+  /// O9: dirty satırlar [syncBatchSize] parçalarla gönderilir (tek sınırsız
+  /// POST zayıf ağda 20 sn timeout → sonsuz başarısız tur). Her parça kendi
+  /// `applied`/`server_changes`/`next_cursor`'ını uygular; cursor parçalar
+  /// arasında ilerler (idempotent). Backend tarafı sınır: BACKEND-TALEPLERI #7.
+  static const syncBatchSize = 500;
+
   Future<void> sync(String babyId) async {
     final dirtyRows = await (_db.select(_db.records)
           ..where((r) => r.baby.equals(babyId) & r.dirty.equals(true)))
@@ -214,30 +220,41 @@ class RecordRepository {
     final cursorRow = await (_db.select(_db.syncCursors)
           ..where((c) => c.baby.equals(babyId)))
         .getSingleOrNull();
+    var cursor = cursorRow?.cursor;
+    var offset = 0;
+    do {
+      final end = (offset + syncBatchSize).clamp(0, dirtyRows.length);
+      final chunk = dirtyRows.sublist(offset, end);
+      offset = end;
+      final changes = chunk
+          .map((r) => {
+                'id': r.id,
+                'op': r.isDeleted ? 'delete' : 'upsert',
+                'type': r.type,
+                'ts': r.ts.toUtc().toIso8601String(),
+                'data': jsonDecode(r.data),
+                'client_updated_at': r.clientUpdatedAt?.toUtc().toIso8601String(),
+              })
+          .toList();
+      // Gönderilen damgayı id başına sakla → applied temizlemesini buna koşulla
+      // (uçuş sırasında yeniden düzenlenen kayıt dirty kalmalı, kaybolmamalı).
+      final sentStamp = {for (final r in chunk) r.id: r.clientUpdatedAt};
 
-    final changes = dirtyRows
-        .map((r) => {
-              'id': r.id,
-              'op': r.isDeleted ? 'delete' : 'upsert',
-              'type': r.type,
-              'ts': r.ts.toUtc().toIso8601String(),
-              'data': jsonDecode(r.data),
-              'client_updated_at': r.clientUpdatedAt?.toUtc().toIso8601String(),
-            })
-        .toList();
-    // Gönderilen damgayı id başına sakla → applied temizlemesini buna koşulla
-    // (uçuş sırasında yeniden düzenlenen kayıt dirty kalmalı, kaybolmamalı).
-    final sentStamp = {for (final r in dirtyRows) r.id: r.clientUpdatedAt};
+      final resp = await _api.dio.post('/sync', data: {
+        'baby': babyId,
+        // ISO string (tam hassasiyet). DateTime DEĞİL → drift saniye-truncation yok
+        // (boundary kaydı sonsuz yeniden çekilmesin). Bkz SyncCursors.cursor TextColumn.
+        'since_cursor': cursor,
+        'changes': changes,
+      });
+      final data = resp.data as Map<String, dynamic>;
+      cursor = await _applySyncResponse(babyId, data, sentStamp) ?? cursor;
+    } while (offset < dirtyRows.length);
+  }
 
-    final resp = await _api.dio.post('/sync', data: {
-      'baby': babyId,
-      // ISO string (tam hassasiyet). DateTime DEĞİL → drift saniye-truncation yok
-      // (boundary kaydı sonsuz yeniden çekilmesin). Bkz SyncCursors.cursor TextColumn.
-      'since_cursor': cursorRow?.cursor,
-      'changes': changes,
-    });
-    final data = resp.data as Map<String, dynamic>;
-
+  /// Bir /sync yanıtını uygular; yeni cursor'ı (varsa) döner.
+  Future<String?> _applySyncResponse(String babyId, Map<String, dynamic> data,
+      Map<String, DateTime?> sentStamp) async {
     final applied = (data['applied'] as List? ?? []).cast<String>();
     final conflicts = (data['conflicts'] as List? ?? []);
     final serverChanges = (data['server_changes'] as List? ?? []);
@@ -273,6 +290,7 @@ class RecordRepository {
             );
       }
     });
+    return nextCursor;
   }
 
   /// Tek-seferlik mevcut-kullanıcı import'u: kayıtları `/sync` POST yerine
