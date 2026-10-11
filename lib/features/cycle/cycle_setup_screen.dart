@@ -77,7 +77,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
           )
         : widget.initial.copyWith(
             birthDate: _birth,
-            breastfeeding: _bf ?? Breastfeeding.exclusive,
+            breastfeeding: _bf, // C8: adım 2 zorunlu; varsayılan yok
             firstPeriodDate:
                 _periodReturned ? (_firstPeriod ?? DateTime.now()) : null,
             // D32: doğum sonrası sihirbaz postpartum modunu da yazsın (matris P4);
@@ -100,6 +100,11 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
   }
 
   void _next() {
+    // C8: emzirme sorusu zorunlu — sessiz varsayılan (exclusive) yok.
+    if (!widget.cycleFirst && _step == 1 && _bf == null) {
+      showAdToast(context, tr('Devam etmek için bir seçenek seç'));
+      return;
+    }
     if (_step < _stepCount - 1) {
       setState(() => _step++);
     } else {
@@ -244,7 +249,8 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
   // ── Adım 2 — Emzirme ──
   Widget _step2() {
     final opts = [
-      (Breastfeeding.exclusive, '🤱', tr('Sadece anne sütü'), tr('LAM geçerli olabilir')),
+      // A2: emzirme korunma gibi sunulmaz ("LAM geçerli olabilir" kaldırıldı).
+      (Breastfeeding.exclusive, '🤱', tr('Sadece anne sütü'), tr('Adet daha geç dönebilir')),
       (Breastfeeding.mixed, '🍼', tr('Karışık beslenme'), tr('Anne sütü + mama')),
       (Breastfeeding.none, '🥛', tr('Emzirmiyorum'), tr('Adet daha erken dönebilir')),
     ];

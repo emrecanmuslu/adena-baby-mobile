@@ -14,6 +14,7 @@ import '../content/article_list_screen.dart';
 import 'cycle_dial.dart';
 import 'cycle_engine.dart';
 import 'cycle_entry_sheet.dart';
+import 'cycle_guidance.dart';
 import 'cycle_loss.dart';
 import 'cycle_period_adjust_sheet.dart';
 import 'cycle_pregnancy_bridge.dart';
@@ -369,12 +370,12 @@ class _Today extends ConsumerWidget {
           const SizedBox(height: 12),
           cycNoContraNote(context),
         ],
-        if (_bfActive) ...[
+        // A2: adet döndükten sonra emzirme korunma sayılmaz.
+        if (lamState(settings) == LamState.notProtective) ...[
           const SizedBox(height: 12),
           cycNote(context,
               icon: Icons.favorite_rounded,
-              body: tr('Emziriyorsan ovülasyon ilk adetten önce dönebilir — korunma '
-                  'gerekiyorsa doktoruna danış.'),
+              body: CycleTexts.lamNotProtective,
               infoTitle: tr('LAM'),
               info: CycleInfo.lam),
         ],
@@ -412,7 +413,7 @@ class _Today extends ConsumerWidget {
         // Bağlama duyarlı gecikme notu (BULGU-2): emziren lohusa / TTC /
         // klasik takip aynı cümleyi paylaşamaz.
         final lateBody = _bfActive
-            ? tr('Emzirme döneminde gecikme çok yaygındır. Endişe varsa test '
+            ? tr('Emzirme döneminde gecikme sık görülür. Endişe varsa test '
                 'yapabilir ya da doktoruna danışabilirsin.')
             : _ttc
                 ? tr('Gecikme gebelik işareti olabilir — birkaç gün içinde test '
@@ -642,15 +643,68 @@ class _Today extends ConsumerWidget {
                 height: 1.5,
                 color: AppColors.ink2)),
       ])),
-      const SizedBox(height: 12),
-      cycNote(context,
-          clay: true,
-          icon: Icons.favorite_rounded,
-          body: tr('Emziriyorsan adet gecikebilir (LAM). İlk gerçek adetini girdiğinde '
-              'döngü takibi otomatik başlar.'),
-          infoTitle: tr('LAM'),
-          info: CycleInfo.lam),
+      ..._postpartumNotes(context),
     ];
+  }
+
+  /// A2/A5/D3 — doğum sonrası (loşia + bekleme) emzirme notları. Emzirmeyene
+  /// LAM yerine erken ovülasyon metni; emzirene "ilk adetten önce gebelik"
+  /// uyarısı + LAM kartı (üç koşul ya da "artık korumaz"). Emzirme bilinmiyorsa
+  /// (null) LAM gösterilmez.
+  List<Widget> _postpartumNotes(BuildContext context, {bool waiting = false}) {
+    final bf = settings.breastfeeding;
+    final lam = lamState(settings);
+    final out = <Widget>[];
+    void add(Widget w) => out.addAll([const SizedBox(height: 12), w]);
+    if (bf == Breastfeeding.none) {
+      add(cycNote(context,
+          clay: !waiting,
+          icon: Icons.favorite_rounded,
+          body: CycleTexts.nonBreastfeeding));
+      return out;
+    }
+    if (waiting && bf != null) {
+      add(cycNote(context,
+          icon: Icons.favorite_rounded,
+          body: tr('Emzirme döneminde adetin geç dönmesi sık görülür.')));
+    }
+    add(cycNote(context,
+        clay: !waiting,
+        icon: Icons.shield_outlined,
+        body: CycleTexts.ovulationBeforeFirstPeriod));
+    if (lam != LamState.hidden) {
+      out.add(CycEyebrow(tr('Emzirme & doğurganlık'),
+          link: tr('Daha fazla'), onLink: () => _openLearn(context)));
+      out.add(cycCard(context,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                      color: AppColors.roseBg,
+                      borderRadius: BorderRadius.circular(13)),
+                  child: Icon(Icons.favorite_rounded,
+                      size: 18, color: AppColors.rose)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(tr('LAM · Laktasyonel amenore'),
+                    style: cycTitleStyle(size: 14.5)),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Text(
+                lam == LamState.conditions
+                    ? CycleTexts.lamConditions
+                    : CycleTexts.lamNotProtective,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.5,
+                    color: AppColors.ink2)),
+          ])));
+    }
+    return out;
   }
 
   // ════════ İLK ADET BEKLENİYOR ════════
@@ -670,37 +724,9 @@ class _Today extends ConsumerWidget {
       const SizedBox(height: 18),
       // BULGU-2: bekleme moduna bebeksiz kullanıcı da düşebilir (LMP girilmedi);
       // emzirme/LAM içeriği yalnız doğum yapmış kullanıcıya gösterilir.
-      if (_hadBirth) ...[
-        cycNote(context,
-            icon: Icons.favorite_rounded,
-            body: tr('Emzirme döneminde adetin geç dönmesi tamamen normaldir. '
-                'Vücudun toparlanıyor.')),
-        CycEyebrow(tr('Emzirme & doğurganlık'),
-            link: tr('Daha fazla'), onLink: () => _openLearn(context)),
-        cycCard(context, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                    color: AppColors.roseBg, borderRadius: BorderRadius.circular(13)),
-                child: Icon(Icons.favorite_rounded, size: 18, color: AppColors.rose)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(tr('LAM · Laktasyonel amenore'),
-                  style: cycTitleStyle(size: 14.5)),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          Text(tr('Düzenli emzirme adeti geciktirir; ancak ovülasyon adetten önce döner '
-              '— ilk adeti görmeden gebe kalınabilir (~%2 risk).'),
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  height: 1.5,
-                  color: AppColors.ink2)),
-        ])),
-      ] else
+      if (_hadBirth)
+        ..._postpartumNotes(context, waiting: true)
+      else
         cycNote(context,
             icon: Icons.favorite_rounded,
             body: tr('Son adetinin ilk gününü kaydettiğinde döngü takibi ve '

@@ -146,6 +146,30 @@ class CycleTexts {
   /// Kurulum sonu + Adet ayarları kalıcı satırı (A1).
   static String get notContraceptionMethod => tr(
       'Adet takvimi tahmine dayalıdır ve bir doğum kontrol yöntemi değildir.');
+
+  /// A2: LAM üç koşulu — öneri DEĞİL, bilgilendirme.
+  static String get lamConditions => tr(
+      'Emzirme, ancak şu üç koşulun hepsi birlikte sağlanıyorsa gebeliğe karşı '
+      'geçici koruma sağlayabilir: doğumdan sonraki ilk 6 ay içindesin; bebeğin '
+      'yalnız ya da neredeyse yalnız anne sütüyle besleniyor (gece dahil uzun '
+      'aralar yok); adetin henüz dönmedi. Koşullardan biri bozulursa bu koruma '
+      'kalkar. Korunma yöntemi için doktoruna danış.');
+
+  /// A2: koşullardan biri bozuldu (6 ay / karışık / adet döndü).
+  static String get lamNotProtective => tr(
+      'Emzirme artık tek başına korunma sağlamaz; korunma gerekiyorsa '
+      'doktoruna danış.');
+
+  /// A5 / S4: emzirmeyen lohusa.
+  static String get nonBreastfeeding => tr(
+      'Emzirmiyorsan adetin genellikle doğumdan sonraki 6–8 hafta içinde döner; '
+      'ovülasyon daha erken, 3–4. haftada olabilir. İlk adetini görmeden gebe '
+      'kalabilirsin — korunma gerekiyorsa doktoruna danış.');
+
+  /// A5: doğum yapmış herkese (emzirme şartı yok).
+  static String get ovulationBeforeFirstPeriod => tr(
+      'İlk adetini görmeden de gebe kalabilirsin — ovülasyon adetten önce '
+      'olabilir. Korunma gerekiyorsa doktoruna danış.');
 }
 
 /// A1 notu — kalkan ikonlu standart kart.
@@ -181,9 +205,12 @@ class CycleInfo {
       'adet değildir. Akış zamanla azalırsa loşia; başlayıp koyulaşıp 4–7 gün '
       'sürerse muhtemelen ilk adettir.');
   static String get lam => tr(
-      'Düzenli emzirme (LAM — Laktasyonel Amenore) yumurtlamayı baskılayıp adeti '
-      'geciktirebilir. Ancak ~%2 başarısızlık riski vardır ve ovülasyon adetten '
-      'ÖNCE döner — ilk adeti görmeden gebe kalınabilir.');
+      'Emzirme yumurtlamayı baskılayıp adeti geciktirebilir. LAM (Laktasyonel '
+      'Amenore Yöntemi) ancak şu üç koşul BİRLİKTE varsa gebeliğe karşı geçici '
+      'koruma sağlayabilir: doğumdan sonraki ilk 6 ay; yalnız ya da neredeyse '
+      'yalnız anne sütü (gece dahil uzun aralar yok); adetin dönmemiş olması. '
+      'Biri bozulursa koruma kalkar. Ovülasyon ilk adetten önce olabilir. Korunma '
+      'için doktoruna danış.');
   static String get fertileWindow => tr(
       'Doğurganlık penceresi, gebe kalma olasılığının en yüksek olduğu ~6 günlük '
       'dönemdir (ovülasyon ve öncesi). İlk döngülerde — özellikle doğum '
