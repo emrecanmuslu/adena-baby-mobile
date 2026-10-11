@@ -541,7 +541,7 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
     try {
       final x = await ImagePicker()
           .pickImage(source: source, maxWidth: 1600, imageQuality: 85);
-      if (x != null) setState(() => _photoPath = x.path);
+      if (x != null && mounted) setState(() => _photoPath = x.path); // D42
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     }
@@ -653,7 +653,11 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
                         ? Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.file(File(_photoPath!), fit: BoxFit.cover),
+                              Image.file(File(_photoPath!),
+                                  fit: BoxFit.cover,
+                                  // D42: geçici dosya silindiyse kırmızı ekran yerine ikon
+                                  errorBuilder: (_, _, _) => const Center(
+                                      child: Icon(Icons.broken_image_outlined))),
                               Positioned(
                                 right: 8,
                                 top: 8,
