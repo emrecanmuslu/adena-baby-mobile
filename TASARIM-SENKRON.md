@@ -240,6 +240,20 @@ Sıra: **7a → 7b → 8 → 9 → docs.** 8b (O26 kalanı) bu aşamaya DAHİL D
 | 9 (`3c7d94c`) | K-1 banner + geri al | repo'lar: bellek-içi `pushErrors` → `pushError` kolonu (baby/memory/mom/cycle + health); `pushErrorCountProvider`; `SyncStatusBanner` 3. durum + `push_error_sheet.dart`; geri alma repo metotları; 8 çeviri anahtarı ×6 dil (api JSON, commit'lenmez) | pushError süreç ömrünü aşar (yeni repo örneği DB'den okur); başarılı push temizler; hard delete temizler; sayaç stream'i; geri al: sunucuda var → uygula, yok → sil / yerelde kalır (tablo başına); 403+caregiver → `'role'` | düşük-orta (UI) |
 | docs | TASARIM §8 hash'leri, BULGULAR K4/O4/O21 DÜZELTİLDİ + 2b, DEVAM-NOTU (cihaz listesi: iki cihaz aşı işaretle/kaldır, dil farkı, ayar değişimi çevrimdışı→online, geri al) | | |
 
+
+### Düzeltme turu 1 (2026-10-11)
+
+| # | Commit | Kapsam / not |
+|---|---|---|
+| M1 | `2e67b4e` | v2..v14 tüm sürümlerden v15 migration testi (`drift_schemas/`, SchemaVerifier + v12/v13/v14 veri dolu); from<4 yolundaki duplicate-column hatası (v2/v3 kurulumları güncellenemiyordu) `from >= 4` guard'larıyla kapandı |
+| M2 | `daf7947` | `cycle_settings_table.base_json` (v15 içinde): dirty PATCH yalnız base'den farklı alanlar; bilinçli null (K-8) gider, bayat null gitmez; base yoksa tam sözlük. Whole-row LWW gerilemesi (O26 yan bulgusu) kapandı |
+| M3/M7 | `9833265` | periyodik aralık prefs'te kalıcı; bg isolate'lerde `warmI18nFromCache` (D17) |
+| KB-5 | `5245b65` | gebelikten takibe dönüşte çapa sıfırlanır (bekleme modu). K6 çapa politikası yalnız kayıt silmede → çelişki yok |
+| KB-8 | `5d2c5a0` | bakıcı ilaç planı yazamaz (repo StateError + UI); doz işareti rolden bağımsız senkron (testli) |
+| KB-9 | `cfd9daa` | hesap silme başarılı → `wipeAccountData` (hesap kapsamı) + foto dosyaları |
+| M9a | `fb7259d` | yankılanmamış aşı satırları polling turunda yeniden gönderilmez |
+| M4 | `689c58d` | kesin alarm izni diyaloğu + ayar satırı (Android) |
+
 ### Backend talepleriyle kesişim (#1, #2, #3) — v15 onlarsız ne kadar güvenli?
 
 | Talep | v15 onsuz | Backend gelince değişen |

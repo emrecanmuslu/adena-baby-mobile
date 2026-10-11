@@ -42,8 +42,18 @@ Branch `fix/audit-bulgular`, main'e merge EDİLMEDİ. Bu dosya yayın öncesi te
 27. D19 (doğrulanamaz): iOS'ta 3+ bebek × çok dozlu planlar + randevular → 64 bekleyen bildirim sınırı aşılıyor mu (Ayarlar → Geliştirici → bekleyen bildirimler).
 28. D31: prematüre bölümünde tahmini doğum tarihinden türetme → debug'da kırmızı ekran yok.
 
+### F. Düzeltme turu 1
+29. M1: v2/v3 kadar eski bir kurulumdan (mümkünse arşiv APK) güncelle → açılış sorunsuz, veri yerinde (duplicate-column düzeltmesi).
+30. M2: A cihazı adet modülünü bebeğe bağlar; B (önceden senkronlanmış, bağsız) döngü uzunluğunu değiştirir → sunucuda bebek bağı KALIR (PATCH yalnız `expected_cycle_length`).
+31. M3: "her 15 dk" özel hatırlatıcı → uygulamayı kapat-aç → tetik zamanı korunur; aralığı 30 dk yap → yeniden kurulur.
+32. M4 (Android 12+): ilk ilaç planı kaydında izin yoksa "Tam zamanında bildirim" diyaloğu bir kez; "Daha sonra" → bir daha çıkmaz; Bildirimler ekranında satır + "İzin ver" sistem sayfasını açar; izin verince satır "İzin verildi". iOS'ta satır/diyalog YOK.
+33. M7: dil EN iken uygulama kapalıyken aile push'u / "Ertele 10 dk" / bg turunun kurduğu "Kaydı unuttun mu?" İngilizce gelir.
+34. KB-5: gebelik modunda "Adet takibine dön" → bekleyen bebek kalkar, adet ekranı bekleme modunda ("ilk adetini gir").
+35. KB-8: bakıcı cihazında İlaç & Vitamin: ekle düğmesi yok, plan kartı açılmaz, not "Bakıcı rolünde…"; doz işaretleme çalışır ve ebeveynde görünür.
+36. KB-9: hesabı sil → bu cihazda bebek/kayıt/anı/fotoğraf kalmaz; başka hesapla girince o hesabın verisi yerinde. Çevrimdışı silme denemesi → hata, yerel veri yerinde.
+
 ## 2. Bekleyen çeviri anahtarları (api repo, commit'lenmedi)
-Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 22 anahtar). Yayın öncesi api'de commit + prod'da `seed_translations --locale <en|es|fr|ar|hi|zh>`.
+Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 31 anahtar). Yayın öncesi api'de commit + prod'da `seed_translations --locale <en|es|fr|ar|hi|zh>`.
 
 | Anahtar (TR) | Kaynak |
 |---|---|
@@ -69,6 +79,14 @@ Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 22 
 | Diş | K-1 |
 | Bitiş zamanı başlangıçtan önce olamaz | O27 |
 | Verilen dozlar ve plan listesi ailenle paylaşılır. | D30 |
+| Bakıcı rolünde planları ebeveyn/sahip düzenler; sen dozları işaretleyebilirsin. | KB-8 |
+| Hesabın devre dışı bırakılacak ve oturumun her cihazda kapanacak. 30 gün … (yeni uzun metin) | KB-9 |
+| Tam zamanında bildirim | M4 |
+| İlaç ve beslenme hatırlatıcılarının tam saatinde gelmesi için "Alarmlar ve hatırlatıcılar" izni gerekli. … | M4 |
+| Daha sonra | M4 |
+| İzin ver | M4 |
+| İzin verildi | M4 |
+| İzin yok — hatırlatıcılar birkaç dakika gecikebilir | M4 |
 
 ## 3. Backend talepleri özeti (`BACKEND-TALEPLERI.md`, 10 madde) — istemci hangi maddede bekliyor
 | # | Başlık | İstemci bağımlılığı |
@@ -85,7 +103,7 @@ Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 22 
 | 10 | family_activity `last_feed_ts` = en yeni kayıt | O17: istemci yalnız ileri-tarih eşiği uyguluyor |
 
 ## 4. v15 ayrı sürüm mü? (K-10)
-Kod aynı branch'te; `schemaVersion` 14→15 tek sıçrama, migration testli (`migration_v15_test.dart`, SchemaVerifier + veri dolu geçiş). Karar yayın öncesi kullanıcıda: (a) tek sürüm (tüm bulgular + v15) — tek mağaza turu, migration riski aynı sürümde; (b) önce v15'siz sürüm, sonra v15 — iki tur, risk ayrışır. Öneri: (a), çünkü K4/O4/K-1 davranışları v15 kolonlarına bağlı ve ayrıştırmak branch'i bölmeyi gerektirir.
+Kod aynı branch'te; `schemaVersion` 14→15 tek sıçrama, migration testli (`migration_v15_test.dart`, SchemaVerifier + veri dolu geçiş). Karar yayın öncesi kullanıcıda: (a) tek sürüm (tüm bulgular + v15) — tek mağaza turu, migration riski aynı sürümde; (b) önce v15'siz sürüm, sonra v15 — iki tur, risk ayrışır. Öneri: (a) **tek sürüm**, çünkü K4/O4/K-1 davranışları v15 kolonlarına bağlı ve ayrıştırmak branch'i bölmeyi gerektirir. Yayın kademeli: **Google Play kademeli yayın %10 → %50 → %100** (her kademede Crashlytics'te migration/startup hatası ve `db_last_bg_sync_outcome` dağılımı izlenir; v2..v14'ten gelen cihazlar M1 ile testli) ve **App Store phased release** (7 gün, aynı izleme). Geri alma planı: şema geri alınamaz (v15 ek kolon; eski sürüm v15 DB'yi açamaz) → kademe durdurma + hotfix, downgrade değil.
 
 ## 5. main'e merge öncesi adımlar
 1. `flutter analyze` temiz, `flutter test` 1203/0 (bu koşu sonu). `flutter build apk --debug` ile Android hattı.

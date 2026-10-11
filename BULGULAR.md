@@ -95,6 +95,8 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 | O19 | — | KABUL/backend #3 |
 | D1 D3 D4 D5 D6 D9 D10 D13 D14 D18 D22 D23 D24 D26 D28 D29 D30 D31 D32 D34 D36 D37 D38 D39 D40 D41 D42 | ayrı commit'ler (`git log --grep "fix(D"`) | GRUP 4 düşük bulgular; D35 KABUL (`ee202df`); D2 D8 D11 D15 D17 D20 D21 D27 D44 KABUL; D16 D19 DOĞRULANAMAZ; D7 D12 D25 D45 GEÇERSİZ; D43 KB-9 |
 
+| Düzeltme turu 1 | M1 `2e67b4e`, M2 `daf7947`, M3/M7 `9833265`, KB-5 `5245b65`, KB-8 `5d2c5a0`, KB-9 `cfd9daa`, M9a `fb7259d`, M4 `689c58d`, M5 `df916bb` | TASARIM §8 "Düzeltme turu 1" |
+
 Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 
 ---

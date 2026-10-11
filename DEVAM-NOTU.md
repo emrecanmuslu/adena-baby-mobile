@@ -1,6 +1,6 @@
 # DEVAM NOTU — fix/audit-bulgular
 
-Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1203 geçti, 0 başarısız**, `flutter analyze` temiz.
+Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1236 geçti, 0 başarısız**, `flutter analyze` temiz.
 
 ## Tamamlananlar (commit sırasıyla)
 1. aşama: K3 `37f05f8`, K1 `00cd3fb`, K5 `e5f1a66`
@@ -17,13 +17,16 @@ Tasarım: `TASARIM-SENKRON.md` (kararlar K-1..K-10, R1-R9, §8 plan + hash'ler).
 - **KARAR-BEKLEYEN sayısı:** 9 (`KARAR-BEKLEYEN.md`: KB-1..KB-3 geri al; KB-4 exact-alarm UI; KB-5 çapa; KB-6 DST kapsamı; KB-7 aşı anahtarı; KB-8 bakıcı ilaç planı; KB-9 hesap silmede yerel veri).
 - Sonra: GRUP 3 (kalan ORTA), GRUP 4 (DÜŞÜK triyaj), GRUP 5 (şüpheliler), GRUP 6 (YAYIN-KONTROL.md), FINAL-RAPOR.md.
 
+## Düzeltme turu 1 (2026-10-11) — TAMAMLANDI
+M1 `2e67b4e` (10 şema sürümü, duplicate-column fix), M2 `daf7947`, M3/M7 `9833265`, KB-5 `5245b65`, KB-8 `5d2c5a0`, KB-9 `cfd9daa`, M9a `fb7259d`, M4 `689c58d`, M5 `df916bb`. M6: bu makinede `TZ` yok sayılıyor → CI'da koşulacak (KARAR-BEKLEYEN KB-6 ek). Kararlar KARAR-BEKLEYEN'de işaretli; çeviri 31 anahtar (YAYIN-KONTROL §2).
+
 ## Kalan iş sırası
 c) ~~Şema v15~~ TAMAMLANDI (GRUP 1; v15'in ayrı sürüm olup olmayacağı yayın öncesi kullanıcı kararı, K-10).
 d) ~~O26 kalanı~~ TAMAMLANDI (`f93c849`).
 e) ~~Kalan ORTA~~ TAMAMLANDI (GRUP 3; O19 KABUL/backend, O29/O17 kısmi).
 f) ~~DÜŞÜK~~ TAMAMLANDI (GRUP 4; durumlar BULGULAR §5 satır sonlarında).
 g) ~~Şüpheliler~~ TAMAMLANDI (GRUP 5; BULGULAR §6 durum notu; cihaz adımları YAYIN-KONTROL.md).
-h) **Yayın öncesi:** `../api/apps/translations/data/*.json`'da commit'lenmemiş 22 anahtar (D30 ilaç notu dahil; uyku bitiş uyarısı dahil; caregiver salt-okunur notu; misafir-adet teklif + silme metinleri; 3 oturum-sonu banner metni; 13 K-1 banner/geri al metni) → api'de commit + `seed_translations --locale <x>`; `BACKEND-TALEPLERI.md` 9 madde backend ekibine (#8 `code: session_superseded` gelene dek banner genel metni gösterir).
+h) **Yayın öncesi:** `../api/apps/translations/data/*.json`'da commit'lenmemiş 31 anahtar (D30 ilaç notu dahil; uyku bitiş uyarısı dahil; caregiver salt-okunur notu; misafir-adet teklif + silme metinleri; 3 oturum-sonu banner metni; 13 K-1 banner/geri al metni) → api'de commit + `seed_translations --locale <x>`; `BACKEND-TALEPLERI.md` 9 madde backend ekibine (#8 `code: session_superseded` gelene dek banner genel metni gösterir).
 
 ## Çalışma kuralları (devam ederken)
 Her bulgu: önce mevcut koda karşı KALAN test (yeni API'ye dayanan kısım geçici kopyayla ayrılır) → en küçük düzeltme → `flutter analyze` + tam `flutter test` → `fix(Kx): …` ayrı commit → TASARIM §8 hash + BULGULAR "DÜZELTİLDİ" notu. Yan sorun düzeltilmez, raporlanır.
