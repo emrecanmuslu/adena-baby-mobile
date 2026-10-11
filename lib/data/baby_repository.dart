@@ -532,13 +532,24 @@ class BabyRepository {
               ? await _api.dio.post('/babies', data: body)
               : await _api.dio.patch('/babies/${b.id}', data: body);
           // Aile ayarı artık ayrı bayrakla, ayrı turda gider (pushSettings, O4/R6).
-          if (needsPhotoUpload) {
+          // R5 / I2: POST sürerken (özellikle multipart foto) kullanıcı yeniden
+          // düzenlemiş olabilir → satırın GÖNDERİLEN hâliyle aynı olduğu
+          // doğrulanmadan dirty temizlenmez, foto URL'i yeni yerel yolu ezmez.
+          final cur = await _byIdRow(r.id);
+          final unchanged = cur != null && _samePushedState(cur, r);
+          if (needsPhotoUpload && unchanged) {
             // Sunucudan dönen imzalı foto URL'ini yerele yaz (yeniden yüklenmesin).
             final srvPhoto = (resp.data as Map<String, dynamic>)['photo'] as String?;
             if (srvPhoto != null) {
               await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
                   .write(BabiesCompanion(photo: Value(srvPhoto)));
             }
+          }
+          if (!unchanged) {
+            // Uçuş içi düzenleme/silme → dirty kalır, bir sonraki tur gönderir.
+            await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
+                .write(const BabiesCompanion(pushError: Value(null)));
+            continue;
           }
         }
         await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
@@ -558,6 +569,22 @@ class BabyRepository {
       }
     }
   }
+
+  /// R5 (I2): satır, push'a verilen anlık görüntüyle aynı mı? Damga drift'te
+  /// saniye çözünürlüklü → aynı saniyedeki düzenlemeyi kaçırmamak için
+  /// gönderilen alanlar da karşılaştırılır (records D3 deseni).
+  static bool _samePushedState(BabyRow cur, BabyRow sent) =>
+      cur.clientUpdatedAt == sent.clientUpdatedAt &&
+      cur.isDeleted == sent.isDeleted &&
+      cur.name == sent.name &&
+      cur.gender == sent.gender &&
+      cur.photo == sent.photo &&
+      cur.status == sent.status &&
+      cur.birthDate == sent.birthDate &&
+      cur.dueDate == sent.dueDate &&
+      cur.lastMenstrualDate == sent.lastMenstrualDate &&
+      cur.gestationalWeeks == sent.gestationalWeeks &&
+      cur.gestationalDays == sent.gestationalDays;
 
   /// K-1 "geri al": `GET /babies/{id}` → 200: sunucu profili uygulanır
   /// (ayar JSON'u dokunulmaz; dirty=false, pushError=null, tombstone kalkar).
