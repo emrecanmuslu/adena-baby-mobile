@@ -138,7 +138,7 @@ void main() {
     _Babies.list = [_baby('b1', role: role)];
     final cycle = _MockCycle();
     when(() => cycle.syncIfCloud()).thenAnswer((_) async {});
-    when(() => cycle.markAllDirty()).thenAnswer((_) async {});
+    when(() => cycle.markAllDirty(accountId: any(named: 'accountId'))).thenAnswer((_) async {});
     final c = ProviderContainer(overrides: [
       databaseProvider.overrideWithValue(db),
       apiClientProvider.overrideWithValue(api),
@@ -161,6 +161,15 @@ void main() {
   bool pulledVaccines() =>
       requests.any((r) => r.method == 'GET' && r.path == '/babies/b1/vaccines');
 
+  /// J1(b): tamamen pending (lazy) sunucu kümesi artık otoriter DEĞİL; K-4
+  /// "sunucu kazanır" kontratı yalnız sunucuda en az bir done varken geçerli.
+  void serverHasOneDone() {
+    adapter.onGet('/babies/b1/vaccines', (s) => s.reply(200, [
+          {'vaccine_name': 'BCG', 'status': 'pending', 'done_date': null},
+          {'vaccine_name': 'Hepatit B', 'status': 'done', 'done_date': '2026-01-02'},
+        ]));
+  }
+
   group('I1 — sağlık pull kapısı (syncAll tam turu)', () {
     test('free→premium: göç pushAll ÖNCESİ tam tur aşıyı sıfırlamaz (pull yok)',
         () async {
@@ -178,6 +187,7 @@ void main() {
     test('göç tamamlanınca (premiumSynced) pull açılır → K-4: sunucu kazanır',
         () async {
       await seedOwnerBabyWithCleanVaccine();
+      serverHasOneDone();
       final c = container();
       await c.read(babyControllerProvider.future);
       await LocalSession.markPremiumSyncedForAccount(acct);
@@ -191,6 +201,7 @@ void main() {
     test('paylaşılan (parent) bebekte kapı yok: premiumSynced false olsa da pull',
         () async {
       await seedOwnerBabyWithCleanVaccine(role: 'parent');
+      serverHasOneDone();
       final c = container(role: 'parent', premium: false);
       await c.read(babyControllerProvider.future);
 

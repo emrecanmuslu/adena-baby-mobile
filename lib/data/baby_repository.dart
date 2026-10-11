@@ -464,8 +464,8 @@ class BabyRepository {
   /// free→premium migrasyonunda TAM yükleme garanti et: aktif hesabın tüm
   /// bebeklerini dirty işaretle. Grace sonrası cloud silinmişse (ya da kullanıcı
   /// "buluttan sil" demişse) eski temiz kayıtlar da yeniden yüklensin diye gerekir.
-  Future<void> markAllDirty() async {
-    final acct = LocalSession.activeAccountId;
+  Future<void> markAllDirty({String? accountId}) async {
+    final acct = accountId ?? LocalSession.activeAccountId;
     if (acct == null) return;
     // YALNIZ sahip olunan bebekler. Paylaşımlı (myRole='parent'/'caregiver') bebek
     // sahibine ait → üye onu buluta YÜKLEMEZ (POST /babies 403 döner) ve migrasyon

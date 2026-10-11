@@ -107,7 +107,9 @@ class MigrationController extends Notifier<MigrationState> {
     final db = ref.read(databaseProvider);
     final babyRepo = ref.read(babyRepositoryProvider);
 
-    final babies = await babyRepo.getAll();
+    // J1: tüm repo çağrıları BAŞTA yakalanan `acct` ile yapılır; göç sırasında
+    // kapsam değişirse (çıkış/başka hesap) sonunda bayrak yazılmaz.
+    final babies = await babyRepo.getAll(accountId: acct);
 
     // TAM yükleme garanti et: aktif hesabın tüm yerel satırlarını dirty işaretle.
     // Sebep: push yolları yalnız dirty satırları gönderir. Grace dolup cloud kopyası
@@ -119,46 +121,47 @@ class MigrationController extends Notifier<MigrationState> {
     // yüklemez (aksi halde 403 + gereksiz "yedekleniyor" overlay'i).
     final owned =
         babies.where((b) => b.myRole == null || b.myRole == 'owner').toList();
-    await babyRepo.markAllDirty();
+    await babyRepo.markAllDirty(accountId: acct);
     for (final b in owned) {
       await ref.read(recordRepositoryProvider).markAllDirty(b.id);
       await ref.read(memoryRepositoryProvider).markAllDirty(b.id);
       await ref.read(momRepositoryProvider).markAllDirty(b.id);
     }
-    await ref.read(cycleRepositoryProvider).markAllDirty();
+    await ref.read(cycleRepositoryProvider).markAllDirty(accountId: acct);
 
     // Adımları + sayıları önceden hesapla — HESAP-KAPSAMLI (çoklu yerel hesapta başka
     // hesabın dirty satırları overlay'i yanlışlıkla tetiklemesin). Bebek tablosu
     // account_id; kayıt/anı/anne bebek üzerinden transitif.
     const inOwnBabies =
         'baby IN (SELECT id FROM babies WHERE account_id=?)';
-    final steps = [
-      MigrationStep('babies',
-          await _dirtyCount(db, 'babies WHERE dirty=1 AND account_id=?', acct),
-          StepStatus.pending),
-      MigrationStep('records',
+    final counts = <String, int?>{
+      'babies': await _dirtyCount(db, 'babies WHERE dirty=1 AND account_id=?', acct),
+      'records':
           await _dirtyCount(db, 'records WHERE dirty=1 AND $inOwnBabies', acct),
-          StepStatus.pending),
-      MigrationStep('memories',
+      'memories':
           await _dirtyCount(db, 'memories WHERE dirty=1 AND $inOwnBabies', acct),
-          StepStatus.pending),
-      MigrationStep('mom',
+      'mom':
           await _dirtyCount(db, 'mom_entries WHERE dirty=1 AND $inOwnBabies', acct),
-          StepStatus.pending),
-      MigrationStep('cycle',
-          await _dirtyCount(db, 'cycle_entries WHERE dirty=1 AND account_id=?', acct),
-          StepStatus.pending),
+      'cycle': await _dirtyCount(
+          db, 'cycle_entries WHERE dirty=1 AND account_id=?', acct),
       // Sağlık durumu (aşı/gelişim/diş işaretleri) — local-first; push = tüm küme.
-      MigrationStep('health',
-          await _dirtyCount(db, 'health_statuses WHERE $inOwnBabies', acct),
-          StepStatus.pending),
+      'health': await _dirtyCount(db, 'health_statuses WHERE $inOwnBabies', acct),
+    };
+    // J1: sayım hatası "bilinmiyor"dur — "veri yok" kısayolu alınmaz ve göç
+    // sonunda bayrak yazılmaz (sonraki açılışta yeniden denenir).
+    final countsUnknown = counts.values.any((c) => c == null);
+    final steps = [
+      for (final e in counts.entries)
+        MigrationStep(e.key, e.value ?? 0, StepStatus.pending),
     ];
     // Yüklenecek yerel (dirty) veri yoksa overlay'i hiç gösterme — mevcut premium
     // kullanıcıda boş yanıp sönmesin. Yalnız gerçek free→premium göçünde görünür.
-    if (steps.every((s) => s.count == 0)) {
+    if (!countsUnknown && steps.every((s) => s.count == 0)) {
       // I1: kaybedilecek yerel veri yok (yeni cihaz / boş hesap) → hesap
       // "senkron" sayılır; sağlık pull kapısı (healthPullAllowed) açılsın.
+      // Yerel sağlık satırı da yok → yeniden-tohumlama bekleyecek bir şey yok (J8).
       await LocalSession.markPremiumSyncedForAccount(acct);
+      await LocalSession.clearHealthReseedForAccount(acct);
       return;
     }
     state = MigrationState(MigrationPhase.running, steps);
@@ -174,8 +177,8 @@ class MigrationController extends Notifier<MigrationState> {
     }
 
     await step('babies', () async {
-      await babyRepo.pushDirty();
-      await babyRepo.pushSettings(); // O4: ayar ayrı bayrakla
+      await babyRepo.pushDirty(accountId: acct);
+      await babyRepo.pushSettings(accountId: acct); // O4: ayar ayrı bayrakla
     });
     await step('records', () async {
       for (final b in babies) {
@@ -192,17 +195,37 @@ class MigrationController extends Notifier<MigrationState> {
         await ref.read(momRepositoryProvider).pushDirty(b.id);
       }
     });
-    await step('cycle', () => ref.read(cycleRepositoryProvider).migrateToCloud());
+    await step('cycle',
+        () => ref.read(cycleRepositoryProvider).migrateToCloud(accountId: acct));
+    // J1: sağlık tam kümesi TÜM sahip bebeklerde başarıyla gitmedikçe hesap
+    // "senkron" sayılmaz (kapı `healthPullAllowed` kapalı kalır) — aksi hâlde
+    // bir sonraki pull sunucunun boş/lazy kümesini temiz v14 tiklerine yazardı.
+    var healthOk = true;
     await step('health', () async {
       for (final b in owned) {
-        await ref.read(healthRepositoryProvider).pushAll(b.id);
+        try {
+          await ref.read(healthRepositoryProvider).pushAll(b.id);
+        } catch (_) {
+          healthOk = false;
+        }
       }
     });
 
-    // Tam yükleme turu tamamlandı → bir daha overlay gösterme (kalan dirty satırlar
-    // normal senkronla gider). Lapse'te bu bayrak temizlenir.
-    await LocalSession.markPremiumSyncedForAccount(acct);
     state = MigrationState(MigrationPhase.done, state.steps);
+    // J1: kapsam değiştiyse (çıkış / başka hesap) hiçbir bayrak yazılmaz —
+    // eski hesap için bir sonraki girişte göç yeniden değerlendirilir.
+    if (LocalSession.activeAccountId != acct) return;
+    if (healthOk && !countsUnknown) {
+      // Tam yükleme turu tamamlandı → bir daha overlay gösterme (kalan dirty
+      // satırlar normal senkronla gider). Purge'te bu bayrak temizlenir.
+      // J8: sağlık tam kümesi gitti → lapse kalıntısı reseed bayrağı düşer.
+      await LocalSession.markPremiumSyncedForAccount(acct);
+      await LocalSession.clearHealthReseedForAccount(acct);
+    } else {
+      // Sağlık yüklenemedi → yeniden-tohumlama beklesin; sonraki false→true
+      // geçişinde (her açılış) `run()` yeniden dener, kapı o zamana dek kapalı.
+      await LocalSession.markHealthReseedForAccount(acct);
+    }
   }
 
   /// Premium bitince kullanıcı-tetikli "İndir ve sil": önce buluttaki TÜM veriyi
@@ -310,7 +333,8 @@ class MigrationController extends Notifier<MigrationState> {
     if (allOk) await LocalSession.clearHealthReseedForAccount(acct);
   }
 
-  static Future<int> _dirtyCount(
+  /// Döner: sayı; DB hatasında `null` ("bilinmiyor", J1 — 0 sayılmaz).
+  static Future<int?> _dirtyCount(
       AppDatabase db, String fromWhere, String acct) async {
     try {
       final row = await db
@@ -319,7 +343,7 @@ class MigrationController extends Notifier<MigrationState> {
           .getSingle();
       return row.read<int>('c');
     } catch (_) {
-      return 0;
+      return null;
     }
   }
 }

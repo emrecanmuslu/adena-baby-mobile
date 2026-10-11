@@ -18,6 +18,7 @@ import '../models/vaccine.dart';
 import '../core/sync_telemetry.dart';
 import 'health_catalog.dart';
 import 'local/app_database.dart';
+import 'local_session.dart';
 import 'sync_gate.dart';
 import 'sync_merge.dart';
 
@@ -790,7 +791,20 @@ class HealthRepository {
     }
 
     final vac = await fetch('vaccines');
-    if (vac != null) {
+    // J1(b): sunucu aşı listesi TAMAMEN pending (hiç done yok) iken yerelde
+    // temiz done=true aşı satırı varsa sunucu kümesi lazy üretilmiş/hiç
+    // yüklenmemiştir → otoriter değildir: aşı kalemleri UYGULANMAZ, hesap
+    // yeniden-tohumlama (lapse ile aynı yol) bekler. Gelişim/diş etkilenmez.
+    if (vac != null &&
+        !vac.any((m) => m['status'] == 'done') &&
+        await _hasCleanDoneVaccine(babyId)) {
+      final acct = LocalSession.activeAccountId;
+      if (acct != null) await LocalSession.markHealthReseedForAccount(acct);
+      await SyncTelemetry.report('health_pull_lazy_server_skipped', {
+        'baby': babyId,
+        'server_items': vac.length,
+      });
+    } else if (vac != null) {
       // I10: katalogta karşılığı olmayan (başka dilde adlandırılmış) sunucu
       // kalemleri yerelde satır üretmez — ekranda görünmez yetim satırlar
       // birikiyordu. Yankı (echo) kontrolü sunucu listesine bakar, etkilenmez.
@@ -839,6 +853,19 @@ class HealthRepository {
   }
 
   /// Geriye uyumlu ad (ilk import / göç): artık R1 ile tam pull.
+  /// J1(b): yerelde temiz (dirty=0) `done=true` aşı satırı var mı?
+  Future<bool> _hasCleanDoneVaccine(String babyId) async {
+    final row = await (_db.select(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) &
+              s.kind.equals('vaccine') &
+              s.done.equals(true) &
+              s.dirty.equals(false))
+          ..limit(1))
+        .getSingleOrNull();
+    return row != null;
+  }
+
   Future<void> importFromCloud(String babyId) => pull(babyId);
 
   Future<void> purgeBaby(String babyId) async {

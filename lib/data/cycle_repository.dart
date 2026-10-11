@@ -417,8 +417,8 @@ class CycleRepository {
 
   /// Migrasyonda tam yükleme için aktif hesabın TÜM adet kayıt + ayarını dirty
   /// işaretle (grace sonrası cloud silinmişse geri yüklensin).
-  Future<void> markAllDirty() async {
-    final acct = _acct;
+  Future<void> markAllDirty({String? accountId}) async {
+    final acct = accountId ?? _acct;
     if (acct == null) return;
     await (_db.update(_db.cycleEntries)..where((e) => e.accountId.equals(acct)))
         .write(const CycleEntriesCompanion(dirty: Value(true)));
@@ -427,9 +427,11 @@ class CycleRepository {
   }
 
   /// free→premium migrasyonu: yerel ayar + girdileri sunucuya yollar.
-  Future<void> migrateToCloud() async {
+  /// [accountId] verilirse yalnız o hesap hâlâ aktifken çalışır (J1: göç
+  /// sırasında kapsam değiştiyse başka hesabın verisi gönderilmez).
+  Future<void> migrateToCloud({String? accountId}) async {
     final acct = _acct;
-    if (acct == null) return;
+    if (acct == null || (accountId != null && accountId != acct)) return;
     final row = await _settingsRow();
     if (row != null && row.dirty) await _pushDirtySettings(row);
     await _pushDirtyEntries();

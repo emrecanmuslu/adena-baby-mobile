@@ -43,7 +43,7 @@ void main() {
     addTearDown(db.close);
     final cycle = _MockCycle();
     var calls = 0;
-    when(() => cycle.markAllDirty()).thenAnswer((_) async {
+    when(() => cycle.markAllDirty(accountId: any(named: 'accountId'))).thenAnswer((_) async {
       calls++;
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
