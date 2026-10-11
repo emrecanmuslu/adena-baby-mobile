@@ -295,15 +295,21 @@ class CycleRepository {
   /// zamanlı iki çağrı "mevcut var mı?" sorgusunu aynı anda boş görüp iki UUID
   /// üretiyordu → yerelde çift satır, sunucuda id uyuşmazlığı. Sıra bize gelince
   /// mevcut satır görülür ve aynı id güncellenir.
-  Future<CycleEntry> saveEntry(CycleEntry entry) {
-    final run = _saveChain.then((_) => _saveEntryNow(entry));
+  /// [confirmedFirstPeriod] (A3): kullanıcı bu kanamanın "ilk adetim" olduğunu
+  /// AÇIKÇA söyledi. Doğumdan sonraki ilk 56 günde onaysız kanama kaydı çapa
+  /// kurmaz (loşia sayılır).
+  Future<CycleEntry> saveEntry(CycleEntry entry,
+      {bool confirmedFirstPeriod = false}) {
+    final run = _saveChain
+        .then((_) => _saveEntryNow(entry, confirmedFirstPeriod: confirmedFirstPeriod));
     _saveChain = run.then((_) {}, onError: (_) {});
     return run;
   }
 
   Future<void> _saveChain = Future.value();
 
-  Future<CycleEntry> _saveEntryNow(CycleEntry entry) async {
+  Future<CycleEntry> _saveEntryNow(CycleEntry entry,
+      {bool confirmedFirstPeriod = false}) async {
     final acct = _acct;
     var id = entry.id;
     if (id.isEmpty) {
@@ -340,7 +346,11 @@ class CycleRepository {
     // doğum/kayıp kanamasıdır, adet değil).
     if (entry.isPeriod) {
       final s = await getSettings();
-      if (afterLatestReset(entry.date, s)) {
+      // A3: doğum+0..56 günde kanama, kullanıcı açıkça "ilk adetim" demedikçe
+      // loşia sayılır → çapa/takip geçişi yok.
+      final needsConfirm =
+          inPostpartumBleedWindow(entry.date, s) && !confirmedFirstPeriod;
+      if (afterLatestReset(entry.date, s) && !needsConfirm) {
         if (s.firstPeriodDate == null) {
           await patchSettings({'first_period_date': _isoDate(entry.date)});
         } else if (s.predictionsHidden) {

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
+import '../../core/sync_alert_telemetry.dart';
 import '../../core/theme.dart';
 import '../../data/push_error_repository.dart';
 import '../../data/subscription_repository.dart';
@@ -205,6 +206,15 @@ class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
 
   Timer? _debounce;
   bool _showSyncing = false;
+  // Telemetri: "Senkron sorunu" şeridi gizliden görünüre geçince bir breadcrumb
+  // (tekrar build'lerde yeniden yazılmaz).
+  bool _alertVisible = false;
+
+  void _noteAlert(bool visible) {
+    if (visible == _alertVisible) return;
+    _alertVisible = visible;
+    if (visible) SyncAlertTelemetry.instance.markAlertShown();
+  }
 
   @override
   void dispose() {
@@ -240,6 +250,9 @@ class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
       _setSyncing(isOnline && !st.lastSyncFailed && st.isSyncing);
     });
 
+    _noteAlert(online &&
+        status.lastSyncFailed &&
+        (ref.watch(pushErrorCountProvider).asData?.value ?? 0) == 0);
     if (!online) {
       // "Bağlantı gelince gönderilecek" YALNIZ bulut yedeği olan kullanıcı için
       // doğru. Free kullanıcının kaydı hiçbir zaman gönderilmez (bulut yedeği
@@ -399,6 +412,7 @@ class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
               child: FilledButton(
                 onPressed: () {
                   Navigator.pop(ctx);
+                  SyncAlertTelemetry.instance.markRetryTapped();
                   ref.read(syncServiceProvider).syncAll();
                 },
                 child: Text(tr('Şimdi yeniden dene')),

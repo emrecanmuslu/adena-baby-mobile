@@ -980,13 +980,15 @@ class NotificationService {
       final at = DateTime(nextPeriod.year, nextPeriod.month, nextPeriod.day, 9)
           .subtract(Duration(days: periodLeadDays));
       if (at.isAfter(now)) {
-        await _scheduleOnce(_cycleBase + 0, at, tr('Adetin yaklaşıyor 🌸'));
+        // C3: tahmine dayalı → "tahmini".
+        await _scheduleOnce(_cycleBase + 0, at, tr('Adetin yaklaşıyor (tahmini) 🌸'));
       }
     }
     if (on('fertile') && fertileStart != null) {
       final at = DateTime(fertileStart.year, fertileStart.month, fertileStart.day, 9);
       if (at.isAfter(now)) {
-        await _scheduleOnce(_cycleBase + 1, at, tr('Doğurganlık pencereniz başlıyor'));
+        // C3/C5: nötr + "tahmini".
+        await _scheduleOnce(_cycleBase + 1, at, tr('Tahmini doğurgan pencere başlıyor'));
       }
     }
     if (on('pms') && nextPeriod != null) {

@@ -29,8 +29,9 @@ void main() {
   group('anchorCandidate', () {
     test('sıfırlama sonrası en eski adet günü', () {
       final s = CycleSettings(birthDate: birth);
-      final days = [DateTime(2026, 1, 10), DateTime(2026, 3, 6), DateTime(2026, 3, 5)];
-      expect(anchorCandidate(days, s), DateTime(2026, 3, 5));
+      // A3 (S1): doğum+0..42 loşia — fikstür 63. güne taşındı.
+      final days = [DateTime(2026, 1, 10), DateTime(2026, 4, 6), DateTime(2026, 4, 5)];
+      expect(anchorCandidate(days, s), DateTime(2026, 4, 5));
     });
     test('sıfırlama sonrası gün yoksa null', () {
       final s = CycleSettings(birthDate: birth);
@@ -51,11 +52,12 @@ void main() {
       final s = CycleSettings(
           birthDate: birth, lifecycleMode: CycleLifecycleMode.postpartum);
       final patch = anchorPatchForAdjust(
-        marked: {DateTime(2026, 1, 10), DateTime(2026, 1, 11), DateTime(2026, 3, 5)},
+        // A3 (S1): doğum+0..42 loşia — fikstür 63. güne taşındı.
+        marked: {DateTime(2026, 1, 10), DateTime(2026, 1, 11), DateTime(2026, 4, 5)},
         settings: s,
       );
       expect(patch, isNotNull);
-      expect(patch!['first_period_date'], '2026-03-05');
+      expect(patch!['first_period_date'], '2026-04-05');
       expect(patch['lifecycle_mode'], 'postpartum',
           reason: 'örtük tracking geçişi olmasın');
     });

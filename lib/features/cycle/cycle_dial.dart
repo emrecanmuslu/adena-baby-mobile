@@ -9,6 +9,11 @@ import '../../core/theme.dart';
 /// Rakam/etiket için **Nunito** (serif değil) — uygulama diliyle uyumlu.
 enum DialMode { cycle, heal, waiting }
 
+/// D1: iyileşme/gebelik halkasında gün/hafta → derece (yay ve "bugün" boncuğu
+/// AYNI ölçek). [span] = tam tur (loşia 42 gün, gebelik 40 hafta); 360°de kırpılır.
+double dialHealDegrees(int day, int span) =>
+    span <= 0 ? 0 : math.min(360.0, math.max(0, day) / span * 360.0);
+
 class CycleDial extends StatelessWidget {
   final DialMode mode;
   final int day;
@@ -24,6 +29,8 @@ class CycleDial extends StatelessWidget {
   final double size;
   final double stroke;
   final Widget? centerIcon; // num yerine ikon (sprout/bloom)
+  /// D1: heal modunda tam tur (loşia 42 gün, gebelik 40 hafta).
+  final int healSpan;
 
   const CycleDial({
     super.key,
@@ -41,6 +48,7 @@ class CycleDial extends StatelessWidget {
     this.size = 208,
     this.stroke = 13,
     this.centerIcon,
+    this.healSpan = 42,
   }) : accent = accent ?? const Color(0xFFC2576E);
 
   @override
@@ -60,6 +68,7 @@ class CycleDial extends StatelessWidget {
               periodLen: periodLen,
               ovu: ovu,
               fertile: fertile,
+              healSpan: healSpan,
               stroke: stroke,
               accent: accent,
               roseD: AppColors.roseD,
@@ -117,6 +126,7 @@ class _DialPainter extends CustomPainter {
   final DialMode mode;
   final int day, cycleLen, periodLen, ovu;
   final List<int> fertile;
+  final int healSpan;
   final double stroke;
   final Color accent, roseD, sage, gold, clay, clayD, track, surface;
 
@@ -127,6 +137,7 @@ class _DialPainter extends CustomPainter {
     required this.periodLen,
     required this.ovu,
     required this.fertile,
+    required this.healSpan,
     required this.stroke,
     required this.accent,
     required this.roseD,
@@ -185,7 +196,7 @@ class _DialPainter extends CustomPainter {
               ..color = surface);
       case DialMode.heal:
         if (day > 1) {
-          drawArc(0, math.min(360, (day / 42) * 360), band(clay));
+          drawArc(0, dialHealDegrees(day, healSpan), band(clay));
         }
       case DialMode.waiting:
         // kesik halka (dashed) — küçük tireler
@@ -197,7 +208,8 @@ class _DialPainter extends CustomPainter {
 
     // bugün boncuğu
     if (mode != DialMode.waiting) {
-      final b = pt(ang(day));
+      // D1: heal modunda boncuk yayla aynı ölçekte (döngü formülü değil).
+      final b = pt(mode == DialMode.heal ? dialHealDegrees(day, healSpan) : ang(day));
       canvas.drawCircle(b, 8, Paint()..color = surface);
       canvas.drawCircle(
           b,
@@ -214,5 +226,6 @@ class _DialPainter extends CustomPainter {
       old.mode != mode ||
       old.day != day ||
       old.cycleLen != cycleLen ||
+      old.healSpan != healSpan ||
       old.accent != accent;
 }

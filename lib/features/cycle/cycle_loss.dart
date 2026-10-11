@@ -304,7 +304,8 @@ List<Widget> cycleLossToday(
     CycEyebrow(tr('Bilmen iyi olur')),
     cycNote(context,
         icon: Icons.schedule_rounded,
-        body: tr('Kayıptan sonra ovülasyon genelde ~2 hafta içinde dönebilir; '
+        // S12: ~2 hafta bilgisi erken kayıplar için.
+        body: tr('Erken kayıplarda ovülasyon genellikle ~2 hafta içinde dönebilir; '
             'ilk adet çoğunlukla 4–6 hafta sonra gelir.')),
     const SizedBox(height: 10),
     cycNote(context,

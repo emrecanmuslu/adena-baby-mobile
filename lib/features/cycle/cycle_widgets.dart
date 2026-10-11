@@ -38,56 +38,6 @@ String lochiaLabel(LochiaColor c) => switch (c) {
       LochiaColor.yellowWhite => tr('Sarı/Beyaz'),
     };
 
-// ── Faz etiketi + kısa açıklama ────────────────────────────────────────────
-String phaseLabel(CyclePhase p) => switch (p) {
-      CyclePhase.menstrual => tr('Adet Fazı'),
-      CyclePhase.follicular => tr('Folliküler Faz'),
-      CyclePhase.ovulation => tr('Ovülasyon'),
-      CyclePhase.luteal => tr('Luteal Faz'),
-    };
-
-// ── Faza göre öz-bakım ipuçları (doğum sonrası bağlamına duyarlı, kısa) ──────
-/// Aktif döngü panosundaki "Bu fazda kendine iyi bak" kartı için. Tıbbi tavsiye
-/// değil, nazik öz-bakım hatırlatmaları.
-({String emoji, String title, List<String> tips}) phaseSelfCare(CyclePhase p) =>
-    switch (p) {
-      CyclePhase.menstrual => (
-          emoji: '🩸',
-          title: tr('Adet günleri'),
-          tips: [
-            tr('Sıcak su torbası ve hafif esneme kramplara iyi gelir.'),
-            tr('Demir açısından zengin besinler + bol su.'),
-            tr('Dinlenmeye öncelik ver; bebeğin uyuduğunda sen de uzan.'),
-          ],
-        ),
-      CyclePhase.follicular => (
-          emoji: '🌱',
-          title: tr('Folliküler faz'),
-          tips: [
-            tr('Enerjin yükselir — kısa bir yürüyüş iyi gelir.'),
-            tr('Protein ve sebze ağırlıklı beslen.'),
-            tr('Yeni rutinler kurmak için iyi bir dönem.'),
-          ],
-        ),
-      CyclePhase.ovulation => (
-          emoji: '🌿',
-          title: tr('Ovülasyon dönemi'),
-          tips: [
-            tr('Doğurganlık penceresindesin — gebelik planın varsa not al.'),
-            tr('Bol su iç, hafif tempolu hareket et.'),
-          ],
-        ),
-      CyclePhase.luteal => (
-          emoji: '🌙',
-          title: tr('Luteal faz'),
-          tips: [
-            tr('Adet öncesi gerginlik olabilir — kendine şefkatli ol.'),
-            tr('Şeker yerine kompleks karbonhidrat tercih et.'),
-            tr('Uyku düzenine ve nefes egzersizlerine özen göster.'),
-          ],
-        ),
-    };
-
 // ── Belirti kataloğu (BBT/servikal mukus bilinçli olarak çıkarıldı) ─────────
 // Anahtarlar entry.symptoms JSON listesinde saklanır → yeni eklemeler geriye
 // dönük uyumludur (şema değişikliği yok).
@@ -109,22 +59,45 @@ const List<(String, String)> cycleSymptoms = [
   ('discharge', 'Akıntı'),
 ];
 
-/// Doğum sonrası kırmızı bayrak belirtileri (ayrı, vurgulu grup).
-const List<(String, String)> cycleRedFlagItems = [
-  ('rf_flood', 'Saatte 1+ ped ıslatma'),
-  ('rf_clot', 'Büyük pıhtı (limondan büyük)'),
-  ('rf_odor_fever', 'Kötü kokulu akıntı + ateş'),
-  ('rf_pain', 'Şiddetli karın/kasık ağrısı'),
+/// A4 (karar S3) — ACİL kademe: beklemeden acil servis.
+const List<String> cycleRedFlagUrgentKeys = ['rf_flood', 'rf_clot', 'rf_faint'];
+
+/// A4 (karar S3) — AYNI GÜN HEKİM kademesi.
+const List<String> cycleRedFlagSameDayKeys = [
+  'rf_fever',
+  'rf_odor',
+  'rf_pain',
+  'rf_rebleed',
 ];
+
+/// Kırmızı bayrak belirtileri (kayıt sayfasında ayrı, vurgulu grup).
+const List<String> cycleRedFlagKeys = [
+  ...cycleRedFlagUrgentKeys,
+  ...cycleRedFlagSameDayKeys,
+];
+
+/// Kırmızı bayrak etiketi. N3: her metin sabit anahtarlı tr çağrısıyla —
+/// çeviri bütünlüğü testi (translation_keys_test) bunları tarar.
+/// `rf_odor_fever` eski sürümlerin anahtarı (yeni girişte sunulmaz).
+String redFlagLabel(String key) => switch (key) {
+      'rf_flood' => tr('Saatte bir ya da daha sık pedi dolduran kanama'),
+      'rf_clot' => tr('Büyük pıhtılar'),
+      'rf_faint' =>
+        tr('Yoğun kanamayla birlikte baş dönmesi, bayılma hissi ya da çarpıntı'),
+      'rf_fever' => tr('38°C ve üzeri ateş'),
+      'rf_odor' => tr('Kötü kokulu akıntı'),
+      'rf_pain' => tr('Şiddetli karın/kasık ağrısı'),
+      'rf_rebleed' =>
+        tr('Azalmış kanamanın yeniden parlak kırmızı ve yoğun hale gelmesi'),
+      'rf_odor_fever' => tr('Kötü kokulu akıntı + ateş'),
+      _ => key,
+    };
 
 String symptomLabel(String key) {
   for (final s in cycleSymptoms) {
     if (s.$1 == key) return tr(s.$2);
   }
-  for (final s in cycleRedFlagItems) {
-    if (s.$1 == key) return tr(s.$2);
-  }
-  return key;
+  return redFlagLabel(key);
 }
 
 // ── Ruh hali skalası (1-5) ─────────────────────────────────────────────────
@@ -137,16 +110,89 @@ String moodLabel(int m) => switch (m) {
       _ => tr('Çok iyi'),
     };
 
+// ── Sabit sağlık uyarıları (ADET-INCELEME A1) ──────────────────────────────
+class CycleTexts {
+  /// Olasılık/doğurgan pencere gösterildiği her yerde (A1): tahmin korunma değildir.
+  static String get noContraception =>
+      tr('Bu bir tahmindir; gebelikten korunma için kullanılamaz.');
+
+  /// Kurulum sonu + Adet ayarları kalıcı satırı (A1).
+  static String get notContraceptionMethod => tr(
+      'Adet takvimi tahmine dayalıdır ve bir doğum kontrol yöntemi değildir.');
+
+  /// A2: LAM üç koşulu — öneri DEĞİL, bilgilendirme.
+  static String get lamConditions => tr(
+      'Emzirme, ancak şu üç koşulun hepsi birlikte sağlanıyorsa gebeliğe karşı '
+      'geçici koruma sağlayabilir: doğumdan sonraki ilk 6 ay içindesin; bebeğin '
+      'yalnız ya da neredeyse yalnız anne sütüyle besleniyor (gece dahil uzun '
+      'aralar yok); adetin henüz dönmedi. Koşullardan biri bozulursa bu koruma '
+      'kalkar. Korunma yöntemi için doktoruna danış.');
+
+  /// A2: koşullardan biri bozuldu (6 ay / karışık / adet döndü).
+  static String get lamNotProtective => tr(
+      'Emzirme artık tek başına korunma sağlamaz; korunma gerekiyorsa '
+      'doktoruna danış.');
+
+  /// A5 / S4: emzirmeyen lohusa.
+  static String get nonBreastfeeding => tr(
+      'Emzirmiyorsan adetin genellikle doğumdan sonraki 6–8 hafta içinde döner; '
+      'ovülasyon daha erken, 3–4. haftada olabilir. İlk adetini görmeden gebe '
+      'kalabilirsin — korunma gerekiyorsa doktoruna danış.');
+
+  /// C2: uzun/yoğun adet.
+  static String get longPeriod =>
+      tr('Adetin 8 günden uzun sürüyor — hekimine danışmanı öneririz.');
+
+  /// C1: uzun süre adet görmeme kartı.
+  static String get longAmenorrhea =>
+      tr('Uzun süredir adet görmedin — hekimine danışmanı öneririz.');
+
+  /// A5: doğum yapmış herkese (emzirme şartı yok).
+  static String get ovulationBeforeFirstPeriod => tr(
+      'İlk adetini görmeden de gebe kalabilirsin — ovülasyon adetten önce '
+      'olabilir. Korunma gerekiyorsa doktoruna danış.');
+}
+
+/// A1 notu — kalkan ikonlu standart kart.
+Widget cycNoContraNote(BuildContext context) => cycNoteLite(context,
+    icon: Icons.shield_outlined, body: CycleTexts.noContraception);
+
+/// cycle_kit'e bağımlılık yaratmadan sade not kartı (cycNote ile aynı görünüm).
+Widget cycNoteLite(BuildContext context,
+    {required IconData icon, required String body}) {
+  return Container(
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    decoration: BoxDecoration(
+        color: AppColors.roseBg, borderRadius: BorderRadius.circular(18)),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, size: 18, color: AppColors.roseD),
+      const SizedBox(width: 11),
+      Expanded(
+        child: Text(body,
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.5,
+                color: AppColors.ink2)),
+      ),
+    ]),
+  );
+}
+
 // ── M2 — Bilgi rozeti metinleri (AdInfoDot body'leri) ──────────────────────
 class CycleInfo {
   static String get lochiaVsPeriod => tr(
-      'Doğumdan sonraki ~6 haftalık kanama loşiadır — iyileşme sürecinin parçası, '
-      'adet değildir. Akış zamanla azalırsa loşia; başlayıp koyulaşıp 4–7 gün '
-      'sürerse muhtemelen ilk adettir.');
+      'Doğumdan sonraki kanama loşiadır — iyileşme sürecinin parçası, adet '
+      'değildir. Genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. Kanama '
+      'kesildikten sonra başlayan ve 4–7 gün süren düzenli bir kanama ilk adetin '
+      'olabilir. Yeniden parlak kırmızı ve yoğunlaşan kanamada hekimine başvur.');
   static String get lam => tr(
-      'Düzenli emzirme (LAM — Laktasyonel Amenore) yumurtlamayı baskılayıp adeti '
-      'geciktirebilir. Ancak ~%2 başarısızlık riski vardır ve ovülasyon adetten '
-      'ÖNCE döner — ilk adeti görmeden gebe kalınabilir.');
+      'Emzirme yumurtlamayı baskılayıp adeti geciktirebilir. LAM (Laktasyonel '
+      'Amenore Yöntemi) ancak şu üç koşul BİRLİKTE varsa gebeliğe karşı geçici '
+      'koruma sağlayabilir: doğumdan sonraki ilk 6 ay; yalnız ya da neredeyse '
+      'yalnız anne sütü (gece dahil uzun aralar yok); adetin dönmemiş olması. '
+      'Biri bozulursa koruma kalkar. Ovülasyon ilk adetten önce olabilir. Korunma '
+      'için doktoruna danış.');
   static String get fertileWindow => tr(
       'Doğurganlık penceresi, gebe kalma olasılığının en yüksek olduğu ~6 günlük '
       'dönemdir (ovülasyon ve öncesi). İlk döngülerde — özellikle doğum '
@@ -154,6 +200,15 @@ class CycleInfo {
   static String get flowAmount => tr(
       'Günlük kanama miktarını seç: Yok · Lekelenme · Hafif · Orta · Yoğun. '
       'Bu, döngü uzunluğunu ve adet süresini hesaplamamızı sağlar.');
+  /// A4/C6: kırmızı bayrak kademeleri (kayıt sayfası + loşia ekranı bilgi).
+  static String get redFlags => tr(
+      'Beklemeden acil servise başvur ya da 112\'yi ara: saatte bir ya da daha '
+      'sık pedi dolduran kanama; büyük pıhtılar; yoğun kanamayla birlikte baş '
+      'dönmesi, bayılma hissi ya da çarpıntı.\n'
+      'Aynı gün bir hekime başvur: 38°C ve üzeri ateş; kötü kokulu akıntı; '
+      'şiddetli karın/kasık ağrısı; azalmış kanamanın yeniden parlak kırmızı ve '
+      'yoğun hale gelmesi.\n'
+      'Bu bir tanı değildir.');
   static String get lochiaColorInfo => tr(
       'Lohusalık kanamasının rengi iyileşmenin evresini gösterir: '
       'kırmızı → pembe → kahve → sarı/beyaz. Zamanla açılması beklenir.');
@@ -201,10 +256,15 @@ class EstBadge extends StatelessWidget {
 /// M1 — Kırmızı bayrak uyarı modali. Girilen belirtiler riskli eşiklere değince
 /// çağrılır. Tanı koymaz; yalnız sağlık profesyoneline yönlendirir.
 Future<void> showCycleRedFlag(BuildContext context, List<String> triggered) {
-  final items = cycleRedFlagItems
-      .where((e) => triggered.contains(e.$1))
-      .map((e) => tr(e.$2))
+  final items = [...cycleRedFlagKeys, 'rf_odor_fever']
+      .where(triggered.contains)
+      .map(redFlagLabel)
       .toList();
+  // A4 (karar S3): en yüksek kademeye göre yönlendirme.
+  final urgent = redFlagLevel(triggered) == RedFlagLevel.urgent;
+  final advice = urgent
+      ? tr('Beklemeden acil servise başvur ya da 112\'yi ara.')
+      : tr('Bugün bir hekime başvurmanı öneririz.');
   return showDialog<void>(
     context: context,
     builder: (ctx) => Dialog(
@@ -238,7 +298,7 @@ Future<void> showCycleRedFlag(BuildContext context, List<String> triggered) {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(tr('Dikkat'),
+                    Text(urgent ? tr('Acil belirti') : tr('Dikkat'),
                         style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
@@ -294,7 +354,7 @@ Future<void> showCycleRedFlag(BuildContext context, List<String> triggered) {
               ),
             ),
             const SizedBox(height: 14),
-            Text(tr('Bir sağlık profesyoneline danışmanı öneririz.'),
+            Text(advice,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 13,

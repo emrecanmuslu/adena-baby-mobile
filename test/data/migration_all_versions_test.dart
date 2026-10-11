@@ -6,7 +6,7 @@ import 'package:adena_baby/data/local/app_database.dart';
 import '../drift/generated/schema.dart';
 
 /// M1 — git geçmişindeki HER yayınlanmış şema sürümünden v15'e migration.
-/// Anlık görüntüler `drift_schemas/drift_schema_v{2,3,5,7,8,9,11,12,13,14}.json`
+/// Anlık görüntüler `test/drift/schemas/drift_schema_v{2,3,5,7,8,9,11,12,13,14}.json`
 /// (ilgili commit'teki `app_database.dart`'tan `drift_dev schema dump`; v4/v6/v10
 /// hiç yayınlanmadı — tek commit'te atlandı). Yapısal doğrulama + v12/v13/v14'ten
 /// veri dolu geçiş (backfill kuralları, eski kolonlar).

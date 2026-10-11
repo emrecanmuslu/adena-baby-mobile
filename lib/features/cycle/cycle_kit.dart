@@ -233,7 +233,8 @@ Widget cycMini(BuildContext c,
 }
 
 /// .cy-stat — 3'lü istatistik kartı
-Widget cycStat(BuildContext c, String n, String unit, String label) {
+Widget cycStat(BuildContext c, String n, String unit, String label,
+    {String? info}) {
   return Expanded(
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 13),
@@ -254,13 +255,21 @@ Widget cycStat(BuildContext c, String n, String unit, String label) {
           ],
         )),
         const SizedBox(height: 7),
-        Text(label.toUpperCaseTr(),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.6,
-                color: AppColors.muted)),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Flexible(
+            child: Text(label.toUpperCaseTr(),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                    color: AppColors.muted)),
+          ),
+          if (info != null) ...[
+            const SizedBox(width: 4),
+            AdInfoDot(title: label, body: info, size: 12),
+          ],
+        ]),
       ]),
     ),
   );

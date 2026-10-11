@@ -3,17 +3,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
+import '../../core/age.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/in_flight_guard.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
+import '../../data/cycle_long_answers.dart';
+import '../../models/baby.dart';
 import '../../models/cycle.dart';
+import '../babies/baby_controller.dart';
 import '../content/article_list_screen.dart';
 import 'cycle_dial.dart';
 import 'cycle_engine.dart';
+import 'cycle_anchor.dart';
 import 'cycle_entry_sheet.dart';
+import 'cycle_guidance.dart';
 import 'cycle_loss.dart';
 import 'cycle_period_adjust_sheet.dart';
 import 'cycle_pregnancy_bridge.dart';
@@ -50,7 +56,9 @@ class CycleTodayScreen extends ConsumerWidget {
                     child: CircularProgressIndicator(color: AppColors.rose)),
                 error: (e, _) => Center(child: Text(apiErrorText(e))),
                 data: (entries) {
-                  final status = computeStatus(settings, entries);
+                  final status = computeStatus(settings, entries,
+                      confirmedLongStarts:
+                          ref.watch(cycleLongAnswersProvider).confirmedLong);
                   return _Today(settings: settings, entries: entries, status: status);
                 },
               ),
@@ -116,7 +124,9 @@ class _Today extends ConsumerWidget {
         note: e?.note,
       );
       try {
-        await ref.read(cycleRepositoryProvider).saveEntry(entry);
+        // A3: "İlk adetimi kaydet" açık beyandır (loşia penceresi hariç).
+        await ref.read(cycleRepositoryProvider).saveEntry(entry,
+            confirmedFirstPeriod: !inPostpartumLochiaWindow(t, settings));
         if (context.mounted) showAdToast(context, tr('Adet başlangıcı kaydedildi'));
       } catch (err) {
         if (context.mounted) showAdError(context, apiErrorText(err));
@@ -242,10 +252,13 @@ class _Today extends ConsumerWidget {
     String action;
     bool ghost = false;
     if (d2n != null && d2n < 0) {
+      // C1 (karar S8): "gecikti" yerine "Beklenen tarihten {n} gün geçti".
       state = 'late';
       big = '${-d2n}';
-      dialLabel = tr('Gün gecikti');
-      dialSub = np == null ? null : trp('{d} bekleniyordu', {'d': fmtDayMonth(np)});
+      dialLabel = tr('Gün geçti');
+      dialSub = np == null
+          ? null
+          : trp('Beklenen tarih (tahmini): {d}', {'d': fmtDayMonth(np)});
       accent = AppColors.roseD;
       action = tr('Adeti kaydet');
     } else if (inPeriod) {
@@ -258,7 +271,8 @@ class _Today extends ConsumerWidget {
     } else if (isOvu) {
       state = 'ovu';
       dialIcon = const Text('🌸', style: TextStyle(fontSize: 36));
-      dialLabel = tr('Yumurtlama');
+      // C3: tahmin etiketleri "tahmini".
+      dialLabel = tr('Tahmini yumurtlama');
       dialSub = tr('Doğurgan pencere');
       accent = AppColors.gold;
       action = tr('Adeti başlat');
@@ -266,7 +280,7 @@ class _Today extends ConsumerWidget {
     } else if (inFertile) {
       state = 'fertile';
       big = '${status.dayInCycle}';
-      dialLabel = tr('Doğurganlık');
+      dialLabel = tr('Doğurgan pencere (tahmini)');
       dialSub = d2n == null ? null : trp('Sonraki ~{n} gün', {'n': d2n});
       accent = AppColors.sageD;
       action = tr('Bugünü kaydet');
@@ -274,7 +288,11 @@ class _Today extends ConsumerWidget {
       state = 'count';
       big = '$d2n';
       dialLabel = tr('Gün kaldı');
-      dialSub = np == null ? null : trp('Sonraki adet · {d}', {'d': fmtDayMonth(np)});
+      dialSub = np == null
+          ? null
+          : status.irregular
+              ? trp('Sonraki adet tahmini: {d}', {'d': _nextRange()})
+              : trp('Sonraki adet (tahmini) · {d}', {'d': fmtDayMonth(np)});
       accent = AppColors.rose;
       action = tr('Erken geldi? Kaydet');
       ghost = true;
@@ -294,6 +312,7 @@ class _Today extends ConsumerWidget {
 
     final out = <Widget>[
       if (_ttc) _ttcBanner(context),
+      ..._missedPeriodPrompt(context, ref),
       _heroEyebrow(trp('Döngü {c} · {d}', {'c': status.cycleNumber, 'd': _todayStr})),
       _dialCenter(CycleDial(
         mode: DialMode.cycle,
@@ -345,13 +364,17 @@ class _Today extends ConsumerWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(tr('Yüksek doğurganlık'),
+                  // C5: "gebelik şansı" dili yalnız TTC'de; diğer modlarda nötr.
+                  Text(_ttc ? tr('Yüksek doğurganlık') : tr('Doğurgan pencere (tahmini)'),
                       style: TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w900,
                           color: AppColors.sageD)),
                   const SizedBox(height: 2),
-                  Text(tr('Bugün gebelik şansı en yüksek dönemde'),
+                  Text(
+                      _ttc
+                          ? tr('Bugün gebelik şansı en yüksek dönemde')
+                          : tr('Bugün tahmini yumurtlama günün.'),
                       style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
@@ -360,12 +383,17 @@ class _Today extends ConsumerWidget {
               ),
               cycPill(tr('~tahmini'), tone: CycTone.sage),
             ])),
-        if (_bfActive) ...[
+        // A1: TTC dışında kart korunma notunu taşır (TTC'de not olasılık altında).
+        if (!_ttc) ...[
+          const SizedBox(height: 12),
+          cycNoContraNote(context),
+        ],
+        // A2: adet döndükten sonra emzirme korunma sayılmaz.
+        if (lamState(settings) == LamState.notProtective) ...[
           const SizedBox(height: 12),
           cycNote(context,
               icon: Icons.favorite_rounded,
-              body: tr('Emziriyorsan ovülasyon ilk adetten önce dönebilir — korunma '
-                  'gerekiyorsa doktoruna danış.'),
+              body: CycleTexts.lamNotProtective,
               infoTitle: tr('LAM'),
               info: CycleInfo.lam),
         ],
@@ -373,21 +401,34 @@ class _Today extends ConsumerWidget {
     } else {
       final (String l1, String v1, String l2, String v2) = switch (state) {
         'late' => (
-            tr('Gecikme'),
-            trp('{n} gün', {'n': -(d2n ?? 0)}),
+            tr('Beklenen tarihten'),
+            trp('{n} gün geçti', {'n': -(d2n ?? 0)}),
             tr('Test'),
-            tr('Gerekirse')
+            -(d2n ?? 0) >= 7 ? tr('Önerilir') : tr('Gerekirse')
+          ),
+        'count' when status.irregular => (
+            tr('Döngü günü'),
+            '${status.dayInCycle} / $total',
+            tr('Sonraki adet tahmini'),
+            _nextRange()
           ),
         'count' => (
             tr('Döngü günü'),
             '${status.dayInCycle} / $total',
-            tr('PMS olası'),
+            // D5: kesinlik değil olasılık dili.
+            tr('PMS belirtileri olabilir'),
             tr('2–3 gün')
+          ),
+        _ when status.irregular => (
+            tr('Akış'),
+            _todayEntry?.flow != null ? flowLabel(_todayEntry!.flow!) : '—',
+            tr('Sonraki adet tahmini'),
+            _nextRange()
           ),
         _ => (
             tr('Akış'),
             _todayEntry?.flow != null ? flowLabel(_todayEntry!.flow!) : '—',
-            tr('Sonraki adet'),
+            tr('Sonraki adet (tahmini)'),
             np == null ? '—' : fmtDayMonth(np)
           ),
       };
@@ -403,16 +444,25 @@ class _Today extends ConsumerWidget {
         // Bağlama duyarlı gecikme notu (BULGU-2): emziren lohusa / TTC /
         // klasik takip aynı cümleyi paylaşamaz.
         final lateBody = _bfActive
-            ? tr('Emzirme döneminde gecikme çok yaygındır. Endişe varsa test '
+            ? tr('Emzirme döneminde gecikme sık görülür. Endişe varsa test '
                 'yapabilir ya da doktoruna danışabilirsin.')
             : _ttc
                 ? tr('Gecikme gebelik işareti olabilir — birkaç gün içinde test '
                     'yapmayı düşünebilirsin.')
                 : tr('Gecikmeler stres, yolculuk veya hastalıkla da olabilir. '
                     'Endişe varsa test yapabilir ya da doktoruna danışabilirsin.');
+        final late = -(d2n ?? 0);
         out.addAll([
           const SizedBox(height: 12),
-          cycNote(context, icon: Icons.favorite_rounded, body: lateBody),
+          cycNote(context,
+              icon: Icons.favorite_rounded,
+              body: late >= 7
+                  // C1: ≥7 gün → açık test önerisi.
+                  ? '${trp('Beklenen tarihten {n} gün geçti.', {'n': late})} '
+                      '${tr('Gebelik testi yapmanı öneririz; negatifse birkaç gün '
+                          'sonra tekrarlayabilirsin.')}'
+                  : '${trp('Beklenen tarihten {n} gün geçti.', {'n': late})} '
+                      '$lateBody'),
         ]);
       } else if (state == 'count') {
         out.addAll([
@@ -429,7 +479,8 @@ class _Today extends ConsumerWidget {
       } else if (state == 'fertile') {
         out.addAll([
           const SizedBox(height: 12),
-          if (_bfActive)
+          // C5: "gebelik şansı" dili yalnız TTC'de; diğer modlarda nötr + A1 notu.
+          if (_ttc && _bfActive)
             cycNote(context,
                 icon: Icons.spa_rounded,
                 body: tr('Doğurganlık penceresindesin — gebelik şansı artıyor. '
@@ -437,14 +488,35 @@ class _Today extends ConsumerWidget {
                     'gerekiyorsa doktoruna danış.'),
                 infoTitle: tr('LAM'),
                 info: CycleInfo.lam)
-          else
+          else if (_ttc)
             cycNote(context,
                 icon: Icons.spa_rounded,
                 body: tr('Doğurganlık penceresindesin — gebelik şansı artıyor.'),
                 infoTitle: tr('Doğurganlık'),
+                info: CycleInfo.fertileWindow)
+          else ...[
+            cycNote(context,
+                icon: Icons.spa_rounded,
+                body: tr('Doğurgan pencere (tahmini) içindesin.'),
+                infoTitle: tr('Doğurganlık'),
                 info: CycleInfo.fertileWindow),
+            const SizedBox(height: 12),
+            cycNoContraNote(context),
+          ],
         ]);
       }
+    }
+
+    // C2 (karar S10): uzun / yoğun adet → hekim önerisi (her durumda).
+    if (longPeriodWarning(entries, status)) {
+      out.addAll([
+        const SizedBox(height: 12),
+        cycNote(context,
+            icon: Icons.medical_services_outlined, body: CycleTexts.longPeriod),
+      ]);
+    }
+    if (longAmenorrheaWarning(settings, status)) {
+      out.addAll([const SizedBox(height: 12), _longAmenorrheaCard(context)]);
     }
 
     // ── TTC (gebe kalma) bölümü: bugünün olasılığı + ovülasyon geri sayımı +
@@ -453,6 +525,103 @@ class _Today extends ConsumerWidget {
 
     out.addAll([const SizedBox(height: 4), _feelPrompt(context, ref)]);
     return out;
+  }
+
+  /// C4 (karar S11): TTC ipuçları + süreye göre hekim önerisi.
+  List<Widget> _ttcTips(BuildContext context) {
+    final months = ttcMonths(settings) ?? 0;
+    final doctor = months >= 12
+        ? tr('Bir yıldır (35 yaş üstünde 6 aydır) deniyorsan hekimine '
+            'danışmanı öneririz.')
+        : months >= 6
+            ? tr('35 yaş ve üzerindeysen ve 6 aydır deniyorsan hekimine '
+                'danışmanı öneririz.')
+            : null;
+    Widget gap() => const SizedBox(height: 12);
+    return [
+      if (doctor != null) ...[
+        gap(),
+        cycNote(context, icon: Icons.medical_services_outlined, body: doctor),
+      ],
+      gap(),
+      cycNote(context,
+          icon: Icons.favorite_border_rounded,
+          body: tr('Doğurgan pencerede 1–2 günde bir ilişki önerilir.')),
+      gap(),
+      cycNote(context,
+          icon: Icons.science_outlined,
+          body: tr('Ovülasyon testleri (LH) ve servikal mukus takibi tahmini '
+              'güçlendirebilir.')),
+      gap(),
+      cycNote(context,
+          icon: Icons.medication_outlined,
+          body: tr('Gebelik planlıyorsan genellikle günde 400 mikrogram folik asit '
+              'önerilir; risk grubundaysan doktorun farklı doz önerebilir.')),
+    ];
+  }
+
+  /// B2: düzensiz döngüde sonraki adet aralığı ("19–27 Ekim").
+  String _nextRange() {
+    final a = status.nextPeriodEarliest, b = status.nextPeriodLatest;
+    if (a == null || b == null) {
+      final np = status.nextPeriod;
+      return np == null ? '—' : fmtDayMonth(np);
+    }
+    if (a.month == b.month && a.year == b.year) {
+      return '${a.day}–${fmtDayMonth(b)}';
+    }
+    return '${fmtDayMonth(a)}–${fmtDayMonth(b)}';
+  }
+
+  /// B1 (karar S7): hesaptan çıkarılan uzun döngü için bir kez sorulur:
+  /// "Bu dönemde bir adet kaydını unutmuş olabilir misin?" → [Kayıt ekle] /
+  /// [Hayır, döngüm uzundu]. Cevap kalıcı (cycleLongAnswersProvider).
+  List<Widget> _missedPeriodPrompt(BuildContext context, WidgetRef ref) {
+    final answers = ref.watch(cycleLongAnswersProvider);
+    final open = status.suspectedMissedStarts
+        .where((s) => !answers.answered(s))
+        .toList();
+    if (open.isEmpty) return const [];
+    final start = open.first;
+    final span = status.spans.where((s) => _dOnly(s.start) == _dOnly(start)).firstOrNull;
+    final notifier = ref.read(cycleLongAnswersProvider.notifier);
+    return [
+      cycCard(context,
+          tint: true,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Bu dönemde bir adet kaydını unutmuş olabilir misin?'),
+                style: cycTitleStyle(size: 15)),
+            const SizedBox(height: 6),
+            Text(
+                trp('{d} tarihinde başlayan {n} günlük döngü alışılmadık uzun '
+                    'görünüyor; tahminlerde şimdilik hesaba katılmadı.',
+                    {'d': fmtDayMonth(start), 'n': span?.length ?? '—'}),
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.45,
+                    color: AppColors.ink2)),
+            const SizedBox(height: 12),
+            Row(children: [
+              cycAct(tr('Kayıt ekle'), icon: Icons.add_rounded, onTap: () {
+                notifier.answer(start, longCycle: false);
+                _openPeriodAdjust(context, ref, start: false);
+              }),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextButton(
+                  onPressed: () => notifier.answer(start, longCycle: true),
+                  child: Text(tr('Hayır, döngüm uzundu'),
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.muted)),
+                ),
+              ),
+            ]),
+          ])),
+      const SizedBox(height: 12),
+    ];
   }
 
   List<Widget> _ttcSection(BuildContext context, DateTime today) {
@@ -483,7 +652,7 @@ class _Today extends ConsumerWidget {
         const SizedBox(width: 11),
         cycMini(
             context,
-            label: tr('Yumurtlama'),
+            label: tr('Tahmini yumurtlama'),
             value: toOvu == null
                 ? '—'
                 : toOvu == 0
@@ -492,6 +661,10 @@ class _Today extends ConsumerWidget {
                         ? trp('{n} gün sonra', {'n': toOvu})
                         : trp('{n} gün önce', {'n': -toOvu})),
       ]),
+      // A1: olasılık satırının altında kalıcı not.
+      const SizedBox(height: 12),
+      cycNoContraNote(context),
+      ..._ttcTips(context),
       if (inWindow) ...[
         const SizedBox(height: 12),
         cycNote(context,
@@ -509,12 +682,32 @@ class _Today extends ConsumerWidget {
   // ════════ GEBELİK (yaşam-döngüsü köprüsü) ════════
   // Kaynak = ana gebelik modülü; burada LMP'den türetilmiş salt-okunur özet.
   List<Widget> _pregnant(BuildContext context, WidgetRef ref) {
-    final info = pregnancyFromLmp(settings.firstPeriodDate);
+    // B6: hafta + TDT ana gebelik modülüyle AYNI kaynaktan (Baby.dueDate;
+    // ultrasonla düzeltilmiş olabilir). Bekleyen bebek yoksa SAT'tan türetilir.
+    final babies = ref.watch(babyControllerProvider).asData?.value ?? const <Baby>[];
+    final expecting = babies
+            .where((b) =>
+                b.status == BabyStatus.expecting &&
+                b.id == settings.babyId &&
+                b.dueDate != null)
+            .firstOrNull ??
+        babies
+            .where((b) => b.status == BabyStatus.expecting && b.dueDate != null)
+            .firstOrNull;
+    final fromBaby = expecting != null;
+    final PregnancyFromLmp? info;
+    if (fromBaby) {
+      final days = pregnancyDays(expecting.dueDate!);
+      info = PregnancyFromLmp(days ~/ 7, days % 7, expecting.dueDate!);
+    } else {
+      info = pregnancyFromLmp(settings.firstPeriodDate);
+    }
     return [
       _heroEyebrow(tr('Gebelik')),
       _dialCenter(CycleDial(
         mode: DialMode.heal,
         day: info?.weeks ?? 0,
+        healSpan: 40, // D1: gebelik halkası hafta ölçeğinde
         num: info == null ? '—' : '${info.weeks}',
         numSize: 54,
         label: tr('Hafta'),
@@ -543,8 +736,12 @@ class _Today extends ConsumerWidget {
       const SizedBox(height: 12),
       cycNote(context,
           icon: Icons.info_outline_rounded,
-          body: tr('Gebeliğini hafta hafta, bebeğinin gelişimiyle takip etmek için '
-              'ana gebelik ekranını kullan. Buradaki tarih son adetinden hesaplanır.')),
+          body: fromBaby
+              ? tr('Gebeliğini hafta hafta, bebeğinin gelişimiyle takip etmek için '
+                  'ana gebelik ekranını kullan. Hafta ve tahmini doğum tarihi ana '
+                  'gebelik ekranındaki bilgiyle aynıdır.')
+              : tr('Gebeliğini hafta hafta, bebeğinin gelişimiyle takip etmek için '
+                  'ana gebelik ekranını kullan. Buradaki tarih son adetinden hesaplanır.')),
       const SizedBox(height: 14),
       cycCta(context, tr('Gebelik ekranına git'),
           onTap: () => openPregnancyScreen(context, ref, settings)),
@@ -563,12 +760,23 @@ class _Today extends ConsumerWidget {
   }
 
   // ════════ İYİLEŞME (gebelik kaybı — şefkatli mod) ════════
-  List<Widget> _loss(BuildContext context, WidgetRef ref) => cycleLossToday(
-        context,
-        ref,
-        settings,
-        lastLoss: settings.lastLossDate,
-      );
+  List<Widget> _loss(BuildContext context, WidgetRef ref) => [
+        // C1: kayıptan 8 hafta sonra hâlâ adet yoksa hekim kartı.
+        if (longAmenorrheaWarning(settings, status)) ...[
+          const SizedBox(height: 8),
+          _longAmenorrheaCard(context),
+        ],
+        ...cycleLossToday(
+          context,
+          ref,
+          settings,
+          lastLoss: settings.lastLossDate,
+        ),
+      ];
+
+  /// C1 (karar S8): uzun süre adet görmeme → hekim önerisi.
+  Widget _longAmenorrheaCard(BuildContext context) => cycNote(context,
+      icon: Icons.medical_services_outlined, body: CycleTexts.longAmenorrhea);
 
   // ════════ LOHUSALIK ════════
   List<Widget> _lochia(BuildContext context, WidgetRef ref) {
@@ -586,12 +794,38 @@ class _Today extends ConsumerWidget {
         num: '${status.lochiaDay}',
         numSize: 54,
         label: tr('Lohusalık · gün'),
-        sub: tr('İyileşme · 0–6 hafta'),
+        sub: tr('Genellikle 4–6 hafta'),
         accent: AppColors.lochia,
       )),
       const SizedBox(height: 16),
       cycCta(context, tr('Kanama kaydet'),
           color: AppColors.lochia, onTap: () => _record(context, ref)),
+      const SizedBox(height: 12),
+      // B5: süre + A3: ilk 6 haftada kanama ilk adet sayılmaz.
+      cycNote(context,
+          clay: true,
+          icon: Icons.schedule_rounded,
+          // N1: varsayılan loşia, ama açık "Bu ilk adetim" seçeneği var.
+          body: tr('Loşia genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. '
+              'Doğumdan sonraki ilk 6 haftada girdiğin kanama loşia sayılır; '
+              'ilk adetin olduğundan eminsen kayıt ekranında "Bu ilk adetim"i '
+              'seçebilirsin.'),
+          infoTitle: tr('Loşia ve adet farkı'),
+          info: CycleInfo.lochiaVsPeriod),
+      const SizedBox(height: 12),
+      // A4: lohusalıkta acil/aynı gün belirtileri her zaman erişilebilir.
+      cycNote(context,
+          icon: Icons.medical_services_outlined,
+          body: tr('Hangi belirtilerde beklemeden yardım alman gerektiğini öğren.'),
+          infoTitle: tr('Dikkat belirtileri'),
+          info: CycleInfo.redFlags),
+      if (status.lochiaDay > postpartumLochiaDays) ...[
+        const SizedBox(height: 12),
+        cycNote(context,
+            icon: Icons.medical_services_outlined,
+            body: tr('Doğumdan 6 haftadan uzun süre sonra kanaman devam ediyorsa '
+                'hekimine söyle.')),
+      ],
       CycEyebrow(tr('Loşia rengi'), suffix: tr('· tahmin yok')),
       cycCard(context, soft: true, child: Column(children: [
         Row(children: [
@@ -612,23 +846,78 @@ class _Today extends ConsumerWidget {
           ],
         ]),
         const SizedBox(height: 12),
-        Text(tr('Akış zamanla azalıp açılıyorsa loşia; durup koyulaşıp 4–7 gün '
-            'sürerse muhtemelen ilk adettir.'),
+        // B4 (karar S2): dengeli ayrım + yeniden parlak kırmızı kanamada hekim.
+        Text(tr('Kanama kesildikten sonra başlayan ve 4–7 gün süren düzenli bir '
+            'kanama ilk adetin olabilir. Yeniden parlak kırmızı ve yoğunlaşan '
+            'kanamada hekimine başvur.'),
             style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
                 height: 1.5,
                 color: AppColors.ink2)),
       ])),
-      const SizedBox(height: 12),
-      cycNote(context,
-          clay: true,
-          icon: Icons.favorite_rounded,
-          body: tr('Emziriyorsan adet gecikebilir (LAM). İlk gerçek adetini girdiğinde '
-              'döngü takibi otomatik başlar.'),
-          infoTitle: tr('LAM'),
-          info: CycleInfo.lam),
+      ..._postpartumNotes(context),
     ];
+  }
+
+  /// A2/A5/D3 — doğum sonrası (loşia + bekleme) emzirme notları. Emzirmeyene
+  /// LAM yerine erken ovülasyon metni; emzirene "ilk adetten önce gebelik"
+  /// uyarısı + LAM kartı (üç koşul ya da "artık korumaz"). Emzirme bilinmiyorsa
+  /// (null) LAM gösterilmez.
+  List<Widget> _postpartumNotes(BuildContext context, {bool waiting = false}) {
+    final bf = settings.breastfeeding;
+    final lam = lamState(settings);
+    final out = <Widget>[];
+    void add(Widget w) => out.addAll([const SizedBox(height: 12), w]);
+    if (bf == Breastfeeding.none) {
+      add(cycNote(context,
+          clay: !waiting,
+          icon: Icons.favorite_rounded,
+          body: CycleTexts.nonBreastfeeding));
+      return out;
+    }
+    if (waiting && bf != null) {
+      add(cycNote(context,
+          icon: Icons.favorite_rounded,
+          body: tr('Emzirme döneminde adetin geç dönmesi sık görülür.')));
+    }
+    add(cycNote(context,
+        clay: !waiting,
+        icon: Icons.shield_outlined,
+        body: CycleTexts.ovulationBeforeFirstPeriod));
+    if (lam != LamState.hidden) {
+      out.add(CycEyebrow(tr('Emzirme & doğurganlık'),
+          link: tr('Daha fazla'), onLink: () => _openLearn(context)));
+      out.add(cycCard(context,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                      color: AppColors.roseBg,
+                      borderRadius: BorderRadius.circular(13)),
+                  child: Icon(Icons.favorite_rounded,
+                      size: 18, color: AppColors.rose)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(tr('LAM · Laktasyonel amenore'),
+                    style: cycTitleStyle(size: 14.5)),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Text(
+                lam == LamState.conditions
+                    ? CycleTexts.lamConditions
+                    : CycleTexts.lamNotProtective,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.5,
+                    color: AppColors.ink2)),
+          ])));
+    }
+    return out;
   }
 
   // ════════ İLK ADET BEKLENİYOR ════════
@@ -645,40 +934,16 @@ class _Today extends ConsumerWidget {
       const SizedBox(height: 16),
       cycCta(context, tr('İlk adetimi kaydet'),
           onTap: () => _quickStartPeriod(context, ref)),
+      if (longAmenorrheaWarning(settings, status)) ...[
+        const SizedBox(height: 12),
+        _longAmenorrheaCard(context),
+      ],
       const SizedBox(height: 18),
       // BULGU-2: bekleme moduna bebeksiz kullanıcı da düşebilir (LMP girilmedi);
       // emzirme/LAM içeriği yalnız doğum yapmış kullanıcıya gösterilir.
-      if (_hadBirth) ...[
-        cycNote(context,
-            icon: Icons.favorite_rounded,
-            body: tr('Emzirme döneminde adetin geç dönmesi tamamen normaldir. '
-                'Vücudun toparlanıyor.')),
-        CycEyebrow(tr('Emzirme & doğurganlık'),
-            link: tr('Daha fazla'), onLink: () => _openLearn(context)),
-        cycCard(context, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                    color: AppColors.roseBg, borderRadius: BorderRadius.circular(13)),
-                child: Icon(Icons.favorite_rounded, size: 18, color: AppColors.rose)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(tr('LAM · Laktasyonel amenore'),
-                  style: cycTitleStyle(size: 14.5)),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          Text(tr('Düzenli emzirme adeti geciktirir; ancak ovülasyon adetten önce döner '
-              '— ilk adeti görmeden gebe kalınabilir (~%2 risk).'),
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  height: 1.5,
-                  color: AppColors.ink2)),
-        ])),
-      ] else
+      if (_hadBirth)
+        ..._postpartumNotes(context, waiting: true)
+      else
         cycNote(context,
             icon: Icons.favorite_rounded,
             body: tr('Son adetinin ilk gününü kaydettiğinde döngü takibi ve '

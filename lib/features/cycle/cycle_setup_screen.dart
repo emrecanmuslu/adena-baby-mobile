@@ -77,7 +77,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
           )
         : widget.initial.copyWith(
             birthDate: _birth,
-            breastfeeding: _bf ?? Breastfeeding.exclusive,
+            breastfeeding: _bf, // C8: adım 2 zorunlu; varsayılan yok
             firstPeriodDate:
                 _periodReturned ? (_firstPeriod ?? DateTime.now()) : null,
             // D32: doğum sonrası sihirbaz postpartum modunu da yazsın (matris P4);
@@ -100,6 +100,11 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
   }
 
   void _next() {
+    // C8: emzirme sorusu zorunlu — sessiz varsayılan (exclusive) yok.
+    if (!widget.cycleFirst && _step == 1 && _bf == null) {
+      showAdToast(context, tr('Devam etmek için bir seçenek seç'));
+      return;
+    }
     if (_step < _stepCount - 1) {
       setState(() => _step++);
     } else {
@@ -230,7 +235,8 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
               cycNote(context,
                   clay: true,
                   icon: Icons.favorite_rounded,
-                  body: tr('Doğumdan sonraki ilk ~6 hafta kanama loşiadır, adet değildir.'),
+                  body: tr('Doğumdan sonraki kanama (loşia) adet değildir; genellikle '
+                      '4–6 hafta sürer, 8 haftaya uzayabilir.'),
                   infoTitle: tr('Loşia ve adet farkı'),
                   info: CycleInfo.lochiaVsPeriod),
             ]),
@@ -244,7 +250,8 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
   // ── Adım 2 — Emzirme ──
   Widget _step2() {
     final opts = [
-      (Breastfeeding.exclusive, '🤱', tr('Sadece anne sütü'), tr('LAM geçerli olabilir')),
+      // A2: emzirme korunma gibi sunulmaz ("LAM geçerli olabilir" kaldırıldı).
+      (Breastfeeding.exclusive, '🤱', tr('Sadece anne sütü'), tr('Adet daha geç dönebilir')),
       (Breastfeeding.mixed, '🍼', tr('Karışık beslenme'), tr('Anne sütü + mama')),
       (Breastfeeding.none, '🥛', tr('Emzirmiyorum'), tr('Adet daha erken dönebilir')),
     ];
@@ -306,6 +313,11 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
                 on: _periodReturned,
                 onTap: () => setState(() => _periodReturned = true),
               ),
+              const SizedBox(height: 12),
+              // A1: kurulumun sonunda bir kez.
+              cycNoteLite(context,
+                  icon: Icons.shield_outlined,
+                  body: CycleTexts.notContraceptionMethod),
               if (_periodReturned) ...[
                 const SizedBox(height: 12),
                 _dateCard(
@@ -404,6 +416,11 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
                       'kaydettikçe tahminler güçlenir.'),
                   infoTitle: tr('Doğurganlık penceresi'),
                   info: CycleInfo.fertileWindow),
+              const SizedBox(height: 12),
+              // A1: kurulumun sonunda bir kez.
+              cycNoteLite(context,
+                  icon: Icons.shield_outlined,
+                  body: CycleTexts.notContraceptionMethod),
             ]),
           ),
         ),

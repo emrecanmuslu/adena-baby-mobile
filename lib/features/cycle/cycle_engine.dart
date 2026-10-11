@@ -10,9 +10,22 @@ enum CycleMode {
 /// Döngü fazı (yalnız active modda anlamlı).
 enum CyclePhase { menstrual, follicular, ovulation, luteal }
 
-/// Doğum sonrası kırmızı bayrak belirti anahtarları (entry.symptoms içinde).
-/// Bunlardan biri girilince M1 uyarı modali tetiklenir (tanı değil, yönlendirme).
-const redFlagSymptoms = {'rf_flood', 'rf_clot', 'rf_odor_fever', 'rf_pain'};
+/// Kırmızı bayrak belirti anahtarları (entry.symptoms içinde). Bunlardan biri
+/// girilince uyarı modali tetiklenir (tanı değil, yönlendirme). A4 (karar S3):
+/// iki kademe — ACİL ve AYNI GÜN HEKİM. `rf_odor_fever` eski kayıtlar için
+/// (yeni girişte ayrı `rf_fever` + `rf_odor`).
+const redFlagUrgent = {'rf_flood', 'rf_clot', 'rf_faint'};
+const redFlagSameDay = {'rf_fever', 'rf_odor', 'rf_pain', 'rf_rebleed', 'rf_odor_fever'};
+const redFlagSymptoms = {...redFlagUrgent, ...redFlagSameDay};
+
+enum RedFlagLevel { urgent, sameDay }
+
+/// Girilen belirtilerin en yüksek kademesi; bayrak yoksa null.
+RedFlagLevel? redFlagLevel(Iterable<String> symptoms) {
+  if (symptoms.any(redFlagUrgent.contains)) return RedFlagLevel.urgent;
+  if (symptoms.any(redFlagSameDay.contains)) return RedFlagLevel.sameDay;
+  return null;
+}
 
 /// Geçmiş bir döngü (istatistik/geçmiş listesi).
 class CycleSpan {
@@ -53,8 +66,17 @@ class CycleStatus {
   final DateTime? upcomingFertileStart;
   final DateTime? upcomingFertileEnd;
   final bool fertileWindowIsNextCycle; // yaklaşan pencere sonraki döngüye mi ait
-  final bool lowConfidence; // <3 döngü → "tahmini/değişebilir"
+  final bool lowConfidence; // <3 döngü / uç değer / düzensiz → "tahmini/değişebilir"
   final List<CycleSpan> spans; // yeni→eski değil; eski→yeni
+  /// B1: ortalamadan DIŞLANAN uzun döngülerin başlangıçları ("bu dönemde bir
+  /// adet kaydını unutmuş olabilir misin?" sorusu için). Eski→yeni.
+  final List<DateTime> suspectedMissedStarts;
+
+  /// B2 (karar S6): yakın döngülerde en kısa–en uzun farkı > [irregularRangeDays]
+  /// → düzensiz: düşük güven + tek tarih yerine [nextPeriodEarliest]..[nextPeriodLatest].
+  final bool irregular;
+  final DateTime? nextPeriodEarliest;
+  final DateTime? nextPeriodLatest;
 
   const CycleStatus({
     required this.mode,
@@ -75,8 +97,29 @@ class CycleStatus {
     this.fertileWindowIsNextCycle = false,
     this.lowConfidence = true,
     this.spans = const [],
+    this.suspectedMissedStarts = const [],
+    this.irregular = false,
+    this.nextPeriodEarliest,
+    this.nextPeriodLatest,
   });
 }
+
+/// B2 (karar S6): düzensizlik eşiği (gün) — sabit.
+const irregularRangeDays = 9;
+
+/// B1: tamsayı listesinin medyanı (çift adette ortadaki ikisinin ortalaması,
+/// yuvarlanır). Boş liste → null.
+int? medianOf(List<int> xs) {
+  if (xs.isEmpty) return null;
+  final s = [...xs]..sort();
+  final m = s.length ~/ 2;
+  return s.length.isOdd ? s[m] : ((s[m - 1] + s[m]) / 2).round();
+}
+
+/// B1 (karar S7): uç değer eşikleri — diğer döngülerin medyanının
+/// [outlierFactor] katını AŞAN **ve** [outlierMinDays] günden uzun döngü.
+const outlierFactor = 1.7;
+const outlierMinDays = 45;
 
 DateTime _d(DateTime x) => DateTime(x.year, x.month, x.day);
 /// O29: DST-güvenli gün farkı — yerel gece-yarısı farkı DST geçişinde 23/25
@@ -134,10 +177,14 @@ List<DateTime> periodStarts(List<CycleEntry> entries) {
 }
 
 /// Türetme motoru — ayarlar + kayıtlar → durum. Saf fonksiyon (test edilebilir).
+///
+/// [confirmedLongStarts] (B1): kullanıcının "hayır, döngüm uzundu" dediği
+/// döngü başlangıçları — uç değer sayılmaz, hesaba dahil edilir.
 CycleStatus computeStatus(
   CycleSettings settings,
   List<CycleEntry> entries, {
   DateTime? today,
+  Set<DateTime> confirmedLongStarts = const {},
 }) {
   final now = _d(today ?? DateTime.now());
 
@@ -216,14 +263,42 @@ CycleStatus computeStatus(
   int mean(List<int> xs) => (xs.reduce((a, b) => a + b) / xs.length).round();
 
   final lengths = spans.where((s) => s.length != null).map((s) => s.length!).toList();
-  final recentLengths = recent(lengths);
+  // B1 (karar S7): yakın penceredeki tamamlanmış döngüler; her biri DİĞERLERİNİN
+  // medyanıyla karşılaştırılır (iki döngüde de çalışsın diye "kendisi hariç"):
+  // medyanın 1,7 katını aşan VE 45 günden uzun döngü — kullanıcı "döngüm
+  // uzundu" demediyse — unutulmuş kayıt şüphesiyle hesaptan çıkarılır.
+  final completed = spans.where((s) => s.length != null).toList();
+  final recentSpans = completed.length > recentWindow
+      ? completed.sublist(completed.length - recentWindow)
+      : completed;
+  final confirmed = {for (final c in confirmedLongStarts) _d(c)};
+  final suspected = <DateTime>[];
+  final kept = <int>[];
+  for (var i = 0; i < recentSpans.length; i++) {
+    final len = recentSpans[i].length!;
+    final others = [
+      for (var j = 0; j < recentSpans.length; j++)
+        if (j != i) recentSpans[j].length!,
+    ];
+    final m = medianOf(others);
+    final isOutlier = m != null &&
+        len > m * outlierFactor &&
+        len > outlierMinDays &&
+        !confirmed.contains(_d(recentSpans[i].start));
+    if (isOutlier) {
+      suspected.add(recentSpans[i].start);
+    } else {
+      kept.add(len);
+    }
+  }
+  final recentLengths = kept;
   // Ölçülmüş döngü yoksa (ilk döngü) ya da smart kapalıysa manuel beklenen uzunluk
-  // (21–40 dışı → yok say → 28 varsayılan).
+  // (21–40 dışı → yok say → 28 varsayılan). B1: ortalama yerine MEDYAN.
   final manualLen = settings.expectedCycleLength;
   final manualValid = manualLen != null && manualLen >= 21 && manualLen <= 40;
   final avgLen = (!smart || recentLengths.isEmpty)
       ? (manualValid ? manualLen : 28)
-      : mean(recentLengths);
+      : medianOf(recentLengths)!;
   // Yalnız TAMAMLANMIŞ döngülerin (length != null) adet günü sayısı. Devam eden son
   // döngü henüz büyüyor (1. günde periodDays=1) → dahil edersek ortalama bozulur ve
   // tahmini adet tek güne düşer. My Calendar de mevcut döngüyü ortalamaya katmaz.
@@ -245,6 +320,13 @@ CycleStatus computeStatus(
   final luteal = (lutealRaw != null && lutealRaw >= 10 && lutealRaw <= 16)
       ? lutealRaw
       : 14;
+
+  // B2: düzensizlik — dışlanmamış yakın döngülerde (en az 2) max−min > 9 gün.
+  final irregular = smart &&
+      recentLengths.length >= 2 &&
+      (recentLengths.reduce((a, b) => a > b ? a : b) -
+              recentLengths.reduce((a, b) => a < b ? a : b)) >
+          irregularRangeDays;
 
   final lastStart = starts.last;
   final dayInCycle = _diffDays(now, lastStart) + 1;
@@ -291,7 +373,15 @@ CycleStatus computeStatus(
     upcomingFertileStart: upcomingFertileStart,
     upcomingFertileEnd: _addDays(upcomingOvulation, 1),
     fertileWindowIsNextCycle: windowPassed,
-    lowConfidence: lengths.length < 3,
+    lowConfidence: lengths.length < 3 || suspected.isNotEmpty || irregular,
     spans: spans,
+    suspectedMissedStarts: smart ? suspected : const [],
+    irregular: irregular,
+    nextPeriodEarliest: irregular
+        ? _addDays(lastStart, recentLengths.reduce((a, b) => a < b ? a : b))
+        : null,
+    nextPeriodLatest: irregular
+        ? _addDays(lastStart, recentLengths.reduce((a, b) => a > b ? a : b))
+        : null,
   );
 }

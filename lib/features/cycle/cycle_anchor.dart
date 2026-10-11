@@ -31,12 +31,51 @@ bool afterLatestReset(DateTime day, CycleSettings s) {
   return _dayOnly(day).isAfter(latest);
 }
 
+/// A3 (karar S1): doğumdan sonraki ilk [postpartumLochiaDays] gün (dahil)
+/// içindeki kanama loşia sayılır — ilk-adet çapası OTOMATİK kurulmaz.
+const postpartumLochiaDays = 42;
+
+/// A3/B5: doğumdan sonraki [postpartumLochiaDays]+1 … [postpartumAskUntilDays]
+/// gün arası: loşia rengi seçilmeden akış girilirse "loşia mı, ilk adet mi?"
+/// sorulur; loşia rengi girişi bu güne kadar her modda açık.
+const postpartumAskUntilDays = 56;
+
+int? _sinceBirth(DateTime day, CycleSettings s) {
+  final b = s.birthDate;
+  if (b == null) return null;
+  final d = _dayOnly(day);
+  return DateTime.utc(d.year, d.month, d.day)
+      .difference(DateTime.utc(b.year, b.month, b.day))
+      .inDays;
+}
+
+/// Gün doğum+0..42 içinde mi (loşia penceresi)?
+bool inPostpartumLochiaWindow(DateTime day, CycleSettings s) {
+  final n = _sinceBirth(day, s);
+  return n != null && n >= 0 && n <= postpartumLochiaDays;
+}
+
+/// Gün doğum+43..56 içinde mi ("loşia mı, ilk adet mi?" sorusu)?
+bool postpartumAskFirstPeriod(DateTime day, CycleSettings s) {
+  final n = _sinceBirth(day, s);
+  return n != null && n > postpartumLochiaDays && n <= postpartumAskUntilDays;
+}
+
+/// Gün doğum+0..56 içinde mi (loşia rengi girişi açık; onaysız kanama
+/// kaydı çapa kurmaz)?
+bool inPostpartumBleedWindow(DateTime day, CycleSettings s) {
+  final n = _sinceBirth(day, s);
+  return n != null && n >= 0 && n <= postpartumAskUntilDays;
+}
+
 /// Adet günleri kümesinden çapa adayı: sıfırlama sonrası en eski gün; yoksa null.
+/// A3: doğumdan sonraki ilk 42 gün aday olamaz (loşia).
 DateTime? anchorCandidate(Iterable<DateTime> periodDays, CycleSettings s) {
   DateTime? best;
   for (final d in periodDays) {
     final day = _dayOnly(d);
     if (!afterLatestReset(day, s)) continue;
+    if (inPostpartumLochiaWindow(day, s)) continue;
     if (best == null || day.isBefore(best)) best = day;
   }
   return best;

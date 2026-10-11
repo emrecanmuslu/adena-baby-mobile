@@ -9,7 +9,9 @@ import '../../core/i18n.dart';
 import '../../core/in_flight_guard.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
+import '../../data/cycle_long_answers.dart';
 import '../../models/cycle.dart';
+import 'cycle_anchor.dart';
 import 'cycle_engine.dart';
 import 'cycle_entry_sheet.dart';
 import 'cycle_period_adjust_sheet.dart';
@@ -30,6 +32,8 @@ class CycleCalendarScreen extends ConsumerStatefulWidget {
 class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
   late DateTime _month;
   late DateTime _selected;
+  // A3: ilk-adet çapası öncesi doğum sonrası kanamayı loşia boyamak için.
+  CycleSettings _settings = const CycleSettings();
   String _view = 'month'; // month | week | list
   final Set<int> _faqOpen = {};
 
@@ -61,7 +65,10 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
                     Center(child: CircularProgressIndicator(color: AppColors.rose)),
                 error: (e, _) => Center(child: Text(apiErrorText(e))),
                 data: (entries) {
-                  final status = computeStatus(settings, entries);
+                  final status = computeStatus(settings, entries,
+                      confirmedLongStarts:
+                          ref.watch(cycleLongAnswersProvider).confirmedLong);
+                  _settings = settings;
                   final byDay = <String, CycleEntry>{
                     for (final e in entries) _key(e.date): e,
                   };
@@ -385,8 +392,13 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
   String? _kindOf(DateTime d, Map<String, CycleEntry> byDay, CycleStatus status) {
     final e = byDay[_key(d)];
     if (e != null) {
-      if (e.isPeriod) return 'period';
-      if (e.lochiaColor != null) return 'lochia';
+      // A3: doğum sonrası 56 gün içindeki, çapa öncesi kanama loşia sayılır.
+      final anchor = _settings.firstPeriodDate;
+      final ppBleed = e.isPeriod &&
+          inPostpartumBleedWindow(d, _settings) &&
+          (anchor == null || d.isBefore(_dOnly(anchor)));
+      if (e.isPeriod && !ppBleed) return 'period';
+      if (e.lochiaColor != null || ppBleed) return 'lochia';
     }
     if (status.mode == CycleMode.active) {
       // Devam eden adetin tahmini kalan günleri: yalnız ilk gün kaydedilse bile
@@ -549,8 +561,9 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       children: [
         chip(AppColors.rose, null, tr('Adet')),
         chip(AppColors.roseBg, AppColors.rose, tr('Tahmini')),
-        chip(AppColors.sageBg, AppColors.sageD, tr('Doğurganlık')),
-        chip(AppColors.goldBg, AppColors.gold, tr('Yumurtlama')),
+        // C3: tahmin lejantı "tahmini".
+        chip(AppColors.sageBg, AppColors.sageD, tr('Doğurganlık (tahmini)')),
+        chip(AppColors.goldBg, AppColors.gold, tr('Yumurtlama (tahmini)')),
         chip(AppColors.lochiaBg, AppColors.lochia, tr('Loşia')),
         AdInfoDot(title: tr('Takvim renkleri'), body: CycleInfo.estimate),
       ],
@@ -636,7 +649,10 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     final entry = byDay[_key(_selected)];
     final isToday = _same(_selected, DateTime.now());
     final pos = _cyclePosition(_selected, status);
-    final chance = _pregChance(_selected, status);
+    // A1: gebe kalma olasılığı YALNIZ TTC'de (adet takvimi korunma yöntemi değil).
+    final chance = settings.lifecycleMode == CycleLifecycleMode.ttc
+        ? _pregChance(_selected, status)
+        : null;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -697,6 +713,12 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
                   style: TextStyle(
                       fontSize: 12.5, fontWeight: FontWeight.w800, color: chance.$2)),
             ]),
+            const SizedBox(height: 4),
+            Text(CycleTexts.noContraception,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted)),
           ],
           _markersInfo(byDay, status),
           const SizedBox(height: 12),
@@ -774,10 +796,10 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     }
     // 2) Yumurtlama / doğurganlık işareti (sol alt).
     if (isOvu) {
-      rows.add((dot(AppColors.gold), tr('Yumurtlama günü — en yüksek doğurganlık')));
+      rows.add((dot(AppColors.gold), tr('Tahmini yumurtlama günü')));
     } else if (kind == 'frt') {
       rows.add((Icon(Icons.eco_rounded, size: 15, color: AppColors.sageD),
-          tr('Doğurgan gün')));
+          tr('Tahmini doğurgan gün')));
     }
     // 3) Kayıt ikonları (sağ alt).
     if (e?.flow != null) {

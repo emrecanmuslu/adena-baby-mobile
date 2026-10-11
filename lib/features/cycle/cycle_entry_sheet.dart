@@ -13,6 +13,7 @@ import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../data/subscription_repository.dart';
 import '../../models/cycle.dart';
+import 'cycle_anchor.dart';
 import 'cycle_engine.dart';
 import 'cycle_widgets.dart';
 
@@ -91,19 +92,104 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
     if (picked != null) setState(() => _date = picked);
   }
 
-  Future<void> _save() async {
+  /// B5: loşia rengi alanı motor loşia modundayken YA DA kayıt günü doğumdan
+  /// sonraki 56 gün içindeyse açık (her modda).
+  bool get _showLochia {
+    if (widget.lochiaMode) return true;
+    // build sırasında çağrılır → watch: ayar akışı henüz açılmadıysa da kurulur.
+    final s = ref.watch(cycleSettingsProvider).asData?.value;
+    return s != null && inPostpartumBleedWindow(_date, s);
+  }
+
+  /// A3 (karar S1): doğum+43..56 günde loşia rengi seçilmeden akış girilirse
+  /// "loşia mı, ilk adet mi?" diye sorulur. Dönüş: true = ilk adet (onaylı),
+  /// false = loşia, null = vazgeçildi.
+  Future<bool?> _askFirstPeriod(CycleSettings s) async {
+    final probe = CycleEntry(id: '', date: _date, flow: _flow, lochiaColor: _lochia);
+    if (!probe.isPeriod || s.periodReturned) return false;
+    if (!postpartumAskFirstPeriod(_date, s)) return false;
+    final r = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('Bu loşia (lohusa kanaması) mı, ilk adetin mi?')),
+        content: Text(tr('Doğumdan sonraki ilk 8 haftada kanama çoğunlukla '
+            'loşiadır. İlk adetin olduğunu düşünüyorsan döngü takibi bu günden '
+            'başlar.')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, 'lochia'),
+              child: Text(tr('Loşia'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(c, 'first'),
+              child: Text(tr('İlk adetim'))),
+        ],
+      ),
+    );
+    if (r == null) return null;
+    return r == 'first';
+  }
+
+  /// N1 (S1 düzeltmesi): doğum+0..42 günde akış varsayılan olarak loşiadır;
+  /// kullanıcı AÇIKÇA "Bu ilk adetim" diyebilir (emzirmeyende ilk adet ~5.
+  /// haftada gelebilir). Seçenek yalnız bu pencerede ve ilk adet henüz yokken.
+  bool get _showEarlyFirstPeriod {
+    final s = ref.watch(cycleSettingsProvider).asData?.value;
+    return s != null && !s.periodReturned && inPostpartumLochiaWindow(_date, s);
+  }
+
+  Future<void> _confirmEarlyFirstPeriod() async {
+    final r = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('Bu ilk adetim')),
+        content: Text(tr('Doğumdan sonraki ilk haftalardaki kanama çoğunlukla '
+            'loşiadır. Bunun ilk adetin olduğundan eminsen kaydedebilirsin; adet '
+            'takvimin bu günden başlar.')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, 'lochia'),
+              child: Text(tr('Loşia olarak kaydet'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(c, 'first'),
+              child: Text(tr('İlk adetim olarak kaydet'))),
+        ],
+      ),
+    );
+    if (r == null || !mounted) return; // vazgeçildi → sayfa açık kalır
+    await _save(forceFirstPeriod: r == 'first');
+  }
+
+  /// [forceFirstPeriod] verildiyse (N1 açık seçim) soru sorulmaz: true → akış
+  /// (yoksa orta) ile, loşia rengi OLMADAN onaylı ilk adet kaydı; false → loşia.
+  Future<void> _save({bool? forceFirstPeriod}) async {
+    final settings = ref.read(cycleSettingsProvider).asData?.value;
+    var confirmed = false;
+    if (forceFirstPeriod != null) {
+      confirmed = forceFirstPeriod;
+    } else if (settings != null) {
+      final ans = await _askFirstPeriod(settings);
+      if (ans == null || !mounted) return; // vazgeçildi → sayfa açık kalır
+      confirmed = ans;
+    }
+    final asPeriod = forceFirstPeriod == true;
+    final flow = asPeriod &&
+            (_flow == null || _flow == FlowLevel.none || _flow == FlowLevel.spotting)
+        ? FlowLevel.medium
+        : _flow;
     setState(() => _saving = true);
     final entry = CycleEntry(
       id: widget.existing?.id ?? '',
       date: _date,
-      flow: _flow,
-      lochiaColor: _lochia,
+      flow: flow,
+      lochiaColor: asPeriod ? null : _lochia,
       symptoms: _symptoms.toList(),
       mood: _mood,
       note: _note.text.trim().isEmpty ? null : _note.text.trim(),
     );
     try {
-      await ref.read(cycleRepositoryProvider).saveEntry(entry);
+      await ref
+          .read(cycleRepositoryProvider)
+          .saveEntry(entry, confirmedFirstPeriod: confirmed);
       if (!mounted) return;
       final flags = _symptoms.where(redFlagSymptoms.contains).toList();
       Navigator.pop(context);
@@ -252,7 +338,7 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
             ],
           ],
         ),
-        if (widget.lochiaMode) ...[
+        if (_showLochia) ...[
           const SizedBox(height: 18),
           _label(tr('Lohusalık kanaması rengi'), info: CycleInfo.lochiaColorInfo),
           Row(
@@ -262,6 +348,22 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
                 Expanded(child: _lochiaTile(c)),
               ],
             ],
+          ),
+        ],
+        // N1: ikincil, açık "ilk adetim" seçeneği (doğum+0..42).
+        if (_showEarlyFirstPeriod) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _saving ? null : _confirmEarlyFirstPeriod,
+              icon: Icon(Icons.water_drop_outlined, size: 16, color: AppColors.roseD),
+              label: Text(tr('Bu ilk adetim'),
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.roseD)),
+            ),
           ),
         ],
       ],
@@ -370,12 +472,13 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
           ],
         ),
         const SizedBox(height: 18),
-        _label(tr('Dikkat belirtileri'), info: CycleInfo.lochiaVsPeriod),
+        // C6: bilgi butonu kırmızı bayrak kademelerini açıklar.
+        _label(tr('Dikkat belirtileri'), info: CycleInfo.redFlags),
         Wrap(
           spacing: 7,
           runSpacing: 8,
           children: [
-            for (final s in cycleRedFlagItems) chip(s.$1, tr(s.$2), danger: true),
+            for (final k in cycleRedFlagKeys) chip(k, redFlagLabel(k), danger: true),
           ],
         ),
       ],

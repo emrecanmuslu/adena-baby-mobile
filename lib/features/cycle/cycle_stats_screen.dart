@@ -8,7 +8,9 @@ import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
+import '../../data/cycle_long_answers.dart';
 import 'cycle_engine.dart';
+import 'cycle_guidance.dart';
 import 'cycle_kit.dart';
 import 'cycle_shell.dart';
 import 'cycle_widgets.dart';
@@ -38,12 +40,17 @@ class CycleStatsScreen extends ConsumerWidget {
                     Center(child: CircularProgressIndicator(color: AppColors.rose)),
                 error: (e, _) => Center(child: Text(apiErrorText(e))),
                 data: (entries) {
-                  final status = computeStatus(settings, entries);
+                  final status = computeStatus(settings, entries,
+                      confirmedLongStarts:
+                          ref.watch(cycleLongAnswersProvider).confirmedLong);
                   if (status.mode != CycleMode.active) {
                     return _waitingState(status.mode);
                   }
                   return _StatsView(
-                      status: status, hadBirth: settings.birthDate != null);
+                      status: status,
+                      hadBirth: settings.birthDate != null,
+                      // B2: "Postpartum normal" yalnız doğum sonrası ilk 6 ayda.
+                      recentBirth: (monthsSinceBirth(settings) ?? 99) < 6);
                 },
               ),
             ),
@@ -80,7 +87,9 @@ class _StatsView extends StatelessWidget {
   final CycleStatus status;
   // BULGU-2: postpartum metinleri yalnız doğum yapmış kullanıcıya.
   final bool hadBirth;
-  const _StatsView({required this.status, required this.hadBirth});
+  final bool recentBirth;
+  const _StatsView(
+      {required this.status, required this.hadBirth, required this.recentBirth});
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +112,10 @@ class _StatsView extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Row(children: [
-          cycStat(context, '${status.avgCycleLength}', tr('g'), tr('Ort. döngü')),
+          // N2: değer medyan (B1) → "Tipik döngü".
+          cycStat(context, '${status.avgCycleLength}', tr('g'), tr('Tipik döngü'),
+              info: tr('Son döngülerin ortanca değeri; tek seferlik uzun döngüler '
+                  'hesabı bozmaz.')),
           const SizedBox(width: 10),
           cycStat(context, '${status.avgPeriodDays}', tr('g'), tr('Ort. süre')),
           const SizedBox(width: 10),
@@ -167,11 +179,21 @@ class _StatsView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(reg.where((x) => x).length >= reg.length - 1 && reg.isNotEmpty
-              ? tr('Düzenli seyir')
-              : tr('Değişken seyir'),
+          Text(
+              !status.irregular &&
+                      reg.where((x) => x).length >= reg.length - 1 &&
+                      reg.isNotEmpty
+                  ? tr('Düzenli seyir')
+                  : tr('Değişken seyir'),
               style: cycTitleStyle(size: 17)),
-          cycPill(hadBirth ? tr('Postpartum normal') : tr('Değişkenlik normal')),
+          // B2: pil koşullu — düzensizlikte hekime yönlendirme; "Postpartum
+          // normal" yalnız doğum sonrası ilk 6 ayda.
+          if (status.irregular)
+            Flexible(child: cycPill(tr('Değişken seyir — hekimine sorabilirsin')))
+          else if (recentBirth)
+            cycPill(tr('Postpartum normal'))
+          else
+            cycPill(tr('Değişkenlik normal')),
         ]),
         const SizedBox(height: 13),
         if (reg.isEmpty)
