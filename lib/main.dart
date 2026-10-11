@@ -263,6 +263,9 @@ class AdenaApp extends ConsumerStatefulWidget {
 }
 
 class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver {
+  /// O18: FCM ön plan dinleyicisi — RestartWidget (dil/tema/wipe) sonrası eski
+  /// State'in closure'ı disposed ref ile çalışmasın diye dispose'da iptal.
+  StreamSubscription<RemoteMessage>? _pushSub;
   // Ön plan in-app banner'ının aynı olayı iki kez göstermesini önleyen basit
   // in-memory dedup (onMessage + iOS native köprü aynı push'u sevk edebilir).
   String? _lastBannerEventId;
@@ -308,7 +311,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
         _showActivityBanner(t, data);
       }
 
-      FirebaseMessaging.onMessage.listen((m) => dispatch(m.data));
+      _pushSub = FirebaseMessaging.onMessage.listen((m) => dispatch(m.data));
       // iOS native köprü: AppDelegate her gelen push'ta 'adena/push' kanalını
       // çağırır → FlutterFire onMessage yeni UIScene yaşam döngüsünde güvenilir
       // ateşlenmese bile ön planda sync/refresh/banner DETERMİNİSTİK tetiklenir.
@@ -328,6 +331,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
 
   @override
   void dispose() {
+    _pushSub?.cancel(); // O18
+    const MethodChannel('adena/push').setMethodCallHandler(null);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
