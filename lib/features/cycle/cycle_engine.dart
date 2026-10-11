@@ -72,6 +72,12 @@ class CycleStatus {
   /// adet kaydını unutmuş olabilir misin?" sorusu için). Eski→yeni.
   final List<DateTime> suspectedMissedStarts;
 
+  /// B2 (karar S6): yakın döngülerde en kısa–en uzun farkı > [irregularRangeDays]
+  /// → düzensiz: düşük güven + tek tarih yerine [nextPeriodEarliest]..[nextPeriodLatest].
+  final bool irregular;
+  final DateTime? nextPeriodEarliest;
+  final DateTime? nextPeriodLatest;
+
   const CycleStatus({
     required this.mode,
     this.lochiaDay = 0,
@@ -92,8 +98,14 @@ class CycleStatus {
     this.lowConfidence = true,
     this.spans = const [],
     this.suspectedMissedStarts = const [],
+    this.irregular = false,
+    this.nextPeriodEarliest,
+    this.nextPeriodLatest,
   });
 }
+
+/// B2 (karar S6): düzensizlik eşiği (gün) — sabit.
+const irregularRangeDays = 9;
 
 /// B1: tamsayı listesinin medyanı (çift adette ortadaki ikisinin ortalaması,
 /// yuvarlanır). Boş liste → null.
@@ -309,6 +321,13 @@ CycleStatus computeStatus(
       ? lutealRaw
       : 14;
 
+  // B2: düzensizlik — dışlanmamış yakın döngülerde (en az 2) max−min > 9 gün.
+  final irregular = smart &&
+      recentLengths.length >= 2 &&
+      (recentLengths.reduce((a, b) => a > b ? a : b) -
+              recentLengths.reduce((a, b) => a < b ? a : b)) >
+          irregularRangeDays;
+
   final lastStart = starts.last;
   final dayInCycle = _diffDays(now, lastStart) + 1;
   final nextPeriod = _addDays(lastStart, avgLen);
@@ -354,8 +373,15 @@ CycleStatus computeStatus(
     upcomingFertileStart: upcomingFertileStart,
     upcomingFertileEnd: _addDays(upcomingOvulation, 1),
     fertileWindowIsNextCycle: windowPassed,
-    lowConfidence: lengths.length < 3 || suspected.isNotEmpty,
+    lowConfidence: lengths.length < 3 || suspected.isNotEmpty || irregular,
     spans: spans,
     suspectedMissedStarts: smart ? suspected : const [],
+    irregular: irregular,
+    nextPeriodEarliest: irregular
+        ? _addDays(lastStart, recentLengths.reduce((a, b) => a < b ? a : b))
+        : null,
+    nextPeriodLatest: irregular
+        ? _addDays(lastStart, recentLengths.reduce((a, b) => a > b ? a : b))
+        : null,
   );
 }

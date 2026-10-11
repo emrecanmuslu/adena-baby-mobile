@@ -281,7 +281,11 @@ class _Today extends ConsumerWidget {
       state = 'count';
       big = '$d2n';
       dialLabel = tr('Gün kaldı');
-      dialSub = np == null ? null : trp('Sonraki adet · {d}', {'d': fmtDayMonth(np)});
+      dialSub = np == null
+          ? null
+          : status.irregular
+              ? trp('Sonraki adet tahmini: {d}', {'d': _nextRange()})
+              : trp('Sonraki adet · {d}', {'d': fmtDayMonth(np)});
       accent = AppColors.rose;
       action = tr('Erken geldi? Kaydet');
       ghost = true;
@@ -395,11 +399,23 @@ class _Today extends ConsumerWidget {
             tr('Test'),
             tr('Gerekirse')
           ),
+        'count' when status.irregular => (
+            tr('Döngü günü'),
+            '${status.dayInCycle} / $total',
+            tr('Sonraki adet tahmini'),
+            _nextRange()
+          ),
         'count' => (
             tr('Döngü günü'),
             '${status.dayInCycle} / $total',
             tr('PMS olası'),
             tr('2–3 gün')
+          ),
+        _ when status.irregular => (
+            tr('Akış'),
+            _todayEntry?.flow != null ? flowLabel(_todayEntry!.flow!) : '—',
+            tr('Sonraki adet tahmini'),
+            _nextRange()
           ),
         _ => (
             tr('Akış'),
@@ -480,6 +496,19 @@ class _Today extends ConsumerWidget {
 
     out.addAll([const SizedBox(height: 4), _feelPrompt(context, ref)]);
     return out;
+  }
+
+  /// B2: düzensiz döngüde sonraki adet aralığı ("19–27 Ekim").
+  String _nextRange() {
+    final a = status.nextPeriodEarliest, b = status.nextPeriodLatest;
+    if (a == null || b == null) {
+      final np = status.nextPeriod;
+      return np == null ? '—' : fmtDayMonth(np);
+    }
+    if (a.month == b.month && a.year == b.year) {
+      return '${a.day}–${fmtDayMonth(b)}';
+    }
+    return '${fmtDayMonth(a)}–${fmtDayMonth(b)}';
   }
 
   /// B1 (karar S7): hesaptan çıkarılan uzun döngü için bir kez sorulur:
