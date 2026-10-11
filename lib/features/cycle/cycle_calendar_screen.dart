@@ -636,7 +636,10 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     final entry = byDay[_key(_selected)];
     final isToday = _same(_selected, DateTime.now());
     final pos = _cyclePosition(_selected, status);
-    final chance = _pregChance(_selected, status);
+    // A1: gebe kalma olasılığı YALNIZ TTC'de (adet takvimi korunma yöntemi değil).
+    final chance = settings.lifecycleMode == CycleLifecycleMode.ttc
+        ? _pregChance(_selected, status)
+        : null;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -697,6 +700,12 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
                   style: TextStyle(
                       fontSize: 12.5, fontWeight: FontWeight.w800, color: chance.$2)),
             ]),
+            const SizedBox(height: 4),
+            Text(CycleTexts.noContraception,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted)),
           ],
           _markersInfo(byDay, status),
           const SizedBox(height: 12),

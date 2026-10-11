@@ -306,6 +306,11 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
                 on: _periodReturned,
                 onTap: () => setState(() => _periodReturned = true),
               ),
+              const SizedBox(height: 12),
+              // A1: kurulumun sonunda bir kez.
+              cycNoteLite(context,
+                  icon: Icons.shield_outlined,
+                  body: CycleTexts.notContraceptionMethod),
               if (_periodReturned) ...[
                 const SizedBox(height: 12),
                 _dateCard(
@@ -404,6 +409,11 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
                       'kaydettikçe tahminler güçlenir.'),
                   infoTitle: tr('Doğurganlık penceresi'),
                   info: CycleInfo.fertileWindow),
+              const SizedBox(height: 12),
+              // A1: kurulumun sonunda bir kez.
+              cycNoteLite(context,
+                  icon: Icons.shield_outlined,
+                  body: CycleTexts.notContraceptionMethod),
             ]),
           ),
         ),

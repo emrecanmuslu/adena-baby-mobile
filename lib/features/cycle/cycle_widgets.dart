@@ -137,6 +137,43 @@ String moodLabel(int m) => switch (m) {
       _ => tr('Çok iyi'),
     };
 
+// ── Sabit sağlık uyarıları (ADET-INCELEME A1) ──────────────────────────────
+class CycleTexts {
+  /// Olasılık/doğurgan pencere gösterildiği her yerde (A1): tahmin korunma değildir.
+  static String get noContraception =>
+      tr('Bu bir tahmindir; gebelikten korunma için kullanılamaz.');
+
+  /// Kurulum sonu + Adet ayarları kalıcı satırı (A1).
+  static String get notContraceptionMethod => tr(
+      'Adet takvimi tahmine dayalıdır ve bir doğum kontrol yöntemi değildir.');
+}
+
+/// A1 notu — kalkan ikonlu standart kart.
+Widget cycNoContraNote(BuildContext context) => cycNoteLite(context,
+    icon: Icons.shield_outlined, body: CycleTexts.noContraception);
+
+/// cycle_kit'e bağımlılık yaratmadan sade not kartı (cycNote ile aynı görünüm).
+Widget cycNoteLite(BuildContext context,
+    {required IconData icon, required String body}) {
+  return Container(
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    decoration: BoxDecoration(
+        color: AppColors.roseBg, borderRadius: BorderRadius.circular(18)),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, size: 18, color: AppColors.roseD),
+      const SizedBox(width: 11),
+      Expanded(
+        child: Text(body,
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.5,
+                color: AppColors.ink2)),
+      ),
+    ]),
+  );
+}
+
 // ── M2 — Bilgi rozeti metinleri (AdInfoDot body'leri) ──────────────────────
 class CycleInfo {
   static String get lochiaVsPeriod => tr(

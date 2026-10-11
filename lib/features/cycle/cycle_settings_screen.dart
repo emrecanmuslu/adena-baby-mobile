@@ -157,6 +157,11 @@ class _BodyState extends ConsumerState<_Body> {
           _switchRow(tr('PMS hatırlatıcısı'), tr('Adetten ~5 gün önce'), 'pms'),
           _switchRow(tr('Günlük kayıt'), tr('Her gün 21:00'), 'log', last: true),
         ]),
+        // A1: kalıcı uyarı satırı — kapatılamaz.
+        CycEyebrow(tr('Önemli')),
+        cycNoteLite(context,
+            icon: Icons.shield_outlined,
+            body: CycleTexts.notContraceptionMethod),
         CycEyebrow(tr('Emzirme & Doğurganlık'), info: CycleInfo.lam),
         _card([
           Padding(

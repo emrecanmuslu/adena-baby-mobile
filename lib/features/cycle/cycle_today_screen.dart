@@ -345,13 +345,17 @@ class _Today extends ConsumerWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(tr('Yüksek doğurganlık'),
+                  // C5: "gebelik şansı" dili yalnız TTC'de; diğer modlarda nötr.
+                  Text(_ttc ? tr('Yüksek doğurganlık') : tr('Doğurgan pencere (tahmini)'),
                       style: TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w900,
                           color: AppColors.sageD)),
                   const SizedBox(height: 2),
-                  Text(tr('Bugün gebelik şansı en yüksek dönemde'),
+                  Text(
+                      _ttc
+                          ? tr('Bugün gebelik şansı en yüksek dönemde')
+                          : tr('Bugün tahmini yumurtlama günün.'),
                       style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
@@ -360,6 +364,11 @@ class _Today extends ConsumerWidget {
               ),
               cycPill(tr('~tahmini'), tone: CycTone.sage),
             ])),
+        // A1: TTC dışında kart korunma notunu taşır (TTC'de not olasılık altında).
+        if (!_ttc) ...[
+          const SizedBox(height: 12),
+          cycNoContraNote(context),
+        ],
         if (_bfActive) ...[
           const SizedBox(height: 12),
           cycNote(context,
@@ -429,7 +438,8 @@ class _Today extends ConsumerWidget {
       } else if (state == 'fertile') {
         out.addAll([
           const SizedBox(height: 12),
-          if (_bfActive)
+          // C5: "gebelik şansı" dili yalnız TTC'de; diğer modlarda nötr + A1 notu.
+          if (_ttc && _bfActive)
             cycNote(context,
                 icon: Icons.spa_rounded,
                 body: tr('Doğurganlık penceresindesin — gebelik şansı artıyor. '
@@ -437,12 +447,21 @@ class _Today extends ConsumerWidget {
                     'gerekiyorsa doktoruna danış.'),
                 infoTitle: tr('LAM'),
                 info: CycleInfo.lam)
-          else
+          else if (_ttc)
             cycNote(context,
                 icon: Icons.spa_rounded,
                 body: tr('Doğurganlık penceresindesin — gebelik şansı artıyor.'),
                 infoTitle: tr('Doğurganlık'),
+                info: CycleInfo.fertileWindow)
+          else ...[
+            cycNote(context,
+                icon: Icons.spa_rounded,
+                body: tr('Doğurgan pencere (tahmini) içindesin.'),
+                infoTitle: tr('Doğurganlık'),
                 info: CycleInfo.fertileWindow),
+            const SizedBox(height: 12),
+            cycNoContraNote(context),
+          ],
         ]);
       }
     }
@@ -492,6 +511,9 @@ class _Today extends ConsumerWidget {
                         ? trp('{n} gün sonra', {'n': toOvu})
                         : trp('{n} gün önce', {'n': -toOvu})),
       ]),
+      // A1: olasılık satırının altında kalıcı not.
+      const SizedBox(height: 12),
+      cycNoContraNote(context),
       if (inWindow) ...[
         const SizedBox(height: 12),
         cycNote(context,
