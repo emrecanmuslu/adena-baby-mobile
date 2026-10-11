@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_widgets.dart';
+import '../../core/api_error.dart';
 import '../../core/adena_icons.dart';
 import '../../core/i18n.dart';
 import '../../core/medication.dart';
@@ -313,25 +314,37 @@ class _PlanSheetState extends ConsumerState<_PlanSheet> {
         showAdToast(context, tr('Kaydedildi'));
       }
     } catch (e) {
-      if (mounted) setState(() => _saving = false);
+      // D28: hata sessiz kalmasın.
+      if (mounted) {
+        setState(() => _saving = false);
+        showAdError(context, apiErrorText(e));
+      }
     }
   }
 
   Future<void> _togglePause() async {
     final p = widget.existing!;
-    await ref.read(healthRepositoryProvider).updateMedicationPlan(p.id, active: !p.active);
-    ref.invalidate(medicationPlansProvider(widget.babyId));
-    if (mounted) Navigator.pop(context);
+    try {
+      await ref.read(healthRepositoryProvider).updateMedicationPlan(p.id, active: !p.active);
+      ref.invalidate(medicationPlansProvider(widget.babyId));
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e)); // D28
+    }
   }
 
   Future<void> _delete() async {
     final p = widget.existing!;
-    await ref.read(healthRepositoryProvider).deleteMedicationPlan(p.id);
-    await NotificationService.instance.cancelMedicationPlan(p.id);
-    ref.invalidate(medicationPlansProvider(widget.babyId));
-    if (mounted) {
-      Navigator.pop(context);
-      showAdToast(context, tr('Plan silindi'));
+    try {
+      await ref.read(healthRepositoryProvider).deleteMedicationPlan(p.id);
+      await NotificationService.instance.cancelMedicationPlan(p.id);
+      ref.invalidate(medicationPlansProvider(widget.babyId));
+      if (mounted) {
+        Navigator.pop(context);
+        showAdToast(context, tr('Plan silindi'));
+      }
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e)); // D28
     }
   }
 }
