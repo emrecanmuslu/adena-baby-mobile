@@ -591,6 +591,37 @@ class HealthRepository {
     });
   }
 
+  /// J2 / KB-12 — lapse→yeniden abonelikte yeniden-tohumlama: TAM küme DEĞİL,
+  /// **birleşim** semantiği. Backend damgasız son-yazan-kazanır olduğundan tam
+  /// küme (damgasız `done=false` dahil) çok cihazlı ailede diğer cihazın
+  /// işaretlerini ezerdi. Gönderilen: (1) `done=true` satırlar, (2)
+  /// `clientUpdatedAt != null` satırlar (v15'te kullanıcı eliyle değişti; açık
+  /// "kaldırma" dahil). Damgasız `done=false` (v14 varsayılanı) gönderilmez.
+  /// Gönderilecek satır yoksa istek atılmaz. İlk göç `pushAll` ile tam kümedir.
+  Future<void> pushReseed(String babyId) async {
+    final rows = await (_db.select(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) &
+              (s.done.equals(true) | s.clientUpdatedAt.isNotNull())))
+        .get();
+    if (rows.isEmpty) return;
+    List<Map<String, Object?>> items(String kind, String keyField,
+        String doneField, String dateField) =>
+        [
+          for (final r in rows.where((r) => r.kind == kind))
+            {
+              keyField: r.itemKey,
+              doneField: r.done,
+              dateField: _d(r.statusDate),
+            }
+        ];
+    await _api.dio.post('/babies/$babyId/health/sync', data: {
+      'vaccines': items('vaccine', 'name', 'done', 'done_date'),
+      'milestones': items('milestone', 'key', 'achieved', 'achieved_date'),
+      'teeth': items('tooth', 'key', 'erupted', 'erupted_date'),
+    });
+  }
+
   /// Delta push (K4, R7): yalnız `dirty=true` satırlar `/health/sync`'e gider;
   /// backend yalnız gönderilen kalemleri günceller. 2xx → gelişim/diş satırları
   /// damga değişmediyse temizlenir (R5); aşılar yankı bekler (`pull`, O19).

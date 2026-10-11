@@ -212,7 +212,7 @@ void main() {
     });
 
     test('lapse→yeniden abone: yeniden-tohumlama beklerken pull yok; '
-        'göç pushAll tam kümeyi gönderip bayrağı düşürünce pull açılır', () async {
+        'göç birleşim kümesini gönderip bayrağı düşürünce pull açılır', () async {
       await seedOwnerBabyWithCleanVaccine();
       await LocalSession.markPremiumSyncedForAccount(acct); // önceden senkron
       await LocalSession.markHealthReseedForAccount(acct); // premium bitmişti
@@ -224,15 +224,18 @@ void main() {
       expect(await bcgDone(), isTrue);
 
       // Yeniden abonelik → MigrationService: premiumSynced true ama reseed bekliyor
-      // → yalnız sağlık tam kümesi gönderilir, overlay yok, bayrak düşer.
+      // → yalnız sağlık işaretleri gönderilir (J2 birleşim: done=true + damgalı;
+      // damgasız done=false GİTMEZ), overlay yok, bayrak düşer.
       await c.read(migrationControllerProvider.notifier).run();
       final post = requests.where(
           (r) => r.method == 'POST' && r.path == '/babies/b1/health/sync');
       expect(post, hasLength(1));
-      final vaccines = (post.single.data as Map)['vaccines'] as List;
+      final vaccines = ((post.single.data as Map)['vaccines'] as List).cast<Map>();
       expect(
           vaccines.any((v) => v['name'] == 'BCG' && v['done'] == true), isTrue,
-          reason: 'yerel tam küme (temiz tik dahil) sunucuya yazılır');
+          reason: 'temiz v14 tiki sunucuya yazılır');
+      expect(vaccines.any((v) => v['name'] == 'Hepatit B'), isFalse,
+          reason: 'J2: damgasız done=false (v14 varsayılanı) gönderilmez');
       expect(LocalSession.healthReseedPending(acct), isFalse);
       expect(c.read(migrationControllerProvider).phase, MigrationPhase.idle,
           reason: 'overlay gösterilmez');

@@ -315,17 +315,19 @@ class MigrationController extends Notifier<MigrationState> {
   void dismiss() => state = const MigrationState.idle();
 
   /// `fromWhere` = "tablo WHERE ..." (tek `?` parametresi = aktif hesap id).
-  /// I1: lapse sonrası yeniden abonelikte sahip bebeklerin sağlık TAM kümesini
+  /// I1: lapse sonrası yeniden abonelikte sahip bebeklerin sağlık işaretlerini
   /// gönderir; HEPSİ başarılıysa bayrağı düşürür (biri düşerse bir sonraki
   /// cloudSync false→true geçişinde — her açılışta olur — yeniden denenir).
+  /// J2 / KB-12: tam küme DEĞİL, birleşim (`pushReseed`: done=true + damgalı
+  /// satırlar) — damgasız done=false diğer cihazın işaretlerini ezmesin.
   Future<void> _reseedHealth(String acct) async {
     final ref = this.ref;
-    final babies = await ref.read(babyRepositoryProvider).getAll();
+    final babies = await ref.read(babyRepositoryProvider).getAll(accountId: acct);
     final owned = babies.where((b) => b.myRole == null || b.myRole == 'owner');
     var allOk = true;
     for (final b in owned) {
       try {
-        await ref.read(healthRepositoryProvider).pushAll(b.id);
+        await ref.read(healthRepositoryProvider).pushReseed(b.id);
       } catch (_) {
         allOk = false;
       }
