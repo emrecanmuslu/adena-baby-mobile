@@ -52,8 +52,14 @@ Branch `fix/audit-bulgular`, main'e merge EDİLMEDİ. Bu dosya yayın öncesi te
 35. KB-8: bakıcı cihazında İlaç & Vitamin: ekle düğmesi yok, plan kartı açılmaz, not "Bakıcı rolünde…"; doz işaretleme çalışır ve ebeveynde görünür.
 36. KB-9: hesabı sil → bu cihazda bebek/kayıt/anı/fotoğraf kalmaz; başka hesapla girince o hesabın verisi yerinde. Çevrimdışı silme denemesi → hata, yerel veri yerinde.
 
+### G. Düzeltme turu 2
+37. **M6 (Mac/Linux'ta koşulacak, bu makinede TZ yok sayılıyor):** `TZ=Europe/Berlin flutter test test/engines test/journeys test/data/cycle_repository_k6_test.dart` ve `TZ=America/New_York flutter test test/engines test/journeys test/data/cycle_repository_k6_test.dart` → hepsi yeşil; ek olarak DST geçiş günlerinde (Mart son Pazar / Ekim-Kasım) adet "gün N" ve TDT hesabı 1 gün kaymıyor.
+38. **M1 notu:** v2/v3'ten (çok eski kurulum) güncelleme mevcut prod'da da `duplicate column name: account_id` ile çöküyordu (v15 öncesi hata). Crashlytics'te "duplicate column name" araması yapılmalı; varsa etkilenen kullanıcı sayısı rapora; v15 ile güncellenince düzelir (migration testli).
+39. N1: iki bebekli hesap (biri bakıcı, biri sahip) — bakıcı bebeğin ilaç ekranında Düzenle/ekle yok, sahip bebeğin ekranında var; aşı/gelişim/diş işaretleme bakıcı bebekte toast, sahip bebekte çalışır.
+40. N2: bakıcı cihazında KB-8 öncesi oluşmuş plan → kartta "Bu plan yalnız bu cihazda; ailenle paylaşılmadı" + Sil; hatırlatıcısı çalmaya devam eder; Sil → yerelden kalkar, sunucuya istek yok; ebeveynde görünmez (zaten görünmüyordu).
+
 ## 2. Bekleyen çeviri anahtarları (api repo, commit'lenmedi)
-Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 31 anahtar). Yayın öncesi api'de commit + prod'da `seed_translations --locale <en|es|fr|ar|hi|zh>`.
+Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 32 anahtar — `test/i18n/translation_keys_test.dart` listeyle birebir doğrular). Yayın öncesi api'de commit + prod'da `seed_translations --locale <en|es|fr|ar|hi|zh>`.
 
 | Anahtar (TR) | Kaynak |
 |---|---|
@@ -87,6 +93,7 @@ Dosyalar: `../api/apps/translations/data/{en,es,fr,ar,hi,zh}.json` (6 dosya, 31 
 | İzin ver | M4 |
 | İzin verildi | M4 |
 | İzin yok — hatırlatıcılar birkaç dakika gecikebilir | M4 |
+| Bu plan yalnız bu cihazda; ailenle paylaşılmadı | N2 |
 
 ## 3. Backend talepleri özeti (`BACKEND-TALEPLERI.md`, 10 madde) — istemci hangi maddede bekliyor
 | # | Başlık | İstemci bağımlılığı |
@@ -112,4 +119,6 @@ Kod aynı branch'te; `schemaVersion` 14→15 tek sıçrama, migration testli (`m
 4. api repo: §2 çeviri anahtarları commit + `seed_translations`; backend #8 (küçük) tercihen aynı yayında.
 5. `BULGULAR.md` §2b ve `DEVAM-NOTU.md` güncel; `TASARIM-SENKRON.md` §8 hash'leri.
 6. Mağaza metadata güncelleme borcu: yeni görünür özellikler (geri al banner'ı, zorunlu çıkış banner'ı) için Play/App Store metin/SS kontrolü (bkz. hafıza "mağaza metadata güncelleme borcu").
-7. Merge: `git merge --no-ff fix/audit-bulgular` (kullanıcı yapacak; bu koşuda merge/push YOK).
+7. **Sürüm numarası artırımı:** şema v15 (ek kolon) → `pubspec.yaml` version (ör. 1.4.27+66) ve `ios-v…`/Android tag'leri; eski sürüm v15 DB'yi açamaz, geri alma yok (kademeli yayın).
+8. **Sürüm notları 6 dilde:** Play "Yenilikler" ve App Store "What's New" (tr/en/es/fr/ar/hi/zh): oturum banner'ı, gönderilemeyen değişiklik/geri al, aile ayarı ve sağlık işaretlerinin aile arasında eşitlenmesi, ilaç hatırlatıcı izni (Android), düzeltmeler. Mağaza metadata borcu notu (hafıza) ile birlikte.
+9. Merge: `git merge --no-ff fix/audit-bulgular` (kullanıcı yapacak; bu koşuda merge/push YOK).

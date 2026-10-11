@@ -77,3 +77,10 @@ Yalnız DST uygulayan bölgelerde (TR'de yok); yerel gece-yarısı + `Duration(d
 - `lib/features/babies/notification_sync.dart:314, 360` — atak/büyüme hatırlatıcı tarihi.
 - `lib/features/cycle/cycle_calendar_screen.dart:429, 436, 1062`, `cycle_period_adjust_sheet.dart:134-165` — takvim gün hücresi/`_marked.contains` eşleşmesi.
 Düzeltilenler (`1b2696d`): `cycle_engine._diffDays`, `pregnancyFromLmp` (TDT — veri yazan tek nokta). Doğrulama ortamı: bu makinede (Windows) `TZ` ortam değişkeni Dart VM'de yok sayılıyor (sistem saat dilimi kullanılıyor) → CI/Linux/macOS'ta `TZ=Europe/Berlin flutter test test/engines test/journeys test/data/cycle_repository_k6_test.dart` ve `TZ=America/New_York …` koşulmalı.
+
+## KB-10 — Bakıcı cihazındaki yerel-only ilaç planları (KB-8 öncesi oluşmuş)
+- **Tanım:** bakıcı rolündeki bebekte `medication_plans.dirty = true` satırlar — bakıcıda push yok, pull sunucudakileri `dirty=false` yazar → dirty olan tek şey sunucuya hiç gitmemiş yerel plandır. Senkron bunları silmiyor (sunucuda olmayan dirty satıra dokunmuyor), hatırlatıcıları çalışıyor; KB-8 sonrası bakıcı silemiyordu.
+- **Soru:** Silinsin mi, taşınsın mı (ebeveyn onaylasın), kalsın mı?
+- **Seçenekler:** (a) sessiz silme — veri kaybı; (b) kalsın + "yalnız bu cihazda" notu + bakıcı silebilsin; (c) ebeveyne "bu planı paylaşıma al" akışı (backend yazma izni gerekir).
+- **Uygulanan varsayılan:** (b) — `MedicationPlan.localOnly`, kart notu + Sil; düzenleme kapalı (`e77a23d`). KARARLAŞTI: varsayılan uygulandı.
+- **Etkilenen:** `health_repository.dart` (`medicationPlans`, `deleteMedicationPlan`), `medications_screen.dart`, `models/medication_plan.dart`.

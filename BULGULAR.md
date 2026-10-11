@@ -97,6 +97,8 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 
 | Düzeltme turu 1 | M1 `2e67b4e`, M2 `daf7947`, M3/M7 `9833265`, KB-5 `5245b65`, KB-8 `5d2c5a0`, KB-9 `cfd9daa`, M9a `fb7259d`, M4 `689c58d`, M5 `df916bb` | TASARIM §8 "Düzeltme turu 1" |
 
+| Düzeltme turu 2 | N1+N2 `e77a23d`, N3 `e5b9db7` | rol kilidi bebek-bazlı; yerel-only plan (KB-10); çeviri bütünlüğü testi |
+
 Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 
 ---
