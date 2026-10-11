@@ -805,9 +805,11 @@ class _Today extends ConsumerWidget {
       cycNote(context,
           clay: true,
           icon: Icons.schedule_rounded,
+          // N1: varsayılan loşia, ama açık "Bu ilk adetim" seçeneği var.
           body: tr('Loşia genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. '
-              'Doğumdan sonraki ilk 6 haftada girdiğin kanama loşia sayılır, '
-              'ilk adet olarak kabul edilmez.'),
+              'Doğumdan sonraki ilk 6 haftada girdiğin kanama loşia sayılır; '
+              'ilk adetin olduğundan eminsen kayıt ekranında "Bu ilk adetim"i '
+              'seçebilirsin.'),
           infoTitle: tr('Loşia ve adet farkı'),
           info: CycleInfo.lochiaVsPeriod),
       const SizedBox(height: 12),

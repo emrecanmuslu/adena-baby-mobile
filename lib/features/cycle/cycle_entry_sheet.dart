@@ -129,20 +129,59 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
     return r == 'first';
   }
 
-  Future<void> _save() async {
+  /// N1 (S1 düzeltmesi): doğum+0..42 günde akış varsayılan olarak loşiadır;
+  /// kullanıcı AÇIKÇA "Bu ilk adetim" diyebilir (emzirmeyende ilk adet ~5.
+  /// haftada gelebilir). Seçenek yalnız bu pencerede ve ilk adet henüz yokken.
+  bool get _showEarlyFirstPeriod {
+    final s = ref.watch(cycleSettingsProvider).asData?.value;
+    return s != null && !s.periodReturned && inPostpartumLochiaWindow(_date, s);
+  }
+
+  Future<void> _confirmEarlyFirstPeriod() async {
+    final r = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('Bu ilk adetim')),
+        content: Text(tr('Doğumdan sonraki ilk haftalardaki kanama çoğunlukla '
+            'loşiadır. Bunun ilk adetin olduğundan eminsen kaydedebilirsin; adet '
+            'takvimin bu günden başlar.')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, 'lochia'),
+              child: Text(tr('Loşia olarak kaydet'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(c, 'first'),
+              child: Text(tr('İlk adetim olarak kaydet'))),
+        ],
+      ),
+    );
+    if (r == null || !mounted) return; // vazgeçildi → sayfa açık kalır
+    await _save(forceFirstPeriod: r == 'first');
+  }
+
+  /// [forceFirstPeriod] verildiyse (N1 açık seçim) soru sorulmaz: true → akış
+  /// (yoksa orta) ile, loşia rengi OLMADAN onaylı ilk adet kaydı; false → loşia.
+  Future<void> _save({bool? forceFirstPeriod}) async {
     final settings = ref.read(cycleSettingsProvider).asData?.value;
     var confirmed = false;
-    if (settings != null) {
+    if (forceFirstPeriod != null) {
+      confirmed = forceFirstPeriod;
+    } else if (settings != null) {
       final ans = await _askFirstPeriod(settings);
       if (ans == null || !mounted) return; // vazgeçildi → sayfa açık kalır
       confirmed = ans;
     }
+    final asPeriod = forceFirstPeriod == true;
+    final flow = asPeriod &&
+            (_flow == null || _flow == FlowLevel.none || _flow == FlowLevel.spotting)
+        ? FlowLevel.medium
+        : _flow;
     setState(() => _saving = true);
     final entry = CycleEntry(
       id: widget.existing?.id ?? '',
       date: _date,
-      flow: _flow,
-      lochiaColor: _lochia,
+      flow: flow,
+      lochiaColor: asPeriod ? null : _lochia,
       symptoms: _symptoms.toList(),
       mood: _mood,
       note: _note.text.trim().isEmpty ? null : _note.text.trim(),
@@ -309,6 +348,22 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
                 Expanded(child: _lochiaTile(c)),
               ],
             ],
+          ),
+        ],
+        // N1: ikincil, açık "ilk adetim" seçeneği (doğum+0..42).
+        if (_showEarlyFirstPeriod) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _saving ? null : _confirmEarlyFirstPeriod,
+              icon: Icon(Icons.water_drop_outlined, size: 16, color: AppColors.roseD),
+              label: Text(tr('Bu ilk adetim'),
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.roseD)),
+            ),
           ),
         ],
       ],
