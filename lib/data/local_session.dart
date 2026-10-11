@@ -160,11 +160,13 @@ class LocalSession {
     // misafir bebekleri account_id=null ile yazılıp GÖRÜNMEZ olur ve onboarding donar.
     // Misafire GİRERKEN userId yoksa burada üret+kalıcılaştır (prefs artık kanonik depo).
     if ((_userId ?? '').isEmpty) {
+      // D9: prefs yazımı düşse bile kimlik BELLEKTE kurulur — aksi halde misafir
+      // bebekleri account_id=null ile görünmez olup onboarding döngüsüne girerdi.
+      final id = const Uuid().v4();
+      _userId = id;
       try {
         final prefs = await SharedPreferences.getInstance();
-        final id = const Uuid().v4();
         await prefs.setString(_kUserId, id);
-        _userId = id;
       } catch (_) {}
     }
     if ((_userId ?? '').isNotEmpty) _activeAccountId = _userId;
