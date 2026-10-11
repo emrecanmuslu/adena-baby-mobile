@@ -10,7 +10,6 @@ import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
 import '../babies/baby_controller.dart';
-import 'cycle_engine.dart';
 import 'cycle_kit.dart';
 import 'cycle_lifecycle.dart';
 import 'cycle_pregnancy_bridge.dart';
@@ -120,16 +119,8 @@ class _BodyState extends ConsumerState<_Body> {
     );
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
-      // Hatırlatıcıları döngü tahminine göre yeniden planla.
-      final entries = await ref.read(cycleRepositoryProvider).listEntries();
-      final status = computeStatus(next, entries);
-      await NotificationService.instance.syncCycle(
-        reminders: next.reminders,
-        nextPeriod: status.nextPeriod,
-        // Yaklaşan pencere → mevcut döngününki geçmişse hatırlatıcı sonraki
-        // döngünün penceresine kurulur (eskiden geçmiş tarih → hiç kurulmuyordu).
-        fertileStart: status.upcomingFertileStart,
-      );
+      // Hatırlatıcılar merkezi CycleNotifSync ile (O25) ayar/kayıt akışından
+      // yeniden planlanır — burada ayrıca çağrılmaz.
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     }

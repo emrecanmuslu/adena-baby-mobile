@@ -44,6 +44,7 @@ import 'data/subscription_repository.dart';
 import 'data/theme_cache.dart';
 import 'features/babies/baby_controller.dart';
 import 'features/babies/notification_sync.dart';
+import 'features/cycle/cycle_notif_sync.dart';
 import 'features/home/home_layout.dart';
 import 'features/records/record_controller.dart';
 import 'features/settings/locale_controller.dart';
@@ -573,6 +574,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
           children: [
             ?child,
             const Offstage(child: FamilyNotificationSync()),
+            // Adet hatırlatıcıları — döngü tahmini değiştikçe (O25).
+            const Offstage(child: CycleNotifSync()),
             // free→premium yükleme sürecini gösteren tam-ekran overlay
             // (yalnız migrasyon çalışırken/biterken görünür).
             const MigrationOverlay(),
