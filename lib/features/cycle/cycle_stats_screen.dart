@@ -112,7 +112,10 @@ class _StatsView extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Row(children: [
-          cycStat(context, '${status.avgCycleLength}', tr('g'), tr('Ort. döngü')),
+          // N2: değer medyan (B1) → "Tipik döngü".
+          cycStat(context, '${status.avgCycleLength}', tr('g'), tr('Tipik döngü'),
+              info: tr('Son döngülerin ortanca değeri; tek seferlik uzun döngüler '
+                  'hesabı bozmaz.')),
           const SizedBox(width: 10),
           cycStat(context, '${status.avgPeriodDays}', tr('g'), tr('Ort. süre')),
           const SizedBox(width: 10),
