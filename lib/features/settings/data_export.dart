@@ -12,6 +12,7 @@ import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
 import '../../data/auth_repository.dart';
 import '../../data/cycle_repository.dart';
+import '../../data/health_repository.dart';
 import '../../data/memory_repository.dart';
 import '../../data/mom_repository.dart';
 import '../../data/sync_gate.dart';
@@ -77,11 +78,19 @@ Future<Map<String, dynamic>> _localExport(WidgetRef ref) async {
   final babies = ref.read(babyControllerProvider).asData?.value ?? const [];
   final memoryRepo = ref.read(memoryRepositoryProvider);
   final momRepo = ref.read(momRepositoryProvider);
+  final healthRepo = ref.read(healthRepositoryProvider);
   final babyList = <Map<String, dynamic>>[];
   for (final b in babies) {
     final records = await ref.read(recordsProvider(b.id).future);
     final memories = await memoryRepo.list(b.id);
     final momEntries = await momRepo.list(b.id);
+    // O32: sağlık durumu + hatırlatıcılar + ilaç planları + foto/prematüre
+    // alanları da yedeğe girsin ("yerel verileri sil" öncesi tam kopya).
+    final vaccines = await healthRepo.vaccines(b.id);
+    final milestones = await healthRepo.milestones(b.id);
+    final teeth = await healthRepo.teeth(b.id);
+    final reminders = await healthRepo.reminders(b.id);
+    final plans = await healthRepo.medicationPlans(b.id);
     babyList.add({
       'id': b.id,
       'name': b.name,
@@ -89,6 +98,38 @@ Future<Map<String, dynamic>> _localExport(WidgetRef ref) async {
       'gender': b.gender.name,
       'birth_date': b.birthDate?.toIso8601String(),
       'due_date': b.dueDate?.toIso8601String(),
+      'last_menstrual_date': b.lastMenstrualDate?.toIso8601String(),
+      'gestational_weeks': b.gestationalWeeks,
+      'gestational_days': b.gestationalDays,
+      'my_role': b.myRole,
+      'photo': b.photo, // yerel dosya yolu veya sunucu URL'i
+      'health': {
+        'vaccines': [
+          for (final v in vaccines)
+            {'key': v.key, 'name': v.name, 'due_date': v.dueDate.toIso8601String(),
+             'done': v.done, 'done_date': v.doneDate?.toIso8601String()},
+        ],
+        'milestones': [
+          for (final m in milestones)
+            {'key': m.key, 'title': m.title, 'achieved': m.achieved,
+             'achieved_date': m.achievedDate?.toIso8601String()},
+        ],
+        'teeth': [
+          for (final t in teeth)
+            {'key': t.key, 'name': t.name, 'erupted': t.erupted,
+             'erupted_date': t.eruptedDate?.toIso8601String()},
+        ],
+      },
+      'reminders': [
+        for (final r in reminders)
+          {'id': r.id, 'type': r.type, 'schedule': r.schedule, 'enabled': r.enabled,
+           'created_at': r.createdAt.toIso8601String()},
+      ],
+      'medication_plans': [
+        for (final pl in plans)
+          {'id': pl.id, 'name': pl.name, 'dose': pl.dose, 'times': pl.times,
+           'active': pl.active, 'created_at': pl.createdAt.toIso8601String()},
+      ],
       'records': [
         for (final r in records.where((r) => !r.isDeleted))
           {
