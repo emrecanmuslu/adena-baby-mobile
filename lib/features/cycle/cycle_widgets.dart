@@ -109,19 +109,37 @@ const List<(String, String)> cycleSymptoms = [
   ('discharge', 'Akıntı'),
 ];
 
-/// Doğum sonrası kırmızı bayrak belirtileri (ayrı, vurgulu grup).
-const List<(String, String)> cycleRedFlagItems = [
-  ('rf_flood', 'Saatte 1+ ped ıslatma'),
-  ('rf_clot', 'Büyük pıhtı (limondan büyük)'),
-  ('rf_odor_fever', 'Kötü kokulu akıntı + ateş'),
+/// A4 (karar S3) — ACİL kademe: beklemeden acil servis.
+const List<(String, String)> cycleRedFlagUrgentItems = [
+  ('rf_flood', 'Saatte bir ya da daha sık pedi dolduran kanama'),
+  ('rf_clot', 'Büyük pıhtılar'),
+  ('rf_faint', 'Yoğun kanamayla birlikte baş dönmesi, bayılma hissi ya da çarpıntı'),
+];
+
+/// A4 (karar S3) — AYNI GÜN HEKİM kademesi.
+const List<(String, String)> cycleRedFlagSameDayItems = [
+  ('rf_fever', '38°C ve üzeri ateş'),
+  ('rf_odor', 'Kötü kokulu akıntı'),
   ('rf_pain', 'Şiddetli karın/kasık ağrısı'),
+  ('rf_rebleed', 'Azalmış kanamanın yeniden parlak kırmızı ve yoğun hale gelmesi'),
+];
+
+/// Kırmızı bayrak belirtileri (kayıt sayfasında ayrı, vurgulu grup).
+const List<(String, String)> cycleRedFlagItems = [
+  ...cycleRedFlagUrgentItems,
+  ...cycleRedFlagSameDayItems,
+];
+
+/// Eski sürümlerin anahtarı (yalnız etiket için; yeni girişte sunulmaz).
+const List<(String, String)> _legacyRedFlagItems = [
+  ('rf_odor_fever', 'Kötü kokulu akıntı + ateş'),
 ];
 
 String symptomLabel(String key) {
   for (final s in cycleSymptoms) {
     if (s.$1 == key) return tr(s.$2);
   }
-  for (final s in cycleRedFlagItems) {
+  for (final s in [...cycleRedFlagItems, ..._legacyRedFlagItems]) {
     if (s.$1 == key) return tr(s.$2);
   }
   return key;
@@ -218,6 +236,15 @@ class CycleInfo {
   static String get flowAmount => tr(
       'Günlük kanama miktarını seç: Yok · Lekelenme · Hafif · Orta · Yoğun. '
       'Bu, döngü uzunluğunu ve adet süresini hesaplamamızı sağlar.');
+  /// A4/C6: kırmızı bayrak kademeleri (kayıt sayfası + loşia ekranı bilgi).
+  static String get redFlags => tr(
+      'Beklemeden acil servise başvur ya da 112\'yi ara: saatte bir ya da daha '
+      'sık pedi dolduran kanama; büyük pıhtılar; yoğun kanamayla birlikte baş '
+      'dönmesi, bayılma hissi ya da çarpıntı.\n'
+      'Aynı gün bir hekime başvur: 38°C ve üzeri ateş; kötü kokulu akıntı; '
+      'şiddetli karın/kasık ağrısı; azalmış kanamanın yeniden parlak kırmızı ve '
+      'yoğun hale gelmesi.\n'
+      'Bu bir tanı değildir.');
   static String get lochiaColorInfo => tr(
       'Lohusalık kanamasının rengi iyileşmenin evresini gösterir: '
       'kırmızı → pembe → kahve → sarı/beyaz. Zamanla açılması beklenir.');
@@ -265,10 +292,15 @@ class EstBadge extends StatelessWidget {
 /// M1 — Kırmızı bayrak uyarı modali. Girilen belirtiler riskli eşiklere değince
 /// çağrılır. Tanı koymaz; yalnız sağlık profesyoneline yönlendirir.
 Future<void> showCycleRedFlag(BuildContext context, List<String> triggered) {
-  final items = cycleRedFlagItems
+  final items = [...cycleRedFlagItems, ..._legacyRedFlagItems]
       .where((e) => triggered.contains(e.$1))
       .map((e) => tr(e.$2))
       .toList();
+  // A4 (karar S3): en yüksek kademeye göre yönlendirme.
+  final urgent = redFlagLevel(triggered) == RedFlagLevel.urgent;
+  final advice = urgent
+      ? tr('Beklemeden acil servise başvur ya da 112\'yi ara.')
+      : tr('Bugün bir hekime başvurmanı öneririz.');
   return showDialog<void>(
     context: context,
     builder: (ctx) => Dialog(
@@ -302,7 +334,7 @@ Future<void> showCycleRedFlag(BuildContext context, List<String> triggered) {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(tr('Dikkat'),
+                    Text(urgent ? tr('Acil belirti') : tr('Dikkat'),
                         style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
@@ -358,7 +390,7 @@ Future<void> showCycleRedFlag(BuildContext context, List<String> triggered) {
               ),
             ),
             const SizedBox(height: 14),
-            Text(tr('Bir sağlık profesyoneline danışmanı öneririz.'),
+            Text(advice,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 13,

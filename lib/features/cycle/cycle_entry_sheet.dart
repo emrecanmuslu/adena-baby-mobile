@@ -417,7 +417,8 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
           ],
         ),
         const SizedBox(height: 18),
-        _label(tr('Dikkat belirtileri'), info: CycleInfo.lochiaVsPeriod),
+        // C6: bilgi butonu kırmızı bayrak kademelerini açıklar.
+        _label(tr('Dikkat belirtileri'), info: CycleInfo.redFlags),
         Wrap(
           spacing: 7,
           runSpacing: 8,

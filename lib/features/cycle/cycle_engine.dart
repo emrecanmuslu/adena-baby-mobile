@@ -10,9 +10,22 @@ enum CycleMode {
 /// Döngü fazı (yalnız active modda anlamlı).
 enum CyclePhase { menstrual, follicular, ovulation, luteal }
 
-/// Doğum sonrası kırmızı bayrak belirti anahtarları (entry.symptoms içinde).
-/// Bunlardan biri girilince M1 uyarı modali tetiklenir (tanı değil, yönlendirme).
-const redFlagSymptoms = {'rf_flood', 'rf_clot', 'rf_odor_fever', 'rf_pain'};
+/// Kırmızı bayrak belirti anahtarları (entry.symptoms içinde). Bunlardan biri
+/// girilince uyarı modali tetiklenir (tanı değil, yönlendirme). A4 (karar S3):
+/// iki kademe — ACİL ve AYNI GÜN HEKİM. `rf_odor_fever` eski kayıtlar için
+/// (yeni girişte ayrı `rf_fever` + `rf_odor`).
+const redFlagUrgent = {'rf_flood', 'rf_clot', 'rf_faint'};
+const redFlagSameDay = {'rf_fever', 'rf_odor', 'rf_pain', 'rf_rebleed', 'rf_odor_fever'};
+const redFlagSymptoms = {...redFlagUrgent, ...redFlagSameDay};
+
+enum RedFlagLevel { urgent, sameDay }
+
+/// Girilen belirtilerin en yüksek kademesi; bayrak yoksa null.
+RedFlagLevel? redFlagLevel(Iterable<String> symptoms) {
+  if (symptoms.any(redFlagUrgent.contains)) return RedFlagLevel.urgent;
+  if (symptoms.any(redFlagSameDay.contains)) return RedFlagLevel.sameDay;
+  return null;
+}
 
 /// Geçmiş bir döngü (istatistik/geçmiş listesi).
 class CycleSpan {

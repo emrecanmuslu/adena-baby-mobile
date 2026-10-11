@@ -628,6 +628,13 @@ class _Today extends ConsumerWidget {
               'ilk adet olarak kabul edilmez.'),
           infoTitle: tr('Loşia ve adet farkı'),
           info: CycleInfo.lochiaVsPeriod),
+      const SizedBox(height: 12),
+      // A4: lohusalıkta acil/aynı gün belirtileri her zaman erişilebilir.
+      cycNote(context,
+          icon: Icons.medical_services_outlined,
+          body: tr('Hangi belirtilerde beklemeden yardım alman gerektiğini öğren.'),
+          infoTitle: tr('Dikkat belirtileri'),
+          info: CycleInfo.redFlags),
       if (status.lochiaDay > postpartumLochiaDays) ...[
         const SizedBox(height: 12),
         cycNote(context,
