@@ -4,6 +4,15 @@
 //
 import 'package:drift/drift.dart';
 import 'package:drift/internal/migrations.dart';
+import 'schema_v2.dart' as v2;
+import 'schema_v3.dart' as v3;
+import 'schema_v5.dart' as v5;
+import 'schema_v7.dart' as v7;
+import 'schema_v8.dart' as v8;
+import 'schema_v9.dart' as v9;
+import 'schema_v11.dart' as v11;
+import 'schema_v12.dart' as v12;
+import 'schema_v13.dart' as v13;
 import 'schema_v14.dart' as v14;
 import 'schema_v15.dart' as v15;
 
@@ -11,6 +20,24 @@ class GeneratedHelper implements SchemaInstantiationHelper {
   @override
   GeneratedDatabase databaseForVersion(QueryExecutor db, int version) {
     switch (version) {
+      case 2:
+        return v2.DatabaseAtV2(db);
+      case 3:
+        return v3.DatabaseAtV3(db);
+      case 5:
+        return v5.DatabaseAtV5(db);
+      case 7:
+        return v7.DatabaseAtV7(db);
+      case 8:
+        return v8.DatabaseAtV8(db);
+      case 9:
+        return v9.DatabaseAtV9(db);
+      case 11:
+        return v11.DatabaseAtV11(db);
+      case 12:
+        return v12.DatabaseAtV12(db);
+      case 13:
+        return v13.DatabaseAtV13(db);
       case 14:
         return v14.DatabaseAtV14(db);
       case 15:
@@ -20,5 +47,5 @@ class GeneratedHelper implements SchemaInstantiationHelper {
     }
   }
 
-  static const versions = const [14, 15];
+  static const versions = const [2, 3, 5, 7, 8, 9, 11, 12, 13, 14, 15];
 }

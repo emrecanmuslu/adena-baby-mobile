@@ -273,14 +273,19 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(cycleEntries);
             await _createLocalFirstIndexes(m);
           }
-          if (from < 5) {
+          // M1 (2026-10-11): from<4 yolu bebek/anı/anne/adet tablolarını GÜNCEL
+          // (v15) tanımla kurar → sonraki addColumn adımları aynı kolonu tekrar
+          // eklemeye çalışıp "duplicate column" ile düşüyordu (v2/v3 kurulumları
+          // hiç güncellenemiyordu). O tablolara kolon ekleyen her adım `from >= 4`
+          // ile korunur (migration_all_versions_test).
+          if (from >= 4 && from < 5) {
             // Hesap-kapsamlı yerel izolasyon: mevcut satırlar accountId=NULL
             // (sahipsiz → hiçbir hesaba gösterilmez). CycleSettings hesaba özel
             // (id=accountId) olur; eski 'me' satırı sahipsiz kalır.
             await m.addColumn(babies, babies.accountId);
             await m.addColumn(cycleEntries, cycleEntries.accountId);
           }
-          if (from < 6) {
+          if (from >= 4 && from < 6) {
             // Prematüre desteği: doğumdaki gebelik yaşı kolonları.
             await m.addColumn(babies, babies.gestationalWeeks);
             await m.addColumn(babies, babies.gestationalDays);
@@ -290,7 +295,7 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(healthStatuses);
             await m.createTable(localReminders);
           }
-          if (from < 8) {
+          if (from >= 4 && from < 8) {
             // Adet tahmin ayarları: döngü uzunluğu artık yerelde de saklanır
             // (eskiden kolon yoktu → değişiklik kaydolmuyordu) + adet/luteal süresi.
             await m.addColumn(
@@ -307,17 +312,17 @@ class AppDatabase extends _$AppDatabase {
             await m.database.customStatement('DROP TABLE IF EXISTS sync_cursors');
             await m.createTable(syncCursors);
           }
-          if (from < 10) {
+          if (from >= 4 && from < 10) {
             // Akıllı tahmin toggle (My Calendar pariteli) yerelde de saklanır.
             await m.addColumn(
                 cycleSettingsTable, cycleSettingsTable.smartPrediction);
           }
-          if (from < 11) {
+          if (from >= 4 && from < 11) {
             // Takvim haftanın ilk günü (Pazar/Pazartesi) ayarı.
             await m.addColumn(
                 cycleSettingsTable, cycleSettingsTable.weekStartsSunday);
           }
-          if (from < 12) {
+          if (from >= 4 && from < 12) {
             // Yaşam-döngüsü (Flo-tarzı): adet ↔ TTC ↔ gebelik ↔ postpartum ↔ kayıp.
             await m.addColumn(
                 cycleSettingsTable, cycleSettingsTable.lifecycleMode);
