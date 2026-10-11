@@ -221,7 +221,7 @@ Future<void> main() async {
   runApp(RestartWidget(
     child: ProviderScope(
       overrides: [
-        cachedPremiumProvider.overrideWithValue(cachedPremium),
+        cachedPremiumProvider.overrideWith(() => LastKnownPremium(cachedPremium)),
         cachedThemeProvider.overrideWithValue(cachedTheme),
         cachedHomeLayoutProvider.overrideWithValue(cachedHomeLayout),
       ],
