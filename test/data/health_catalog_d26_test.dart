@@ -96,6 +96,22 @@ void main() {
         reason: 'bozuk cache\'ten değil asset\'ten gelmeli');
   });
 
+  // K5 (INCELEME-3): üç push yolu aşı kimliğini katalog ADI üzerinden gönderir
+  // (sunucu `vaccine_name` ile eşler); pull ise sunucu adını `key` ile eşler
+  // (I10). Bu yalnız asset'te key == name olduğu için tutarlıdır — değişirse
+  // bu test uyarır (pull/push eşlemesi ayrışır).
+  test('asset kataloglarında aşı key == name (TR ve EN)', () async {
+    for (final lang in ['tr', 'en']) {
+      final asset = HealthCatalog.fromJson(jsonDecode(
+              await rootBundle.loadString('assets/health_catalog_$lang.json'))
+          as Map<String, dynamic>);
+      expect(asset.vaccines, isNotEmpty);
+      for (final v in asset.vaccines) {
+        expect(v.key, v.name, reason: '$lang: ${v.key} != ${v.name}');
+      }
+    }
+  });
+
   test('geçerli API yanıtı parse edilir ve cache\'e yazılır (regresyon)', () async {
     adapter.onGet('/content/health-catalog', (s) => s.reply(200, good));
     final cat = await HealthCatalogRepository(api).load();

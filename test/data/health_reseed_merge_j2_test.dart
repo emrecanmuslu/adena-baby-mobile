@@ -123,7 +123,7 @@ void main() {
         clientUpdatedAt: Value(stamp)));
   }
 
-  ProviderContainer container() {
+  ProviderContainer container({HealthCatalog catalog = _catalog}) {
     final cycle = _MockCycle();
     when(() => cycle.syncIfCloud()).thenAnswer((_) async {});
     when(() => cycle.markAllDirty(accountId: any(named: 'accountId')))
@@ -138,7 +138,7 @@ void main() {
       activeAccountIdProvider.overrideWithValue(acct),
       babyControllerProvider.overrideWith(_Babies.new),
       cycleRepositoryProvider.overrideWithValue(cycle),
-      healthCatalogProvider.overrideWith((_) async => _catalog),
+      healthCatalogProvider.overrideWith((_) async => catalog),
     ]);
     addTearDown(c.dispose);
     return c;
@@ -149,6 +149,28 @@ void main() {
       .toList();
 
   group('J2 — yeniden-tohumlama birleşim semantiği', () {
+    test('K5: aşı kimliği katalog ADIYLA gider (pushDirty ile aynı); katalogta '
+        'olmayan anahtar olduğu gibi', () async {
+      // Katalogta key != name: sunucu adla eşler (HealthSyncView) → ad gitmeli.
+      const cat = HealthCatalog(
+        [VaccineCatalogItem('bcg_key', 2, 'BCG (ad)')],
+        [],
+        [],
+      );
+      await seed('vaccine', 'bcg_key', true); // v14 temiz tik
+      await seed('vaccine', 'Eski Ad', true); // katalogta yok (dil değişti)
+      await LocalSession.markPremiumSyncedForAccount(acct);
+      await LocalSession.markHealthReseedForAccount(acct);
+      final c = container(catalog: cat);
+      await c.read(babyControllerProvider.future);
+
+      await c.read(migrationControllerProvider.notifier).run();
+
+      final body = healthPosts().single.data as Map;
+      expect((body['vaccines'] as List).cast<Map>().map((v) => v['name']),
+          unorderedEquals(['BCG (ad)', 'Eski Ad']));
+    });
+
     test('gövde yalnız done=true + damgalı satırlar; damgasız done=false YOK', () async {
       await seed('vaccine', 'BCG', true); // v14 temiz tik → gider
       await seed('vaccine', 'Hepatit B', false); // v14 damgasız "yapılmadı" → GİTMEZ

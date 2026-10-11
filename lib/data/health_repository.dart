@@ -611,12 +611,16 @@ class HealthRepository {
               (s.done.equals(true) | s.clientUpdatedAt.isNotNull())))
         .get();
     if (rows.isEmpty) return;
+    // K5: aşı kimliği `pushDirty`/`pushAll` ile AYNI yoldan — katalog adı
+    // (sunucu `vaccine_name` ile eşler; asset'te key == name ama buna
+    // dayanılmaz).
+    final cat = await _catalog();
     List<Map<String, Object?>> items(String kind, String keyField,
         String doneField, String dateField) =>
         [
           for (final r in rows.where((r) => r.kind == kind))
             {
-              keyField: r.itemKey,
+              keyField: kind == 'vaccine' ? _vaccineName(cat, r.itemKey) : r.itemKey,
               doneField: r.done,
               dateField: _d(r.statusDate),
             }
@@ -649,19 +653,13 @@ class HealthRepository {
     }
     if (rows.isEmpty) return;
     final cat = await _catalog();
-    String vaccineName(String key) {
-      for (final v in cat.vaccines) {
-        if (v.key == key) return v.name;
-      }
-      return key; // katalogta yok (dil değişti) → ad olarak gönder, yankı bekler
-    }
 
     try {
       await _api.dio.post('/babies/$babyId/health/sync', data: {
         'vaccines': [
           for (final r in rows.where((r) => r.kind == 'vaccine'))
             {
-              'name': vaccineName(r.itemKey),
+              'name': _vaccineName(cat, r.itemKey),
               'done': r.done,
               'done_date': _d(r.statusDate)
             }
@@ -698,6 +696,16 @@ class HealthRepository {
       await _clearDirtyIfUnchanged(
           babyId, r.kind, r.itemKey, r.clientUpdatedAt, r.done, r.statusDate);
     }
+  }
+
+  /// Aşı push kimliği: katalog `key` → yerelleştirilmiş `name` (sunucu adla
+  /// eşler, O19). Katalogta yoksa (dil değişti) anahtar ad olarak gider, yankı
+  /// bekler. `pushDirty`, `pushReseed` ve `pushAll` aynı kuralı kullanır (K5).
+  static String _vaccineName(HealthCatalog cat, String key) {
+    for (final v in cat.vaccines) {
+      if (v.key == key) return v.name;
+    }
+    return key;
   }
 
   Future<bool> _isCaregiver(String babyId) async {
