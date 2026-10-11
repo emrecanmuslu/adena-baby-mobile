@@ -8,6 +8,7 @@ import 'package:timezone/timezone.dart';
 
 import 'package:adena_baby/core/notification_service.dart';
 import 'package:adena_baby/data/cycle_repository.dart';
+import 'package:adena_baby/features/auth/auth_controller.dart';
 import 'package:adena_baby/features/cycle/cycle_notif_sync.dart';
 import 'package:adena_baby/models/cycle.dart';
 
@@ -88,6 +89,8 @@ void main() {
             .overrideWithValue(NotificationService.withPlugin(plugin)),
         cycleSettingsProvider.overrideWith((ref) => settingsCtrl.stream),
         cycleEntriesProvider.overrideWith((ref) => entriesCtrl.stream),
+        // B1: eşitleyici "döngüm uzundu" cevaplarını da (hesap kapsamlı) okur.
+        activeAccountIdProvider.overrideWithValue('acct-o25'),
       ],
       child: const MaterialApp(home: Offstage(child: CycleNotifSync())),
     ));

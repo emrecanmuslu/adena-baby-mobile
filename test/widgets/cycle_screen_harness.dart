@@ -5,6 +5,8 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:adena_baby/core/i18n.dart';
 import 'package:adena_baby/data/cycle_repository.dart';
+import 'package:adena_baby/features/auth/auth_controller.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:adena_baby/features/babies/baby_controller.dart';
 import 'package:adena_baby/models/baby.dart';
 import 'package:adena_baby/models/cycle.dart';
@@ -45,8 +47,10 @@ Future<void> pumpCycleScreen(
   List<CycleEntry> entries = const [],
   List<Baby> babies = const [],
   List overrides = const [],
+  Map<String, Object> prefs = const {},
 }) async {
   I18n.instance.apply('tr', const {});
+  SharedPreferences.setMockInitialValues(prefs);
   await initializeDateFormatting();
   tester.view.physicalSize = const Size(1200, 4000);
   tester.view.devicePixelRatio = 1.0;
@@ -57,6 +61,7 @@ Future<void> pumpCycleScreen(
       cycleSettingsProvider.overrideWith((ref) => Stream.value(settings)),
       cycleEntriesProvider.overrideWith((ref) => Stream.value(entries)),
       babyControllerProvider.overrideWith(() => FakeBabies(babies)),
+      activeAccountIdProvider.overrideWithValue('acct-test'),
       ...overrides,
     ],
     child: MaterialApp(home: Scaffold(body: screen)),

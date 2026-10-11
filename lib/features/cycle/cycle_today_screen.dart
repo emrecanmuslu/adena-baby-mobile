@@ -9,6 +9,7 @@ import '../../core/i18n.dart';
 import '../../core/in_flight_guard.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
+import '../../data/cycle_long_answers.dart';
 import '../../models/cycle.dart';
 import '../content/article_list_screen.dart';
 import 'cycle_dial.dart';
@@ -52,7 +53,9 @@ class CycleTodayScreen extends ConsumerWidget {
                     child: CircularProgressIndicator(color: AppColors.rose)),
                 error: (e, _) => Center(child: Text(apiErrorText(e))),
                 data: (entries) {
-                  final status = computeStatus(settings, entries);
+                  final status = computeStatus(settings, entries,
+                      confirmedLongStarts:
+                          ref.watch(cycleLongAnswersProvider).confirmedLong);
                   return _Today(settings: settings, entries: entries, status: status);
                 },
               ),
@@ -298,6 +301,7 @@ class _Today extends ConsumerWidget {
 
     final out = <Widget>[
       if (_ttc) _ttcBanner(context),
+      ..._missedPeriodPrompt(context, ref),
       _heroEyebrow(trp('Döngü {c} · {d}', {'c': status.cycleNumber, 'd': _todayStr})),
       _dialCenter(CycleDial(
         mode: DialMode.cycle,
@@ -476,6 +480,57 @@ class _Today extends ConsumerWidget {
 
     out.addAll([const SizedBox(height: 4), _feelPrompt(context, ref)]);
     return out;
+  }
+
+  /// B1 (karar S7): hesaptan çıkarılan uzun döngü için bir kez sorulur:
+  /// "Bu dönemde bir adet kaydını unutmuş olabilir misin?" → [Kayıt ekle] /
+  /// [Hayır, döngüm uzundu]. Cevap kalıcı (cycleLongAnswersProvider).
+  List<Widget> _missedPeriodPrompt(BuildContext context, WidgetRef ref) {
+    final answers = ref.watch(cycleLongAnswersProvider);
+    final open = status.suspectedMissedStarts
+        .where((s) => !answers.answered(s))
+        .toList();
+    if (open.isEmpty) return const [];
+    final start = open.first;
+    final span = status.spans.where((s) => _dOnly(s.start) == _dOnly(start)).firstOrNull;
+    final notifier = ref.read(cycleLongAnswersProvider.notifier);
+    return [
+      cycCard(context,
+          tint: true,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Bu dönemde bir adet kaydını unutmuş olabilir misin?'),
+                style: cycTitleStyle(size: 15)),
+            const SizedBox(height: 6),
+            Text(
+                trp('{d} tarihinde başlayan {n} günlük döngü alışılmadık uzun '
+                    'görünüyor; tahminlerde şimdilik hesaba katılmadı.',
+                    {'d': fmtDayMonth(start), 'n': span?.length ?? '—'}),
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.45,
+                    color: AppColors.ink2)),
+            const SizedBox(height: 12),
+            Row(children: [
+              cycAct(tr('Kayıt ekle'), icon: Icons.add_rounded, onTap: () {
+                notifier.answer(start, longCycle: false);
+                _openPeriodAdjust(context, ref, start: false);
+              }),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextButton(
+                  onPressed: () => notifier.answer(start, longCycle: true),
+                  child: Text(tr('Hayır, döngüm uzundu'),
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.muted)),
+                ),
+              ),
+            ]),
+          ])),
+      const SizedBox(height: 12),
+    ];
   }
 
   List<Widget> _ttcSection(BuildContext context, DateTime today) {

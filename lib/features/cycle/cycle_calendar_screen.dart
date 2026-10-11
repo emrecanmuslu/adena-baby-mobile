@@ -9,6 +9,7 @@ import '../../core/i18n.dart';
 import '../../core/in_flight_guard.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
+import '../../data/cycle_long_answers.dart';
 import '../../models/cycle.dart';
 import 'cycle_anchor.dart';
 import 'cycle_engine.dart';
@@ -64,7 +65,9 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
                     Center(child: CircularProgressIndicator(color: AppColors.rose)),
                 error: (e, _) => Center(child: Text(apiErrorText(e))),
                 data: (entries) {
-                  final status = computeStatus(settings, entries);
+                  final status = computeStatus(settings, entries,
+                      confirmedLongStarts:
+                          ref.watch(cycleLongAnswersProvider).confirmedLong);
                   _settings = settings;
                   final byDay = <String, CycleEntry>{
                     for (final e in entries) _key(e.date): e,

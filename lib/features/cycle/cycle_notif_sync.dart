@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/notification_service.dart';
+import '../../data/cycle_long_answers.dart';
 import '../../data/cycle_repository.dart';
 import '../babies/notification_sync.dart' show settledListOrNull, settledOrNull;
 import 'cycle_engine.dart';
@@ -24,7 +25,9 @@ class CycleNotifSync extends ConsumerWidget {
     final settings = settledOrNull(ref.watch(cycleSettingsProvider));
     final entries = settledListOrNull(ref.watch(cycleEntriesProvider));
     if (settings == null || entries == null) return const SizedBox.shrink();
-    final status = computeStatus(settings, entries);
+    // B1: bildirimler de uç değer dışlanmış (medyan) tahmine dayanır.
+    final status = computeStatus(settings, entries,
+        confirmedLongStarts: ref.watch(cycleLongAnswersProvider).confirmedLong);
     ref.read(notificationServiceProvider).syncCycle(
           // Modül kapalıysa hiç hatırlatıcı kalmaz.
           reminders: settings.enabled ? settings.reminders : const {},

@@ -8,6 +8,7 @@ import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
+import '../../data/cycle_long_answers.dart';
 import 'cycle_engine.dart';
 import 'cycle_kit.dart';
 import 'cycle_shell.dart';
@@ -38,7 +39,9 @@ class CycleStatsScreen extends ConsumerWidget {
                     Center(child: CircularProgressIndicator(color: AppColors.rose)),
                 error: (e, _) => Center(child: Text(apiErrorText(e))),
                 data: (entries) {
-                  final status = computeStatus(settings, entries);
+                  final status = computeStatus(settings, entries,
+                      confirmedLongStarts:
+                          ref.watch(cycleLongAnswersProvider).confirmedLong);
                   if (status.mode != CycleMode.active) {
                     return _waitingState(status.mode);
                   }
