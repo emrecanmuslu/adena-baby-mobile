@@ -1,7 +1,9 @@
 name: Test (analyze + flutter test)
 
-# Her push/PR'da statik analiz + tam test suite'i; üç saat diliminde (M6/KB-6
-# DST testleri: Windows'ta TZ yok sayıldığından yalnız burada doğrulanır).
+# YALNIZ ELLE (Run workflow) tetiklenir — kullanıcı kararı (2026-10-11): testler
+# geliştirme sırasında ihtiyaç hâlinde koşulur, her push/PR'da değil. Statik
+# analiz + tam test suite'i; üç saat diliminde (M6/KB-6 DST testleri:
+# Windows'ta TZ yok sayıldığından yalnız burada doğrulanır).
 #
 # Çeviri bütünlüğü testi (test/i18n/translation_keys_test.dart, I11) CI'da
 # (CI=true) kardeş api repo'sunun `apps/translations/data/*.json` dosyalarını
@@ -10,8 +12,6 @@ name: Test (analyze + flutter test)
 # (emrecanmuslu/adena-baby-api için "Contents: read" izinli fine-grained PAT
 # ya da `repo` kapsamlı classic PAT). Bkz. YAYIN-KONTROL.md §6.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 permissions:

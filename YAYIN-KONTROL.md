@@ -163,7 +163,7 @@ Kod aynı branch'te; `schemaVersion` 14→15 tek sıçrama, migration testli (`m
 
 ### 6.2 CI secret'ı → CI yeşil
 - GitHub → mobil repo → Settings → Secrets and variables → Actions → **`API_REPO_TOKEN`**: `emrecanmuslu/adena-baby-api` için fine-grained PAT, izin **Contents: Read-only** (classic PAT ise `repo`). Workflow `permissions: contents: read` ile koşar; api repo'su `api/` dizinine sparse checkout (`apps/translations/data`).
-- Push sonrası `Test (analyze + flutter test)` iş akışı 3 job (UTC / Europe/Berlin / America/New_York) yeşil olmalı. Mevcut `android.yml`/`ios.yml` test koşmaz (yalnız build+yükleme); release tag'leri onları tetikler.
+- `Test (analyze + flutter test)` iş akışı **yalnız elle** (Actions → Run workflow) tetiklenir — kullanıcı kararı 2026-10-11: her push/PR'da koşmaz, ihtiyaç hâlinde koşulur. Koşulduğunda 3 job (UTC / Europe/Berlin / America/New_York) yeşil olmalı. Mevcut `android.yml`/`ios.yml` test koşmaz (yalnız build+yükleme); release tag'leri onları tetikler.
 - Yerelde doğrulanamayan tek şey workflow'un kendisi (actionlint yok; YAML parse + yapısal kontrol yapıldı). İlk koşuda kırmızı olursa en olası neden secret/izin ya da 6.1'in henüz yapılmamış olması.
 
 ### 6.3 Zorunlu cihaz testleri (15 adım; §1 numaralarıyla)
