@@ -93,6 +93,7 @@ Odak alanları: yarış durumları/asenkron, state tutarsızlıkları, yakalanma
 | O18 | `6ced4b8` | FCM dinleyici dispose |
 | O29 | `1b2696d` | kısmi DST (adet motoru, LMP→TDT) |
 | O19 | — | KABUL/backend #3 |
+| D1 D3 D4 D5 D6 D9 D10 D13 D14 D18 D22 D23 D24 D26 D28 D29 D30 D31 D32 D34 D36 D37 D38 D39 D40 D41 D42 | ayrı commit'ler (`git log --grep "fix(D"`) | GRUP 4 düşük bulgular; D35 KABUL (`ee202df`); D2 D8 D11 D15 D17 D20 D21 D27 D44 KABUL; D16 D19 DOĞRULANAMAZ; D7 D12 D25 D45 GEÇERSİZ; D43 KB-9 |
 
 Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 
@@ -470,67 +471,113 @@ Kalan sıra ve ayrıntı: `DEVAM-NOTU.md`.
 
 ### Çekirdek / API
 - **D1.** `lib/core/api_client.dart:46-48` — retry `dio.fetch` DioException ile düşerse yutulup orijinal 401 `handler.next` ile geçer; çağıran gerçek hatayı (500/timeout) değil 401'i görür, `apiErrorText` "tekrar giriş yap" der. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`74fb3a4`): retry'ın gerçek hatası yüzeye çıkar
 - **D2.** `lib/core/token_storage.dart:24-33` — `saveTokens` delete→write atomik değil; arada okuyan istek Authorization'sız gider → 401 → retry (kendini onarır); arada crash oturum kaybı. Şüpheli: hayır.
+  - → **KABUL**: delete→write accessibility migration'ı için bilinçli; arada 401 kendini onarır
 - **D3.** `lib/data/record_repository.dart:230-256` — `sentStamp` eşitliği drift'in saniye hassasiyetinde; uçuş sırasında AYNI saniyede yeniden düzenlenen kayıt "applied" sayılıp `dirty=false` olur, ikinci düzenleme gönderilmez (`health_repository._planStamp` bunu planlar için çözmüş, records için yok). Şüpheli: hayır (nadir).
+  - → **DÜZELTİLDİ** (`9329bc2`): applied temizliği damga+içerik
 - **D4.** `lib/main.dart:335-347, 353-379` — `appInForeground` yalnız `resumed`'da true; `inactive` (bildirim paneli, iOS app switcher) → false → push gelirse `handlePushMessage` OS bildirimi basar VE main `dispatch` in-app banner da gösterir → çift. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`5e64089`): inactive = ön plan
 - **D5.** `lib/core/push_service.dart:251-306` — `registerToken` her resume + auth listener'da; iOS'ta 15 sn APNs polling; eşzamanlı çağrı guard'ı yok → paralel polling/çift POST (idempotent). Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`45ebe32`): registerToken tek uçuş
 - **D6.** `lib/data/subscription_repository.dart:149-160`; `lib/core/revenuecat_service.dart:64-67` — `premiumSyncProvider` `addUpdateListener` RC `_configured` değilse no-op; `configure()` main'de unawaited → ilk `AdenaApp.build` çoğunlukla sonra ama garanti değil → RC dinleyicisi hiç kurulmayabilir (webhook + manuel refresh telafi eder). Şüpheli: evet.
+  - → **DÜZELTİLDİ** (`c89a9f1`): dinleyici kuyruğu
 - **D7.** `lib/data/baby_repository.dart:376-385` — `acceptInvitation` → `create(baby)` `myRole ?? 'owner'`; `/invitations/accept` yanıtındaki `baby` `my_role` taşımıyorsa üye bebeği 'owner' olur → `pushDirty` POST /babies 403 (yutulur), pull düzeltene kadar. Şüpheli: evet (sözleşmede alan listesi yok).
+  - → **GEÇERSİZ**: backend `BabySerializer.my_role` SerializerMethodField — accept yanıtı rolü taşıyor
 - **D8.** `lib/main.dart:189-191` — 8 sn güvenlik ağı `markLoaded` sonrası `ensureLoaded` geç biterse router önce varsayılanlarla `/login`'e, sonra `/home`'a sıçrar (flaş). Tasarım gereği degrade. Şüpheli: hayır.
+  - → **KABUL**: tasarım gereği degrade (8 sn güvenlik ağı)
 - **D9.** `lib/data/local_session.dart:162-169` — `enterGuest` userId üretimi prefs yazımı başarısızsa `_activeAccountId` set edilmez → misafir bebek `account_id=null` → görünmez, onboarding döngüsü. Şüpheli: hayır (prefs hatası nadir).
+  - → **DÜZELTİLDİ** (`6544088`): userId bellekte kurulur
 - **D10.** `lib/data/migration_service.dart:73-84, 138` — `run()` guard'ı ile `state=running` arasında await'ler var; `GuestMigration.migrate` (`guest_migration.dart:111`) ile `localToCloudMigrationProvider` (`:286-293`) aynı anda tetiklenirse iki paralel tam yükleme (idempotent, overlay flicker). Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`ddba6ba`): `_starting` guard
 - **D11.** `lib/data/memory_repository.dart:166-167, 184-197`; `lib/data/baby_repository.dart:152-172` — `_persistPhoto` kopyalama hatasında image_picker GEÇİCİ yolunu döndürür; OS temizleyince foto kaybolur; `MultipartFile.fromFile` fırlatır → satır sonsuza dek dirty, sessiz (bebekte K2 fotoyu sunucu değeriyle ezer). Şüpheli: hayır.
+  - → **KABUL**: K-1 ile `pushError='local'` artık banner'da görünür; kopya hatasında orijinal yolu tutmak fotoyu anında kaybetmekten iyi
 - **D12.** `lib/features/babies/baby_controller.dart:138-146` — erişim kaldırmada `cancelTimer`/`scheduleFeedReminder(enabled:false)` unawaited; `showActivity` sıra garantisi yok (zararsız). Şüpheli: hayır.
+  - → **GEÇERSİZ**: O15 (`82d3db2`) ile `cancelBabyScheduled` awaited
 - **D13.** `lib/features/settings/theme_controller.dart:20-33` — misafirde `build()` `cachedThemeProvider` sabitine döner; `setMode` sonrası auth state her değişince (yanlış şifre → AsyncError, sosyal iptal) tema açılış değerine geri döner; restart'ta düzelir. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`3d33843`): seçilen tema korunur
 - **D14.** `lib/features/settings/locale_controller.dart:15-50, 62` — `build()` `authControllerProvider`'ı watch eder → her auth emit'inde `_activate` → `repo.sync(locale)` ağ isteği + `updateSettings`; `setLocale` → `_activate` ağ senkronunu (15 sn) bekler, UI'da spinner yok, `language_quick_pick.dart:52-55` tekrar basılabilir. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`af26e1b`): dil senkronu arka planda
 - **D15.** `lib/data/local/app_database.dart:363-375` — `refreshSyncedStreams` her resume + her sync turunda 9 tablonun tüm stream'lerini yeniden okutur; paylaşımlı bebekte dakikada bir tüm Home sorguları (pil/CPU). Performans. Şüpheli: hayır.
+  - → **KABUL**: performans; ölçüm yok, paylaşımlı bebekte 1 dk polling tasarım gereği
 
 ### Bildirim / widget / arka plan
 - **D16.** `lib/core/notification_service.dart:85-91, 526-529` — tz alınamazsa `tz.local` UTC kalır; günlük ilaç/özel hatırlatıcı 09:00 → TR'de 12:00 çalar (tek seferlikler `TZDateTime.from` ile güvenli). Şüpheli: evet (nadir).
+  - → **DOĞRULANAMAZ**: tz fallback nadir; tek seferlikler güvenli; cihazda tz hatası üretilemedi
 - **D17.** `lib/core/notification_service.dart:792, 805-806` — arka plan "Ertele 10 dk" metni her dilde Türkçe (`I18n` bg isolate'te yüklü değil); ayrıca yalnız ana uyarı ertelenir, "Kaydı unuttun mu?" (820000+slot) eski saatinde çalar. Şüpheli: hayır.
+  - → **KABUL**: bg isolate'te I18n sözlüğü yüklü değil (ayrı iş: bg isolate'te çeviri cache'i); "unuttun mu" ertelenmemesi düşük etkili
 - **D18.** `lib/core/notification_service.dart:64, 284-287` — aile etkinlik bildirim id'si `_activitySeq` bellek-içi; FCM bg isolate her kurulduğunda 0'dan başlar → ardışık bildirimler üst üste yazılır. Şüpheli: evet (isolate ömrü platforma bağlı).
+  - → **DÜZELTİLDİ** (`1b15d4e`): zaman tabanlı id
 - **D19.** `lib/core/notification_service.dart:43-54, 560-569, 682-702` — iOS 64 bekleyen bildirim sınırı kontrol edilmiyor (çok bebek × plan × doz + randevular). Şüpheli: evet (tipik kullanımda 15-25).
+  - → **DOĞRULANAMAZ**: iOS 64 sınırı tipik kullanımda (15-25) uzak; sayaç eklemek ayrı iş
 - **D20.** `lib/data/record_repository.dart:30` + `family_settings.dart:204` + `notification_sync.dart:446-497` + `background_sync.dart:90,105` — çapa son 15 kayıt (tür bağımsız) içinde aranıyor; son beslenmeden sonra 15+ başka kayıt (bez/doz/ateş) girilince çapa pencereden düşer → kart kaybolur, widget "Beslenme bekleniyor", `scheduleFeedReminder(nextTime:null)` 3 id'yi iptal eder, uyarı yok. Şüpheli: evet (eşik tasarım kararı).
+  - → **KABUL**: tasarım eşiği (15 kayıt); `latestByType` ile değiştirme ayrı iş
 - **D21.** `lib/features/home/home_layout.dart:70-100` — `build()` async sürerken `setQuick` yapılırsa eski `settings()` yanıtı state+cache'i eski listeyle ezer. Şüpheli: evet (dar pencere).
+  - → **KABUL**: dar pencere, etkisi yalnız görsel düzen
 - **D22.** `lib/features/settings/premium_screen.dart:101-102`; `settings_screen.dart:27-28` — `isPremiumProvider` yerine ham `subscriptionProvider.asData` → çevrimdışı premium kullanıcıya "Premium ol" + plan kartları. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`159cae0`): isPremiumProvider
 
 ### Kayıt / ana sayfa / grafik
 - **D23.** `lib/features/home/home_screen.dart:685-691`; `record_form.dart:770-774, 1128-1132` — "Uykuyu/Emzirmeyi başlat" çift dokunuşta iki süren kayıt; `watchOngoingSleep` yalnız en sonu gösterir, diğeri akışta sonsuza dek "Uyuyor…" (silmekten başka çıkış yok). Şüpheli: evet (~100 ms).
+  - → **DÜZELTİLDİ** (`249bad3`): süren kayıt varken başlatma yok
 - **D24.** `lib/features/home/home_screen.dart:753-756`; `record_form.dart:1350-1361`; `yesterday_recap_sheet.dart:220-242` — `await` sonrası `mounted` kontrolsüz `ref` kullanımı (flutter_riverpod 3.x release'te `StateError`): pull-to-refresh sırasında sekme değiştirme, "Uyandı" diyaloğu açıkken uykunun başka cihazdan bitirilmesi, "Verdiysen ekle" sürerken sheet kapatma → yakalanmayan async hata, işlem yarım (`_addMissing`'de kayıt yazılır, sync tetiklenmez). Şüpheli: evet (uç zamanlama).
+  - → **DÜZELTİLDİ** (`474fd66`): mounted kontrolleri (home refresh, dün özeti); record_form 1350 zaten `context.mounted` kontrollü
 - **D25.** `lib/features/records/record_controller.dart:464-476` — `stopSleep` `now - start` clamp'siz (`_accrueBreast` clamp'li); başka cihazın saat sapmasıyla negatif dakika (O27'nin sayaç yolu). Şüpheli: hayır.
+  - → **GEÇERSİZ**: O27 (`0944af7`) clamp ile kapandı
 
 ### Sağlık / gelişim
 - **D26.** `lib/data/health_catalog.dart:136-148` — bozuk API yanıtı önce cache'e yazılıp sonra parse ediliyor; cache dalındaki `fromJson` try dışında → `healthCatalogProvider` kalıcı hata, gömülü asset'e düşülmez. Şüpheli: evet (sunucu hatası gerekir).
+  - → **DÜZELTİLDİ** (`9654faf`): önce parse, bozuk cache → asset
 - **D27.** `lib/data/health_catalog.dart:134-146`; `health_repository.dart:99, 121, 146` — katalog network-first; "bağlı ama internetsiz"de aşı/gelişim/diş ekranı 15 sn spinner, `_HealthNotifSync` bildirimleri de gecikir. Şüpheli: hayır.
+  - → **KABUL**: network-first katalog: cache-first'e geçiş UX kararı (ayrı iş); D26 ile hata yolu güvenli
 - **D28.** `lib/features/health/medication_plan_sheet.dart:315-317, 320-336` — plan kaydetme hatası sessiz (`_saving=false`, mesaj yok); `_togglePause/_delete` try/catch'siz → drift hatasında sayfa açık kalır, bildirim/invalidate atlanır. Şüpheli: evet (nadir).
+  - → **DÜZELTİLDİ** (`1bc0884`): hata gösterimi
 - **D29.** `lib/data/who_lms.dart:21-34`; `lib/core/who_growth.dart:49-57, 90-93` — WHO LMS serisi uzunluğu doğrulanmıyor; 61'den kısa sunucu verisi `RangeError` → büyüme grafiği çöker, cache'lendiği için çevrimdışı da sürer. Şüpheli: evet.
+  - → **DÜZELTİLDİ** (`9c29462`): seri uzunluğu doğrulaması
 - **D30.** `lib/features/health/medications_screen.dart:62-63, 89-90, 175-178`; `health_repository.dart:325, 339-341` — bakıcı plan ekleyebiliyor ama senkron bakıcı değişikliğini hiç göndermiyor → cihazda hayalet plan; ekran notu hâlâ "yalnızca bu telefonda saklanır" (v1.4.26'dan beri paylaşımlı). Şüpheli: hayır.
+  - → **DÜZELTİLDİ (metin)** (`0c6b985`): not güncel; caregiver plan kısıtı KARAR-BEKLEYEN KB-8
 - **D31.** `lib/features/babies/premature_section.dart:65, 93-100`; `lib/core/age.dart:95`; `born_flow_screen.dart:36-55` — `gestationalAgeFromDue` 22'nin altında hafta üretebilir; `didUpdateWidget` içindeki controller ataması listener'ı tetikleyip parent `setState`'i build fazında çağırır (debug kırmızı ekran; release muhtemelen toparlar). Şüpheli: evet.
+  - → **DÜZELTİLDİ** (`ee559f9`): build-fazı setState yok; ≥22 hafta
 
 ### Adet
 - **D32.** `lib/features/cycle/cycle_setup_screen.dart:78-84` — doğum sonrası sihirbaz `postpartum` modunu/`predictions_hidden`ı yazmıyor; "Hedefim" TTC'yi seçilebilir sunar, `patchSettings` otomatik geçiş kancası devreye girmez (matris P4'ten sapma). Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`4f09bb2`): postpartum modu yazılır
 - **D33.** `lib/features/cycle/cycle_calendar_screen.dart:937-960`; `cycle_entry_sheet.dart:94-106` — çapa gününün adet işareti kaldırılınca `firstPeriodDate` kalır; motor çapayı `starts`'a her zaman ekler (`cycle_engine.dart:163-165`) → hayalet döngü başlangıcı. Şüpheli: hayır.
   - **Ek (2026-10-11, commit 5):** Aynı sapma senkronla da tetikleniyor: başka cihazda silinen çapa-günü kaydı R4 ile yerelden kalkınca (çapa settings'te kalır) ertesi adet günü `periodStarts`'ta yeni başlangıç sayılıyor → `dayInCycle` 1 gün kayıyor (testle kanıtlandı: `cycle_repository_o7_test.dart` "motor çapadan sürer"). K6 aşamasında çapa/kayıt tutarlılığıyla birlikte ele alınmalı.
 - **D34.** `lib/features/cycle/cycle_today_screen.dart:100-113` — "İlk adetimi kaydet" günün loşia rengini koruyor → `isPeriod=false`, çapa kurulmaz ama başarı toast'ı gelir. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`40a236c`): loşia rengi taşınmaz
 - **D35.** `lib/features/cycle/cycle_lifecycle.dart:65-84` — ttc→tracking'de `ttcStartedAt` temizlenmiyor; sihirbaz yeniden koşunca eski damga korunur. Şüpheli: hayır.
+  - → **KABUL** (`ee202df`): damga tarihçe olarak bilinçli korunuyor (J4 yolculuk testi belgeliyor)
 
 ### Topluluk / içerik / ayarlar / anı
 - **D36.** `lib/features/community/community_feed_screen.dart:62-102` — reset fetch süren loadMore'u beklemiyor/iptal etmiyor; eski sorgunun sayfası yeni listeye eklenir (yanlış kategori/arama sonuçları, tekrarlar). Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`edc03a0`): fetch epoch
 - **D37.** `lib/features/community/question_detail_screen.dart:60, 70, 86` — `await` sonrası `mounted` kontrolsüz `setState` (yutulur); oy butonunda çift dokunma koruması yok → son yanıt eskisi olabilir. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`f4ad6c9`): oy guard + mounted
 - **D38.** `lib/features/community/blocked_users_screen.dart:95-96, 103` — `u['name'] as String` zorunlu cast; backend `null` döndürürse liste build'i TypeError. Şüpheli: evet.
+  - → **DÜZELTİLDİ** (`01eb0a8`): null-guard
 - **D39.** `lib/features/community/ask_question_sheet.dart:94` — sheet ebeveyn ekranının `WidgetRef`'iyle `watch` yapıyor; kategoriler sonradan yüklenince sheet rebuild olmaz. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`3bc5ef0`): Consumer
 - **D40.** `lib/features/content/article_detail_screen.dart:27-28` — `content_opened` analitiği build içinde; her rebuild'de tekrar loglanır. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`1e04ad0`): slug başına bir kez
 - **D41.** `lib/features/babies/members_screen.dart:219-229` — davet "Oluştur" çift dokunuşta iki davet; ikincisi `dialogCtx.mounted` false ile kaybolur. Şüpheli: hayır.
+  - → **DÜZELTİLDİ** (`27dadef`): çift dokunuş guard
 - **D42.** `lib/features/memories/memories_screen.dart:536-544, 652` — `Image.file` errorBuilder'sız; picker sonrası `mounted` yok; Android `retrieveLostData()` hiç çağrılmıyor (baby_edit dahil). Şüpheli: hayır.
+  - → **DÜZELTİLDİ (kısmi)** (`bae94fb`): errorBuilder + mounted; `retrieveLostData` KABUL (platform, nadir)
 - **D43.** `lib/features/auth/auth_controller.dart:170-182`; `privacy_screen.dart:193-221` — hesap silme sonrası drift'teki hesap verisi ve foto dosyaları cihazda kalıyor (metin "verileriniz silinecek" diyor). Şüpheli: evet (30 gün geri alma için bilinçli olabilir).
+  - → **KARAR-BEKLEYEN**: KB-9: hesap silme sonrası yerel veri/foto (30 gün geri alma?)
 - **D44.** `lib/features/settings/data_export.dart:44, 66` — export geçici dizine yazılıyor; paylaşım 60 sn'de dönmezse "dosya cihaza kaydedildi" denir ama temp dizini kullanıcıya erişilemez/OS silebilir. Şüpheli: hayır.
+  - → **KABUL**: paylaşım sayfası dönmeyince dosya temp'te; metin düzeltmesi ayrı iş (export zaten çevrimdışı tekrar üretilebilir)
 - **D45.** `lib/features/settings/premium_screen.dart:473-500` ile birlikte `lib/features/onboarding/premium_welcome_screen.dart:141-165` — O12 ile aynı; ayrıca "Satın alma doğrulanamadı" dalı `restore` önermiyor. Şüpheli: hayır.
+  - → **GEÇERSİZ**: metin zaten "Satın alımları geri yüklemeyi dene" diyor; refresh hatası O12 (`63302f2`) ile kapandı
 
 ---
 
 ## 6. "Şüpheli" olarak işaretlenen maddeler (ayrı liste)
 
 Mekanizması kodda görünen ama ya uç zamanlamaya ya da bu depoda görülemeyen backend/platform davranışına bağlı olanlar; kesinleştirmek için cihaz/backend testi gerekir:
+
+**GRUP 5 durumu (2026-10-11):** K9 kapandı (`e6edcd5`); O16 savunmacı düzeltme (`82d3db2`, cihaz listesi); O17 ileri-tarih eşiği (`c581b9e`) + backend #10; O18 düzeltildi (`6ced4b8`); O23 düzeltildi (`ce4e912`, çapa KB-5); O34 düzeltildi (`6c9581e`); D6 (`fix(D6)`), D18, D23, D24, D26, D28, D29, D31, D38 düzeltildi; D7 geçersiz (backend `my_role` dönüyor); D16/D19 doğrulanamaz (mekanizma kesin değil — yalnız doğrulama adımı: YAYIN-KONTROL.md); D20/D21 kabul (tasarım/dar pencere); D43 KARAR-BEKLEYEN KB-9.
 
 - K9 (kısmen): bg import'un dispose'dan önce ne kadar ilerlediği.
 - O16: Android 14+ exact-alarm varsayılan-ret → ayar sayfasına atma.

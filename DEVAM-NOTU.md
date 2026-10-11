@@ -1,6 +1,6 @@
 # DEVAM NOTU — fix/audit-bulgular
 
-Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1196 geçti, 0 başarısız**, `flutter analyze` temiz.
+Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ) · Son test: **1203 geçti, 0 başarısız**, `flutter analyze` temiz.
 
 ## Tamamlananlar (commit sırasıyla)
 1. aşama: K3 `37f05f8`, K1 `00cd3fb`, K5 `e5f1a66`
@@ -12,18 +12,18 @@ Güncelleme: 2026-10-11 · Branch: `fix/audit-bulgular` (main'e merge EDİLMEDİ
 Tasarım: `TASARIM-SENKRON.md` (kararlar K-1..K-10, R1-R9, §8 plan + hash'ler). Backend talepleri: `BACKEND-TALEPLERI.md` (9 madde).
 
 ## Otonom koşu (2026-10-11) — durum
-- **Tamamlanan grup:** GRUP 0, GRUP 1 (şema v15), GRUP 2 (O26 `f93c849`), GRUP 3 (24 ORTA: 23 DÜZELTİLDİ — O29 kısmi, O17 kısmi+backend #10; O19 KABUL/backend #3). Hash'ler BULGULAR §2b.
-- **Sıradaki grup:** GRUP 4 — DÜŞÜK D1–D45 triyajı (DÜZELT / KABUL / DOĞRULANAMAZ), sonra dosya bazlı uygulama.
-- **KARAR-BEKLEYEN sayısı:** 7 (`KARAR-BEKLEYEN.md`: KB-1..KB-3 geri al; KB-4 exact-alarm UI; KB-5 çapa; KB-6 DST kapsamı; KB-7 aşı anahtarı).
+- **Tamamlanan grup:** GRUP 0, 1, 2, 3, 4 (D1–D45 triyajı: 27 DÜZELTİLDİ, 9 KABUL, 2 DOĞRULANAMAZ, 4 GEÇERSİZ, 1 KARAR-BEKLEYEN, D33 önceden kapalı), 5 (şüpheliler — BULGULAR §6 durum notu).
+- **Sıradaki grup:** GRUP 6 — YAYIN-KONTROL.md + FINAL-RAPOR.md (yalnız doküman).
+- **KARAR-BEKLEYEN sayısı:** 9 (`KARAR-BEKLEYEN.md`: KB-1..KB-3 geri al; KB-4 exact-alarm UI; KB-5 çapa; KB-6 DST kapsamı; KB-7 aşı anahtarı; KB-8 bakıcı ilaç planı; KB-9 hesap silmede yerel veri).
 - Sonra: GRUP 3 (kalan ORTA), GRUP 4 (DÜŞÜK triyaj), GRUP 5 (şüpheliler), GRUP 6 (YAYIN-KONTROL.md), FINAL-RAPOR.md.
 
 ## Kalan iş sırası
 c) ~~Şema v15~~ TAMAMLANDI (GRUP 1; v15'in ayrı sürüm olup olmayacağı yayın öncesi kullanıcı kararı, K-10).
 d) ~~O26 kalanı~~ TAMAMLANDI (`f93c849`).
 e) ~~Kalan ORTA~~ TAMAMLANDI (GRUP 3; O19 KABUL/backend, O29/O17 kısmi).
-f) **DÜŞÜK:** D1–D45 (D33 kapandı; O33/D33 notlarına bakın).
-g) **Şüpheliler:** BULGULAR §6 listesi (cihaz/backend doğrulaması gerekenler).
-h) **Yayın öncesi:** `../api/apps/translations/data/*.json`'da commit'lenmemiş 20 anahtar (uyku bitiş uyarısı dahil; caregiver salt-okunur notu; misafir-adet teklif + silme metinleri; 3 oturum-sonu banner metni; 13 K-1 banner/geri al metni) → api'de commit + `seed_translations --locale <x>`; `BACKEND-TALEPLERI.md` 9 madde backend ekibine (#8 `code: session_superseded` gelene dek banner genel metni gösterir).
+f) ~~DÜŞÜK~~ TAMAMLANDI (GRUP 4; durumlar BULGULAR §5 satır sonlarında).
+g) ~~Şüpheliler~~ TAMAMLANDI (GRUP 5; BULGULAR §6 durum notu; cihaz adımları YAYIN-KONTROL.md).
+h) **Yayın öncesi:** `../api/apps/translations/data/*.json`'da commit'lenmemiş 22 anahtar (D30 ilaç notu dahil; uyku bitiş uyarısı dahil; caregiver salt-okunur notu; misafir-adet teklif + silme metinleri; 3 oturum-sonu banner metni; 13 K-1 banner/geri al metni) → api'de commit + `seed_translations --locale <x>`; `BACKEND-TALEPLERI.md` 9 madde backend ekibine (#8 `code: session_superseded` gelene dek banner genel metni gösterir).
 
 ## Çalışma kuralları (devam ederken)
 Her bulgu: önce mevcut koda karşı KALAN test (yeni API'ye dayanan kısım geçici kopyayla ayrılır) → en küçük düzeltme → `flutter analyze` + tam `flutter test` → `fix(Kx): …` ayrı commit → TASARIM §8 hash + BULGULAR "DÜZELTİLDİ" notu. Yan sorun düzeltilmez, raporlanır.

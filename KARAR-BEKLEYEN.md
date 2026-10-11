@@ -42,3 +42,15 @@
 - **Seçenekler:** (a) beklemek (K4 yankı güvencesiyle tik kaybolmuyor, yalnız farklı dilde paylaşılmıyor); (b) 5 ek dilde kataloğu EN'e düşürmek (mevcut TR-adlı işaretler görünmez olur — veri kaybı görünümü).
 - **Uygulanan varsayılan:** (a).
 - **Etkilenen:** —
+
+## KB-8 — Bakıcı (caregiver) ilaç planı ekleyebilmeli mi? (D30)
+- **Soru:** UI bakıcıya plan ekletiyor ama senkron bakıcı değişikliğini göndermiyor (backend `can_full_write`) → cihazda hayalet plan.
+- **Seçenekler:** (a) K-7 gibi repo `StateError` + UI kilidi (bakıcı yalnız doz işaretler); (b) backend'de bakıcıya plan yazma izni; (c) mevcut (yalnız bu cihazda kalan plan, not metni düzeltildi).
+- **Uygulanan varsayılan:** (c) + not metni güncellendi (`fix(D30)`).
+- **Etkilenen:** `lib/features/health/medications_screen.dart`, `health_repository.dart`.
+
+## KB-9 — Hesap silme sonrası yerel veri ve fotoğraflar (D43)
+- **Soru:** Hesap silince drift'teki hesap verisi ve foto dosyaları cihazda kalıyor; metin "verileriniz silinecek" diyor. 30 gün geri alma için bilinçli mi?
+- **Seçenekler:** (a) hesap silmede yerel kapsamı da sil (O33'teki wipe yolu ile); (b) korumak ve metni "sunucudaki verileriniz silinecek; cihazdakiler için Yerel verileri sil" diye düzeltmek; (c) 30 gün sonra otomatik temizlik.
+- **Uygulanan varsayılan:** atlandı (kod değişmedi).
+- **Etkilenen:** `auth_controller.deleteAccount`, `privacy_screen.dart`.
