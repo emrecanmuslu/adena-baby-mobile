@@ -60,39 +60,44 @@ const List<(String, String)> cycleSymptoms = [
 ];
 
 /// A4 (karar S3) — ACİL kademe: beklemeden acil servis.
-const List<(String, String)> cycleRedFlagUrgentItems = [
-  ('rf_flood', 'Saatte bir ya da daha sık pedi dolduran kanama'),
-  ('rf_clot', 'Büyük pıhtılar'),
-  ('rf_faint', 'Yoğun kanamayla birlikte baş dönmesi, bayılma hissi ya da çarpıntı'),
-];
+const List<String> cycleRedFlagUrgentKeys = ['rf_flood', 'rf_clot', 'rf_faint'];
 
 /// A4 (karar S3) — AYNI GÜN HEKİM kademesi.
-const List<(String, String)> cycleRedFlagSameDayItems = [
-  ('rf_fever', '38°C ve üzeri ateş'),
-  ('rf_odor', 'Kötü kokulu akıntı'),
-  ('rf_pain', 'Şiddetli karın/kasık ağrısı'),
-  ('rf_rebleed', 'Azalmış kanamanın yeniden parlak kırmızı ve yoğun hale gelmesi'),
+const List<String> cycleRedFlagSameDayKeys = [
+  'rf_fever',
+  'rf_odor',
+  'rf_pain',
+  'rf_rebleed',
 ];
 
 /// Kırmızı bayrak belirtileri (kayıt sayfasında ayrı, vurgulu grup).
-const List<(String, String)> cycleRedFlagItems = [
-  ...cycleRedFlagUrgentItems,
-  ...cycleRedFlagSameDayItems,
+const List<String> cycleRedFlagKeys = [
+  ...cycleRedFlagUrgentKeys,
+  ...cycleRedFlagSameDayKeys,
 ];
 
-/// Eski sürümlerin anahtarı (yalnız etiket için; yeni girişte sunulmaz).
-const List<(String, String)> _legacyRedFlagItems = [
-  ('rf_odor_fever', 'Kötü kokulu akıntı + ateş'),
-];
+/// Kırmızı bayrak etiketi. N3: her metin sabit anahtarlı tr çağrısıyla —
+/// çeviri bütünlüğü testi (translation_keys_test) bunları tarar.
+/// `rf_odor_fever` eski sürümlerin anahtarı (yeni girişte sunulmaz).
+String redFlagLabel(String key) => switch (key) {
+      'rf_flood' => tr('Saatte bir ya da daha sık pedi dolduran kanama'),
+      'rf_clot' => tr('Büyük pıhtılar'),
+      'rf_faint' =>
+        tr('Yoğun kanamayla birlikte baş dönmesi, bayılma hissi ya da çarpıntı'),
+      'rf_fever' => tr('38°C ve üzeri ateş'),
+      'rf_odor' => tr('Kötü kokulu akıntı'),
+      'rf_pain' => tr('Şiddetli karın/kasık ağrısı'),
+      'rf_rebleed' =>
+        tr('Azalmış kanamanın yeniden parlak kırmızı ve yoğun hale gelmesi'),
+      'rf_odor_fever' => tr('Kötü kokulu akıntı + ateş'),
+      _ => key,
+    };
 
 String symptomLabel(String key) {
   for (final s in cycleSymptoms) {
     if (s.$1 == key) return tr(s.$2);
   }
-  for (final s in [...cycleRedFlagItems, ..._legacyRedFlagItems]) {
-    if (s.$1 == key) return tr(s.$2);
-  }
-  return key;
+  return redFlagLabel(key);
 }
 
 // ── Ruh hali skalası (1-5) ─────────────────────────────────────────────────
@@ -251,9 +256,9 @@ class EstBadge extends StatelessWidget {
 /// M1 — Kırmızı bayrak uyarı modali. Girilen belirtiler riskli eşiklere değince
 /// çağrılır. Tanı koymaz; yalnız sağlık profesyoneline yönlendirir.
 Future<void> showCycleRedFlag(BuildContext context, List<String> triggered) {
-  final items = [...cycleRedFlagItems, ..._legacyRedFlagItems]
-      .where((e) => triggered.contains(e.$1))
-      .map((e) => tr(e.$2))
+  final items = [...cycleRedFlagKeys, 'rf_odor_fever']
+      .where(triggered.contains)
+      .map(redFlagLabel)
       .toList();
   // A4 (karar S3): en yüksek kademeye göre yönlendirme.
   final urgent = redFlagLevel(triggered) == RedFlagLevel.urgent;

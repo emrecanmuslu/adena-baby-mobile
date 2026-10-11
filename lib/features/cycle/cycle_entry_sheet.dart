@@ -478,7 +478,7 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
           spacing: 7,
           runSpacing: 8,
           children: [
-            for (final s in cycleRedFlagItems) chip(s.$1, tr(s.$2), danger: true),
+            for (final k in cycleRedFlagKeys) chip(k, redFlagLabel(k), danger: true),
           ],
         ),
       ],
