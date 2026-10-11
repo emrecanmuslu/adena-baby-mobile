@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 part 'app_database.g.dart';
 
@@ -261,8 +262,18 @@ class AppDatabase extends _$AppDatabase {
           await _createLocalFirstIndexes(m);
         },
         onUpgrade: (m, from, to) async {
+          // I4 (INCELEME): drift migration'ı transaction'a ALMAZ ve
+          // user_version'ı onUpgrade bittikten SONRA yazar → yarıda kesilen
+          // migration'da (OOM/force-stop) eklenen kolonlar kalır, sürüm eski
+          // kalır; sonraki açılış "duplicate column" ile DB'yi hiç açamazdı.
+          // İki savunma: (1) tüm adımlar TEK transaction (kesinti → geri alınır;
+          // PRAGMA journal_mode/busy_timeout `_open` setup'ında, transaction
+          // dışında), (2) `_addColumnIfMissing` — transaction commit'i ile
+          // user_version yazımı arasındaki ms penceresi için kolon varsa atlar;
+          // backfill UPDATE'leri idempotent.
+          await transaction(() async {
           if (from < 2) {
-            await m.addColumn(records, records.createdBy);
+            await _addColumnIfMissing(m, records, records.createdBy);
           }
           if (from < 3) {
             await _createIndexes(m);
@@ -285,13 +296,13 @@ class AppDatabase extends _$AppDatabase {
             // Hesap-kapsamlı yerel izolasyon: mevcut satırlar accountId=NULL
             // (sahipsiz → hiçbir hesaba gösterilmez). CycleSettings hesaba özel
             // (id=accountId) olur; eski 'me' satırı sahipsiz kalır.
-            await m.addColumn(babies, babies.accountId);
-            await m.addColumn(cycleEntries, cycleEntries.accountId);
+            await _addColumnIfMissing(m, babies, babies.accountId);
+            await _addColumnIfMissing(m, cycleEntries, cycleEntries.accountId);
           }
           if (from >= 4 && from < 6) {
             // Prematüre desteği: doğumdaki gebelik yaşı kolonları.
-            await m.addColumn(babies, babies.gestationalWeeks);
-            await m.addColumn(babies, babies.gestationalDays);
+            await _addColumnIfMissing(m, babies, babies.gestationalWeeks);
+            await _addColumnIfMissing(m, babies, babies.gestationalDays);
           }
           if (from < 7) {
             // Sağlık local-first: aşı/gelişim/diş durumu + hatırlatıcılar yerelde.
@@ -301,10 +312,10 @@ class AppDatabase extends _$AppDatabase {
           if (from >= 4 && from < 8) {
             // Adet tahmin ayarları: döngü uzunluğu artık yerelde de saklanır
             // (eskiden kolon yoktu → değişiklik kaydolmuyordu) + adet/luteal süresi.
-            await m.addColumn(
+            await _addColumnIfMissing(m, 
                 cycleSettingsTable, cycleSettingsTable.expectedCycleLength);
-            await m.addColumn(cycleSettingsTable, cycleSettingsTable.periodLength);
-            await m.addColumn(
+            await _addColumnIfMissing(m, cycleSettingsTable, cycleSettingsTable.periodLength);
+            await _addColumnIfMissing(m, 
                 cycleSettingsTable, cycleSettingsTable.lutealPhaseLength);
           }
           if (from < 9) {
@@ -317,25 +328,25 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from >= 4 && from < 10) {
             // Akıllı tahmin toggle (My Calendar pariteli) yerelde de saklanır.
-            await m.addColumn(
+            await _addColumnIfMissing(m, 
                 cycleSettingsTable, cycleSettingsTable.smartPrediction);
           }
           if (from >= 4 && from < 11) {
             // Takvim haftanın ilk günü (Pazar/Pazartesi) ayarı.
-            await m.addColumn(
+            await _addColumnIfMissing(m, 
                 cycleSettingsTable, cycleSettingsTable.weekStartsSunday);
           }
           if (from >= 4 && from < 12) {
             // Yaşam-döngüsü (Flo-tarzı): adet ↔ TTC ↔ gebelik ↔ postpartum ↔ kayıp.
-            await m.addColumn(
+            await _addColumnIfMissing(m, 
                 cycleSettingsTable, cycleSettingsTable.lifecycleMode);
-            await m.addColumn(
+            await _addColumnIfMissing(m, 
                 cycleSettingsTable, cycleSettingsTable.ttcStartedAt);
-            await m.addColumn(
+            await _addColumnIfMissing(m, 
                 cycleSettingsTable, cycleSettingsTable.predictionsHidden);
-            await m.addColumn(
+            await _addColumnIfMissing(m, 
                 cycleSettingsTable, cycleSettingsTable.lastLossDate);
-            await m.addColumn(
+            await _addColumnIfMissing(m, 
                 cycleSettingsTable, cycleSettingsTable.learningWindow);
           }
           if (from < 13) {
@@ -346,10 +357,10 @@ class AppDatabase extends _$AppDatabase {
             // İlaç planları aile paylaşımına alındı: senkron kolonları. Mevcut
             // satırlar dirty=true varsayılanıyla ilk senkronda yüklenir.
             // (from < 13 ise tablo az önce güncel şemayla kuruldu.)
-            await m.addColumn(medicationPlans, medicationPlans.uuid);
-            await m.addColumn(medicationPlans, medicationPlans.isDeleted);
-            await m.addColumn(medicationPlans, medicationPlans.clientUpdatedAt);
-            await m.addColumn(medicationPlans, medicationPlans.dirty);
+            await _addColumnIfMissing(m, medicationPlans, medicationPlans.uuid);
+            await _addColumnIfMissing(m, medicationPlans, medicationPlans.isDeleted);
+            await _addColumnIfMissing(m, medicationPlans, medicationPlans.clientUpdatedAt);
+            await _addColumnIfMissing(m, medicationPlans, medicationPlans.dirty);
           }
           if (from < 15) {
             // v15 (TASARIM-SENKRON.md §5A): pushError (K-1), sağlık delta
@@ -357,20 +368,20 @@ class AppDatabase extends _$AppDatabase {
             // upgrade'de yeniden kurulmadıysa (from<4 / from<7 yolları tabloyu
             // zaten v15 şemasıyla createTable etti).
             if (from >= 4) {
-              await m.addColumn(babies, babies.settingsDirty);
-              await m.addColumn(babies, babies.settingsBase);
-              await m.addColumn(babies, babies.pushError);
-              await m.addColumn(memories, memories.pushError);
-              await m.addColumn(momEntries, momEntries.pushError);
-              await m.addColumn(cycleSettingsTable, cycleSettingsTable.pushError);
-              await m.addColumn(cycleSettingsTable, cycleSettingsTable.baseJson);
-              await m.addColumn(cycleEntries, cycleEntries.pushError);
+              await _addColumnIfMissing(m, babies, babies.settingsDirty);
+              await _addColumnIfMissing(m, babies, babies.settingsBase);
+              await _addColumnIfMissing(m, babies, babies.pushError);
+              await _addColumnIfMissing(m, memories, memories.pushError);
+              await _addColumnIfMissing(m, momEntries, momEntries.pushError);
+              await _addColumnIfMissing(m, cycleSettingsTable, cycleSettingsTable.pushError);
+              await _addColumnIfMissing(m, cycleSettingsTable, cycleSettingsTable.baseJson);
+              await _addColumnIfMissing(m, cycleEntries, cycleEntries.pushError);
             }
             if (from >= 7) {
-              await m.addColumn(healthStatuses, healthStatuses.dirty);
-              await m.addColumn(healthStatuses, healthStatuses.clientUpdatedAt);
-              await m.addColumn(healthStatuses, healthStatuses.serverUpdatedAt);
-              await m.addColumn(healthStatuses, healthStatuses.pushError);
+              await _addColumnIfMissing(m, healthStatuses, healthStatuses.dirty);
+              await _addColumnIfMissing(m, healthStatuses, healthStatuses.clientUpdatedAt);
+              await _addColumnIfMissing(m, healthStatuses, healthStatuses.serverUpdatedAt);
+              await _addColumnIfMissing(m, healthStatuses, healthStatuses.pushError);
             }
             // Backfill (kararlar, §5A/§5B/§5C):
             // - K-4: gelişim/dişte done=true → dirty (bir kez push); AŞIDA YOK
@@ -384,8 +395,28 @@ class AppDatabase extends _$AppDatabase {
                 "UPDATE babies SET settings_dirty = 1 "
                 "WHERE settings != '{}' AND (my_role IS NULL OR my_role = 'owner')");
           }
+          await debugMigrationHook?.call();
+          });
         },
       );
+
+  /// Yalnız test (I4): migration transaction'ının SONUNDA çağrılır; fırlatırsa
+  /// o açılıştaki tüm migration adımları geri alınır (kesinti simülasyonu).
+  @visibleForTesting
+  static Future<void> Function()? debugMigrationHook;
+
+  /// I4: kolon zaten varsa (yarıda kesilmiş önceki migration) `ALTER TABLE ADD
+  /// COLUMN` tekrarlanmaz — "duplicate column name" DB'yi kalıcı kilitlemesin.
+  Future<void> _addColumnIfMissing(
+      Migrator m, TableInfo table, GeneratedColumn column) async {
+    final rows = await m.database
+        .customSelect('PRAGMA table_info(${table.actualTableName})')
+        .get();
+    for (final r in rows) {
+      if (r.read<String>('name') == column.$name) return;
+    }
+    await m.addColumn(table, column);
+  }
 
   /// Home/timeline/grafik sorguları için indeksler. Tüm okumalar `baby`'ye
   /// göre filtreleyip `ts`'e göre sıralar; (baby, type, ts) ise tipe özel
