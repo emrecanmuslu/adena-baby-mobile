@@ -11,6 +11,7 @@ import '../../core/theme.dart';
 import '../../data/notification_prefs.dart';
 import '../babies/activity_watcher.dart';
 import '../babies/baby_controller.dart';
+import '../babies/exact_alarm_resync.dart';
 import '../babies/family_settings.dart';
 import '../health/reminders_screen.dart';
 import 'notification_prefs_controller.dart';
@@ -137,7 +138,7 @@ class NotificationsScreen extends ConsumerWidget {
               onChanged: (v) => setPref(NotificationPrefs.growth, v),
             ),
             // M4/KB-4: kesin alarm izni durumu (yalnız Android; iOS'ta boş).
-            const ExactAlarmTile(),
+            ExactAlarmTile(onGranted: () => resyncAfterExactAlarmGranted(ref)),
             AdMenuItem(
               icon: 'med',
               color: AppColors.med,

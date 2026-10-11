@@ -10,6 +10,7 @@ import '../../core/medication.dart';
 import '../../core/notification_service.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
+import '../babies/exact_alarm_resync.dart';
 import '../../models/medication_plan.dart';
 import 'medication_widgets.dart';
 
@@ -309,7 +310,12 @@ class _PlanSheetState extends ConsumerState<_PlanSheet> {
         await repo.createMedicationPlan(widget.babyId,
             name: name, dose: _dose.text.trim(), times: _times);
         // M4/KB-4: ilk plan → kesin alarm izni açıklaması (yalnız Android, tek sefer).
-        if (others.isEmpty && mounted) await ExactAlarmPrompt().maybeShow(context);
+        if (others.isEmpty && mounted) {
+          await ExactAlarmPrompt(
+                  onGranted: () =>
+                      resyncAfterExactAlarmGranted(ref, babyId: widget.babyId))
+              .maybeShow(context);
+        }
       }
       ref.invalidate(medicationPlansProvider(widget.babyId));
       if (mounted) {

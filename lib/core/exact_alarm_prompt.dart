@@ -18,13 +18,25 @@ class ExactAlarmPrompt {
   final Future<bool> Function() request;
   final bool isAndroid;
 
+  /// J12: izin GERÇEKTEN verilince çağrılır — o ana dek inexact kurulmuş
+  /// beslenme/ilaç planları yeniden kurulsun (bkz. `resyncAfterExactAlarmGranted`).
+  final Future<void> Function()? onGranted;
+
   ExactAlarmPrompt({
     Future<bool> Function()? canSchedule,
     Future<bool> Function()? request,
     bool? isAndroid,
+    this.onGranted,
   })  : canSchedule = canSchedule ?? NotificationService.instance.canScheduleExact,
         request = request ?? NotificationService.instance.requestExactAlarmPermission,
         isAndroid = isAndroid ?? Platform.isAndroid;
+
+  /// Sistem iznini ister; verildiyse [onGranted]'ı çalıştırır. Döner: izin var mı.
+  Future<bool> requestAndResync() async {
+    final ok = await request();
+    if (ok) await onGranted?.call();
+    return ok;
+  }
 
   /// Diyalog gösterilmeli mi: Android + izin yok + daha önce gösterilmedi.
   Future<bool> shouldShow() async {
@@ -48,8 +60,9 @@ class ExactAlarmPrompt {
   /// Döner: diyalog gösterildi mi.
   Future<bool> maybeShow(BuildContext context) async {
     if (!await shouldShow()) return false;
-    await _markShown();
-    if (!context.mounted) return true;
+    // J12: bayrak diyalog GERÇEKTEN gösterildikten sonra yazılır; context
+    // düşmüşse diyalog görünmeden "gösterildi" sayılmasın.
+    if (!context.mounted) return false;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -68,7 +81,8 @@ class ExactAlarmPrompt {
         ],
       ),
     );
-    if (ok == true) await request();
+    await _markShown();
+    if (ok == true) await requestAndResync();
     return true;
   }
 }
@@ -76,14 +90,18 @@ class ExactAlarmPrompt {
 /// Bildirimler ayarı satırı (yalnız Android): izin durumu + açma düğmesi.
 class ExactAlarmTile extends StatefulWidget {
   final ExactAlarmPrompt? prompt;
-  const ExactAlarmTile({super.key, this.prompt});
+  /// J12: izin verilince yeniden kurulum (prompt'un [ExactAlarmPrompt.onGranted]
+  /// alanı yoksa bu kullanılır).
+  final Future<void> Function()? onGranted;
+  const ExactAlarmTile({super.key, this.prompt, this.onGranted});
 
   @override
   State<ExactAlarmTile> createState() => _ExactAlarmTileState();
 }
 
 class _ExactAlarmTileState extends State<ExactAlarmTile> {
-  late final ExactAlarmPrompt _p = widget.prompt ?? ExactAlarmPrompt();
+  late final ExactAlarmPrompt _p =
+      widget.prompt ?? ExactAlarmPrompt(onGranted: widget.onGranted);
   bool? _can;
 
   @override
@@ -114,7 +132,7 @@ class _ExactAlarmTileState extends State<ExactAlarmTile> {
       trailing: can == false
           ? TextButton(
               onPressed: () async {
-                await _p.request();
+                await _p.requestAndResync();
                 await _refresh();
               },
               child: Text(tr('İzin ver')))

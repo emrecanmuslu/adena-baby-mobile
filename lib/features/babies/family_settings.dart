@@ -15,6 +15,7 @@ import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
 import 'baby_controller.dart';
+import 'exact_alarm_resync.dart';
 
 /// Cihazın bölge (ülke) kodu — ISO2, büyük harf (ör. 'US', 'TR').
 final deviceCountryCodeProvider = Provider<String?>(
@@ -174,7 +175,10 @@ Future<void> updateFeedReminder(
   final wasEnabled = ref.read(feedReminderProvider(babyId)).enabled;
   await ref.read(feedReminderStoreProvider.notifier).set(babyId, cfg);
   if (context != null && cfg.enabled && !wasEnabled && context.mounted) {
-    await ExactAlarmPrompt().maybeShow(context);
+    // J12: izin verilirse az önce (inexact) kurulan plan exact olarak yeniden kurulur.
+    await ExactAlarmPrompt(
+            onGranted: () => resyncAfterExactAlarmGranted(ref, babyId: babyId))
+        .maybeShow(context);
   }
 }
 

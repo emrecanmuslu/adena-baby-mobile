@@ -14,15 +14,25 @@ void main() {
   });
 
   Future<ExactAlarmPrompt> prompt({bool can = false, bool android = true,
-      List<int>? requests}) async =>
+      List<int>? requests, bool grant = true, List<int>? granted}) async =>
       ExactAlarmPrompt(
         canSchedule: () async => can,
         request: () async {
           requests?.add(1);
-          return true;
+          return grant;
         },
         isAndroid: android,
+        onGranted: () async => granted?.add(1),
       );
+
+  Future<BuildContext> pumpCtx(WidgetTester tester) async {
+    late BuildContext ctx;
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (c) {
+      ctx = c;
+      return const SizedBox.shrink();
+    })));
+    return ctx;
+  }
 
   test('shouldShow: Android + izin yok + ilk kez → true; sonra false', () async {
     final p = await prompt();
@@ -90,5 +100,65 @@ void main() {
     await tester.pump();
     expect(find.text('Tam zamanında bildirim'), findsOneWidget);
     expect(find.text('İzin ver'), findsOneWidget);
+  });
+
+  group('J12', () {
+    testWidgets('"İzin ver" + izin verildi → onGranted çağrılır (yeniden kurulum)',
+        (tester) async {
+      final granted = <int>[];
+      final p = await prompt(granted: granted);
+      final ctx = await pumpCtx(tester);
+      final shown = p.maybeShow(ctx);
+      await tester.pump();
+      await tester.tap(find.text('İzin ver'));
+      await tester.pump();
+      expect(await shown, isTrue);
+      expect(granted, hasLength(1));
+    });
+
+    testWidgets('"İzin ver" ama izin REDDEDİLDİ → onGranted çağrılmaz', (tester) async {
+      final granted = <int>[];
+      final p = await prompt(granted: granted, grant: false);
+      final ctx = await pumpCtx(tester);
+      final shown = p.maybeShow(ctx);
+      await tester.pump();
+      await tester.tap(find.text('İzin ver'));
+      await tester.pump();
+      await shown;
+      expect(granted, isEmpty);
+    });
+
+    testWidgets('context düşmüşse diyalog gösterilmez, bayrak YAZILMAZ (sonra yine sorulur)',
+        (tester) async {
+      final p = await prompt();
+      final ctx = await pumpCtx(tester);
+      await tester.pumpWidget(const SizedBox.shrink()); // ctx artık unmounted
+      expect(ctx.mounted, isFalse);
+      expect(await p.maybeShow(ctx), isFalse);
+      expect(await p.shouldShow(), isTrue, reason: 'görünmeden "gösterildi" sayılmaz');
+    });
+
+    testWidgets('bayrak diyalog gösterildikten SONRA yazılır', (tester) async {
+      final p = await prompt();
+      final ctx = await pumpCtx(tester);
+      final shown = p.maybeShow(ctx);
+      await tester.pump();
+      expect(find.text('Tam zamanında bildirim'), findsOneWidget);
+      await tester.tap(find.text('Daha sonra'));
+      await tester.pump();
+      await shown;
+      expect(await p.shouldShow(), isFalse);
+    });
+
+    testWidgets('ExactAlarmTile "İzin ver" → izin verilince onGranted', (tester) async {
+      final granted = <int>[];
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(body: ExactAlarmTile(prompt: await prompt(granted: granted)))));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.text('İzin ver'));
+      await tester.pump();
+      expect(granted, hasLength(1));
+    });
   });
 }
