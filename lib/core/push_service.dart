@@ -27,6 +27,12 @@ import 'widget_service.dart';
 /// isolate'te çalışır (bayrak varsayılan false → OS bildirimi göster).
 bool appInForeground = false;
 
+/// O17: push çapası makul mü — ön plan `lastFeedAt` kuralıyla aynı eşik
+/// (şimdi + 1 saatten ileri kayıt çapa OLMAZ). "En yeni kayıt" kuralı backend
+/// tarafında (BACKEND-TALEPLERI #10); bg turu / öne geliş yine düzeltir.
+bool feedAnchorPlausible(DateTime lastFeed, {DateTime? now}) =>
+    !lastFeed.isAfter((now ?? DateTime.now()).add(const Duration(hours: 1)));
+
 /// Arka plan (uygulama kapalı/arka planda) mesaj işleyici — TOP-LEVEL olmalı.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -55,7 +61,10 @@ Future<void> handlePushMessage(RemoteMessage message) async {
     // 1) Beslenme EKLEME olayı: widget + yerel hatırlatıcı güncellemesi. last_feed_ts
     //    süren emzirme dahil her beslenmede gelir; widget_update yalnız TAMAMLANMIŞ
     //    beslenmede (widget süren emzirmeyi "son beslenme" saymaz).
-    final lastFeed = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
+    // O17: ileri tarihli (yanlış girilmiş) çapa widget'ı/hatırlatıcıyı günler
+    // sonrasına kurmasın — ön plan/bg sync'teki "gelecek tarih eşiği" ile aynı.
+    final rawLast = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
+    final lastFeed = rawLast != null && feedAnchorPlausible(rawLast) ? rawLast : null;
     if (data['widget_update'] == 'feed') {
       // Widget artık SONRAKİ beslenmeyi gösterir → son beslenme + aralıktan hesapla.
       // Çok-bebek: bu bebeğin verisini per-baby anahtarına yaz (o bebeği seçen widget tazelenir).
@@ -162,7 +171,9 @@ Future<void> _handleSyncNudge(Map<String, dynamic> data, String babyNameFallback
     if (snap != null) {
       final cfg = snap.toConfig().effectiveForEstimate;
       final tsStr = data['last_feed_${cfg.baseType}'] as String?;
-      final lastFeed = tsStr != null ? DateTime.tryParse(tsStr)?.toLocal() : null;
+      final rawLast = tsStr != null ? DateTime.tryParse(tsStr)?.toLocal() : null;
+      final lastFeed =
+          rawLast != null && feedAnchorPlausible(rawLast) ? rawLast : null; // O17
       if (lastFeed != null) {
         final next = lastFeed.add(Duration(minutes: cfg.intervalMin));
         final babyName = (data['baby_name'] as String?) ?? babyNameFallback;
