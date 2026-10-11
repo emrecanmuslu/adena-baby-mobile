@@ -162,9 +162,20 @@ Future<void> medSkipDose(
 
 /// "Verildi" / "atlandı" kaydı — ikisi de aile-paylaşımlı `RecordType.medication`
 /// satırıdır; atlanan `given:false, skipped:true` taşır.
+/// O22: aynı doz (plan + saat) için uçuş-içi / çift-dokunma koruması. Drift
+/// akışı yeni kaydı yayınlayana kadar ikinci dokunuş da `next` rolünü görür →
+/// hayalet ikinci "verildi" kaydı (2 dozlu planda ikinci doz da verildi olurdu).
+final _inFlightDoses = <String>{};
+const _doseGuard = Duration(seconds: 2);
+
 Future<void> _writeDose(BuildContext context, WidgetRef ref, String babyId,
     MedicationDose dose,
     {required bool skipped}) async {
+  final key = '${dose.plan.id}/${dose.time}';
+  if (_inFlightDoses.contains(key)) return;
+  _inFlightDoses.add(key);
+  // Akış güncellenene dek kısa koruma; hata olsa da serbest kalır.
+  Future<void>.delayed(_doseGuard, () => _inFlightDoses.remove(key));
   final actions = ref.read(recordActionsProvider);
   final id = _uuid.v4();
   await actions.upsertQuiet(Record(
