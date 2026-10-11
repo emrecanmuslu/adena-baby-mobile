@@ -220,8 +220,9 @@ Widget cycNoteLite(BuildContext context,
 class CycleInfo {
   static String get lochiaVsPeriod => tr(
       'Doğumdan sonraki kanama loşiadır — iyileşme sürecinin parçası, adet '
-      'değildir. Genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. Akış zamanla azalırsa loşia; başlayıp koyulaşıp 4–7 gün '
-      'sürerse muhtemelen ilk adettir.');
+      'değildir. Genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. Kanama '
+      'kesildikten sonra başlayan ve 4–7 gün süren düzenli bir kanama ilk adetin '
+      'olabilir. Yeniden parlak kırmızı ve yoğunlaşan kanamada hekimine başvur.');
   static String get lam => tr(
       'Emzirme yumurtlamayı baskılayıp adeti geciktirebilir. LAM (Laktasyonel '
       'Amenore Yöntemi) ancak şu üç koşul BİRLİKTE varsa gebeliğe karşı geçici '

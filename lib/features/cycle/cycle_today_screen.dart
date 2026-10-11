@@ -746,8 +746,10 @@ class _Today extends ConsumerWidget {
           ],
         ]),
         const SizedBox(height: 12),
-        Text(tr('Akış zamanla azalıp açılıyorsa loşia; durup koyulaşıp 4–7 gün '
-            'sürerse muhtemelen ilk adettir.'),
+        // B4 (karar S2): dengeli ayrım + yeniden parlak kırmızı kanamada hekim.
+        Text(tr('Kanama kesildikten sonra başlayan ve 4–7 gün süren düzenli bir '
+            'kanama ilk adetin olabilir. Yeniden parlak kırmızı ve yoğunlaşan '
+            'kanamada hekimine başvur.'),
             style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
