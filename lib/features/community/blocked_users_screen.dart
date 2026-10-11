@@ -92,15 +92,15 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
                             children: [
                               CircleAvatar(radius: 18, backgroundColor: color,
                                   child: Text(
-                                      ((u['name'] as String).isNotEmpty
-                                              ? (u['name'] as String)[0]
+                                      (((u['name'] as String?) ?? '').isNotEmpty
+                                              ? ((u['name'] as String?) ?? '')[0]
                                               : '?')
                                           .toUpperCase(),
                                       style: const TextStyle(
                                           color: Colors.white, fontWeight: FontWeight.w900))),
                               const SizedBox(width: 12),
                               Expanded(
-                                  child: Text(u['name'] as String,
+                                  child: Text((u['name'] as String?) ?? '', // D38
                                       style: const TextStyle(fontWeight: FontWeight.w800))),
                               TextButton(
                                 onPressed: () => _unblock(u['id'] as String),
