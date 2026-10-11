@@ -90,6 +90,13 @@ void main() {
 
   test('kodda kullanılan her tr()/trp() anahtarı 6 dilde var; placeholder korunur', () {
     if (!dataDir.existsSync()) {
+      // I11: CI'da (CI=true) ya da açıkça istenince (REQUIRE_API_TRANSLATIONS=1)
+      // api JSON'larının yokluğu sessiz atlama DEĞİL, hatadır — yerelde uyarıyla atla.
+      final env = Platform.environment;
+      if (env['REQUIRE_API_TRANSLATIONS'] == '1' || env['CI'] == 'true') {
+        fail("api çeviri JSON'ları bulunamadı: ${dataDir.path} — api repo'sunu "
+            'checkout et ya da REQUIRE_API_TRANSLATIONS/CI ayarını kaldır.');
+      }
       // ignore: avoid_print
       print('UYARI: ${dataDir.path} yok — çeviri bütünlüğü kontrolü atlandı.');
       return;
