@@ -316,6 +316,9 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           _addNote(data);
         case RecordType.sleep:
           if (_endTs == null) return _warn(tr('Bitiş zamanını seç'));
+          if (_endTs!.isBefore(_ts)) {
+            return _warn(tr('Bitiş zamanı başlangıçtan önce olamaz')); // O27
+          }
           data = {
             'start_ts': _ts.toUtc().toIso8601String(),
             'end_ts': _endTs!.toUtc().toIso8601String(),
@@ -363,6 +366,7 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
         type: widget.type,
         ts: _ts,
         data: data,
+        createdBy: widget.existing?.createdBy, // O37: düzenlemede "kim ekledi" korunur
       );
       // container'ı ilk await'ten ÖNCE yakala (context hâlâ kesin geçerliyken):
       // hatırlatıcı ağ isteği arkaplanda sürerken bu State dispose olsa bile
@@ -1218,6 +1222,9 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           color: accent,
           onTap: () async {
             if (_endTs == null) return _warn(tr('Bitiş zamanını seç'));
+            if (_endTs!.isBefore(_ts)) {
+              return _warn(tr('Bitiş zamanı başlangıçtan önce olamaz')); // O27
+            }
             await ref
                 .read(recordActionsProvider)
                 .stopSleepWithTimes(r, _ts, _endTs!);
