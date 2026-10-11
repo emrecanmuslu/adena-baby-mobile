@@ -76,7 +76,6 @@ class _Body extends ConsumerStatefulWidget {
 
 class _BodyState extends ConsumerState<_Body> {
   late Map<String, dynamic> _reminders;
-  late bool _fertilityWarn;
   late bool _smart; // akıllı tahmin (son loglardan öğren) — My Calendar pariteli
   late bool _weekSunday; // takvimde hafta Pazar mı başlasın
   late int _cycleLen; // beklenen döngü uzunluğu (gün); ölçüm yokken kullanılır
@@ -100,7 +99,6 @@ class _BodyState extends ConsumerState<_Body> {
                   ? Map<String, dynamic>.from(e.value as Map)
                   : {'on': e.value == true},
           };
-    _fertilityWarn = widget.settings.showFertilityWarning;
     _smart = widget.settings.smartPrediction;
     _weekSunday = widget.settings.weekStartsSunday;
   }
@@ -110,7 +108,6 @@ class _BodyState extends ConsumerState<_Body> {
   Future<void> _persist() async {
     final next = widget.settings.copyWith(
       reminders: _reminders,
-      showFertilityWarning: _fertilityWarn,
       smartPrediction: _smart,
       weekStartsSunday: _weekSunday,
       expectedCycleLength: _cycleLen,
@@ -162,45 +159,9 @@ class _BodyState extends ConsumerState<_Body> {
         cycNoteLite(context,
             icon: Icons.shield_outlined,
             body: CycleTexts.notContraceptionMethod),
-        CycEyebrow(tr('Emzirme & Doğurganlık'), info: CycleInfo.lam),
-        _card([
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(tr('LAM / doğurganlık uyarıları'),
-                              style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w800)),
-                          const SizedBox(width: 5),
-                          AdInfoDot(title: tr('LAM'), body: CycleInfo.lam),
-                        ],
-                      ),
-                      Text(tr('Emziren anneler için hatırlatmalar'),
-                          style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.muted)),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: _fertilityWarn,
-                  activeThumbColor: AppColors.rose,
-                  onChanged: (v) {
-                    setState(() => _fertilityWarn = v);
-                    _persist();
-                  },
-                ),
-              ],
-            ),
-          ),
-        ]),
+        // C7: "LAM / doğurganlık uyarıları" anahtarı kaldırıldı — değer hiçbir
+        // yerde okunmuyordu ve sağlık uyarıları kapatılabilir olmamalı. Kayıtlı
+        // `show_fertility_warning` alanı dokunulmadan kalır (zararsız).
         CycEyebrow(tr('Takvim')),
         _card([
           Padding(
