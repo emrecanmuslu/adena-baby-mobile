@@ -1,12 +1,17 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
+import 'package:http_mock_adapter/http_mock_adapter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:adena_baby/core/providers.dart';
+import 'package:adena_baby/core/push_service.dart';
+import 'package:adena_baby/data/local/app_database.dart';
 import 'package:adena_baby/core/session_end.dart';
 import 'package:adena_baby/core/revenuecat_service.dart';
 import 'package:adena_baby/core/token_storage.dart';
@@ -342,7 +347,17 @@ void main() {
       when(() => repo.me()).thenAnswer((_) async => _user(id: 'd1'));
       when(() => repo.deleteAccount()).thenAnswer((_) async {});
 
-      final c = makeContainer();
+      // KB-9: deleteAccount yerel kapsamı siler → bellek-içi DB (gerçek DB
+      // path_provider ister).
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        databaseProvider.overrideWithValue(db),
+      ]);
+      addTearDown(c.dispose);
       await c.read(authControllerProvider.future);
       final ctrl = c.read(authControllerProvider.notifier);
 
@@ -692,6 +707,86 @@ void main() {
       await c.read(authControllerProvider.notifier).logout();
       expect(await prefsReason(), isNull,
           reason: 'kullanıcı çıkışı neden bırakmaz');
+    });
+  });
+
+  group('KB-9 / M9(c) — hesap silme', () {
+    ProviderContainer dbContainer(AppDatabase db) {
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        databaseProvider.overrideWithValue(db),
+      ]);
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    test('KB-9: sunucu silme BAŞARILI → yalnız bu hesabın yerel kapsamı silinir (diğer hesap kalır)',
+        () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await db.into(db.babies).insert(BabiesCompanion.insert(
+          id: 'b-d1', name: 'Mine', accountId: const Value('d1')));
+      await db.into(db.babies).insert(BabiesCompanion.insert(
+          id: 'b-other', name: 'Other', accountId: const Value('other')));
+      await db.into(db.records).insert(RecordsCompanion.insert(
+          id: 'r1', baby: 'b-d1', type: 'feed', ts: DateTime(2026, 6, 1)));
+      await db.into(db.records).insert(RecordsCompanion.insert(
+          id: 'r2', baby: 'b-other', type: 'feed', ts: DateTime(2026, 6, 1)));
+      await db.into(db.cycleSettingsTable).insert(
+          CycleSettingsTableCompanion.insert(id: const Value('d1')));
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd1'));
+      when(() => repo.deleteAccount()).thenAnswer((_) async {});
+      final c = dbContainer(db);
+      await c.read(authControllerProvider.future);
+      expect(LocalSession.activeAccountId, 'd1');
+
+      await c.read(authControllerProvider.notifier).deleteAccount();
+
+      expect((await db.select(db.babies).get()).map((b) => b.id), ['b-other']);
+      expect((await db.select(db.records).get()).map((r) => r.id), ['r2']);
+      expect(await db.select(db.cycleSettingsTable).get(), isEmpty);
+      expect(c.read(authControllerProvider).value, isNull);
+    });
+
+    test('KB-9: sunucu silme DÜŞERSE yerelde hiçbir şey silinmez', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await db.into(db.babies).insert(BabiesCompanion.insert(
+          id: 'b-d1', name: 'Mine', accountId: const Value('d1')));
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd1'));
+      when(() => repo.deleteAccount()).thenThrow(Exception('offline'));
+      final c = dbContainer(db);
+      await c.read(authControllerProvider.future);
+      await expectLater(c.read(authControllerProvider.notifier).deleteAccount(),
+          throwsA(isA<Exception>()));
+      expect(await db.select(db.babies).get(), hasLength(1));
+      expect(c.read(authControllerProvider).value?.id, 'd1');
+    });
+
+    test('M9(c): cihaz kaydı silme 401 alsa da deleteAccount çağrılır', () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd3'));
+      when(() => repo.deleteAccount()).thenAnswer((_) async {});
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final c = dbContainer(db);
+      await c.read(authControllerProvider.future);
+      final api = c.read(apiClientProvider);
+      final adapter = DioAdapter(dio: api.dio);
+      adapter.onPost('/me/devices', (s) => s.reply(201, {}), data: Matchers.any);
+      PushService.instance.resetForTests();
+      await PushService.instance.postToken(api, 'TOK'); // kayıtlı token var
+      adapter.onDelete('/me/devices', (s) => s.reply(401, {'detail': 'x'}),
+          data: Matchers.any);
+
+      await c.read(authControllerProvider.notifier).deleteAccount();
+
+      verify(() => repo.deleteAccount()).called(1);
+      expect(c.read(authControllerProvider).value, isNull);
     });
   });
 }

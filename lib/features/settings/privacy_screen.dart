@@ -205,7 +205,9 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
         content: Text(tr(
             'Hesabın devre dışı bırakılacak ve oturumun her cihazda kapanacak. '
             '30 gün içinde tekrar giriş yapmazsan hesabın ve tüm bebek verilerin '
-            'kalıcı olarak silinir. Bu süre içinde giriş yaparsan silme iptal olur.')),
+            'kalıcı olarak silinir. Bu süre içinde giriş yaparsan silme iptal olur. '
+            'Bu cihazdaki kayıtlar ve fotoğraflar hemen silinir; geri almak için '
+            'yeniden giriş yaptığında sunucudan indirilir.')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogCtx, false),

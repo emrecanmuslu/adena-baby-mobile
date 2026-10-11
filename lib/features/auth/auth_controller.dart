@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -260,6 +261,23 @@ class AuthController extends AsyncNotifier<User?> {
     await PushService.instance.unregister(ref.read(apiClientProvider));
     await _repo.deleteAccount();
     _epoch++; // O34
+    // KB-9 (a): sunucu silmeyi onayladı → bu hesabın YEREL kapsamı da silinir
+    // (drift satırları + foto dosyaları); başka hesap/misafir verisi kalır.
+    // Başarısız olsaydı buraya gelinmez, yerelde hiçbir şey silinmezdi.
+    final acct = LocalSession.activeAccountId;
+    if (acct != null) {
+      try {
+        final wiped = await ref.read(databaseProvider).wipeAccountData(acct);
+        for (final path in wiped.photoPaths) {
+          try {
+            final f = File(path);
+            if (await f.exists()) await f.delete();
+          } catch (_) {}
+        }
+      } catch (_) {
+        // Yerel temizlik hatası oturum kapanışını engellemesin.
+      }
+    }
     await NotificationService.instance.cancelAll(); // eski hesabın bildirimleri kalmasın
     await SlotRegistry.instance.clear(); // slot haritası sıfırlansın (yeni hesap 0'dan)
     // logout ile AYNI temizlik: sonraki kullanıcıya premium/RC kimliği/yerel kapsam

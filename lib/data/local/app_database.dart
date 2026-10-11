@@ -435,6 +435,40 @@ class AppDatabase extends _$AppDatabase {
 
   /// Tüm yerel verileri siler (hesapsız "yerel verileri sil" / GDPR). Şema kalır,
   /// satırlar gider — kullanıcı sıfırdan başlar.
+  /// KB-9: hesap silme sunucuda BAŞARDIKTAN sonra yalnız o hesabın yerel
+  /// kapsamı silinir (başka hesap/misafir verisi kalır). Döner: silinen
+  /// bebeklerin foto yolları + anıların yerel foto yolları (çağıran dosyaları
+  /// siler) ve bebek id'leri (bildirim iptali için slot'lar çağıranda).
+  Future<({List<String> babyIds, List<String> photoPaths})> wipeAccountData(
+      String accountId) async {
+    final ownBabies = await (select(babies)..where((b) => b.accountId.equals(accountId))).get();
+    final ids = ownBabies.map((b) => b.id).toList();
+    final photos = <String>[
+      for (final b in ownBabies)
+        if (b.photo != null && !b.photo!.startsWith('http')) b.photo!,
+    ];
+    if (ids.isNotEmpty) {
+      for (final m in await (select(memories)..where((m) => m.baby.isIn(ids))).get()) {
+        if (m.localPhotoPath != null) photos.add(m.localPhotoPath!);
+      }
+    }
+    await transaction(() async {
+      if (ids.isNotEmpty) {
+        await (delete(records)..where((r) => r.baby.isIn(ids))).go();
+        await (delete(memories)..where((m) => m.baby.isIn(ids))).go();
+        await (delete(momEntries)..where((m) => m.baby.isIn(ids))).go();
+        await (delete(healthStatuses)..where((h) => h.baby.isIn(ids))).go();
+        await (delete(localReminders)..where((r) => r.baby.isIn(ids))).go();
+        await (delete(medicationPlans)..where((p) => p.baby.isIn(ids))).go();
+        await (delete(syncCursors)..where((c) => c.baby.isIn(ids))).go();
+        await (delete(babies)..where((b) => b.id.isIn(ids))).go();
+      }
+      await (delete(cycleEntries)..where((e) => e.accountId.equals(accountId))).go();
+      await (delete(cycleSettingsTable)..where((s) => s.id.equals(accountId))).go();
+    });
+    return (babyIds: ids, photoPaths: photos);
+  }
+
   Future<void> wipeAllData() async {
     await transaction(() async {
       for (final t in allTables) {
