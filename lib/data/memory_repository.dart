@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/api_client.dart';
+import '../core/sync_telemetry.dart';
 import '../core/providers.dart';
 import '../models/memory.dart';
 import 'local/app_database.dart';
@@ -222,6 +223,8 @@ class MemoryRepository {
     );
     if (stale.skipped) {
       debugPrint('[memories-pull] silme atlandı: ${stale.skippedReason}');
+      await SyncTelemetry.report('stale_delete_skipped',
+          {'table': 'memories', 'baby': babyId, 'reason': stale.skippedReason});
     }
     await _db.transaction(() async {
       for (final m in rows) {

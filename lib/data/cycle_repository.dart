@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/api_client.dart';
+import '../core/sync_telemetry.dart';
 import '../core/providers.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/cycle/cycle_anchor.dart';
@@ -523,6 +524,8 @@ class CycleRepository {
     );
     if (stale.skipped) {
       debugPrint('[cycle-pull] silme atlandı: ${stale.skippedReason}');
+      await SyncTelemetry.report('stale_delete_skipped',
+          {'table': 'cycle_entries', 'reason': stale.skippedReason});
     }
     final anchor = (await getSettings()).firstPeriodDate;
     final anchorWasPeriod = anchor != null &&

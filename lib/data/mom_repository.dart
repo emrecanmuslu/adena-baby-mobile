@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/api_client.dart';
+import '../core/sync_telemetry.dart';
 import '../core/providers.dart';
 import '../models/mom_entry.dart';
 import 'local/app_database.dart';
@@ -185,6 +186,8 @@ class MomRepository {
     );
     if (stale.skipped) {
       debugPrint('[mom-pull] silme atlandı: ${stale.skippedReason}');
+      await SyncTelemetry.report('stale_delete_skipped',
+          {'table': 'mom_entries', 'baby': babyId, 'reason': stale.skippedReason});
     }
     await _db.transaction(() async {
       for (final m in rows) {
