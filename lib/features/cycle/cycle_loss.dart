@@ -37,7 +37,6 @@ Future<void> recordCycleLoss(WidgetRef ref, {DateTime? date}) async {
     // (bayat id, sonraki köprü çağrılarında yanlış bebeğe işaret ederdi).
     'baby': null,
   });
-  ref.invalidate(cycleSettingsProvider);
 }
 
 /// Şefkatli moddan çık → adet takibine dön (kullanıcı hazır olunca).
@@ -46,7 +45,23 @@ Future<void> returnToTrackingFromLoss(WidgetRef ref) async {
     'lifecycle_mode': CycleLifecycleMode.tracking.name,
     'predictions_hidden': false,
   });
-  ref.invalidate(cycleSettingsProvider);
+}
+
+/// Gebelik modundan "Adet takibine dön" (O23): bekleyen (expecting) bebek
+/// YETİM BIRAKILMAZ — kayıp akışındaki gibi sessizce kaldırılır, ayarlardaki
+/// bağ kopar (`baby: null`). KB-5 (b): çapa (`first_period_date`) SIFIRLANIR →
+/// adet ekranı bekleme moduna döner, kullanıcı ilk adetini girer (kayıp
+/// akışıyla aynı). K6 çapa politikası (`_maintainAnchorAfterRemoval`) yalnız
+/// kayıt silmede devreye girer; bu açık mod geçişiyle çelişmez.
+Future<void> returnToTrackingFromPregnancy(
+    WidgetRef ref, CycleSettings settings) async {
+  await _removeExpectingBabyForLoss(ref, settings);
+  await ref.read(cycleRepositoryProvider).patchSettings({
+    'lifecycle_mode': CycleLifecycleMode.tracking.name,
+    'predictions_hidden': false,
+    'baby': null,
+    'first_period_date': null,
+  });
 }
 
 /// Gebelik durumunu güncelle sayfası: doğum / kayıp / takibe dön.
@@ -97,7 +112,11 @@ Future<void> showCycleLossOrEnd(
       if (!context.mounted) return;
       context.go(baby != null ? '/born-flow' : '/baby-add');
     } else if (choice == 'tracking') {
-      await returnToTrackingFromLoss(ref);
+      if (settings.lifecycleMode == CycleLifecycleMode.pregnant) {
+        await returnToTrackingFromPregnancy(ref, settings); // O23
+      } else {
+        await returnToTrackingFromLoss(ref);
+      }
       if (context.mounted) showAdToast(context, tr('Adet takibine dönüldü'));
     }
   } catch (e) {

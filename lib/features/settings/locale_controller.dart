@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n.dart';
@@ -59,8 +60,12 @@ class LocaleController extends AsyncNotifier<String> {
     }
     final (_, cached) = await repo.readCache(locale);
     I18n.instance.apply(locale, cached);
-    final fresh = await repo.sync(locale);
-    I18n.instance.apply(locale, fresh);
+    // D14: sunucu senkronu ARKA PLANDA — setLocale/auth emit'i 15 sn ağı
+    // beklemesin (spinner yok, kullanıcı tekrar basıyordu). Taze sözlük
+    // gelince uygulanır; cache zaten anında uygulandı.
+    unawaited(repo.sync(locale).then((fresh) {
+      if (I18n.instance.locale == locale) I18n.instance.apply(locale, fresh);
+    }).catchError((_) {}));
   }
 
   Future<void> setLocale(String locale) async {

@@ -6,6 +6,7 @@ import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../data/sync_gate.dart';
 import '../../core/premium_gate.dart';
 import '../../core/source_citation.dart';
 import '../../core/theme.dart';
@@ -318,7 +319,7 @@ class _VacRow extends ConsumerWidget {
 
   Future<void> _toggle(BuildContext context, WidgetRef ref, bool done) async {
     // Sağlık kayıtları yalnız owner/parent — bakıcı salt-okunur.
-    if (!(ref.read(activeBabyProvider)?.canFullWrite ?? true)) {
+    if (!ref.read(canFullWriteProvider(babyId))) { // N1
       showAdToast(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
       return;
     }

@@ -21,7 +21,10 @@ const Map<LegalDoc, Map<String, String>> _paths = {
 
 /// Geçerli uygulama diline göre belgenin tam URL'si.
 String legalUrl(LegalDoc doc) {
-  final locale = I18n.instance.locale == 'en' ? 'en' : 'tr';
+  // O31: belgeler yalnız tr/en; diğer diller (zh/hi/es/fr/ar) Türkçeye değil
+  // İngilizceye düşer (bilgilendirilmiş rıza; Apple 3.1.2(c)).
+  final current = I18n.instance.locale;
+  final locale = current == 'tr' ? 'tr' : 'en';
   final path = _paths[doc]![locale]!;
   return '${AppConfig.websiteBaseUrl}$path';
 }

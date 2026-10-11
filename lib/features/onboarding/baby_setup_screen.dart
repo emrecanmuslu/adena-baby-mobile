@@ -140,7 +140,6 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                     '${_lmp!.month.toString().padLeft(2, '0')}-'
                     '${_lmp!.day.toString().padLeft(2, '0')}',
             });
-            ref.invalidate(cycleSettingsProvider);
           }
         } catch (_) {}
       }

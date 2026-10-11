@@ -80,12 +80,16 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
             breastfeeding: _bf ?? Breastfeeding.exclusive,
             firstPeriodDate:
                 _periodReturned ? (_firstPeriod ?? DateTime.now()) : null,
+            // D32: doğum sonrası sihirbaz postpartum modunu da yazsın (matris P4);
+            // adet döndüyse takip, dönmediyse tahminler gizli.
+            lifecycleMode: _periodReturned
+                ? CycleLifecycleMode.tracking
+                : CycleLifecycleMode.postpartum,
+            predictionsHidden: !_periodReturned,
             enabled: true,
           );
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
-      ref.invalidate(cycleSettingsProvider);
-      ref.invalidate(cycleEntriesProvider);
       if (mounted) widget.onDone();
     } catch (e) {
       if (mounted) {

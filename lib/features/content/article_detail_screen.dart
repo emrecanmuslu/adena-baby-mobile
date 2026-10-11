@@ -15,6 +15,13 @@ import '../../core/theme.dart';
 import '../../data/content_repository.dart';
 import 'content_ui.dart';
 
+/// D40: `content_opened` her rebuild'de değil, ekran yaşadığı sürece slug
+/// başına bir kez loglanır (autoDispose: ekran kapanınca sıfırlanır).
+final _articleOpenedLog = Provider.autoDispose.family<void, String>((ref, slug) {
+  unawaited(AnalyticsService.instance
+      .log('content_opened', {'content_type': 'article'}));
+});
+
 /// Makale detay — kapak/başlık + üst veri + Markdown gövde + tıbbi uyarı.
 class ArticleDetailScreen extends ConsumerWidget {
   final String slug;
@@ -24,8 +31,7 @@ class ArticleDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(articleProvider(slug));
     final cats = ref.watch(contentCategoriesProvider).asData?.value ?? const [];
-    unawaited(AnalyticsService.instance
-        .log('content_opened', {'content_type': 'article'}));
+    ref.watch(_articleOpenedLog(slug)); // D40: slug başına bir kez
 
     return Scaffold(
       appBar: AppBar(

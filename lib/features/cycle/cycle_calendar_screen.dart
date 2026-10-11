@@ -6,6 +6,7 @@ import '../../core/ad_widgets.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/in_flight_guard.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
@@ -285,7 +286,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
             showCycleEntrySheet(context, ref,
                 date: d,
                 existing: entry,
-                lochiaMode: status.mode != CycleMode.active);
+                lochiaMode: status.mode == CycleMode.lochia);
           } else {
             setState(() => _selected = d);
           }
@@ -468,7 +469,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       onTap: () => showCycleEntrySheet(context, ref,
           date: e.date,
           existing: e,
-          lochiaMode: status.mode != CycleMode.active),
+          lochiaMode: status.mode == CycleMode.lochia),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(12),
@@ -658,7 +659,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
                 onTap: () => showCycleEntrySheet(context, ref,
                     date: _selected,
                     existing: entry,
-                    lochiaMode: status.mode != CycleMode.active),
+                    lochiaMode: status.mode == CycleMode.lochia),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
@@ -911,7 +912,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
             note: existing?.note,
           ));
 
-  Future<void> _markPeriodDay(DateTime d, CycleEntry? existing) async {
+  Future<void> _markPeriodDayNow(DateTime d, CycleEntry? existing) async {
     try {
       await _savePeriod(d, existing);
       _afterEdit(tr('Adet başlangıcı kaydedildi'));
@@ -920,7 +921,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     }
   }
 
-  Future<void> _fillPeriod(
+  Future<void> _fillPeriodNow(
       DateTime start, DateTime end, Map<String, CycleEntry> byDay) async {
     try {
       var d = start;
@@ -934,7 +935,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     }
   }
 
-  Future<void> _unmarkPeriod(DateTime d, CycleEntry e) async {
+  Future<void> _unmarkPeriodNow(DateTime d, CycleEntry e) async {
     final hasOther = e.lochiaColor != null ||
         e.symptoms.isNotEmpty ||
         e.mood != null ||
@@ -959,9 +960,21 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     }
   }
 
+  /// Çift dokunma / uçuş koruması (O8): bir düzenleme sürerken ikinci dokunuş
+  /// atlanır; aynı güne iki saveEntry gitmez (repo ayrıca serileştirir).
+  final _editGuard = InFlightGuard();
+
+  Future<void> _markPeriodDay(DateTime d, CycleEntry? existing) =>
+      _editGuard.run(() => _markPeriodDayNow(d, existing));
+
+  Future<void> _fillPeriod(
+          DateTime start, DateTime end, Map<String, CycleEntry> byDay) =>
+      _editGuard.run(() => _fillPeriodNow(start, end, byDay));
+
+  Future<void> _unmarkPeriod(DateTime d, CycleEntry e) =>
+      _editGuard.run(() => _unmarkPeriodNow(d, e));
+
   void _afterEdit(String msg) {
-    ref.invalidate(cycleEntriesProvider);
-    ref.invalidate(cycleSettingsProvider); // ilk adet → mod değişebilir
     if (mounted) showAdToast(context, msg);
   }
 
@@ -1090,7 +1103,6 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     if (ok != true) return;
     try {
       await ref.read(cycleRepositoryProvider).deleteEntry(entry.id);
-      ref.invalidate(cycleEntriesProvider);
       if (mounted) showAdToast(context, tr('Silindi'));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));

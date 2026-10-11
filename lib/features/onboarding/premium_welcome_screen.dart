@@ -140,8 +140,8 @@ class _PremiumWelcomeScreenState extends ConsumerState<PremiumWelcomeScreen> {
       if (ok) {
         unawaited(AnalyticsService.instance
             .log('purchase_completed', {'plan': _plan, 'source': 'onboarding'}));
-        await ref.read(subscriptionRepositoryProvider).refresh();
-        ref.invalidate(subscriptionProvider);
+        // O12: RC doğruladı → backend refresh düşse de premium açılır.
+        await ref.read(purchaseConfirmProvider).applyConfirmed();
         if (mounted) {
           showAdToast(context, tr('Premium etkinleştirildi 🎉'));
           Navigator.of(context).maybePop();

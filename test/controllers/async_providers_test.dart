@@ -155,31 +155,45 @@ void main() {
       return c;
     }
 
-    test('cycleSettingsProvider resolves to repo.getSettings()', () async {
-      when(() => repo.getSettings())
-          .thenAnswer((_) async => const CycleSettings(enabled: false));
+    // O6/R8: ayar + kayıtlar yerel drift akışından (watch*) gelir; bulut
+    // senkronu (syncIfCloud) yalnız ayar provider'ında arka planda tetiklenir.
+    test('cycleSettingsProvider resolves to repo.watchSettings() + syncIfCloud',
+        () async {
+      when(() => repo.syncIfCloud()).thenAnswer((_) async {});
+      when(() => repo.watchSettings())
+          .thenAnswer((_) => Stream.value(const CycleSettings(enabled: false)));
 
       final c = make();
-      final out = await c.read(cycleSettingsProvider.future);
+      final sub = c.listen(cycleSettingsProvider, (_, _) {},
+          fireImmediately: true);
+      final out = (await drain(sub)).requireValue;
 
       expect(out.enabled, isFalse);
-      verify(() => repo.getSettings()).called(1);
+      verify(() => repo.watchSettings()).called(1);
+      verify(() => repo.syncIfCloud()).called(1);
+      verifyNever(() => repo.getSettings());
     });
 
-    test('cycleEntriesProvider resolves to repo.listEntries()', () async {
-      when(() => repo.listEntries()).thenAnswer(
-          (_) async => [CycleEntry(id: 'e1', date: DateTime(2026, 6, 1))]);
+    test('cycleEntriesProvider resolves to repo.watchEntries() (ağ yok)',
+        () async {
+      when(() => repo.watchEntries()).thenAnswer(
+          (_) => Stream.value([CycleEntry(id: 'e1', date: DateTime(2026, 6, 1))]));
 
       final c = make();
-      final out = await c.read(cycleEntriesProvider.future);
+      final sub = c.listen(cycleEntriesProvider, (_, _) {},
+          fireImmediately: true);
+      final out = (await drain(sub)).requireValue;
 
       expect(out.single.id, 'e1');
-      verify(() => repo.listEntries()).called(1);
+      verify(() => repo.watchEntries()).called(1);
+      verifyNever(() => repo.listEntries());
+      verifyNever(() => repo.syncIfCloud());
     });
 
-    test('cycleSettingsProvider error → AsyncError', () async {
-      when(() => repo.getSettings())
-          .thenAnswer((_) async => throw Exception('db'));
+    test('cycleSettingsProvider stream error → AsyncError', () async {
+      when(() => repo.syncIfCloud()).thenAnswer((_) async {});
+      when(() => repo.watchSettings())
+          .thenAnswer((_) => Stream.error(Exception('db')));
 
       final c = make();
       final sub = c.listen(cycleSettingsProvider, (_, _) {},
@@ -202,23 +216,32 @@ void main() {
       return c;
     }
 
-    test('resolves to repo.list(babyId)', () async {
-      when(() => repo.list('b1')).thenAnswer((_) async => [
+    // O5/R8: provider artık yerel drift akışını (watch) dinler; bulut senkronu
+    // (syncIfCloud) arka planda tetiklenir, ekran ağı beklemez.
+    test('resolves to repo.watch(babyId) and kicks syncIfCloud in background',
+        () async {
+      when(() => repo.syncIfCloud('b1')).thenAnswer((_) async {});
+      when(() => repo.watch('b1')).thenAnswer((_) => Stream.value([
             MomEntry(id: 'm1', kind: MomKind.weight, date: DateTime(2026, 6, 1),
                 weightKg: 60),
-          ]);
+          ]));
 
       final c = make();
-      final out = await c.read(momEntriesProvider('b1').future);
+      final sub = c.listen(momEntriesProvider('b1'), (_, _) {},
+          fireImmediately: true);
+      final out = (await drain(sub)).requireValue;
 
       expect(out.single.id, 'm1');
       expect(out.single.weightKg, 60);
-      verify(() => repo.list('b1')).called(1);
+      verify(() => repo.watch('b1')).called(1);
+      verify(() => repo.syncIfCloud('b1')).called(1);
+      verifyNever(() => repo.list(any()));
     });
 
-    test('error → AsyncError', () async {
-      when(() => repo.list('b1'))
-          .thenAnswer((_) async => throw Exception('boom'));
+    test('stream error → AsyncError', () async {
+      when(() => repo.syncIfCloud('b1')).thenAnswer((_) async {});
+      when(() => repo.watch('b1'))
+          .thenAnswer((_) => Stream.error(Exception('boom')));
 
       final c = make();
       final sub = c.listen(momEntriesProvider('b1'), (_, _) {},

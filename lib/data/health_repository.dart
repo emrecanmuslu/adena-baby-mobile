@@ -1,7 +1,10 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/api_client.dart';
@@ -12,9 +15,25 @@ import '../models/milestone.dart';
 import '../models/reminder.dart';
 import '../models/tooth.dart';
 import '../models/vaccine.dart';
+import '../core/sync_telemetry.dart';
 import 'health_catalog.dart';
 import 'local/app_database.dart';
+import 'local_session.dart';
 import 'sync_gate.dart';
+import 'sync_merge.dart';
+
+/// I1 — sahip bebekte sağlık pull'u (R1 "temiz satıra sunucu yazılır") yalnız
+/// bu hesabın yerel kümesi bir kez buluta TAM yüklendikten sonra güvenlidir:
+/// free→premium geçişinde ve lapse→yeniden abonelikte sunucu kümesi boş/bayat
+/// olduğundan pull, v14'te işaretlenmiş TEMİZ (dirty=0, K-4 aşı backfill'i yok)
+/// tikleri siler, ardından göç `pushAll` bunu mühürlerdi. Paylaşılan bebek
+/// (parent/caregiver) sahibin bulutundan beslenir → kapı yok.
+bool healthPullAllowed({
+  required bool shared,
+  required bool premiumSynced,
+  required bool reseedPending,
+}) =>
+    shared || (premiumSynced && !reseedPending);
 
 /// Sağlık (aşı/gelişim/diş/hatırlatıcı) — **local-first**. Liste = içerik
 /// kataloğu (cache'li/asset) + bebeğe özel durum (Drift). Cloud yalnız premium'da
@@ -31,8 +50,11 @@ class HealthRepository {
   final bool Function(String babyId) _cloudEnabled;
   /// İlaç planı yerelde değişince çağrılır (senkron tetiklemek için; bkz. provider).
   final void Function(String babyId)? onPlansChanged;
+  /// Aşı/gelişim/diş işareti yerelde değişince çağrılır (K4/O21: ağ beklenmez,
+  /// senkron `requestSyncSoon` ile arka planda).
+  final void Function(String babyId)? onStatusChanged;
   HealthRepository(this._db, this._api, this._catalog, this._cloudEnabled,
-      {this.onPlansChanged});
+      {this.onPlansChanged, this.onStatusChanged});
 
   static const _uuid = Uuid();
 
@@ -52,8 +74,14 @@ class HealthRepository {
     return {for (final r in rows) r.itemKey: (done: r.done, date: r.statusDate)};
   }
 
+  /// [dirty] true = kullanıcı işareti (push bekler, pull ezmez — R1);
+  /// false = sunucudan gelen/onaylanan değer (`pushError` da temizlenir).
+  /// [serverSeen] (K2): değer sunucudan geldi/onaylandı → `serverUpdatedAt`
+  /// damgalanır ("sunucudan en az bir kez onay görüldü"; sunucu damgası
+  /// olmadığından istemci anı). Kullanıcı yazımında damgaya dokunulmaz.
   Future<void> _writeStatus(
-      String babyId, String kind, String key, bool done, DateTime? date) async {
+      String babyId, String kind, String key, bool done, DateTime? date,
+      {required bool dirty, bool serverSeen = false}) async {
     await _db.into(_db.healthStatuses).insertOnConflictUpdate(
           HealthStatusesCompanion.insert(
             baby: babyId,
@@ -61,19 +89,30 @@ class HealthRepository {
             itemKey: key,
             done: Value(done),
             statusDate: Value(done ? date : null),
+            dirty: Value(dirty),
+            clientUpdatedAt: Value(dirty ? DateTime.now().toUtc() : null),
+            serverUpdatedAt: serverSeen
+                ? Value(DateTime.now().toUtc())
+                : const Value.absent(),
+            pushError: const Value(null),
           ),
         );
   }
 
+  /// Yerel yazım + dirty; AĞ BEKLENMEZ (O21). Bulut açıksa senkron tetiklenir
+  /// (`onStatusChanged` → `requestSyncSoon`), delta push `pushDirty` ile gider.
   Future<void> _setStatus(
       String babyId, String kind, String key, bool done, DateTime? date) async {
-    await _writeStatus(babyId, kind, key, done, date);
-    if (_cloudEnabled(babyId)) {
-      try {
-        await pushAll(babyId);
-      } catch (_) {/* çevrimdışı — yerel korunur */}
-    }
+    await _writeStatus(babyId, kind, key, done, date, dirty: true);
+    if (_cloudEnabled(babyId)) onStatusChanged?.call(babyId);
   }
+
+  /// Push'tan sonra yankı bekleyen aşı işaretleri: babyId → {itemKey: (done, damga)}.
+  /// O19 güvencesi: sunucu aşıyı ADLA eşler; dil uyuşmazlığında 2xx ama sessiz
+  /// no-op olur. `dirty=false` yalnız pull'da aynı ad + aynı değer yankılanınca
+  /// yazılır; yankı yoksa satır dirty kalır (R1 pull'dan korur, tik kaybolmaz).
+  final Map<String, Map<String, ({bool done, DateTime? date, DateTime? stamp})>>
+      _vaccineEcho = {};
 
   /// birth_date + ay → due_date (Python add_months ile birebir).
   DateTime _addMonths(DateTime d, int months) {
@@ -203,6 +242,30 @@ class HealthRepository {
     return _toReminder(row);
   }
 
+  /// Cihazdaki TÜM bebeklerin AÇIK hatırlatıcı id'leri — `NotificationService.sync`
+  /// mutabakatı bununla yapılır (tek bebeğin listesiyle yapılınca diğer bebeklerin
+  /// bildirimleri yetim sanılıp siliniyordu, BULGULAR.md K1).
+  /// I5: tombstone (silinmiş) bebeğin hatırlatıcıları "aktif" sayılmaz — aksi
+  /// hâlde mutabakat onları hiç yetim görmez, silinmiş bebek için çalmaya
+  /// devam ederlerdi.
+  Future<Set<int>> activeReminderIds() async {
+    final q = _db.select(_db.localReminders).join([
+      innerJoin(_db.babies, _db.babies.id.equalsExp(_db.localReminders.baby)),
+    ])
+      ..where(_db.localReminders.enabled.equals(true) &
+          _db.babies.isDeleted.equals(false));
+    final rows = await q.get();
+    return {for (final r in rows) r.readTable(_db.localReminders).localId};
+  }
+
+  /// Bir bebeğin TÜM özel/randevu hatırlatıcı id'leri (bildirim iptali için, I5).
+  Future<List<int>> reminderIdsForBaby(String babyId) async {
+    final rows = await (_db.select(_db.localReminders)
+          ..where((r) => r.baby.equals(babyId)))
+        .get();
+    return [for (final r in rows) r.localId];
+  }
+
   Future<void> setReminderEnabled(int id, bool enabled) async {
     await (_db.update(_db.localReminders)..where((r) => r.localId.equals(id)))
         .write(LocalRemindersCompanion(enabled: Value(enabled)));
@@ -218,13 +281,15 @@ class HealthRepository {
   // ile paylaşılıyordu. Bildirim cihaz-yerel kalır (herkes kendi telefonunda
   // açıp kapatır). Yerel yazım → dirty; `syncMedicationPlans` gönderir/çeker.
 
-  MedicationPlan _toPlan(MedicationPlanRow r) => MedicationPlan(
+  MedicationPlan _toPlan(MedicationPlanRow r, {bool localOnly = false}) =>
+      MedicationPlan(
         id: r.localId,
         name: r.name,
         dose: r.dose,
         times: (jsonDecode(r.timesJson) as List).cast<String>(),
         active: r.active,
         createdAt: r.createdAt ?? DateTime.now(),
+        localOnly: localOnly,
       );
 
   /// Son-yazan-kazanır damgası. drift DateTime'ı saniyeye yuvarlar → aynı
@@ -238,7 +303,35 @@ class HealthRepository {
     return now;
   }
 
+  // I13 / KB-10: "yalnız bu cihazda" = bakıcıda dirty VE sunucunun bildiği bir
+  // plan DEĞİL. Sunucunun bildiği plan id'leri her başarılı senkronda prefs'e
+  // yazılır (şema değişikliği yok); senkron henüz hiç koşmadıysa küme boştur ve
+  // eski kontrat (dirty → yerel-only) geçerli kalır.
+  static String _kServerPlanIds(String babyId) => 'med_server_plan_ids_$babyId';
+
+  Future<Set<String>> _serverKnownPlanIds(String babyId) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return (p.getStringList(_kServerPlanIds(babyId)) ?? const []).toSet();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> _rememberServerPlanIds(String babyId, Iterable<String> ids) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(_kServerPlanIds(babyId), ids.toSet().toList());
+    } catch (_) {}
+  }
+
+  bool _isLocalOnly(MedicationPlanRow r, Set<String> serverKnown) =>
+      r.dirty && !(r.uuid != null && serverKnown.contains(r.uuid));
+
   Future<List<MedicationPlan>> medicationPlans(String babyId) async {
+    // N2/KB-10: bakıcıda sunucuya hiç gitmemiş dirty satır = yerel-only plan.
+    final caregiver = await _isCaregiver(babyId);
+    final known = caregiver ? await _serverKnownPlanIds(babyId) : const <String>{};
     final rows = await (_db.select(_db.medicationPlans)
           ..where((r) => r.baby.equals(babyId) & r.isDeleted.equals(false))
           // Her cihazda aynı sıra (yerel ekleme sırası cihazdan cihaza değişir).
@@ -247,11 +340,34 @@ class HealthRepository {
             (r) => OrderingTerm(expression: r.localId),
           ]))
         .get();
-    return rows.map(_toPlan).toList();
+    return rows
+        .map((r) => _toPlan(r, localOnly: caregiver && _isLocalOnly(r, known)))
+        .toList();
+  }
+
+  /// Cihazdaki TÜM bebeklerin aktif (silinmemiş) ilaç planı yerel id'leri —
+  /// `NotificationService.syncMedicationPlans` yetim-bildirim mutabakatı için
+  /// (BULGULAR.md K5).
+  Future<Set<int>> activeMedicationPlanIds() async {
+    final rows = await (_db.select(_db.medicationPlans)
+          ..where((r) => r.active.equals(true) & r.isDeleted.equals(false)))
+        .get();
+    return {for (final r in rows) r.localId};
+  }
+
+  /// KB-8: bakıcı (caregiver) ilaç planı EKLEYEMEZ/düzenleyemez/silemez —
+  /// backend `can_full_write` reddeder, senkron göndermezdi → cihazda hayalet
+  /// plan kalırdı. K-7/O20 deseni: repo `StateError`, UI kilit + toast. Bakıcı
+  /// yalnız doz işaretler (kayıt senkronu rolden bağımsız gönderir).
+  Future<void> _requireFullWrite(String babyId) async {
+    final b = await (_db.select(_db.babies)..where((x) => x.id.equals(babyId)))
+        .getSingleOrNull();
+    if (b?.myRole == 'caregiver') throw StateError('caregiver_readonly: $babyId');
   }
 
   Future<MedicationPlan> createMedicationPlan(String babyId,
       {required String name, required String dose, required List<String> times}) async {
+    await _requireFullWrite(babyId);
     final now = DateTime.now();
     final id = await _db.into(_db.medicationPlans).insert(
           MedicationPlansCompanion.insert(
@@ -277,6 +393,7 @@ class HealthRepository {
           ..where((r) => r.localId.equals(id)))
         .getSingleOrNull();
     if (row == null) return;
+    await _requireFullWrite(row.baby); // KB-8
     await (_db.update(_db.medicationPlans)..where((r) => r.localId.equals(id))).write(
       MedicationPlansCompanion(
         name: name != null ? Value(name) : const Value.absent(),
@@ -297,6 +414,16 @@ class HealthRepository {
           ..where((r) => r.localId.equals(id)))
         .getSingleOrNull();
     if (row == null) return;
+    // N2/KB-10: bakıcı yalnız KB-8 öncesinden kalmış yerel-only (dirty) planını
+    // silebilir — sunucuya hiç gitmemiştir, yerelden kaldırılır (senkron yok).
+    if (await _isCaregiver(row.baby)) {
+      if (!_isLocalOnly(row, await _serverKnownPlanIds(row.baby))) {
+        throw StateError('caregiver_readonly: ${row.baby}'); // I13: sunucu planı
+      }
+      await (_db.delete(_db.medicationPlans)..where((r) => r.localId.equals(id))).go();
+      onPlansChanged?.call(row.baby);
+      return;
+    }
     if (row.uuid != null && _cloudEnabled(row.baby)) {
       await (_db.update(_db.medicationPlans)..where((r) => r.localId.equals(id)))
           .write(MedicationPlansCompanion(
@@ -358,6 +485,8 @@ class HealthRepository {
     final data = resp.data as Map<String, dynamic>;
     final applied = (data['applied'] as List? ?? const []).cast<String>().toSet();
     final plans = (data['plans'] as List? ?? const []).cast<Map<String, dynamic>>();
+    // I13: sunucunun bildiği plan kümesi (bakıcı "yalnız bu cihazda" ayrımı için).
+    await _rememberServerPlanIds(babyId, [for (final sp in plans) sp['id'] as String]);
 
     var changed = false;
     final removed = <int>[];
@@ -468,41 +597,349 @@ class HealthRepository {
     });
   }
 
-  /// Premium giriş/göçte bulutu yerele çeker (mevcut salt-okuma GET uçlarından).
-  /// Yereldeki işaretleri korur; yalnız buluttaki "yapıldı"ları ekler.
-  Future<void> importFromCloud(String babyId) async {
-    try {
-      final r = await _api.dio.get('/babies/$babyId/vaccines');
-      for (final e in (r.data as List? ?? const [])) {
-        final m = e as Map<String, dynamic>;
-        if (m['status'] == 'done') {
-          await _writeStatus(babyId, 'vaccine',
-              m['vaccine_name'] as String? ?? '', true, _parse(m['done_date']));
-        }
-      }
-    } catch (_) {}
-    try {
-      final r = await _api.dio.get('/babies/$babyId/milestones');
-      for (final e in (r.data as List? ?? const [])) {
-        final m = e as Map<String, dynamic>;
-        if (m['achieved'] == true) {
-          await _writeStatus(babyId, 'milestone', m['key'] as String? ?? '', true,
-              _parse(m['achieved_date']));
-        }
-      }
-    } catch (_) {}
-    try {
-      final r = await _api.dio.get('/babies/$babyId/teeth');
-      for (final e in (r.data as List? ?? const [])) {
-        final m = e as Map<String, dynamic>;
-        if (m['erupted'] == true) {
-          await _writeStatus(babyId, 'tooth', m['key'] as String? ?? '', true,
-              _parse(m['erupted_date']));
-        }
-      }
-    } catch (_) {}
-    // Hatırlatıcılar KİŞİSEL (karar 2026-07-07) → buluttan içeri alınmaz.
+  /// J2 / KB-12 — lapse→yeniden abonelikte yeniden-tohumlama: TAM küme DEĞİL,
+  /// **birleşim** semantiği. Backend damgasız son-yazan-kazanır olduğundan tam
+  /// küme (damgasız `done=false` dahil) çok cihazlı ailede diğer cihazın
+  /// işaretlerini ezerdi. Gönderilen: (1) `done=true` satırlar, (2)
+  /// `clientUpdatedAt != null` satırlar (v15'te kullanıcı eliyle değişti; açık
+  /// "kaldırma" dahil). Damgasız `done=false` (v14 varsayılanı) gönderilmez.
+  /// Gönderilecek satır yoksa istek atılmaz. İlk göç `pushAll` ile tam kümedir.
+  Future<void> pushReseed(String babyId) async {
+    final rows = await (_db.select(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) &
+              (s.done.equals(true) | s.clientUpdatedAt.isNotNull())))
+        .get();
+    if (rows.isEmpty) return;
+    // K5: aşı kimliği `pushDirty`/`pushAll` ile AYNI yoldan — katalog adı
+    // (sunucu `vaccine_name` ile eşler; asset'te key == name ama buna
+    // dayanılmaz).
+    final cat = await _catalog();
+    List<Map<String, Object?>> items(String kind, String keyField,
+        String doneField, String dateField) =>
+        [
+          for (final r in rows.where((r) => r.kind == kind))
+            {
+              keyField: kind == 'vaccine' ? _vaccineName(cat, r.itemKey) : r.itemKey,
+              doneField: r.done,
+              dateField: _d(r.statusDate),
+            }
+        ];
+    await _api.dio.post('/babies/$babyId/health/sync', data: {
+      'vaccines': items('vaccine', 'name', 'done', 'done_date'),
+      'milestones': items('milestone', 'key', 'achieved', 'achieved_date'),
+      'teeth': items('tooth', 'key', 'erupted', 'erupted_date'),
+    });
   }
+
+  /// Delta push (K4, R7): yalnız `dirty=true` satırlar `/health/sync`'e gider;
+  /// backend yalnız gönderilen kalemleri günceller. 2xx → gelişim/diş satırları
+  /// damga değişmediyse temizlenir (R5); aşılar yankı bekler (`pull`, O19).
+  /// Kalıcı 4xx → `pushError` (R3), dirty kalır, fırlatmaz. Geçici hata (ağ/5xx/
+  /// 401/403) → fırlatır (syncAll 403'ü salt-okunur kapısına, diğerini hadError'a
+  /// düşürür), dirty kalır.
+  /// Yankılanmayan (dil uyuşmazlığı) aşı anahtarları — M9(a): her 1 dk polling
+  /// turunda yeniden POST edilmesin; yalnız tam turlarda (açılış/öne geliş/
+  /// işaretleme, `retryUnechoed: true`) yeniden denenir. Süreç ömrü.
+  final Map<String, Set<String>> _unechoedVaccines = {};
+
+  Future<void> pushDirty(String babyId, {bool retryUnechoed = true}) async {
+    var rows = await (_db.select(_db.healthStatuses)
+          ..where((s) => s.baby.equals(babyId) & s.dirty.equals(true)))
+        .get();
+    if (!retryUnechoed) {
+      final skip = _unechoedVaccines[babyId] ?? const <String>{};
+      rows = rows.where((r) => !(r.kind == 'vaccine' && skip.contains(r.itemKey))).toList();
+    }
+    if (rows.isEmpty) return;
+    final cat = await _catalog();
+
+    try {
+      await _api.dio.post('/babies/$babyId/health/sync', data: {
+        'vaccines': [
+          for (final r in rows.where((r) => r.kind == 'vaccine'))
+            {
+              'name': _vaccineName(cat, r.itemKey),
+              'done': r.done,
+              'done_date': _d(r.statusDate)
+            }
+        ],
+        'milestones': [
+          for (final r in rows.where((r) => r.kind == 'milestone'))
+            {'key': r.itemKey, 'achieved': r.done, 'achieved_date': _d(r.statusDate)}
+        ],
+        'teeth': [
+          for (final r in rows.where((r) => r.kind == 'tooth'))
+            {'key': r.itemKey, 'erupted': r.done, 'erupted_date': _d(r.statusDate)}
+        ],
+      });
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      // K-1: 403 + caregiver (rol düşmüş) → 'role'; kalıcı 4xx → 'HTTP n'.
+      final roleErr = status == 403 && await _isCaregiver(babyId);
+      if (roleErr || classifyDioError(e) == PushFailure.permanent) {
+        final code = roleErr ? 'role' : 'HTTP $status';
+        for (final r in rows) {
+          await _setPushError(babyId, r.kind, r.itemKey, code);
+        }
+        return;
+      }
+      rethrow;
+    }
+    final echo = _vaccineEcho.putIfAbsent(babyId, () => {});
+    for (final r in rows) {
+      if (r.kind == 'vaccine') {
+        echo[r.itemKey] =
+            (done: r.done, date: r.statusDate, stamp: r.clientUpdatedAt);
+        continue;
+      }
+      await _clearDirtyIfUnchanged(
+          babyId, r.kind, r.itemKey, r.clientUpdatedAt, r.done, r.statusDate);
+    }
+  }
+
+  /// Aşı push kimliği: katalog `key` → yerelleştirilmiş `name` (sunucu adla
+  /// eşler, O19). Katalogta yoksa (dil değişti) anahtar ad olarak gider, yankı
+  /// bekler. `pushDirty`, `pushReseed` ve `pushAll` aynı kuralı kullanır (K5).
+  static String _vaccineName(HealthCatalog cat, String key) {
+    for (final v in cat.vaccines) {
+      if (v.key == key) return v.name;
+    }
+    return key;
+  }
+
+  Future<bool> _isCaregiver(String babyId) async {
+    final b = await (_db.select(_db.babies)..where((x) => x.id.equals(babyId)))
+        .getSingleOrNull();
+    return b?.myRole == 'caregiver';
+  }
+
+  /// K-1 "geri al": ilgili türün sunucu listesinde kalem varsa sunucu değeri
+  /// yazılır (dirty=false, pushError=null); kalem yoksa yerel değer korunur,
+  /// yalnız bayraklar temizlenir (sağlıkta silinecek satır yok).
+  Future<RevertResult> revertToServer(String babyId, String kind, String key) async {
+    final path = switch (kind) {
+      'vaccine' => 'vaccines',
+      'milestone' => 'milestones',
+      _ => 'teeth',
+    };
+    try {
+      final r = await _api.dio.get('/babies/$babyId/$path');
+      if (r.statusCode != 200 || r.data is! List) return RevertResult.failed;
+      for (final e in r.data as List) {
+        if (e is! Map) continue;
+        final m = e.cast<String, dynamic>();
+        final k = kind == 'vaccine' ? m['vaccine_name'] : m['key'];
+        if (k != key) continue;
+        final done = switch (kind) {
+          'vaccine' => m['status'] == 'done',
+          'milestone' => m['achieved'] == true,
+          _ => m['erupted'] == true,
+        };
+        final date = _parse(m[switch (kind) {
+          'vaccine' => 'done_date',
+          'milestone' => 'achieved_date',
+          _ => 'erupted_date',
+        }]);
+        await _writeStatus(babyId, kind, key, done, date,
+            dirty: false, serverSeen: true);
+        return RevertResult.applied;
+      }
+      await (_db.update(_db.healthStatuses)
+            ..where((s) =>
+                s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+          .write(const HealthStatusesCompanion(
+              dirty: Value(false), pushError: Value(null)));
+      return RevertResult.applied;
+    } catch (_) {
+      return RevertResult.failed;
+    }
+  }
+
+  Future<void> _setPushError(
+      String babyId, String kind, String key, String? err) async {
+    await (_db.update(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+        .write(HealthStatusesCompanion(pushError: Value(err)));
+  }
+
+  /// R5: gönderim sırasında satır yeniden değiştiyse dirty kalır. Damga saniye
+  /// çözünürlüklü saklandığından (drift DateTime = unix saniye) değer de
+  /// karşılaştırılır: aynı saniyede geri alınan işaret temizlenmez.
+  Future<void> _clearDirtyIfUnchanged(String babyId, String kind, String key,
+      DateTime? sentStamp, bool sentDone, DateTime? sentDate) async {
+    final cur = await (_db.select(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+        .getSingleOrNull();
+    if (cur == null ||
+        cur.clientUpdatedAt != sentStamp ||
+        cur.done != sentDone ||
+        cur.statusDate != sentDate) {
+      return;
+    }
+    // K2: 2xx/yankı = sunucu bu kalemi tanıdı → onay damgası.
+    await (_db.update(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+        .write(HealthStatusesCompanion(
+            dirty: const Value(false),
+            pushError: const Value(null),
+            serverUpdatedAt: Value(DateTime.now().toUtc())));
+  }
+
+  /// Pull (K-3 tetikleri; R1 tam uygulanır — işaret KALDIRMA da yayılır):
+  /// mevcut GET uçlarından üç liste; her sunucu kalemi için yerel satır dirty
+  /// ise dokunulmaz, temiz/yoksa sunucu değeri yazılır. Sunucuda olmayan yerel
+  /// satır silinmez (katalog × durum; R4 uygulanmaz). Yalnız 200 + List ve boş
+  /// olmayan liste uygulanır (K-2 ruhu). Aşı yankısı burada çözülür (O19).
+  /// Döner: yerelde bir şey değişti mi (çağıran provider'ları invalidate eder).
+  Future<bool> pull(String babyId) async {
+    var changed = false;
+    // I1 telemetri (TASARIM §5B "ek güvence"): temiz done=true → sunucu
+    // pending geçişleri sayılır, Crashlytics non-fatal. Davranış değişmez.
+    final clearedDone = <String, int>{};
+    final echo = _vaccineEcho[babyId] ??
+        const <String, ({bool done, DateTime? date, DateTime? stamp})>{};
+    Future<void> apply(String kind, String key, bool done, DateTime? date) async {
+      final cur = await (_db.select(_db.healthStatuses)
+            ..where((s) =>
+                s.baby.equals(babyId) & s.kind.equals(kind) & s.itemKey.equals(key)))
+          .getSingleOrNull();
+      if (cur != null && cur.dirty) {
+        // Yankı: push ettiğimiz aşı sunucuda aynı değerle görünüyorsa onaylandı.
+        final e = kind == 'vaccine' ? echo[key] : null;
+        if (e != null && e.done == done) {
+          await _clearDirtyIfUnchanged(babyId, kind, key, e.stamp, e.done, e.date);
+        }
+        return; // R1: dirty satır ezilmez
+      }
+      if (cur != null && cur.done == done && cur.statusDate == (done ? date : null)) {
+        // K2: sunucu aynı değeri gösteriyor → "onay görüldü" damgası (bir kez).
+        if (cur.serverUpdatedAt == null) {
+          await (_db.update(_db.healthStatuses)
+                ..where((s) =>
+                    s.baby.equals(babyId) &
+                    s.kind.equals(kind) &
+                    s.itemKey.equals(key)))
+              .write(HealthStatusesCompanion(
+                  serverUpdatedAt: Value(DateTime.now().toUtc())));
+        }
+        return;
+      }
+      if (cur != null && cur.done && !done) {
+        clearedDone[kind] = (clearedDone[kind] ?? 0) + 1;
+      }
+      await _writeStatus(babyId, kind, key, done, date,
+          dirty: false, serverSeen: true);
+      changed = true;
+    }
+
+    Future<List<Map<String, dynamic>>?> fetch(String path) async {
+      try {
+        final r = await _api.dio.get('/babies/$babyId/$path');
+        if (r.statusCode != 200 || r.data is! List) return null;
+        final list = (r.data as List)
+            .whereType<Map>()
+            .map((m) => m.cast<String, dynamic>())
+            .toList();
+        return list.isEmpty ? null : list;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final vac = await fetch('vaccines');
+    // J1(b): sunucu aşı listesi TAMAMEN pending (hiç done yok) iken yerelde
+    // temiz done=true aşı satırı varsa sunucu kümesi lazy üretilmiş/hiç
+    // yüklenmemiştir → otoriter değildir: aşı kalemleri UYGULANMAZ, hesap
+    // yeniden-tohumlama (lapse ile aynı yol) bekler. Gelişim/diş etkilenmez.
+    // K2 daraltması: yalnız sunucudan HİÇ onay görmemiş (`serverUpdatedAt`
+    // NULL — v14 tiki) ve sunucunun TANIDIĞI (adı listede) satırlar sayılır.
+    // Pull/yankı ile onaylanmış tik lazy değildir → diğer cihazın "son done
+    // tiki kaldırma"sı meşru sunucu durumudur, uygulanır. Sunucunun tanımadığı
+    // ad (dil uyuşmazlığı, I10) reseed ile de düzelmez → sayılmaz (K3: reseed
+    // ↔ pull ping-pong'u kesilir).
+    if (vac != null &&
+        !vac.any((m) => m['status'] == 'done') &&
+        await _hasUnconfirmedDoneVaccine(
+            babyId, {for (final m in vac) m['vaccine_name'] as String? ?? ''})) {
+      final acct = LocalSession.activeAccountId;
+      if (acct != null) await LocalSession.markHealthReseedForAccount(acct);
+      await SyncTelemetry.report('health_pull_lazy_server_skipped', {
+        'baby': babyId,
+        'server_items': vac.length,
+      });
+    } else if (vac != null) {
+      // I10: katalogta karşılığı olmayan (başka dilde adlandırılmış) sunucu
+      // kalemleri yerelde satır üretmez — ekranda görünmez yetim satırlar
+      // birikiyordu. Yankı (echo) kontrolü sunucu listesine bakar, etkilenmez.
+      final catKeys = {for (final v in (await _catalog()).vaccines) v.key};
+      for (final m in vac) {
+        final name = m['vaccine_name'] as String? ?? '';
+        if (name.isEmpty || !catKeys.contains(name)) continue;
+        await apply('vaccine', name, m['status'] == 'done', _parse(m['done_date']));
+      }
+      // Yankılanmayan aşılar dirty kalır (dil uyuşmazlığı); bir kez logla.
+      final missing =
+          echo.keys.where((k) => !vac.any((m) => m['vaccine_name'] == k)).toList();
+      if (missing.isNotEmpty) {
+        debugPrint(
+            '[health-pull] aşı yankısı yok (dil uyuşmazlığı?): ${missing.join(', ')}');
+        _unechoedVaccines[babyId] = missing.toSet(); // M9(a)
+      } else if (echo.isNotEmpty) {
+        _unechoedVaccines.remove(babyId);
+      }
+    }
+    _vaccineEcho.remove(babyId);
+    final mil = await fetch('milestones');
+    if (mil != null) {
+      for (final m in mil) {
+        final key = m['key'] as String? ?? '';
+        if (key.isEmpty) continue;
+        await apply('milestone', key, m['achieved'] == true, _parse(m['achieved_date']));
+      }
+    }
+    final tee = await fetch('teeth');
+    if (tee != null) {
+      for (final m in tee) {
+        final key = m['key'] as String? ?? '';
+        if (key.isEmpty) continue;
+        await apply('tooth', key, m['erupted'] == true, _parse(m['erupted_date']));
+      }
+    }
+    // Hatırlatıcılar KİŞİSEL (karar 2026-07-07) → buluttan içeri alınmaz.
+    if (clearedDone.isNotEmpty) {
+      await SyncTelemetry.report('health_pull_cleared_done', {
+        'baby': babyId,
+        for (final e in clearedDone.entries) e.key: e.value,
+      });
+    }
+    return changed;
+  }
+
+  /// Geriye uyumlu ad (ilk import / göç): artık R1 ile tam pull.
+  /// J1(b)+K2: yerelde temiz (dirty=0), sunucudan hiç onay görmemiş
+  /// (`serverUpdatedAt` NULL) ve adı [serverNames] içinde olan `done=true` aşı
+  /// satırı var mı?
+  Future<bool> _hasUnconfirmedDoneVaccine(
+      String babyId, Set<String> serverNames) async {
+    if (serverNames.isEmpty) return false;
+    final row = await (_db.select(_db.healthStatuses)
+          ..where((s) =>
+              s.baby.equals(babyId) &
+              s.kind.equals('vaccine') &
+              s.done.equals(true) &
+              s.dirty.equals(false) &
+              s.serverUpdatedAt.isNull() &
+              s.itemKey.isIn(serverNames))
+          ..limit(1))
+        .getSingleOrNull();
+    return row != null;
+  }
+
+  Future<void> importFromCloud(String babyId) => pull(babyId);
 
   Future<void> purgeBaby(String babyId) async {
     await (_db.delete(_db.healthStatuses)..where((s) => s.baby.equals(babyId))).go();
@@ -519,6 +956,8 @@ final healthRepositoryProvider = Provider<HealthRepository>(
     (babyId) => ref.read(babyCloudSyncedProvider(babyId)),
     // Plan değişti → aile senkronunu (debounce'lu) tetikle; planlar syncAll içinde gider.
     onPlansChanged: (_) => ref.read(syncServiceProvider).requestSyncSoon(),
+    // İşaret değişti (K4/O21) → aynı yol; delta push + pull syncAll'da.
+    onStatusChanged: (_) => ref.read(syncServiceProvider).requestSyncSoon(),
   ),
 );
 

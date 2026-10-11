@@ -8,6 +8,7 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
+import 'cycle_anchor.dart';
 
 /// My Calendar "Tap on date to adjust your period" pariteli **adet ayarlama takvimi**.
 /// Hero butonunun ("Adeti başlat" / "Adeti düzenle") arkasında açılır: dikey aylık
@@ -77,9 +78,6 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
   bool _saving = false;
 
   DateTime _dOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-  String _iso(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
 
   @override
   void initState() {
@@ -210,19 +208,15 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
           await repo.deleteEntry(existing.id);
         }
       }
-      // İlk-adet çapası (firstPeriodDate) bakımı: adet günleri değişince çapa en
-      // erken işaretli güne eşitlenir; hiç adet kalmadıysa null → bekleme moduna
-      // döner. Bu olmadan silinen adette çapa bayat kalıp tahmini bozardı (bug #2).
-      final newAnchor =
-          _marked.isEmpty ? null : (_marked.toList()..sort()).first;
-      final curAnchor = widget.settings.firstPeriodDate;
-      final curD = curAnchor == null ? null : _dOnly(curAnchor);
-      if (newAnchor != curD) {
-        await repo.patchSettings(
-            {'first_period_date': newAnchor == null ? null : _iso(newAnchor)});
-      }
-      ref.invalidate(cycleEntriesProvider);
-      ref.invalidate(cycleSettingsProvider); // ilk adet → mod değişebilir
+      // İlk-adet çapası (firstPeriodDate) bakımı — K6: çapa, son sıfırlama
+      // olayından (doğum/kayıp) SONRAKİ en eski işaretli gün olur; sıfırlama
+      // öncesi günler çapa olamaz; sıfırlama sonrası işaretli gün yoksa çapa
+      // DEĞİŞMEZ. Yama lifecycle_mode'u açıkça taşır → örtük tracking geçişi yok.
+      // (Çapa günü kaldırıldığında repo zaten aynı kuralla taşır; burada aynı
+      // aday hesaplanır, fark yoksa yama atlanır.)
+      final patch = anchorPatchForAdjust(
+          marked: _marked, settings: await repo.getSettings());
+      if (patch != null) await repo.patchSettings(patch);
       if (!mounted) return;
       Navigator.pop(context, true);
       showAdToast(context, tr('Kaydedildi'));

@@ -10,7 +10,6 @@ import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
 import '../babies/baby_controller.dart';
-import 'cycle_engine.dart';
 import 'cycle_kit.dart';
 import 'cycle_lifecycle.dart';
 import 'cycle_pregnancy_bridge.dart';
@@ -120,17 +119,8 @@ class _BodyState extends ConsumerState<_Body> {
     );
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
-      ref.invalidate(cycleSettingsProvider);
-      // Hatırlatıcıları döngü tahminine göre yeniden planla.
-      final entries = await ref.read(cycleRepositoryProvider).listEntries();
-      final status = computeStatus(next, entries);
-      await NotificationService.instance.syncCycle(
-        reminders: next.reminders,
-        nextPeriod: status.nextPeriod,
-        // Yaklaşan pencere → mevcut döngününki geçmişse hatırlatıcı sonraki
-        // döngünün penceresine kurulur (eskiden geçmiş tarih → hiç kurulmuyordu).
-        fertileStart: status.upcomingFertileStart,
-      );
+      // Hatırlatıcılar merkezi CycleNotifSync ile (O25) ayar/kayıt akışından
+      // yeniden planlanır — burada ayrıca çağrılmaz.
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     }
@@ -510,7 +500,6 @@ class _BodyState extends ConsumerState<_Body> {
     final next = widget.settings.copyWith(breastfeeding: picked);
     try {
       await ref.read(cycleRepositoryProvider).patchSettings(next.toPatchJson());
-      ref.invalidate(cycleSettingsProvider);
       if (mounted) showAdToast(context, tr('Güncellendi'));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
@@ -554,8 +543,6 @@ class _BodyState extends ConsumerState<_Body> {
       });
       // Planlı adet bildirimlerini de iptal et (boş yapı → yalnız cancel).
       await NotificationService.instance.syncCycle(reminders: const {});
-      ref.invalidate(cycleEntriesProvider);
-      ref.invalidate(cycleSettingsProvider);
       if (mounted) {
         showAdToast(context, tr('Adet takvimi sıfırlandı'));
         // Ayarlar sayfası kurulumu silinen kabuğun üstünde kalmasın.

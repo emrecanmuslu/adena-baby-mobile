@@ -1,16 +1,23 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/api_client.dart';
+import '../core/sync_telemetry.dart';
 import '../core/providers.dart';
 import '../features/auth/auth_controller.dart';
+import '../features/cycle/cycle_anchor.dart';
 import '../models/cycle.dart';
+import '../features/records/record_controller.dart';
 import 'local/app_database.dart';
 import 'local_session.dart';
 import 'sync_gate.dart';
+import 'sync_merge.dart';
 
 const _uuid = Uuid();
 
@@ -21,7 +28,10 @@ class CycleRepository {
   final ApiClient _api;
   final bool Function() _cloudEnabled;
 
-  CycleRepository(this._db, this._api, this._cloudEnabled);
+  /// Yerel değişiklik sonrası (bulut açıkken) senkron tetikleyici — O26:
+  /// ekran ağı beklemez, push `syncIfCloud` (syncAll turu) ile arka planda.
+  final void Function()? onChanged;
+  CycleRepository(this._db, this._api, this._cloudEnabled, {this.onChanged});
 
   /// Adet modülü kullanıcıya özel → yerel satırlar aktif hesaba göre kapsamlanır.
   /// Settings tekil satırının id'si = hesap id'si.
@@ -29,21 +39,141 @@ class CycleRepository {
 
   // ---- Ayarlar ----
 
-  Future<CycleSettings> getSettings() async {
+  /// Yerel ayar (R8: ağa ÇIKMAZ). Bulut senkronu [syncIfCloud] ile arka planda.
+  Future<CycleSettings> getSettings() async =>
+      _rowToSettings(await _settingsRow());
+
+  Future<CycleSettingsRow?> _settingsRow() async {
     final acct = _acct;
-    if (acct == null) return const CycleSettings();
-    if (_cloudEnabled()) {
-      try {
-        final resp = await _api.dio.get('/cycle/settings');
-        await _writeSettings(
-            CycleSettings.fromJson(resp.data as Map<String, dynamic>),
-            dirty: false);
-      } catch (_) {}
-    }
-    final row = await (_db.select(_db.cycleSettingsTable)
-          ..where((s) => s.id.equals(acct)))
+    if (acct == null) return null;
+    return (_db.select(_db.cycleSettingsTable)..where((s) => s.id.equals(acct)))
         .getSingleOrNull();
-    return _rowToSettings(row);
+  }
+
+  /// Reaktif ayar akışı — ekranlar bunu dinler (satır yoksa varsayılan).
+  /// [accountId] (J3): provider'lar kapsamı AÇIKÇA geçirir — login geçişinde
+  /// statik `activeAccountId` provider'dan sonra set edildiği için stream
+  /// eski kapsama (null/misafir) bağlanıp kalıyordu (BabyController deseni).
+  Stream<CycleSettings> watchSettings({String? accountId}) {
+    final acct = accountId ?? _acct;
+    if (acct == null) return Stream.value(const CycleSettings());
+    return (_db.select(_db.cycleSettingsTable)..where((s) => s.id.equals(acct)))
+        .watchSingleOrNull()
+        .map(_rowToSettings);
+  }
+
+  /// Reaktif kayıt akışı (yeni→eski, tombstone gizli). [accountId]: bkz.
+  /// [watchSettings] (J3).
+  Stream<List<CycleEntry>> watchEntries({String? accountId}) {
+    final acct = accountId ?? _acct;
+    if (acct == null) return Stream.value(const []);
+    final q = _db.select(_db.cycleEntries)
+      ..where((e) => e.isDeleted.equals(false) & e.accountId.equals(acct))
+      ..orderBy([(e) => OrderingTerm.desc(e.date)]);
+    return q.watch().map((rows) => rows.map(_toEntry).toList());
+  }
+
+  /// Bulut uygunsa ayar + kayıtları arka planda eşitler; her hata yutulur.
+  /// Ayar (O6/R1): yerel satır DIRTY ise önce PATCH denenir; başarılıysa PATCH
+  /// yanıtı (sunucu güncel hâli) uygulanır ve GET atlanır; başarısızsa GET
+  /// uygulanMAZ (yerel değişiklik korunur, sonraki tur yeniden dener). Temizse
+  /// GET sonucu uygulanır. Kayıtlar: push dirty (bulk/DELETE) + pull (R1-R5).
+  Future<void> syncIfCloud() async {
+    if (!_cloudEnabled()) return;
+    try {
+      await _syncSettings();
+    } catch (_) {}
+    try {
+      await _pushDirtyEntries();
+      await _pullEntries();
+    } catch (_) {}
+  }
+
+  Future<void> _syncSettings() async {
+    final row = await _settingsRow();
+    if (row != null && row.dirty) {
+      await _pushDirtySettings(row);
+      return; // başarı → PATCH yanıtı uygulandı; değilse dirty korunur, GET yok
+    }
+    final resp = await _api.dio.get('/cycle/settings');
+    final srv = CycleSettings.fromJson(resp.data as Map<String, dynamic>);
+    // Uçuş sırasında yerel değişiklik olduysa (dirty oldu) sunucuyu uygulama.
+    final again = await _settingsRow();
+    if (again != null && again.dirty) return;
+    await _writeSettings(srv, dirty: false, base: _baseOf(srv));
+  }
+
+  /// Dirty ayar satırını PATCH eder; gövde yerel gerçektir (`baby` null dahil —
+  /// satır dirty ise bağ koparma niyeti de yerelde yazılıdır). Başarıda sunucu
+  /// yanıtı yerele uygulanır ve satır temizlenir. Döner: başarılı mı.
+  Future<bool> _pushDirtySettings(CycleSettingsRow row) async {
+    // M2: gövde = yerel gerçek − sunucunun son onayladığı (`baseJson`) ile
+    // AYNI olan alanlar. Böylece B cihazındaki bayat `baby: null` (yerelde
+    // değişmedi) A'nın kurduğu bebek bağını çözmez; bilinçli null (K-8: base'de
+    // dolu, yerelde null) yine gider. Base yoksa (ilk kullanım/migration) tam
+    // sözlük (eski kontrat).
+    final full = _rowToSettings(row).toPatchJson(includeNullBaby: true);
+    final base = _decodeBase(row.baseJson);
+    final body = base == null
+        ? full
+        : {
+            for (final e in full.entries)
+              if (_canon(e.value) != _canon(base[e.key])) e.key: e.value
+          };
+    if (body.isEmpty) {
+      // Sunucuyla zaten aynı → istek yok, temiz.
+      await (_db.update(_db.cycleSettingsTable)..where((s) => s.id.equals(row.id)))
+          .write(const CycleSettingsTableCompanion(
+              dirty: Value(false), pushError: Value(null)));
+      return true;
+    }
+    try {
+      final resp = await _api.dio.patch('/cycle/settings', data: body);
+      final srv = CycleSettings.fromJson(resp.data as Map<String, dynamic>);
+      final again = await _settingsRow();
+      // Uçuşta yeniden düzenlendiyse (damga değişti) dirty kalsın; base yine
+      // sunucu yanıtı (bir sonraki diff doğru olsun).
+      if (again != null && again.clientUpdatedAt != row.clientUpdatedAt) {
+        await (_db.update(_db.cycleSettingsTable)..where((s) => s.id.equals(row.id)))
+            .write(CycleSettingsTableCompanion(baseJson: Value(_baseOf(srv))));
+        return true;
+      }
+      await _writeSettings(srv, dirty: false, base: _baseOf(srv));
+      return true;
+    } on DioException catch (e) {
+      if (classifyDioError(e) == PushFailure.permanent) {
+        await (_db.update(_db.cycleSettingsTable)
+              ..where((s) => s.id.equals(row.id)))
+            .write(CycleSettingsTableCompanion(
+                pushError: Value('HTTP ${e.response?.statusCode}')));
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String _baseOf(CycleSettings s) =>
+      jsonEncode(s.toPatchJson(includeNullBaby: true));
+
+  static Map<String, dynamic>? _decodeBase(String? json) {
+    if (json == null) return null;
+    try {
+      final v = jsonDecode(json);
+      return v is Map ? Map<String, dynamic>.from(v) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Anahtar sırası bağımsız kanonik JSON (BabyRepository ile aynı yöntem).
+  static String _canon(dynamic v) {
+    if (v is Map) {
+      final keys = v.keys.map((k) => k.toString()).toList()..sort();
+      return '{${keys.map((k) => '${jsonEncode(k)}:${_canon(v[k])}').join(',')}}';
+    }
+    if (v is List) return '[${v.map(_canon).join(',')}]';
+    return jsonEncode(v);
   }
 
   CycleSettings _rowToSettings(CycleSettingsRow? row) {
@@ -75,8 +205,10 @@ class CycleRepository {
     );
   }
 
+  /// Yerel merge + dirty; bulut uygunsa hemen PATCH (O6: önce GET YAPILMAZ —
+  /// GET, gönderilmemiş yerel değişikliği eziyordu).
   Future<CycleSettings> patchSettings(Map<String, dynamic> fields) async {
-    final current = await getSettings();
+    final current = await getSettings(); // yerel (ağ yok)
     // Durum-makinesi: postpartum/loss'ta İLK ADET işaretlenince (çapa null →
     // dolu) döngü takibine otomatik dönülür ("ilk gerçek adet = yeni Gün 1").
     // Merkezde (patchSettings) yapılır ki hem saveEntry kancası hem adet-düzenleme
@@ -97,21 +229,23 @@ class CycleRepository {
     final merged = {...current.toPatchJson(), ...fields};
     final next = CycleSettings.fromJson(merged);
     await _writeSettings(next, dirty: true);
-    if (_cloudEnabled()) {
-      try {
-        await _api.dio.patch('/cycle/settings', data: next.toPatchJson());
-        await _markSettingsClean();
-      } catch (_) {}
-    }
+    // O26: satır içi PATCH YOK — dirty satır `syncIfCloud` (syncAll turu,
+    // `requestSyncSoon` debounce) ile `_pushDirtySettings` üzerinden gider; gövde
+    // yerel gerçeği (`baby` null dahil, K-8 retry kontratı) taşır.
+    if (_cloudEnabled()) onChanged?.call();
     return next;
   }
 
-  Future<void> _writeSettings(CycleSettings s, {required bool dirty}) async {
+  /// [base] sunucudan gelen/onaylanan JSON (`toPatchJson(includeNullBaby:true)`)
+  /// — yalnız sunucu kaynaklı yazımlarda verilir; yerel yazımda korunur (M2).
+  Future<void> _writeSettings(CycleSettings s,
+      {required bool dirty, String? base}) async {
     final acct = _acct;
     if (acct == null) return;
     await _db.into(_db.cycleSettingsTable).insertOnConflictUpdate(
           CycleSettingsTableCompanion(
             id: Value(acct),
+            baseJson: base == null ? const Value.absent() : Value(base),
             baby: Value(s.babyId),
             birthDate: Value(s.birthDate),
             breastfeeding: Value(s.breastfeeding?.name),
@@ -131,28 +265,17 @@ class CycleRepository {
             learningWindow: Value(s.learningWindow),
             clientUpdatedAt: Value(DateTime.now().toUtc()),
             dirty: Value(dirty),
+            pushError: const Value(null),
           ),
         );
   }
 
-  Future<void> _markSettingsClean() async {
-    final acct = _acct;
-    if (acct == null) return;
-    await (_db.update(_db.cycleSettingsTable)..where((s) => s.id.equals(acct)))
-        .write(const CycleSettingsTableCompanion(dirty: Value(false)));
-  }
-
   // ---- Girdiler ----
 
+  /// Yerel kayıtlar (R8: ağa ÇIKMAZ). Senkron [syncIfCloud] ile.
   Future<List<CycleEntry>> listEntries({DateTime? from, DateTime? to}) async {
     final acct = _acct;
     if (acct == null) return const [];
-    if (_cloudEnabled()) {
-      try {
-        await _pushDirtyEntries();
-        await _pullEntries();
-      } catch (_) {}
-    }
     final q = _db.select(_db.cycleEntries)
       ..where((e) => e.isDeleted.equals(false) & e.accountId.equals(acct));
     if (from != null) {
@@ -167,7 +290,20 @@ class CycleRepository {
   }
 
   /// Gün başına tek kayıt — aynı tarih varsa onun id'siyle günceller.
-  Future<CycleEntry> saveEntry(CycleEntry entry) async {
+  ///
+  /// Çağrılar SERİLEŞTİRİLİR (O8): iki ekrandan/çift dokunuştan aynı güne eş
+  /// zamanlı iki çağrı "mevcut var mı?" sorgusunu aynı anda boş görüp iki UUID
+  /// üretiyordu → yerelde çift satır, sunucuda id uyuşmazlığı. Sıra bize gelince
+  /// mevcut satır görülür ve aynı id güncellenir.
+  Future<CycleEntry> saveEntry(CycleEntry entry) {
+    final run = _saveChain.then((_) => _saveEntryNow(entry));
+    _saveChain = run.then((_) {}, onError: (_) {});
+    return run;
+  }
+
+  Future<void> _saveChain = Future.value();
+
+  Future<CycleEntry> _saveEntryNow(CycleEntry entry) async {
     final acct = _acct;
     var id = entry.id;
     if (id.isEmpty) {
@@ -204,7 +340,7 @@ class CycleRepository {
     // doğum/kayıp kanamasıdır, adet değil).
     if (entry.isPeriod) {
       final s = await getSettings();
-      if (_afterLatestReset(entry.date, s)) {
+      if (afterLatestReset(entry.date, s)) {
         if (s.firstPeriodDate == null) {
           await patchSettings({'first_period_date': _isoDate(entry.date)});
         } else if (s.predictionsHidden) {
@@ -219,17 +355,39 @@ class CycleRepository {
         }
       }
     }
-    if (_cloudEnabled()) {
-      try {
-        await _pushDirtyEntries();
-      } catch (_) {}
-    }
+    // D33: çapa gününün adet işareti bu kayıtla kalktıysa çapayı taşı.
+    if (!entry.isPeriod) await _maintainAnchorAfterRemoval(entry.date);
+    if (_cloudEnabled()) onChanged?.call(); // O26: push arka planda
     final r = await (_db.select(_db.cycleEntries)..where((e) => e.id.equals(id)))
         .getSingle();
     return _toEntry(r);
   }
 
+  /// D33 / K6 politikası: çapa gününün adet işareti kalktıysa (silme, akış
+  /// kaldırma, senkronla silinme) çapa, sıfırlama sonrası KALAN en eski adet
+  /// gününe taşınır; kalan yoksa korunur. Çapa günü hâlâ adetse ya da [removed]
+  /// çapa günü değilse hiçbir şey yapmaz — kurulum sihirbazının kayıtsız çapası
+  /// sonraki adet kayıtlarıyla OYNAMAZ.
+  Future<void> _maintainAnchorAfterRemoval(DateTime removed) async {
+    final s = await getSettings();
+    final anchor = s.firstPeriodDate;
+    if (anchor == null || _dayOnly(anchor) != _dayOnly(removed)) return;
+    final entries = await listEntries();
+    final stillPeriod = entries.any(
+        (e) => _dayOnly(e.date) == _dayOnly(anchor) && e.isPeriod);
+    if (stillPeriod) return;
+    final cand = anchorCandidate(
+        entries.where((e) => e.isPeriod).map((e) => e.date), s);
+    if (cand == null || cand == _dayOnly(anchor)) return;
+    await patchSettings({
+      'first_period_date': _isoDate(cand),
+      'lifecycle_mode': s.lifecycleMode.name, // örtük mod geçişi olmasın
+    });
+  }
+
   Future<void> deleteEntry(String id) async {
+    final row = await (_db.select(_db.cycleEntries)..where((e) => e.id.equals(id)))
+        .getSingleOrNull();
     await (_db.update(_db.cycleEntries)..where((e) => e.id.equals(id))).write(
       CycleEntriesCompanion(
         isDeleted: const Value(true),
@@ -237,11 +395,8 @@ class CycleRepository {
         clientUpdatedAt: Value(DateTime.now().toUtc()),
       ),
     );
-    if (_cloudEnabled()) {
-      try {
-        await _pushDirtyEntries();
-      } catch (_) {}
-    }
+    if (row != null) await _maintainAnchorAfterRemoval(row.date); // D33
+    if (_cloudEnabled()) onChanged?.call(); // O26: push arka planda
   }
 
   // ---- Cloud senkron (premium) ----
@@ -251,17 +406,23 @@ class CycleRepository {
   Future<void> importFromCloud() async {
     try {
       final resp = await _api.dio.get('/cycle/settings');
-      await _writeSettings(
-          CycleSettings.fromJson(resp.data as Map<String, dynamic>),
-          dirty: false);
+      // K8/R1: yerelde gönderilmemiş (dirty) ayar varsa — misafir göçünden
+      // gelen kurulum gibi — sunucunun (çoğu kez boş varsayılan) satırı onu ezmez.
+      final local = await _settingsRow();
+      if (local == null || !local.dirty) {
+        // I9: base de yazılır → import sonrası ilk dirty PATCH yalnız değişen
+        // alanı taşır (M2); eskiden base NULL kalıp tam sözlük (baby dahil) gidiyordu.
+        final srv = CycleSettings.fromJson(resp.data as Map<String, dynamic>);
+        await _writeSettings(srv, dirty: false, base: _baseOf(srv));
+      }
     } catch (_) {}
     await _pullEntries();
   }
 
   /// Migrasyonda tam yükleme için aktif hesabın TÜM adet kayıt + ayarını dirty
   /// işaretle (grace sonrası cloud silinmişse geri yüklensin).
-  Future<void> markAllDirty() async {
-    final acct = _acct;
+  Future<void> markAllDirty({String? accountId}) async {
+    final acct = accountId ?? _acct;
     if (acct == null) return;
     await (_db.update(_db.cycleEntries)..where((e) => e.accountId.equals(acct)))
         .write(const CycleEntriesCompanion(dirty: Value(true)));
@@ -270,46 +431,152 @@ class CycleRepository {
   }
 
   /// free→premium migrasyonu: yerel ayar + girdileri sunucuya yollar.
-  Future<void> migrateToCloud() async {
+  /// [accountId] verilirse yalnız o hesap hâlâ aktifken çalışır (J1: göç
+  /// sırasında kapsam değiştiyse başka hesabın verisi gönderilmez).
+  Future<void> migrateToCloud({String? accountId}) async {
     final acct = _acct;
-    if (acct == null) return;
-    final row = await (_db.select(_db.cycleSettingsTable)
-          ..where((s) => s.id.equals(acct)))
-        .getSingleOrNull();
-    if (row != null && row.dirty) {
-      try {
-        await _api.dio.patch('/cycle/settings',
-            data: _rowToSettings(row).toPatchJson());
-        await _markSettingsClean();
-      } catch (_) {}
-    }
+    if (acct == null || (accountId != null && accountId != acct)) return;
+    final row = await _settingsRow();
+    if (row != null && row.dirty) await _pushDirtySettings(row);
     await _pushDirtyEntries();
   }
 
+  Future<void> _setEntryPushError(String id, String? err) =>
+      (_db.update(_db.cycleEntries)..where((e) => e.id.equals(id)))
+          .write(CycleEntriesCompanion(pushError: Value(err)));
+
+  static String _short(String s) => s.length > 120 ? s.substring(0, 120) : s;
+
+  /// K-1 "geri al" (kayıt): `GET /cycle/entries/{id}` 200 → uygula; 404 →
+  /// `notOnServer`; diğer → `failed`.
+  Future<RevertResult> revertEntryToServer(String id) async {
+    final acct = _acct;
+    if (acct == null) return RevertResult.failed;
+    try {
+      final resp = await _api.dio.get('/cycle/entries/$id');
+      if (resp.statusCode != 200 || resp.data is! Map) return RevertResult.failed;
+      final m = Map<String, dynamic>.from(resp.data as Map);
+      final ce = CycleEntry.fromJson(m);
+      await _db.into(_db.cycleEntries).insertOnConflictUpdate(
+            CycleEntriesCompanion.insert(
+              id: ce.id,
+              accountId: Value(acct),
+              date: _dayOnly(ce.date),
+              flow: Value(ce.flow?.name),
+              lochiaColor: Value(ce.lochiaColor?.apiValue),
+              symptoms: Value(jsonEncode(ce.symptoms)),
+              mood: Value(ce.mood),
+              note: Value(ce.note),
+              serverUpdatedAt: Value(_parseTs(m['updated_at'])),
+              isDeleted: const Value(false),
+              dirty: const Value(false),
+              pushError: const Value(null),
+            ),
+          );
+      return RevertResult.applied;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return RevertResult.notOnServer;
+      return RevertResult.failed;
+    } catch (_) {
+      return RevertResult.failed;
+    }
+  }
+
+  Future<void> discardEntry(String id) =>
+      (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(id))).go();
+
+  /// K-1 "geri al" (ayar): `GET /cycle/settings` → sunucu kopyası uygulanır
+  /// (dirty=false, pushError=null). Ayar sunucuda her zaman vardır.
+  Future<RevertResult> revertSettingsToServer() async {
+    try {
+      final resp = await _api.dio.get('/cycle/settings');
+      if (resp.statusCode != 200 || resp.data is! Map) return RevertResult.failed;
+      final srv = CycleSettings.fromJson(Map<String, dynamic>.from(resp.data as Map));
+      await _writeSettings(srv, dirty: false, base: _baseOf(srv));
+      return RevertResult.applied;
+    } catch (_) {
+      return RevertResult.failed;
+    }
+  }
+
+  static DateTime? _parseTs(dynamic v) =>
+      (v is String && v.isNotEmpty) ? DateTime.tryParse(v) : null;
+
+  /// Pull (TASARIM-SENKRON.md R1/R2/R4/R5, O7): dirty yerel satır ezilmez,
+  /// tombstone diriltilmez, sunucunun TAM listesinde olmayan temiz satır K-2
+  /// korumalarıyla silinir; `updated_at` damga karşılaştırması + `serverUpdatedAt`.
   Future<void> _pullEntries() async {
+    final acct = _acct;
+    if (acct == null) return;
     final resp = await _api.dio.get('/cycle/entries');
-    final data = resp.data as List<dynamic>;
+    // Yanıt TAMAMEN parse edilmeden hiçbir şey uygulanmaz (R4 güvencesi).
+    final rows = (resp.data as List<dynamic>)
+        .map((e) => e as Map<String, dynamic>)
+        .toList();
+    final parsed = [for (final m in rows) (m, CycleEntry.fromJson(m))];
+    final serverIds = {for (final (_, ce) in parsed) ce.id};
+    final local = await (_db.select(_db.cycleEntries)
+          ..where((e) => e.accountId.equals(acct)))
+        .get();
+    final localById = {for (final r in local) r.id: r};
+    final stale = staleLocalIds(
+      local: [
+        for (final r in local)
+          LocalRowState(r.id, dirty: r.dirty, deleted: r.isDeleted)
+      ],
+      serverIds: serverIds,
+      statusCode: resp.statusCode ?? 0,
+      parsedOk: true,
+    );
+    if (stale.skipped) {
+      debugPrint('[cycle-pull] silme atlandı: ${stale.skippedReason}');
+      await SyncTelemetry.report('stale_delete_skipped',
+          {'table': 'cycle_entries', 'reason': stale.skippedReason});
+    }
+    final anchor = (await getSettings()).firstPeriodDate;
+    final anchorWasPeriod = anchor != null &&
+        (await listEntries()).any(
+            (e) => _dayOnly(e.date) == _dayOnly(anchor) && e.isPeriod);
     await _db.transaction(() async {
-      for (final e in data) {
-        final m = e as Map<String, dynamic>;
-        final ce = CycleEntry.fromJson(m);
+      for (final (m, ce) in parsed) {
+        final l = localById[ce.id];
+        final decision = decideServerRow(
+          localExists: l != null,
+          localDirty: l?.dirty ?? false,
+          localDeleted: l?.isDeleted ?? false,
+          localStamp: l?.clientUpdatedAt,
+          serverStamp: _parseTs(m['updated_at']),
+        );
+        if (decision != MergeDecision.apply) continue;
         await _db.into(_db.cycleEntries).insertOnConflictUpdate(
               CycleEntriesCompanion.insert(
                 id: ce.id,
-                accountId: Value(_acct),
+                accountId: Value(acct),
                 date: _dayOnly(ce.date),
                 flow: Value(ce.flow?.name),
                 lochiaColor: Value(ce.lochiaColor?.apiValue),
                 symptoms: Value(jsonEncode(ce.symptoms)),
                 mood: Value(ce.mood),
                 note: Value(ce.note),
+                serverUpdatedAt: Value(_parseTs(m['updated_at'])),
                 dirty: const Value(false),
               ),
             );
       }
+      // R4: sunucuda artık olmayan temiz satırlar (başka cihazda silindi; sunucu
+      // hard delete). Çapa (`firstPeriodDate`) settings'te durduğundan motor
+      // etkilenmez (bkz. computeStatus: starts = {anchor, …}).
+      for (final id in stale.ids) {
+        await (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(id))).go();
+      }
     });
+    // D33: başka cihaz çapa gününün adet işaretini kaldırdıysa çapayı taşı.
+    if (anchorWasPeriod) await _maintainAnchorAfterRemoval(anchor);
   }
 
+  /// Silmeler tek tek DELETE (404 = zaten yok → başarı); oluştur/güncellemeler
+  /// TEK toplu istek (`/cycle/entries/bulk`). Yalnız `saved` temizlenir; `failed[]`
+  /// ve kalıcı (4xx) redler dirty kalır + `pushErrors` (R3/R5).
   Future<void> _pushDirtyEntries() async {
     final acct = _acct;
     if (acct == null) return;
@@ -318,19 +585,23 @@ class CycleRepository {
         .get();
     if (dirty.isEmpty) return;
 
-    // Silmeler (nadir) tek tek DELETE; oluştur/güncellemeler TEK toplu istek
-    // (/cycle/entries/bulk) — migrasyonda N kayıt için N istek yerine 1 istek.
     final upserts = <CycleEntryRow>[];
     for (final r in dirty) {
-      if (r.isDeleted) {
-        try {
-          await _api.dio.delete('/cycle/entries/${r.id}');
-          await (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(r.id)))
-              .go();
-        } catch (_) {}
-      } else {
+      if (!r.isDeleted) {
         upserts.add(r);
+        continue;
       }
+      try {
+        await _api.dio.delete('/cycle/entries/${r.id}');
+      } on DioException catch (e) {
+        if (e.response?.statusCode != 404) {
+          await _noteFailure(r.id, e);
+          continue; // tombstone dirty kalır, sonraki tur yeniden dener
+        }
+      } catch (_) {
+        continue;
+      }
+      await (_db.delete(_db.cycleEntries)..where((e) => e.id.equals(r.id))).go();
     }
     if (upserts.isEmpty) return;
 
@@ -339,32 +610,56 @@ class CycleRepository {
         '/cycle/entries/bulk',
         data: [for (final r in upserts) _toEntry(r).toJson()],
       );
-      // Sunucunun onayladığı id'leri temizle (kısmî başarıda kalanlar dirty kalır).
-      final saved = (((resp.data as Map)['saved'] as List?) ?? const [])
-          .map((e) => e.toString())
-          .toSet();
+      final body = resp.data as Map;
+      final saved =
+          ((body['saved'] as List?) ?? const []).map((e) => e.toString()).toSet();
+      final failed = <String, String>{
+        for (final f in (body['failed'] as List?) ?? const [])
+          if (f is Map && f['id'] != null)
+            f['id'].toString(): (f['error'] ?? 'failed').toString(),
+      };
       await _db.transaction(() async {
         for (final r in upserts) {
           if (saved.contains(r.id)) {
+            // R5 / I3: bulk uçuştayken aynı satır yeniden düzenlendi/silindiyse
+            // dirty KALIR (sonraki tur gönderir); yalnız pushError temizlenir.
+            final cur = await (_db.select(_db.cycleEntries)
+                  ..where((e) => e.id.equals(r.id)))
+                .getSingleOrNull();
+            final unchanged = cur != null &&
+                cur.clientUpdatedAt == r.clientUpdatedAt &&
+                cur.isDeleted == r.isDeleted &&
+                cur.flow == r.flow &&
+                cur.lochiaColor == r.lochiaColor &&
+                cur.symptoms == r.symptoms &&
+                cur.mood == r.mood &&
+                cur.note == r.note;
             await (_db.update(_db.cycleEntries)..where((e) => e.id.equals(r.id)))
-                .write(const CycleEntriesCompanion(dirty: Value(false)));
+                .write(CycleEntriesCompanion(
+                    dirty: unchanged ? const Value(false) : const Value.absent(),
+                    pushError: const Value(null)));
+          } else if (failed.containsKey(r.id)) {
+            // sunucu bu öğeyi reddetti (kalıcı)
+            await _setEntryPushError(r.id, _short(failed[r.id]!));
           }
         }
       });
-    } catch (_) {}
+    } on DioException catch (e) {
+      for (final r in upserts) {
+        await _noteFailure(r.id, e);
+      }
+    } catch (_) {
+      // Beklenmeyen — dirty kalır, sonraki tur.
+    }
   }
 
-  /// Verilen gün, son sıfırlama olayının (doğum/kayıp) gününden SONRA mı?
-  /// Olay yoksa her gün geçerlidir. Olay günü dahil öncesi geçersizdir —
-  /// bkz. saveEntry'deki çapa kancası (backfill koruması).
-  static bool _afterLatestReset(DateTime day, CycleSettings s) {
-    final resets = [
-      if (s.birthDate != null) _dayOnly(s.birthDate!),
-      if (s.lastLossDate != null) _dayOnly(s.lastLossDate!),
-    ];
-    if (resets.isEmpty) return true;
-    final latest = resets.reduce((a, b) => b.isAfter(a) ? b : a);
-    return _dayOnly(day).isAfter(latest);
+  /// R3 + K-1: kalıcı 4xx → `pushError` kolonu (adet kişisel: rol yok).
+  Future<void> _noteFailure(String id, DioException e) async {
+    if (classifyDioError(e) == PushFailure.permanent) {
+      final code = e.response?.statusCode;
+      await _setEntryPushError(id, 'HTTP $code');
+      debugPrint('[cycle-push] kalıcı red $id: HTTP $code ${e.response?.data}');
+    }
   }
 
   static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -396,24 +691,31 @@ final cycleRepositoryProvider = Provider<CycleRepository>(
     ref.watch(databaseProvider),
     ref.watch(apiClientProvider),
     () => ref.read(cloudSyncEnabledProvider),
+    // O26: yerel değişiklik → debounce'lu senkron turu (syncAll → _syncCycle).
+    onChanged: () => ref.read(syncServiceProvider).requestSyncSoon(),
   ),
 );
 
-/// Kullanıcının adet modülü ayarı (yerel; premium'da sunucuyla eşlenir).
-/// Hesap değişince yeniden yüklenir (aktif hesaba göre kapsamlı).
-final cycleSettingsProvider = FutureProvider<CycleSettings>((ref) async {
+/// Kullanıcının adet modülü ayarı — yerel drift akışı (R8); bulut senkronu
+/// arka planda (`syncIfCloud`), ekran ağı beklemez (O6/O26).
+/// Hesap değişince yeniden kurulur (aktif hesaba göre kapsamlı).
+final cycleSettingsProvider = StreamProvider<CycleSettings>((ref) async* {
   // Açılış yarışı koruması: oturum çözülmeden (auth loading) activeAccountId
   // null olur ve boş ayarlar "kurulmamış" sanılıp sihirbaz açılırdı. Auth
   // sonuçlanana dek bekle → shell bu sürede spinner gösterir.
   await ref.watch(authControllerProvider.future);
-  ref.watch(activeAccountIdProvider);
-  return ref.watch(cycleRepositoryProvider).getSettings();
+  // J3: kapsam provider değeriyle AÇIKÇA geçirilir (statik geç set edilir).
+  final acct = ref.watch(activeAccountIdProvider);
+  final repo = ref.watch(cycleRepositoryProvider);
+  unawaited(repo.syncIfCloud());
+  yield* repo.watchSettings(accountId: acct);
 });
 
-/// Tüm adet kayıtları (yeni→eski).
-final cycleEntriesProvider = FutureProvider<List<CycleEntry>>((ref) async {
-  // bkz. cycleSettingsProvider — aynı açılış yarışı koruması.
+/// Tüm adet kayıtları (yeni→eski) — yerel drift akışı (R8).
+final cycleEntriesProvider = StreamProvider<List<CycleEntry>>((ref) async* {
+  // bkz. cycleSettingsProvider — aynı açılış yarışı koruması. Senkron tetiği
+  // ayar provider'ında (iki kez ağ turu açmamak için).
   await ref.watch(authControllerProvider.future);
-  ref.watch(activeAccountIdProvider);
-  return ref.watch(cycleRepositoryProvider).listEntries();
+  final acct = ref.watch(activeAccountIdProvider); // J3: bkz. cycleSettingsProvider
+  yield* ref.watch(cycleRepositoryProvider).watchEntries(accountId: acct);
 });

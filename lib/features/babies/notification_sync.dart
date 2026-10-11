@@ -205,6 +205,15 @@ void syncBreastTimer(Baby baby, Record? r, {bool enabled = true}) {
   );
 }
 
+/// Provider yenilenirken (`ref.invalidate` → Riverpod `AsyncData(isLoading:true)`)
+/// `asData` ESKİ listeyi taşır. Bildirim kuran yan-etkili dinleyiciler bayat
+/// listeyle çalışmasın diye: yükleniyorsa null, aksi halde oturmuş liste.
+List<T>? settledListOrNull<T>(AsyncValue<List<T>> v) =>
+    v.isLoading ? null : v.asData?.value;
+
+/// Aynı kural, liste olmayan değerler için (O14: bayat `asData` okumaları).
+T? settledOrNull<T>(AsyncValue<T> v) => v.isLoading ? null : v.asData?.value;
+
 /// Tüm bebeklerin aktif uyku/emzirme sayacı bildirimini YENİDEN post eder.
 /// Uygulama öne gelince (resume) çağrılır: kullanıcı bildirim iznini sistem
 /// ayarlarından SONRADAN açtıysa, devam eden sayacın bildirimi yeniden belirir
@@ -249,17 +258,20 @@ class _HealthNotifSync extends ConsumerWidget {
     // durumundan bağımsız hesaplanır (bekleme moduna dönerse de temizlensin
     // diye enabled'a !isExpecting eklenir, plan listesi zaten yalnız
     // doğmuş bebekte oluşturulabilir).
-    final medPlans = ref.watch(medicationPlansProvider(baby.id)).asData?.value;
+    // Yenileme (invalidate) sırasında `asData` ESKİ listeyi taşır → silinen/
+    // duraklatılan plan bayat listeden geri kuruluyordu (BULGULAR.md K5). Yalnız
+    // oturmuş veriyle çalış; liste bazlı kurulum + DB'den taze aktif kümeyle
+    // yetim temizliği + serileştirme syncMedicationPlans içinde.
+    final medPlans =
+        settledListOrNull(ref.watch(medicationPlansProvider(baby.id)));
     if (medPlans != null) {
-      for (final p in medPlans) {
-        NotificationService.instance.syncMedicationPlan(
-          enabled: medicationOn && p.active && !baby.isExpecting,
-          planId: p.id,
-          name: p.name,
-          times: p.times,
-          babyName: baby.name,
-        );
-      }
+      NotificationService.instance.syncMedicationPlans(
+        medPlans,
+        enabled: medicationOn && !baby.isExpecting,
+        babyName: baby.name,
+        activePlanIds:
+            ref.read(healthRepositoryProvider).activeMedicationPlanIds,
+      );
     }
 
     if (baby.isExpecting) {
@@ -284,7 +296,7 @@ class _HealthNotifSync extends ConsumerWidget {
         .syncPregnancyWeekReminder(enabled: false, at: null, slot: slot);
 
     // Aşı — en yakın (zorunlu, yapılmamış) aşının tarihinde.
-    final vaccines = ref.watch(vaccinesProvider(baby.id)).asData?.value;
+    final vaccines = settledListOrNull(ref.watch(vaccinesProvider(baby.id)));
     if (vaccines != null) {
       final pending = vaccines.where((v) => !v.done && !v.optional).toList()
         ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
@@ -298,7 +310,7 @@ class _HealthNotifSync extends ConsumerWidget {
     }
 
     // Gelişim atağı — bir sonraki atağın huzursuz öncesi penceresi başlarken.
-    final leaps = ref.watch(leapsProvider).asData?.value;
+    final leaps = settledListOrNull(ref.watch(leapsProvider));
     final weeks = correctedAgeWeeks(baby);
     if (leaps != null) {
       LeapInfo? nextLeap;
@@ -326,7 +338,7 @@ class _HealthNotifSync extends ConsumerWidget {
 
     // Gelişim basamakları — yaşa yakın/işaretlenmemiş basamak varken periyodik
     // dürtme (ana sayfa "Gelişim" bölümüyle aynı "yakınlık" kuralı: ≤ yaş+2 ay).
-    final milestones = ref.watch(milestonesProvider(baby.id)).asData?.value;
+    final milestones = settledListOrNull(ref.watch(milestonesProvider(baby.id)));
     if (milestones != null) {
       final age = correctedAgeMonths(baby);
       final pending = milestones.where((m) => !m.achieved);
@@ -338,7 +350,7 @@ class _HealthNotifSync extends ConsumerWidget {
 
     // Diş çıkarma — bebek en erken tipik diş ayına ulaşınca, işaretlenmemiş
     // yakın diş varken periyodik dürtme.
-    final teeth = ref.watch(teethProvider(baby.id)).asData?.value;
+    final teeth = settledListOrNull(ref.watch(teethProvider(baby.id)));
     if (teeth != null) {
       final age = correctedAgeMonths(baby);
       final minTypical =
@@ -352,7 +364,7 @@ class _HealthNotifSync extends ConsumerWidget {
     }
 
     // Büyüme ölçümü — son ölçümden (yoksa doğumdan) ~30 gün sonra.
-    final latest = ref.watch(latestByTypeProvider(baby.id)).asData?.value;
+    final latest = settledOrNull(ref.watch(latestByTypeProvider(baby.id)));
     if (latest != null) {
       final anchor = latest[RecordType.growth]?.ts ?? baby.birthDate;
       DateTime? at;
@@ -380,7 +392,10 @@ class _ReminderSync extends ConsumerWidget {
     // hatırlatıcıyı yeniden kurmamak için yalnız oturmuş veriyle çalış.
     final async = ref.watch(remindersProvider(baby.id));
     final list = async.isLoading ? null : async.asData?.value;
-    if (list != null) NotificationService.instance.sync(list);
+    if (list != null) {
+      NotificationService.instance.sync(list,
+          allActiveIds: ref.read(healthRepositoryProvider).activeReminderIds);
+    }
     return const SizedBox.shrink();
   }
 }

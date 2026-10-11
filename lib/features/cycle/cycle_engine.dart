@@ -79,7 +79,11 @@ class CycleStatus {
 }
 
 DateTime _d(DateTime x) => DateTime(x.year, x.month, x.day);
-int _diffDays(DateTime a, DateTime b) => _d(a).difference(_d(b)).inDays;
+/// O29: DST-güvenli gün farkı — yerel gece-yarısı farkı DST geçişinde 23/25
+/// saat olup `inDays` 1 eksik/fazla verirdi; UTC takvim günleriyle hesaplanır.
+int _diffDays(DateTime a, DateTime b) => DateTime.utc(a.year, a.month, a.day)
+    .difference(DateTime.utc(b.year, b.month, b.day))
+    .inDays;
 
 /// DST-güvenli gün ekleme. `.add(Duration(days: n))` bir DST (yaz saati) geçişini
 /// aşarsa yerel gece-yarısı 23:00'e (önceki gün) ya da 01:00'e kayabilir → işaretli
@@ -145,10 +149,13 @@ CycleStatus computeStatus(
     final sinceBirth = birth == null ? null : _diffDays(now, birth);
     final hasLochia = entries.any((e) => e.lochiaColor != null);
     final inLochiaWindow = sinceBirth != null && sinceBirth >= 0 && sinceBirth <= 42;
-    if (inLochiaWindow || (hasLochia && (sinceBirth == null || sinceBirth <= 60))) {
+    // O24: loşia yalnız DOĞUM TARİHİ bilinirken (0–60 gün) — doğum girilmemiş
+    // kullanıcının yanlışlıkla seçtiği tek renk motoru süresiz kilitlemesin.
+    if (inLochiaWindow ||
+        (hasLochia && sinceBirth != null && sinceBirth >= 0 && sinceBirth <= 60)) {
       return CycleStatus(
         mode: CycleMode.lochia,
-        lochiaDay: sinceBirth ?? 0,
+        lochiaDay: sinceBirth,
         lochiaStart: birth,
       );
     }

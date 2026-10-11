@@ -12,6 +12,10 @@ class MedicationPlan {
   final List<String> times; // "HH:MM", günde birden çok doz desteklenir
   final bool active;
   final DateTime createdAt;
+  /// N2/KB-10: bakıcı cihazında KB-8 öncesinden kalmış, sunucuya hiç gitmemiş
+  /// (dirty) plan — yalnız bu cihazda; ailenle paylaşılmadı. Hatırlatıcısı
+  /// çalışır, bakıcı silebilir, düzenleyemez.
+  final bool localOnly;
 
   const MedicationPlan({
     required this.id,
@@ -20,6 +24,7 @@ class MedicationPlan {
     required this.times,
     required this.active,
     required this.createdAt,
+    this.localOnly = false,
   });
 
   MedicationPlan copyWith({

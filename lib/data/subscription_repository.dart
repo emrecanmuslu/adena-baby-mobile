@@ -105,18 +105,54 @@ final subscriptionRepositoryProvider = Provider<SubscriptionRepository>(
   (ref) => SubscriptionRepository(ref.watch(apiClientProvider)),
 );
 
-/// Açılışta okunan SON BİLİNEN premium durumu (kalıcı cache). main()'de
-/// `overrideWithValue` ile gerçek değere set edilir; canlı API gelene kadar
-/// kullanılır → premium kullanıcıya rozet/kilit flaş'ı OLMAZ.
-final cachedPremiumProvider = Provider<bool>((_) => false);
+/// SON BİLİNEN premium durumu — açılışta kalıcı cache'ten okunur (main()'de
+/// `overrideWith` ile), sonra her başarılı abonelik yanıtında ve doğrulanmış
+/// satın almada GÜNCELLENİR (O3: eskiden açılıştaki sabit değerdi; GET hatası
+/// ya da bağımlılık rebuild'inde para ödemiş kullanıcı free görünüyordu).
+class LastKnownPremium extends Notifier<bool> {
+  final bool initial;
+  LastKnownPremium([this.initial = false]);
+  @override
+  bool build() => initial;
+  void set(bool v) => state = v;
+}
+
+final cachedPremiumProvider =
+    NotifierProvider<LastKnownPremium, bool>(LastKnownPremium.new);
+
+/// O12: satın alma RevenueCat'te DOĞRULANDI → premium artık gerçek. Backend
+/// refresh (webhook kısayolu) düşerse hata GÖSTERİLMEZ: son bilinen durum premium
+/// yapılır, kalıcı önbelleğe yazılır; RC webhook / sonraki açılış sunucuyu
+/// senkronlar. İki paywall ekranı da bunu çağırır (birim testli).
+class PurchaseConfirm {
+  final Ref _ref;
+  PurchaseConfirm(this._ref);
+
+  Future<void> applyConfirmed() async {
+    _ref.read(cachedPremiumProvider.notifier).set(true);
+    unawaited(SubscriptionCache().write(true));
+    try {
+      await _ref.read(subscriptionRepositoryProvider).refresh();
+    } catch (_) {
+      // Sunucu/ağ hatası premium'u engellemez (O12).
+    }
+    _ref.invalidate(subscriptionProvider);
+  }
+}
+
+final purchaseConfirmProvider = Provider<PurchaseConfirm>(PurchaseConfirm.new);
 
 /// Mevcut abonelik durumu. Satın alma sonrası invalidate edilir.
 /// Local-first: hesapsız (oturum yok) kullanıcıda sunucuya HİÇ gitmez → 401 olmaz,
 /// doğrudan free döner (free kullanıcı zaten premium değil).
-final subscriptionProvider = FutureProvider<Subscription>((ref) {
+final subscriptionProvider = FutureProvider<Subscription>((ref) async {
   final loggedIn = ref.watch(authControllerProvider).asData?.value != null;
   if (!loggedIn) return const Subscription(tier: 'free');
-  return ref.watch(subscriptionRepositoryProvider).get();
+  final s = await ref.watch(subscriptionRepositoryProvider).get();
+  // O3: canlı yanıt son bilinen duruma yazılır → sonraki hata/rebuild'de
+  // açılıştaki bayat değere değil buna düşülür.
+  ref.read(cachedPremiumProvider.notifier).set(s.isPremium);
+  return s;
 });
 
 /// Yönetilebilir fiyat planları (DB'den, locale para birimiyle). Paywall okur.

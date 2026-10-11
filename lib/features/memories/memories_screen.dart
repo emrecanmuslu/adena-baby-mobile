@@ -13,6 +13,7 @@ import '../../core/skeleton.dart';
 import '../../core/theme.dart';
 import '../../data/memory_repository.dart';
 import '../../models/memory.dart';
+import '../../data/sync_gate.dart';
 import '../babies/baby_controller.dart';
 
 /// Anı fotoğrafını gösterir — local-first: yerel dosya yolu (free, henüz
@@ -100,12 +101,15 @@ class MemoriesScreen extends ConsumerWidget {
           }
           return CustomScrollView(
             slivers: [
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: _CloudChip(),
+              // O30: "buluta yedekleniyor" yalnız bu bebek gerçekten bulut
+              // senkronluysa (free/misafirde yanıltıcı beyan olmasın).
+              if (ref.watch(babyCloudSyncedProvider(baby.id)))
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: _CloudChip(),
+                  ),
                 ),
-              ),
               for (final entry in groups.entries) ...[
                 SliverToBoxAdapter(
                   child: Padding(
@@ -242,7 +246,7 @@ class _MemoryTile extends StatelessWidget {
   }
 }
 
-/// Bulut yedek ibaresi — herkeste her zaman açık (premium/free ayrımı yok).
+/// Bulut yedek ibaresi — yalnız bulut senkronlu bebekte (O30).
 class _CloudChip extends StatelessWidget {
   const _CloudChip();
 
@@ -537,7 +541,7 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
     try {
       final x = await ImagePicker()
           .pickImage(source: source, maxWidth: 1600, imageQuality: 85);
-      if (x != null) setState(() => _photoPath = x.path);
+      if (x != null && mounted) setState(() => _photoPath = x.path); // D42
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     }
@@ -649,7 +653,11 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
                         ? Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.file(File(_photoPath!), fit: BoxFit.cover),
+                              Image.file(File(_photoPath!),
+                                  fit: BoxFit.cover,
+                                  // D42: geçici dosya silindiyse kırmızı ekran yerine ikon
+                                  errorBuilder: (_, _, _) => const Center(
+                                      child: Icon(Icons.broken_image_outlined))),
                               Positioned(
                                 right: 8,
                                 top: 8,

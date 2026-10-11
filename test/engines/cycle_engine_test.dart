@@ -19,6 +19,7 @@ List<CycleEntry> _periodRun(String prefix, DateTime start, int days,
 }
 
 void main() {
+  mainO24();
   group('periodStarts', () {
     test('ardışık adet günlerinden tek başlangıç çıkarır', () {
       final entries = _periodRun('a', DateTime(2025, 1, 1), 5);
@@ -503,6 +504,30 @@ void main() {
     test('pencere dışı = düşük', () {
       expect(at(DateTime(2025, 1, 5)), ConceptionChance.low);
       expect(at(DateTime(2025, 1, 20)), ConceptionChance.low);
+    });
+  });
+}
+
+/// O24 — loşia modu yalnız doğum tarihi bilinirken (0–60 gün). Doğum/LMP
+/// girilmemiş kullanıcı yanlışlıkla loşia rengi seçerse motor süresiz
+/// "lohusalık"a kilitlenmemeli.
+void mainO24() {
+  group('O24 — loşia doğum tarihi gerektirir', () {
+    test('birthDate null + loşia renkli kayıt → lochia DEĞİL', () {
+      final entries = [
+        CycleEntry(id: 'e', date: DateTime(2026, 6, 1), lochiaColor: LochiaColor.values.first)
+      ];
+      final status = computeStatus(const CycleSettings(), entries, today: DateTime(2026, 6, 2));
+      expect(status.mode, isNot(CycleMode.lochia));
+    });
+
+    test('birthDate var (<=60 gün) + loşia kaydı → lochia (değişmedi)', () {
+      final entries = [
+        CycleEntry(id: 'e', date: DateTime(2026, 6, 1), lochiaColor: LochiaColor.values.first)
+      ];
+      final status = computeStatus(CycleSettings(birthDate: DateTime(2026, 4, 20)),
+          entries, today: DateTime(2026, 6, 2));
+      expect(status.mode, CycleMode.lochia);
     });
   });
 }

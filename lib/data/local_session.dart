@@ -22,6 +22,7 @@ class LocalSession {
   static const _kImportedAccts = 'cloud_imported_accounts_v1'; // göçü yapılmış hesaplar (CSV)
   static const _kPremiumSynced = 'premium_synced_accounts_v1'; // tam buluta yükleme yapılmış hesaplar (CSV)
   static const _kPurgeHandled = 'purge_handled_v1'; // hesap → işlenen son cloud_purged_at (acct=iso;...)
+  static const _kHealthReseed = 'health_reseed_accounts_v1'; // premium bitmiş (lapse) hesaplar: yeniden abonelikte sağlık tam kümesi önce gönderilir (I1)
   static const _kName = 'local_user_name'; // ebeveyn adı (hesapsız profil)
   static const _kCachedUser = 'cached_auth_user_v1'; // son başarılı /auth/me (offline açılış için)
   static const _kGuest = 'guest_mode_v1'; // "kayıt olmadan devam et" — hesapsız yerel oturum açık mı
@@ -40,6 +41,7 @@ class LocalSession {
   static Set<String> _importedAccounts = {}; // cloud→local göçü yapılmış hesaplar
   static Set<String> _premiumSyncedAccounts = {}; // free→premium tam yüklemesi yapılmış hesaplar
   static Map<String, String> _purgeHandled = {}; // hesap → işlenen son cloud_purged_at (iso)
+  static Set<String> _healthReseedAccounts = {}; // lapse sonrası sağlık yeniden-tohumlama bekleyen hesaplar (I1)
 
   /// main()'de bir kez çağrılır; localUserId + rıza durumunu belleğe yükler,
   /// localUserId yoksa üretip kalıcılaştırır.
@@ -71,6 +73,7 @@ class LocalSession {
         read(_kImportedAccts),
         read(_kPremiumSynced),
         read(_kPurgeHandled),
+        read(_kHealthReseed),
       ]);
       final (existingId, idFailed) = results[0];
       if (existingId != null && existingId.isNotEmpty) {
@@ -96,14 +99,18 @@ class LocalSession {
       if (_guest == true && (_userId ?? '').isNotEmpty) {
         _activeAccountId = _userId;
       }
-      _importedAccounts =
-          (results[7].$1 ?? '').split(',').where((s) => s.isNotEmpty).toSet();
-      _premiumSyncedAccounts =
-          (results[8].$1 ?? '').split(',').where((s) => s.isNotEmpty).toSet();
-      final ph = results[9].$1;
-      _purgeHandled = {
-        for (final p in (ph ?? '').split(';').where((s) => s.contains('=')))
-          p.substring(0, p.indexOf('=')): p.substring(p.indexOf('=') + 1)
+      // O35: diskten okunanı bellekle BİRLEŞTİR (ata değil). Yükleme
+      // tamamlanmadan (8 sn güvenlik ağı) ya da başka isolate'te yapılmış
+      // yazımlar kaybolmasın.
+      _importedAccounts = {..._importedAccounts, ..._csvSet(results[7].$1)};
+      _premiumSyncedAccounts = {
+        ..._premiumSyncedAccounts,
+        ..._csvSet(results[8].$1)
+      };
+      _purgeHandled = _mergePurge(_purgeHandled, _parsePurge(results[9].$1));
+      _healthReseedAccounts = {
+        ..._healthReseedAccounts,
+        ..._csvSet(results[10].$1)
       };
     } catch (_) {
       // prefs bile açılamadı (çok nadir): localUserId'yi UYDURMA (yetim riski),
@@ -160,11 +167,13 @@ class LocalSession {
     // misafir bebekleri account_id=null ile yazılıp GÖRÜNMEZ olur ve onboarding donar.
     // Misafire GİRERKEN userId yoksa burada üret+kalıcılaştır (prefs artık kanonik depo).
     if ((_userId ?? '').isEmpty) {
+      // D9: prefs yazımı düşse bile kimlik BELLEKTE kurulur — aksi halde misafir
+      // bebekleri account_id=null ile görünmez olup onboarding döngüsüne girerdi.
+      final id = const Uuid().v4();
+      _userId = id;
       try {
         final prefs = await SharedPreferences.getInstance();
-        final id = const Uuid().v4();
         await prefs.setString(_kUserId, id);
-        _userId = id;
       } catch (_) {}
     }
     if ((_userId ?? '').isNotEmpty) _activeAccountId = _userId;
@@ -258,29 +267,105 @@ class LocalSession {
 
   static Future<void> markImportedForAccount(String accountId) async {
     _importedAccounts.add(accountId);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kImportedAccts, _importedAccounts.join(','));
-    } catch (_) {}
+    await _writeCsvMerged(_kImportedAccts, _importedAccounts);
   }
 
   /// free→premium tam yüklemesi tamamlandı işaretle (bir daha overlay gösterme).
   static Future<void> markPremiumSyncedForAccount(String accountId) async {
     _premiumSyncedAccounts.add(accountId);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kPremiumSynced, _premiumSyncedAccounts.join(','));
-    } catch (_) {}
+    await _writeCsvMerged(_kPremiumSynced, _premiumSyncedAccounts);
   }
 
   /// Cloud purge sonrası tam yeniden-yükleme için çağrılır: bu hesabın "senkronlu"
   /// durumunu kaldır → yeniden premium olunca tam yükleme (markAllDirty) yeniden yapılır.
   static Future<void> clearPremiumSyncedForAccount(String accountId) async {
-    if (!_premiumSyncedAccounts.remove(accountId)) return;
+    _premiumSyncedAccounts.remove(accountId);
+    await _writeCsvMerged(_kPremiumSynced, _premiumSyncedAccounts,
+        remove: accountId);
+  }
+
+  // ── I1: lapse → yeniden abonelikte sağlık tam kümesi önce gönderilir ──
+  // premiumSynced bayrağı grace-içi lapse'te bilerek korunur (tam yeniden
+  // yükleme yok); ama v14'te lapse sırasında işaretlenmiş TEMİZ aşı satırları
+  // sunucuda yoktur. Bu bayrak dururken sahip bebekte sağlık pull'u kapalıdır
+  // (healthPullAllowed) ve MigrationService yalnız `pushAll` ile bayrağı düşürür.
+  static bool healthReseedPending(String accountId) =>
+      _healthReseedAccounts.contains(accountId);
+
+  static Future<void> markHealthReseedForAccount(String accountId) async {
+    _healthReseedAccounts.add(accountId);
+    await _writeCsvMerged(_kHealthReseed, _healthReseedAccounts);
+  }
+
+  static Future<void> clearHealthReseedForAccount(String accountId) async {
+    _healthReseedAccounts.remove(accountId);
+    await _writeCsvMerged(_kHealthReseed, _healthReseedAccounts,
+        remove: accountId);
+  }
+
+  // ── O35: set/map bayrakları için diskle-birleştiren yazım ──
+  // Bellek-içi yapı tek başına "gerçek" değildir: ensureLoaded tamamlanmadan
+  // (bg isolate, 8 sn güvenlik ağı) ya da başka isolate'in yazımından sonra
+  // eksik olabilir. Her yazım: prefs.reload → diskteki küme → bellekle birleştir
+  // → (varsa) çıkarma → yaz → belleği güncelle. Kalan teorik yarış: iki isolate
+  // reload→yaz penceresini (ms) aynı anda geçerse son yazan kazanır.
+
+  static Set<String> _csvSet(String? raw) =>
+      (raw ?? '').split(',').where((s) => s.isNotEmpty).toSet();
+
+  static Future<void> _writeCsvMerged(String key, Set<String> memory,
+      {String? remove}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kPremiumSynced, _premiumSyncedAccounts.join(','));
+      try {
+        await prefs.reload();
+      } catch (_) {}
+      final merged = {..._csvSet(prefs.getString(key)), ...memory};
+      if (remove != null) merged.remove(remove);
+      await prefs.setString(key, merged.join(','));
+      memory
+        ..clear()
+        ..addAll(merged);
     } catch (_) {}
+  }
+
+  static Map<String, String> _parsePurge(String? raw) => {
+        for (final p in (raw ?? '').split(';').where((s) => s.contains('=')))
+          p.substring(0, p.indexOf('=')): p.substring(p.indexOf('=') + 1)
+      };
+
+  /// İki damga haritasını birleştirir; aynı hesapta daha YENİ damga kazanır.
+  static Map<String, String> _mergePurge(
+      Map<String, String> a, Map<String, String> b) {
+    final out = Map<String, String>.from(a);
+    b.forEach((k, v) {
+      final cur = out[k];
+      if (cur == null) {
+        out[k] = v;
+        return;
+      }
+      final cd = DateTime.tryParse(cur), nd = DateTime.tryParse(v);
+      if (cd == null || (nd != null && nd.isAfter(cd))) out[k] = v;
+    });
+    return out;
+  }
+
+  /// Yalnız test: bellek-içi durumu sıfırlar (ensureLoaded öncesi hâl).
+  @visibleForTesting
+  static void resetForTests() {
+    _userId = null;
+    _consent = null;
+    _analyticsConsent = null;
+    _name = null;
+    _guest = null;
+    _guestMigResolved = null;
+    _cycleFirst = null;
+    _activeAccountId = null;
+    _importedAccounts = {};
+    _premiumSyncedAccounts = {};
+    _purgeHandled = {};
+    _healthReseedAccounts = {};
+    loaded = false;
   }
 
   /// Bu hesap için en son İŞLENEN cloud_purged_at damgası (null → hiç işlenmedi).
@@ -292,13 +377,22 @@ class LocalSession {
   }
 
   static Future<void> setPurgeHandled(String accountId, DateTime stamp) async {
-    _purgeHandled[accountId] = stamp.toUtc().toIso8601String();
+    final mine = {accountId: stamp.toUtc().toIso8601String()};
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-          _kPurgeHandled,
-          _purgeHandled.entries.map((e) => '${e.key}=${e.value}').join(';'));
-    } catch (_) {}
+      try {
+        await prefs.reload();
+      } catch (_) {}
+      // O35: disk + bellek + bu yazım; aynı hesapta daha yeni damga kazanır.
+      final merged = _mergePurge(
+          _mergePurge(_parsePurge(prefs.getString(_kPurgeHandled)), _purgeHandled),
+          mine);
+      await prefs.setString(_kPurgeHandled,
+          merged.entries.map((e) => '${e.key}=${e.value}').join(';'));
+      _purgeHandled = merged;
+    } catch (_) {
+      _purgeHandled = _mergePurge(_purgeHandled, mine);
+    }
   }
 
   /// Son başarılı `/auth/me` kullanıcısını (JSON) önbelleğe alır. Soğuk açılışta

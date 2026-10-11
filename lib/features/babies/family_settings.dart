@@ -1,7 +1,11 @@
+import 'package:flutter/widgets.dart';
 import 'dart:ui';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/exact_alarm_prompt.dart';
+import '../../core/i18n.dart';
+import '../../core/in_app_notification.dart';
 import '../../core/locale_util.dart';
 import '../../core/units.dart';
 import '../../data/baby_repository.dart';
@@ -11,6 +15,7 @@ import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
 import 'baby_controller.dart';
+import 'exact_alarm_resync.dart';
 
 /// Cihazın bölge (ülke) kodu — ISO2, büyük harf (ör. 'US', 'TR').
 final deviceCountryCodeProvider = Provider<String?>(
@@ -58,11 +63,22 @@ final activeUnitsProvider = Provider<Units>((ref) {
 
 /// Birim tercihlerini günceller (tüm units sözlüğünü gönderir) ve önbelleği tazeler.
 Future<void> updateUnits(WidgetRef ref, String babyId, Units units) async {
-  await ref
-      .read(babyRepositoryProvider)
-      .updateFamilySettings(babyId, {'units': units.toMap()});
+  try {
+    await ref
+        .read(babyRepositoryProvider)
+        .updateFamilySettings(babyId, {'units': units.toMap()});
+  } on StateError {
+    _roleToast(); // bakıcı aile ayarını yazamaz (O20)
+    return;
+  }
   ref.invalidate(familySettingsProvider(babyId));
 }
+
+/// Repo rol reddi (StateError) → kullanıcıya kısa bildirim. Çağıranların
+/// çoğu context'siz `onSelected` callback'leri; global üst banner kullanılır.
+void _roleToast() => showInAppNotification(
+    title: tr('Bebek bilgileri'),
+    body: tr('Bu işlem için ebeveyn/sahip olmalısın'));
 
 /// Beslenme hatırlatıcı ayarlarının CİHAZ-YEREL durumu (bebek başına). Açılışta
 /// yerelden yüklenir; güncelleme YALNIZ yerele yazılır (sunucuya gitmez) → her
@@ -151,9 +167,19 @@ final feedReminderKnownProvider = Provider.family<bool, String>((ref, babyId) {
 });
 
 /// Beslenme hatırlatıcı ayarını CİHAZA-YEREL kaydeder (sunucuya gitmez).
+/// [context] verilirse ve hatırlatıcı KAPALIDAN AÇIĞA geçiyorsa, kesin alarm
+/// izni yoksa tek seferlik açıklama diyaloğu gösterilir (M4/KB-4, yalnız Android).
 Future<void> updateFeedReminder(
-    WidgetRef ref, String babyId, FeedReminderConfig cfg) async {
+    WidgetRef ref, String babyId, FeedReminderConfig cfg,
+    {BuildContext? context}) async {
+  final wasEnabled = ref.read(feedReminderProvider(babyId)).enabled;
   await ref.read(feedReminderStoreProvider.notifier).set(babyId, cfg);
+  if (context != null && cfg.enabled && !wasEnabled && context.mounted) {
+    // J12: izin verilirse az önce (inexact) kurulan plan exact olarak yeniden kurulur.
+    await ExactAlarmPrompt(
+            onGranted: () => resyncAfterExactAlarmGranted(ref, babyId: babyId))
+        .maybeShow(context);
+  }
 }
 
 /// Aktif bebeğin sessiz saat ayarı (yüklenene kadar varsayılan/kapalı).
@@ -166,9 +192,14 @@ final quietHoursProvider = Provider.family<QuietHours, String>((ref, babyId) {
 
 /// Sessiz saat ayarını günceller ve önbelleği tazeler.
 Future<void> updateQuietHours(WidgetRef ref, String babyId, QuietHours q) async {
-  await ref
-      .read(babyRepositoryProvider)
-      .updateFamilySettings(babyId, {'quiet_hours': q.toMap()});
+  try {
+    await ref
+        .read(babyRepositoryProvider)
+        .updateFamilySettings(babyId, {'quiet_hours': q.toMap()});
+  } on StateError {
+    _roleToast();
+    return;
+  }
   ref.invalidate(familySettingsProvider(babyId));
 }
 

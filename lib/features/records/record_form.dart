@@ -66,7 +66,8 @@ Future<void> _syncApptReminderBg({
     });
     await container.read(recordRepositoryProvider).upsertLocal(updated);
     final list = await repo.reminders(babyId);
-    await NotificationService.instance.sync(list);
+    await NotificationService.instance
+        .sync(list, allActiveIds: repo.activeReminderIds);
     container.invalidate(remindersProvider(babyId));
   } catch (_) {
     // Hatırlatıcı kurulamazsa kayıt yine de kaydedilmiş kalır (sessiz geç).
@@ -95,6 +96,26 @@ Future<void> showRecordForm(
     ),
   );
 }
+
+/// O37: formdan kaydedilecek kayıt — düzenlemede kimlik VE "kim ekledi"
+/// (`createdBy`) korunur; yeni kayıtta createdBy null (sunucu/yerel kimlik
+/// upsert'te verir). Saf, birim testli.
+Record recordForSave({
+  required Record? existing,
+  required String newId,
+  required String babyId,
+  required RecordType type,
+  required DateTime ts,
+  required Map<String, dynamic> data,
+}) =>
+    Record(
+      id: existing?.id ?? newId,
+      baby: babyId,
+      type: type,
+      ts: ts,
+      data: data,
+      createdBy: existing?.createdBy,
+    );
 
 class _RecordFormSheet extends ConsumerStatefulWidget {
   final String babyId;
@@ -315,6 +336,9 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           _addNote(data);
         case RecordType.sleep:
           if (_endTs == null) return _warn(tr('Bitiş zamanını seç'));
+          if (_endTs!.isBefore(_ts)) {
+            return _warn(tr('Bitiş zamanı başlangıçtan önce olamaz')); // O27
+          }
           data = {
             'start_ts': _ts.toUtc().toIso8601String(),
             'end_ts': _endTs!.toUtc().toIso8601String(),
@@ -356,9 +380,10 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           _addNote(data);
       }
 
-      final record = Record(
-        id: widget.existing?.id ?? _uuid.v4(),
-        baby: widget.babyId,
+      final record = recordForSave(
+        existing: widget.existing,
+        newId: _uuid.v4(),
+        babyId: widget.babyId,
         type: widget.type,
         ts: _ts,
         data: data,
@@ -1217,6 +1242,9 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           color: accent,
           onTap: () async {
             if (_endTs == null) return _warn(tr('Bitiş zamanını seç'));
+            if (_endTs!.isBefore(_ts)) {
+              return _warn(tr('Bitiş zamanı başlangıçtan önce olamaz')); // O27
+            }
             await ref
                 .read(recordActionsProvider)
                 .stopSleepWithTimes(r, _ts, _endTs!);

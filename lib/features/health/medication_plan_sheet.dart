@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_widgets.dart';
+import '../../core/exact_alarm_prompt.dart';
+import '../../core/api_error.dart';
 import '../../core/adena_icons.dart';
 import '../../core/i18n.dart';
 import '../../core/medication.dart';
 import '../../core/notification_service.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
+import '../babies/exact_alarm_resync.dart';
 import '../../models/medication_plan.dart';
 import 'medication_widgets.dart';
 
@@ -306,32 +309,57 @@ class _PlanSheetState extends ConsumerState<_PlanSheet> {
       } else {
         await repo.createMedicationPlan(widget.babyId,
             name: name, dose: _dose.text.trim(), times: _times);
+        // M4/KB-4: ilk plan → kesin alarm izni açıklaması (yalnız Android, tek sefer).
+        if (others.isEmpty && mounted) {
+          await ExactAlarmPrompt(
+                  onGranted: () =>
+                      resyncAfterExactAlarmGranted(ref, babyId: widget.babyId))
+              .maybeShow(context);
+        }
       }
       ref.invalidate(medicationPlansProvider(widget.babyId));
       if (mounted) {
         Navigator.pop(context);
         showAdToast(context, tr('Kaydedildi'));
       }
+    } on StateError {
+      // KB-8: bakıcı planı yazamaz.
+      if (mounted) {
+        setState(() => _saving = false);
+        showAdError(context, tr('Bu işlem için ebeveyn/sahip olmalısın'));
+      }
     } catch (e) {
-      if (mounted) setState(() => _saving = false);
+      // D28: hata sessiz kalmasın.
+      if (mounted) {
+        setState(() => _saving = false);
+        showAdError(context, apiErrorText(e));
+      }
     }
   }
 
   Future<void> _togglePause() async {
     final p = widget.existing!;
-    await ref.read(healthRepositoryProvider).updateMedicationPlan(p.id, active: !p.active);
-    ref.invalidate(medicationPlansProvider(widget.babyId));
-    if (mounted) Navigator.pop(context);
+    try {
+      await ref.read(healthRepositoryProvider).updateMedicationPlan(p.id, active: !p.active);
+      ref.invalidate(medicationPlansProvider(widget.babyId));
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e)); // D28
+    }
   }
 
   Future<void> _delete() async {
     final p = widget.existing!;
-    await ref.read(healthRepositoryProvider).deleteMedicationPlan(p.id);
-    await NotificationService.instance.cancelMedicationPlan(p.id);
-    ref.invalidate(medicationPlansProvider(widget.babyId));
-    if (mounted) {
-      Navigator.pop(context);
-      showAdToast(context, tr('Plan silindi'));
+    try {
+      await ref.read(healthRepositoryProvider).deleteMedicationPlan(p.id);
+      await NotificationService.instance.cancelMedicationPlan(p.id);
+      ref.invalidate(medicationPlansProvider(widget.babyId));
+      if (mounted) {
+        Navigator.pop(context);
+        showAdToast(context, tr('Plan silindi'));
+      }
+    } catch (e) {
+      if (mounted) showAdError(context, apiErrorText(e)); // D28
     }
   }
 }

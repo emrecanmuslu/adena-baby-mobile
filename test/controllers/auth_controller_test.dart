@@ -1,16 +1,26 @@
+import 'dart:async';
+
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
+import 'package:http_mock_adapter/http_mock_adapter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:adena_baby/core/providers.dart';
+import 'package:adena_baby/core/push_service.dart';
+import 'package:adena_baby/data/local/app_database.dart';
+import 'package:adena_baby/core/session_end.dart';
+import 'package:adena_baby/core/revenuecat_service.dart';
 import 'package:adena_baby/core/token_storage.dart';
 import 'package:adena_baby/data/auth_repository.dart';
 import 'package:adena_baby/data/initial_import.dart';
 import 'package:adena_baby/data/local_session.dart';
 import 'package:adena_baby/data/social_auth_service.dart';
 import 'package:adena_baby/features/auth/auth_controller.dart';
+import 'package:adena_baby/features/records/record_controller.dart' show SyncService;
 import 'package:adena_baby/models/user.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
@@ -64,6 +74,21 @@ User _user({String id = 'u1', bool consentRequired = false}) => User(
       name: 'Ada',
       consentRequired: consentRequired,
     );
+
+/// I8/I16: wipe anındaki durumu gözlemleyen DB.
+class _SpyDb extends AppDatabase {
+  _SpyDb() : super(NativeDatabase.memory());
+  ({bool wiping, bool stateNull, String? acct}) Function()? onWipe;
+  ({bool wiping, bool stateNull, String? acct})? seen;
+  String? wipedAccount;
+  @override
+  Future<({List<String> babyIds, List<String> photoPaths})> wipeAccountData(
+      String accountId) async {
+    wipedAccount = accountId;
+    seen = onWipe?.call();
+    return super.wipeAccountData(accountId);
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -338,7 +363,17 @@ void main() {
       when(() => repo.me()).thenAnswer((_) async => _user(id: 'd1'));
       when(() => repo.deleteAccount()).thenAnswer((_) async {});
 
-      final c = makeContainer();
+      // KB-9: deleteAccount yerel kapsamı siler → bellek-içi DB (gerçek DB
+      // path_provider ister).
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        databaseProvider.overrideWithValue(db),
+      ]);
+      addTearDown(c.dispose);
       await c.read(authControllerProvider.future);
       final ctrl = c.read(authControllerProvider.notifier);
 
@@ -346,6 +381,59 @@ void main() {
 
       verify(() => repo.deleteAccount()).called(1);
       expect(c.read(authControllerProvider).value, isNull);
+    });
+
+    test('I8/I16: yerel silme whileWiping içinde ve state/kapsam ÖNCE kapanır', () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd3'));
+      when(() => repo.deleteAccount()).thenAnswer((_) async {});
+      final db = _SpyDb();
+      addTearDown(db.close);
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        databaseProvider.overrideWithValue(db),
+      ]);
+      addTearDown(c.dispose);
+      await c.read(authControllerProvider.future);
+      expect(LocalSession.activeAccountId, 'd3');
+      db.onWipe = () => (
+            wiping: SyncService.wiping,
+            stateNull: c.read(authControllerProvider).value == null,
+            acct: LocalSession.activeAccountId,
+          );
+
+      await c.read(authControllerProvider.notifier).deleteAccount();
+
+      expect(db.wipedAccount, 'd3', reason: 'silinen hesap kapsamı');
+      expect(db.seen!.wiping, isTrue, reason: 'süren tur satır geri eklemesin');
+      expect(db.seen!.stateNull, isTrue, reason: "router önce login'e; onboarding'e uğramaz");
+      expect(db.seen!.acct, isNull, reason: "kapsam wipe'tan önce kapanır");
+      expect(SyncService.wiping, isFalse, reason: 'bayrak sıfırlanır');
+    });
+
+    test('O10: ağ isteği düşerse yerel yan etkiler (slot haritası, abonelik önbelleği) dokunulmaz, oturum kalır',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'baby_notif_slots': '{"b1":2}',
+        'sub_is_premium': '1',
+      });
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd2'));
+      when(() => repo.deleteAccount()).thenThrow(Exception('offline'));
+
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      final ctrl = c.read(authControllerProvider.notifier);
+
+      await expectLater(ctrl.deleteAccount(), throwsA(isA<Exception>()));
+
+      expect(c.read(authControllerProvider).value?.id, 'd2', reason: 'oturum sürer');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('baby_notif_slots'), '{"b1":2}',
+          reason: 'SlotRegistry ağ hatasında sıfırlanmamalı');
+      expect(prefs.getString('sub_is_premium'), '1');
     });
   });
 
@@ -361,6 +449,390 @@ void main() {
 
       await c.read(authControllerProvider.notifier).logout();
       expect(c.read(activeAccountIdProvider), isNull);
+    });
+  });
+
+  // ───────── K9: arka plan isolate'inde yan isler baslamasin ─────────
+  group('K9 — runningInBackgroundProvider', () {
+    late List<String> rcIdentified;
+
+    setUp(() {
+      LocalSession.resetForTests();
+      rcIdentified = [];
+      RevenueCatService.instance.identifyHook = rcIdentified.add;
+    });
+
+    tearDown(() {
+      RevenueCatService.instance.identifyHook = null;
+      LocalSession.resetForTests();
+    });
+
+    Future<void> settle() async {
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    test('bg=true: önbellekli kullanıcı döner; /auth/me, initialImport, RC identify, exitGuest HİÇ başlamaz',
+        () async {
+      await LocalSession.enterGuest(); // bayat misafir bayrağı (bg'de dokunulmamalı)
+      await LocalSession.cacheAuthUser(_user(id: 'bg1').toJson());
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'bg1'));
+
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        runningInBackgroundProvider.overrideWithValue(true),
+      ]);
+      addTearDown(c.dispose);
+
+      final user = await c.read(authControllerProvider.future);
+      await settle();
+
+      expect(user!.id, 'bg1');
+      expect(LocalSession.activeAccountId, 'bg1', reason: 'DB kapsamı bg\'de kurulmalı');
+      verifyNever(() => repo.me());
+      verifyNever(() => import.runIfNeeded());
+      expect(rcIdentified, isEmpty);
+      expect(LocalSession.guest, isTrue, reason: 'exitGuest bg\'de çağrılmamalı');
+    });
+
+    test('bg=false (varsayılan): önbellek yolu /auth/me + initialImport + RC + exitGuest başlatır',
+        () async {
+      await LocalSession.enterGuest();
+      await LocalSession.cacheAuthUser(_user(id: 'fg1').toJson());
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'fg1'));
+
+      final c = makeContainer();
+      final user = await c.read(authControllerProvider.future);
+      await settle();
+
+      expect(user!.id, 'fg1');
+      verify(() => repo.me()).called(1);
+      verify(() => import.runIfNeeded()).called(1);
+      expect(rcIdentified, contains('fg1'));
+      expect(LocalSession.guest, isFalse);
+    });
+
+    test('bg=true + önbellek yok: /auth/me beklenir (zorunlu) ama initialImport/RC yine başlamaz',
+        () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'bg2'));
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        runningInBackgroundProvider.overrideWithValue(true),
+      ]);
+      addTearDown(c.dispose);
+      final user = await c.read(authControllerProvider.future);
+      await settle();
+      expect(user!.id, 'bg2');
+      verify(() => repo.me()).called(1);
+      verifyNever(() => import.runIfNeeded());
+      expect(rcIdentified, isEmpty);
+    });
+  });
+
+  // ───────── O34: logout ile arka plan /auth/me yarışı (epoch) ─────────
+  group('O34 — logout sonrası geç gelen /auth/me oturumu geri getirmez', () {
+    setUp(() => LocalSession.resetForTests());
+    tearDown(() => LocalSession.resetForTests());
+
+    Future<void> settle() async {
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    test('_refreshInBackground: me() çıkıştan SONRA dönerse state/cache/kapsam/import dokunulmaz',
+        () async {
+      await LocalSession.cacheAuthUser(_user(id: 'r1').toJson());
+      tokens.access = 'ACC';
+      final gate = Completer<User>();
+      when(() => repo.me()).thenAnswer((_) => gate.future);
+      when(() => repo.logout()).thenAnswer((_) async {});
+
+      final c = makeContainer();
+      final u = await c.read(authControllerProvider.future);
+      expect(u!.id, 'r1');
+
+      await c.read(authControllerProvider.notifier).logout();
+      expect(c.read(authControllerProvider).value, isNull);
+
+      gate.complete(_user(id: 'r1')); // geç gelen /auth/me
+      await settle();
+
+      expect(c.read(authControllerProvider).value, isNull,
+          reason: 'çıkış sonrası oturum geri gelmemeli');
+      expect(await LocalSession.cachedAuthUser(), isNull,
+          reason: 'önbellek yeniden yazılmamalı');
+      expect(LocalSession.activeAccountId, isNull);
+      verifyNever(() => import.runIfNeeded());
+    });
+
+    test('updateName: çıkıştan sonra dönen yanıt state\'i geri getirmez', () async {
+      tokens.access = 'ACC';
+      await LocalSession.cacheAuthUser(_user(id: 'n1').toJson());
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'n1'));
+      when(() => repo.logout()).thenAnswer((_) async {});
+      final gate = Completer<User>();
+      when(() => repo.updateName('Yeni')).thenAnswer((_) => gate.future);
+
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      await settle();
+      final ctrl = c.read(authControllerProvider.notifier);
+      final pending = ctrl.updateName('Yeni');
+      await ctrl.logout();
+      gate.complete(User(id: 'n1', email: 'a@b.com', name: 'Yeni'));
+      await pending;
+      expect(c.read(authControllerProvider).value, isNull);
+    });
+  });
+
+  group('O1 — sessionExpired / verifySession / kanca ömrü', () {
+    setUp(() => LocalSession.resetForTests());
+    tearDown(() => LocalSession.resetForTests());
+
+    Future<String?> prefsReason() async =>
+        (await SharedPreferences.getInstance()).getString(SessionEndCache.key);
+
+    Future<void> settle() async {
+      for (var i = 0; i < 30; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    test(
+        'sessionExpired: state null, token/önbellek/kapsam/abonelik temiz; repo.logout YOK; slot haritası dokunulmaz',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'baby_notif_slots': '{"b1":3}',
+        'sub_is_premium': true,
+      });
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'e1'));
+      when(() => repo.logout()).thenAnswer((_) async {});
+
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      expect(LocalSession.activeAccountId, 'e1');
+
+      await c
+          .read(authControllerProvider.notifier)
+          .sessionExpired(SessionEndReason.superseded);
+
+      expect(c.read(authControllerProvider).value, isNull);
+      expect(await tokens.hasSession, isFalse);
+      expect(LocalSession.activeAccountId, isNull);
+      expect(await LocalSession.cachedAuthUser(), isNull);
+      expect(c.read(sessionEndReasonProvider), SessionEndReason.superseded);
+      expect(await prefsReason(), 'superseded');
+      verifyNever(() => repo.logout()); // yetki yok → POST /auth/logout atılmaz
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('baby_notif_slots'), '{"b1":3}',
+          reason: 'SlotRegistry korunur (yerel hatırlatıcılar sürer)');
+      expect(prefs.getBool('sub_is_premium'), isNull,
+          reason: 'abonelik önbelleği temizlenir');
+    });
+
+    test(
+        'verifySession: state User ama token yok → prefs nedeniyle zorunlu çıkış',
+        () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'v1'));
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+
+      // Başka isolate (bg turu) refresh reddi aldı: token sildi + prefs yazdı.
+      tokens.access = null;
+      await SessionEndCache.write(SessionEndReason.expired);
+
+      await c.read(authControllerProvider.notifier).verifySession();
+
+      expect(c.read(authControllerProvider).value, isNull);
+      expect(c.read(sessionEndReasonProvider), SessionEndReason.expired);
+      expect(LocalSession.activeAccountId, isNull);
+    });
+
+    test('verifySession: token varsa no-op', () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'v2'));
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+
+      await c.read(authControllerProvider.notifier).verifySession();
+
+      expect(c.read(authControllerProvider).value?.id, 'v2');
+      expect(c.read(sessionEndReasonProvider), isNull);
+    });
+
+    test('kanca: build atar; ApiClient çağırınca zorunlu çıkış; dispose sıfırlar',
+        () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'h1'));
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      final api = c.read(apiClientProvider);
+      expect(api.onSessionRejected, isNotNull);
+
+      api.onSessionRejected!(SessionEndReason.superseded);
+      await settle();
+      expect(c.read(authControllerProvider).value, isNull);
+      expect(c.read(sessionEndReasonProvider), SessionEndReason.superseded);
+
+      c.dispose();
+      expect(api.onSessionRejected, isNull,
+          reason: 'eski notifier RestartWidget sonrası çağrılmamalı');
+    });
+
+    test('kanca: invalidate (RestartWidget) sonrası yeni notifier kancası durur',
+        () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'h2'));
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      final api = c.read(apiClientProvider);
+      final first = api.onSessionRejected;
+
+      c.invalidate(authControllerProvider);
+      await c.read(authControllerProvider.future);
+
+      expect(api.onSessionRejected, isNotNull);
+      expect(identical(api.onSessionRejected, first), isFalse);
+    });
+
+    test('kanca: oturum yokken (misafir/çıkmış) çağrı no-op', () async {
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      final api = c.read(apiClientProvider);
+
+      api.onSessionRejected!(SessionEndReason.unknown);
+      await settle();
+
+      expect(c.read(authControllerProvider).value, isNull);
+      expect(c.read(sessionEndReasonProvider), isNull);
+    });
+
+    test('bg=true: kanca ATANMAZ', () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'h3'));
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        runningInBackgroundProvider.overrideWithValue(true),
+      ]);
+      addTearDown(c.dispose);
+      await c.read(authControllerProvider.future);
+      expect(c.read(apiClientProvider).onSessionRejected, isNull);
+    });
+
+    test('prefs nedeni: başarılı giriş ve kullanıcı çıkışı temizler', () async {
+      await SessionEndCache.write(SessionEndReason.superseded);
+      when(() => repo.login(
+              email: any(named: 'email'), password: any(named: 'password')))
+          .thenAnswer((_) async => _user(id: 'p1'));
+      when(() => repo.logout()).thenAnswer((_) async {});
+      final c = makeContainer();
+      await c.read(authControllerProvider.future);
+      c.read(sessionEndReasonProvider.notifier).set(SessionEndReason.superseded);
+
+      await c
+          .read(authControllerProvider.notifier)
+          .login(email: 'a@b.c', password: 'x');
+      expect(await prefsReason(), isNull, reason: 'giriş eski nedeni siler');
+      expect(c.read(sessionEndReasonProvider), isNull);
+
+      await SessionEndCache.write(SessionEndReason.expired);
+      tokens.access = 'ACC';
+      await c.read(authControllerProvider.notifier).logout();
+      expect(await prefsReason(), isNull,
+          reason: 'kullanıcı çıkışı neden bırakmaz');
+    });
+  });
+
+  group('KB-9 / M9(c) — hesap silme', () {
+    ProviderContainer dbContainer(AppDatabase db) {
+      final c = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        tokenStorageProvider.overrideWithValue(tokens),
+        initialImportProvider.overrideWithValue(import),
+        databaseProvider.overrideWithValue(db),
+      ]);
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    test('KB-9: sunucu silme BAŞARILI → yalnız bu hesabın yerel kapsamı silinir (diğer hesap kalır)',
+        () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await db.into(db.babies).insert(BabiesCompanion.insert(
+          id: 'b-d1', name: 'Mine', accountId: const Value('d1')));
+      await db.into(db.babies).insert(BabiesCompanion.insert(
+          id: 'b-other', name: 'Other', accountId: const Value('other')));
+      await db.into(db.records).insert(RecordsCompanion.insert(
+          id: 'r1', baby: 'b-d1', type: 'feed', ts: DateTime(2026, 6, 1)));
+      await db.into(db.records).insert(RecordsCompanion.insert(
+          id: 'r2', baby: 'b-other', type: 'feed', ts: DateTime(2026, 6, 1)));
+      await db.into(db.cycleSettingsTable).insert(
+          CycleSettingsTableCompanion.insert(id: const Value('d1')));
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd1'));
+      when(() => repo.deleteAccount()).thenAnswer((_) async {});
+      final c = dbContainer(db);
+      await c.read(authControllerProvider.future);
+      expect(LocalSession.activeAccountId, 'd1');
+
+      await c.read(authControllerProvider.notifier).deleteAccount();
+
+      expect((await db.select(db.babies).get()).map((b) => b.id), ['b-other']);
+      expect((await db.select(db.records).get()).map((r) => r.id), ['r2']);
+      expect(await db.select(db.cycleSettingsTable).get(), isEmpty);
+      expect(c.read(authControllerProvider).value, isNull);
+    });
+
+    test('KB-9: sunucu silme DÜŞERSE yerelde hiçbir şey silinmez', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await db.into(db.babies).insert(BabiesCompanion.insert(
+          id: 'b-d1', name: 'Mine', accountId: const Value('d1')));
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd1'));
+      when(() => repo.deleteAccount()).thenThrow(Exception('offline'));
+      final c = dbContainer(db);
+      await c.read(authControllerProvider.future);
+      await expectLater(c.read(authControllerProvider.notifier).deleteAccount(),
+          throwsA(isA<Exception>()));
+      expect(await db.select(db.babies).get(), hasLength(1));
+      expect(c.read(authControllerProvider).value?.id, 'd1');
+    });
+
+    test('M9(c): cihaz kaydı silme 401 alsa da deleteAccount çağrılır', () async {
+      tokens.access = 'ACC';
+      when(() => repo.me()).thenAnswer((_) async => _user(id: 'd3'));
+      when(() => repo.deleteAccount()).thenAnswer((_) async {});
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final c = dbContainer(db);
+      await c.read(authControllerProvider.future);
+      final api = c.read(apiClientProvider);
+      final adapter = DioAdapter(dio: api.dio);
+      adapter.onPost('/me/devices', (s) => s.reply(201, {}), data: Matchers.any);
+      PushService.instance.resetForTests();
+      await PushService.instance.postToken(api, 'TOK'); // kayıtlı token var
+      adapter.onDelete('/me/devices', (s) => s.reply(401, {'detail': 'x'}),
+          data: Matchers.any);
+
+      await c.read(authControllerProvider.notifier).deleteAccount();
+
+      verify(() => repo.deleteAccount()).called(1);
+      expect(c.read(authControllerProvider).value, isNull);
     });
   });
 }

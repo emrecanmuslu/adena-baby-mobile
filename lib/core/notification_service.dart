@@ -1,24 +1,35 @@
 import 'dart:io' show Platform;
 
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../models/medication_plan.dart';
 import '../models/quiet_hours.dart';
 import '../models/reminder.dart';
 import 'i18n.dart';
+import 'i18n_warm.dart';
 
 /// Yerel bildirim servisi — hatırlatıcıları cihaz bildirimlerine bağlar.
 /// Üç tür: özel/randevu hatırlatıcıları (günlük veya tek-sefer), beslenme uyarısı
 /// (son beslenme + aralık) ve süren uyku/emzirme sayaçları.
 class NotificationService {
-  NotificationService._();
-  static final NotificationService instance = NotificationService._();
+  NotificationService._() : _plugin = FlutterLocalNotificationsPlugin();
+  /// Tekil örnek. Yalnız testler sahte plugin'li bir örnekle DEĞİŞTİRİR
+  /// (`NotificationService.withPlugin`); üretim kodu atama yapmaz.
+  static NotificationService instance = NotificationService._();
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  /// Yalnız test: sahte eklentiyle bağımsız bir örnek (platform kanalı yok).
+  @visibleForTesting
+  NotificationService.withPlugin(this._plugin);
+
+  final FlutterLocalNotificationsPlugin _plugin;
   bool _ready = false;
   bool _permissionAsked = false;
 
@@ -54,14 +65,12 @@ class NotificationService {
   static int breastIdFor(int slot) => _breastBase + slot;
   static const snoozeAction = 'snooze_feed';
   static const snoozeCategoryId = 'feed_snooze'; // iOS: "Ertele" aksiyonlu kategori
-  bool _exactAsked = false;
 
   // Aile etkinlik bildirimleri (başka üye kayıt ekleyince) — ayrı kanal + dönen id.
   static const _activityChannelId = 'family_activity';
   static String get _activityChannelName => tr('Aile etkinliği');
   static const _activityGroup = 'adena_family_activity'; // Android bildirim grubu
   static const _activityBaseId = 700000;
-  int _activitySeq = 0;
 
   /// iOS bildirim ayarları (kategori = ertele aksiyonu). İzinler açılışta DEĞİL,
   /// gerektiğinde (_ensurePermission) istenir → açılış engellenmez.
@@ -108,21 +117,76 @@ class NotificationService {
     return _plugin.pendingNotificationRequests();
   }
 
-  /// Android 12+ kesin alarm iznini ister (yalnız bir kez). Beslenme uyarısının
-  /// tam dakikasında gelmesi için gerekir.
-  Future<void> _ensureExactAlarm() async {
-    if (_exactAsked) return;
-    _exactAsked = true;
+  /// D18 / I6: aile bildirimi id'si — prefs'te KALICI sayaç (FCM bg isolate her
+  /// kurulduğunda bellek sayacı sıfırlanıyordu; zaman tabanlı halka ise 500 ms
+  /// periyotluydu → ~%2 çarpışma). O35 deseni: reload → artır → yaz. Aralık
+  /// 700000..700049 döngüsel. Prefs okunamazsa zaman tabanlı yedek.
+  static const _kActivitySeq = 'notif_activity_seq_v1';
+  static const activityIdRing = 50;
+
+  /// J7: `reload → oku → yaz` atomik değildir; FCM arka plan servisi isolate
+  /// açılırken kuyruktaki mesajları eşzamanlı sevk eder → iki çağrı aynı
+  /// sayacı okurdu. Isolate-içi Future zinciriyle serileştirilir (`sync` deseni).
+  @visibleForTesting
+  Future<int> nextActivityId() {
+    final run = _activityIdChain.then((_) => _nextActivityIdNow());
+    _activityIdChain = run.then((_) {}, onError: (_) {});
+    return run;
+  }
+
+  Future<void> _activityIdChain = Future.value();
+
+  Future<int> _nextActivityIdNow() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      try {
+        await p.reload();
+      } catch (_) {}
+      final n = ((p.getInt(_kActivitySeq) ?? -1) + 1) % activityIdRing;
+      await p.setInt(_kActivitySeq, n);
+      return _activityBaseId + n;
+    } catch (_) {
+      return _activityBaseId +
+          (DateTime.now().millisecondsSinceEpoch ~/ 10) % activityIdRing;
+    }
+  }
+
+  /// Android 12+ kesin alarm izni — O16: planlama yolunda ARTIK OTOMATİK
+  /// İSTENMEZ (Android 14+'ta varsayılan ret; plugin izin yoksa açıklamasız
+  /// sistem Ayarlar sayfasına atıyordu, her soğuk açılışta). İzin yoksa
+  /// `_alarmMode` inexact'e düşer (±dakikalar, bildirim kaybolmaz). Açık istek
+  /// yalnız kullanıcı eylemiyle: [requestExactAlarmPermission] (ayar ekranı,
+  /// KARAR-BEKLEYEN KB-4).
+  Future<void> _ensureExactAlarm() async {}
+
+  /// Kullanıcı açıkça isteyince (açıklama gösterildikten sonra) kesin alarm
+  /// izni sayfasını açar. Döner: izin şu an var mı.
+  Future<bool> requestExactAlarmPermission() async {
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    await android?.requestExactAlarmsPermission();
+    if (android == null) return true;
+    await android.requestExactAlarmsPermission();
+    return await android.canScheduleExactNotifications() ?? false;
+  }
+
+  /// Kesin alarm izni var mı (Android; diğer platformlarda true).
+  Future<bool> canScheduleExact() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+    return await android.canScheduleExactNotifications() ?? false;
   }
 
   /// Kesin alarm izni varsa exact, yoksa inexact döner. Android 12+ kullanıcı
   /// "kesin alarm"ı reddederse beslenme/randevu uyarısı TAMAMEN kaybolmasın —
   /// ±birkaç dakika gecikmeyle de olsa gelsin.
-  Future<AndroidScheduleMode> _alarmMode() async {
-    final android = _plugin.resolvePlatformSpecificImplementation<
+  Future<AndroidScheduleMode> _alarmMode() => alarmModeFor(_plugin);
+
+  /// Ön plan ve arka plan (bildirim eylemi isolate'i, J4) için ORTAK kural:
+  /// Android'de kesin alarm izni yoksa inexact, varsa exact; iOS'ta exact.
+  static Future<AndroidScheduleMode> alarmModeFor(
+      FlutterLocalNotificationsPlugin plugin) async {
+    final android = plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return AndroidScheduleMode.exactAllowWhileIdle; // iOS
     final can = await android.canScheduleExactNotifications() ?? true;
@@ -284,7 +348,7 @@ class NotificationService {
   Future<void> showActivity({required String title, required String body}) async {
     if (!_ready) await init();
     await _ensurePermission();
-    final id = _activityBaseId + (_activitySeq++ % 50);
+    final id = await nextActivityId();
     final android = AndroidNotificationDetails(
       _activityChannelId,
       _activityChannelName,
@@ -314,6 +378,7 @@ class NotificationService {
   Future<void> cancelReminder(int id) async {
     if (!_ready) return;
     await _plugin.cancel(id: id);
+    await _clearInterval(id); // J13
   }
 
   /// Beslenme hatırlatıcısını planlar: ana uyarı (kesin/sesli + "Ertele") ve
@@ -445,34 +510,68 @@ class NotificationService {
   ///   • periyodik: {repeat:'interval', every_min:15|30|60, title?} → kapatılana
   ///     dek her X dakikada bir (ateş takibi vb. için)
   /// Eski/uygulanmamış şekiller (vaccine days_before, nudge idle_hours) atlanır.
-  Future<void> sync(List<Reminder> reminders) {
+  ///
+  /// [reminders] = TEK bebeğin listesi (kurulacaklar). [allActiveIds] = cihazdaki
+  /// TÜM bebeklerin aktif hatırlatıcı id'leri (mutabakat için, DB'den taze okunur).
+  /// Eskiden mutabakat yalnız [reminders]'a bakıyordu → B bebeği senkronlanınca
+  /// A bebeğinin hatırlatıcıları yetim sanılıp siliniyordu (BULGULAR.md K1).
+  Future<void> sync(
+    List<Reminder> reminders, {
+    required Future<Set<int>> Function() allActiveIds,
+  }) {
     // Seri çalıştır: iki dinleyici (Hatırlatıcılar ekranı + global _ReminderSync)
     // aynı anda tetiklenebilir; await'ler arasında birbirine karışan iki sync,
     // iptal edilmiş bir planı geri kurabilir.
-    final run = _syncChain.then((_) => _syncNow(reminders));
+    final run = _syncChain.then((_) => _syncNow(reminders, allActiveIds));
     _syncChain = run.catchError((_) {});
     return run;
   }
 
   Future<void> _syncChain = Future.value();
 
-  Future<void> _syncNow(List<Reminder> reminders) async {
+  Future<void> _syncNow(
+    List<Reminder> reminders,
+    Future<Set<int>> Function() allActiveIds,
+  ) async {
     if (!_ready) await init();
-    final active = reminders.where((r) => r.enabled).toList();
+    // Küme, zincirde sıra bize gelince TAZE okunur (çağıranın listesi o ana kadar
+    // bayatlamış olabilir). J15: listedeki aktif hatırlatıcı bu kümede değilse
+    // (bebeği silinmiş / tombstone) KURULMAZ — silme yarışında `_ReminderSync`
+    // rebuild'i yetim plan bırakmasın.
+    Set<int>? keep;
+    try {
+      keep = await allActiveIds();
+    } catch (_) {
+      // Kaynak okunamadı → başka bebeklerin bildirimlerine DOKUNMA; yalnız bu
+      // listede olup kapalı olanlar iptal edilir (aşağıda keep == null dalı).
+      keep = null;
+    }
+    final k = keep;
+    final active = reminders
+        .where((r) => r.enabled && (k == null || k.contains(r.id)))
+        .toList();
     if (active.isNotEmpty) await _ensurePermission();
 
     // cancelAll yerine yalnız hatırlatıcı id aralığını temizle (feed 800xxx /
     // sayaç 900xxx / adet 600xxx / aile 700xxx korunur). Özel hatırlatıcı id'si
     // = Drift localId, yani _cycleBase altındaki TÜM bekleyen bildirimler bu
     // modülündür. Listeye göre tek tek iptal yerine bekleyenlerle MUTABAKAT:
-    // aktif listede olmayan her bekleyen iptal edilir — silinme anındaki bir
-    // yarışta yetim kalan periyodik alarm da böylece sonraki sync'te temizlenir.
+    // hiçbir bebeğin aktif listesinde olmayan her bekleyen iptal edilir —
+    // silinme anındaki bir yarışta yetim kalan periyodik alarm da böylece
+    // sonraki sync'te temizlenir. Küme, zincirde sıra bize gelince TAZE okunur
+    // (çağıranın listesi o ana kadar bayatlamış olabilir).
+    final listIds = {for (final r in reminders) r.id};
     final activeIds = {for (final r in active) r.id};
     try {
       final pending = await _plugin.pendingNotificationRequests();
       for (final p in pending) {
-        if (p.id < _cycleBase && !activeIds.contains(p.id)) {
+        if (p.id >= _cycleBase) continue;
+        final stale = keep != null
+            ? !keep.contains(p.id)
+            : (listIds.contains(p.id) && !activeIds.contains(p.id));
+        if (stale) {
           await _plugin.cancel(id: p.id);
+          await _clearInterval(p.id); // J13: prefs anahtarı birikmesin
         }
       }
     } catch (_) {
@@ -482,13 +581,24 @@ class NotificationService {
       }
     }
     final now = DateTime.now();
+    Set<int> pendingIds;
+    try {
+      pendingIds = {for (final p in await _plugin.pendingNotificationRequests()) p.id};
+    } catch (_) {
+      pendingIds = const {};
+    }
     for (final r in active) {
       final s = r.schedule;
       final title = (s['title'] as String?)?.trim();
       if (s['repeat'] == 'interval' || s['every_min'] != null) {
-        // Periyodik: her X dakikada bir tekrar eden bildirim.
+        // Periyodik: her X dakikada bir tekrar eden bildirim. O14: kurulu plan
+        // her sync'te YENİDEN KURULMAZ (ilk tetik "şimdi + aralık"a kayıyordu);
+        // yalnız bekleyen yoksa ya da aralık değiştiyse kurulur.
         final every = s['every_min'] is num ? (s['every_min'] as num).toInt() : 0;
         if (every < 1) continue;
+        if (pendingIds.contains(r.id) && await _storedInterval(r.id) == every) {
+          continue;
+        }
         await _scheduleInterval(r.id, every, title);
       } else if (s['repeat'] == 'once' || s['at'] != null) {
         // Tek-seferlik: belirli tarih-saatte bir kez (geçmişse kurma).
@@ -510,8 +620,35 @@ class NotificationService {
   /// Periyodik hatırlatıcı — ilk bildirim çağrıdan [everyMin] dk sonra, ardından
   /// hatırlatıcı kapatılana/silinene dek her [everyMin] dakikada bir (ateş takibi
   /// gibi kısa aralıklı kontroller için). Kesin alarm izni yoksa inexact kurulur.
+  /// Kurulu periyodik planların aralığı — KALICI (prefs, M3): süreç yeniden
+  /// başlasa da "bekleyen varsa kurma" kuralı aralık değiştiyse yeniden kurar,
+  /// değişmediyse tetik zamanını korur.
+  static const _kIntervalPrefix = 'notif_interval_';
+
+  Future<int?> _storedInterval(int id) async {
+    try {
+      return (await SharedPreferences.getInstance()).getInt('$_kIntervalPrefix$id');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// J13: iptal edilen hatırlatıcının aralık anahtarı silinir (prefs sızıntısı).
+  Future<void> _clearInterval(int id) async {
+    try {
+      await (await SharedPreferences.getInstance()).remove('$_kIntervalPrefix$id');
+    } catch (_) {}
+  }
+
+  Future<void> _storeInterval(int id, int everyMin) async {
+    try {
+      await (await SharedPreferences.getInstance()).setInt('$_kIntervalPrefix$id', everyMin);
+    } catch (_) {}
+  }
+
   Future<void> _scheduleInterval(int id, int everyMin, String? title) async {
     await _ensureExactAlarm();
+    await _storeInterval(id, everyMin);
     await _plugin.periodicallyShowWithDuration(
       id: id,
       title: title != null && title.isNotEmpty ? title : tr('Hatırlatıcı'),
@@ -532,7 +669,9 @@ class NotificationService {
       body: tr('Hatırlatma zamanı ⏰'),
       scheduledDate: when,
       notificationDetails: _details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      // J6: günlük tekrar (ilaç dozu / özel hatırlatıcı) da kesin alarm izni
+      // varsa exact — M4 diyaloğu "ilaç … tam saatinde" vaadiyle tutarlı.
+      androidScheduleMode: await _alarmMode(),
       matchDateTimeComponents: DateTimeComponents.time, // her gün aynı saat
     );
   }
@@ -650,10 +789,21 @@ class NotificationService {
   Future<void> syncMilestoneCheckReminder({required bool enabled, int slot = 0}) async {
     if (!_ready) await init();
     final id = _milestoneBase + slot;
-    await _plugin.cancel(id: id);
-    if (!enabled) return;
+    if (!enabled) {
+      await _plugin.cancel(id: id);
+      return;
+    }
+    if (await _isPending(id)) return; // O14: 14 günlük sayaç sıfırlanmasın
     await _ensurePermission();
     await _scheduleInterval(id, 14 * 24 * 60, tr('Gelişim basamaklarını kontrol et'));
+  }
+
+  Future<bool> _isPending(int id) async {
+    try {
+      return (await _plugin.pendingNotificationRequests()).any((p) => p.id == id);
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Diş çıkışlarını işaretlemeyi unutmamak için periyodik (2 haftada bir)
@@ -661,10 +811,47 @@ class NotificationService {
   Future<void> syncToothCheckReminder({required bool enabled, int slot = 0}) async {
     if (!_ready) await init();
     final id = _toothBase + slot;
-    await _plugin.cancel(id: id);
-    if (!enabled) return;
+    if (!enabled) {
+      await _plugin.cancel(id: id);
+      return;
+    }
+    if (await _isPending(id)) return; // O14
     await _ensurePermission();
     await _scheduleInterval(id, 14 * 24 * 60, tr('Diş çıkışlarını kontrol et'));
+  }
+
+  /// O15: bebek silinince / erişim kalkınca o bebeğin TÜM planlı bildirimleri —
+  /// beslenme (ana/ön/unuttun), sayaçlar, aşı/atak/büyüme/gebelik haftası,
+  /// periyodik gelişim/diş dürtmeleri ve ilaç planları — iptal edilir.
+  /// [reminderIds]: bebeğin özel/randevu hatırlatıcıları (`localReminders`
+  /// id'leri, I5) — satırlar silinmez ama bildirimleri burada iptal edilir.
+  Future<void> cancelBabyScheduled(
+      {required int slot,
+      Iterable<int> medicationPlanIds = const [],
+      Iterable<int> reminderIds = const []}) async {
+    if (!_ready) await init();
+    for (final id in reminderIds) {
+      await _plugin.cancel(id: id);
+      await _clearInterval(id); // J13
+    }
+    for (final id in [
+      feedMainIdFor(slot),
+      feedPreIdFor(slot),
+      feedForgotIdFor(slot),
+      sleepIdFor(slot),
+      breastIdFor(slot),
+      _vaccineBase + slot,
+      _leapBase + slot,
+      _growthBase + slot,
+      _pregWeekBase + slot,
+      _milestoneBase + slot,
+      _toothBase + slot,
+    ]) {
+      await _plugin.cancel(id: id);
+    }
+    for (final planId in medicationPlanIds) {
+      await cancelMedicationPlan(planId);
+    }
   }
 
   /// İlaç/vitamin planının TÜM zamanlanmış bildirimlerini iptal eder (plan
@@ -676,9 +863,75 @@ class NotificationService {
     }
   }
 
+  /// Bir bebeğin ilaç planı listesini cihaz bildirimleriyle eşitler (BULGULAR.md K5).
+  ///
+  /// [plans] = bu bebeğin (oturmuş, bayat olmayan) plan listesi; her plan için
+  /// `enabled && p.active` ise kurulur, değilse temizlenir. [activePlanIds] = DB'den
+  /// TAZE okunan, cihazdaki TÜM bebeklerin aktif (silinmemiş) plan id'leri:
+  /// ilaç id aralığındaki (670000-679999) hiçbir aktif plana ait olmayan bekleyen
+  /// bildirim yetim sayılıp iptal edilir (bayat listeden geri kurulmuş ya da
+  /// purge/silme yarışında kalmış bildirimler böylece öz-onarılır). Komşu sağlık
+  /// slot aralıklarına (…-669999) ve 700000+'a dokunulmaz.
+  ///
+  /// Çağrılar [_medChain] ile SERİLEŞTİRİLİR: eski rebuild'in (aktif) çağrısı ile
+  /// yeni rebuild'in (pasif) çağrısı iç içe geçip son durumu bozamaz; sıra bize
+  /// gelince aktif küme yeniden okunduğu için sonuç hep en güncel DB durumudur.
+  Future<void> syncMedicationPlans(
+    List<MedicationPlan> plans, {
+    required bool enabled,
+    required Future<Set<int>> Function() activePlanIds,
+    String babyName = '',
+  }) {
+    final run = _medChain.then(
+        (_) => _syncMedicationPlansNow(plans, enabled, activePlanIds, babyName));
+    _medChain = run.catchError((_) {});
+    return run;
+  }
+
+  Future<void> _medChain = Future.value();
+
+  Future<void> _syncMedicationPlansNow(
+    List<MedicationPlan> plans,
+    bool enabled,
+    Future<Set<int>> Function() activePlanIds,
+    String babyName,
+  ) async {
+    if (!_ready) await init();
+    // 1) Öz-onarım: aktif kümesi okunabildiyse yetim ilaç bildirimlerini temizle.
+    Set<int>? keep;
+    try {
+      keep = {for (final id in await activePlanIds()) id % 1000};
+    } catch (_) {
+      keep = null; // kaynak okunamadı → yetim temizliğini atla, listeyi yine işle
+    }
+    if (keep != null) {
+      try {
+        final pending = await _plugin.pendingNotificationRequests();
+        for (final p in pending) {
+          if (p.id < _medicationBase || p.id >= _medicationBase + 10000) continue;
+          final planKey = (p.id - _medicationBase) ~/ 10;
+          if (!keep.contains(planKey)) await _plugin.cancel(id: p.id);
+        }
+      } catch (_) {
+        // Bekleyenler okunamadı → yalnız listedekiler işlenir (aşağıda).
+      }
+    }
+    // 2) Listedeki planlar: her biri için temizle + (aktifse) yeniden kur.
+    for (final p in plans) {
+      await syncMedicationPlan(
+        enabled: enabled && p.active,
+        planId: p.id,
+        name: p.name,
+        times: p.times,
+        babyName: babyName,
+      );
+    }
+  }
+
   /// İlaç/vitamin planının günlük hatırlatıcılarını eşitler — [times] listesindeki
   /// her saat için ayrı bir günlük bildirim kurar (en fazla 10 doz/gün). Önce
   /// tüm slotları temizler; [enabled] false ya da liste boşsa yalnız temizlik yapar.
+  /// Tek başına çağrılırsa SERİLEŞTİRİLMEZ — ağaçtan [syncMedicationPlans] kullan.
   Future<void> syncMedicationPlan({
     required bool enabled,
     required int planId,
@@ -762,10 +1015,19 @@ void notificationBackgroundHandler(NotificationResponse response) {
   _snoozeFeedInBackground(NotificationService.parseFeedPayload(response.payload));
 }
 
+/// Yalnız test: arka plan erteleme gövdesi, sahte plugin ile.
+@visibleForTesting
+Future<void> debugSnoozeFeedInBackground(
+        ({bool sound, int slot, String babyName}) fp,
+        {required FlutterLocalNotificationsPlugin plugin}) =>
+    _snoozeFeedInBackground(fp, plugin: plugin);
+
 Future<void> _snoozeFeedInBackground(
-    ({bool sound, int slot, String babyName}) fp) async {
+    ({bool sound, int slot, String babyName}) fp,
+    {FlutterLocalNotificationsPlugin? plugin}) async {
+  await warmI18nFromCache(); // M7: "Ertele 10 dk"/başlık kullanıcının dilinde
   final sound = fp.sound;
-  final plugin = FlutterLocalNotificationsPlugin();
+  plugin ??= FlutterLocalNotificationsPlugin();
   const init = InitializationSettings(
     android: AndroidInitializationSettings('@mipmap/ic_launcher'),
     iOS: DarwinInitializationSettings(
@@ -800,13 +1062,28 @@ Future<void> _snoozeFeedInBackground(
     categoryIdentifier: NotificationService.snoozeCategoryId,
   );
   final prefix = fp.babyName.isNotEmpty ? '${fp.babyName} · ' : '';
-  await plugin.zonedSchedule(
-    id: NotificationService.feedMainIdFor(fp.slot),
-    title: '$prefix${tr('Beslenme zamanı (ertelendi)')}',
-    body: tr('10 dk ertelendi 🍼'),
-    scheduledDate: when,
-    notificationDetails: NotificationDetails(android: android, iOS: ios),
-    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    payload: NotificationService.feedPayload(fp.sound, fp.slot, fp.babyName),
-  );
+  // J4 (O16 regresyonu): ön planla AYNI kural — Android 14+'ta kesin alarm izni
+  // varsayılan ret; `exact` sabit kurulum plugin'in fırlatmasına, ertelemenin
+  // sessizce kaybolmasına yol açıyordu. İzin yoksa inexact (±dakikalar).
+  final mode = await NotificationService.alarmModeFor(plugin);
+  try {
+    await plugin.zonedSchedule(
+      id: NotificationService.feedMainIdFor(fp.slot),
+      title: '$prefix${tr('Beslenme zamanı (ertelendi)')}',
+      body: tr('10 dk ertelendi 🍼'),
+      scheduledDate: when,
+      notificationDetails: NotificationDetails(android: android, iOS: ios),
+      androidScheduleMode: mode,
+      payload: NotificationService.feedPayload(fp.sound, fp.slot, fp.babyName),
+    );
+  } catch (e, st) {
+    // Eylem isolate'inde yakalanmayan hata sessizce kaybolurdu; görünür olsun.
+    debugPrint('[notif] bg erteleme kurulamadı ($mode): $e');
+    try {
+      await FirebaseCrashlytics.instance
+          .recordError(e, st, reason: 'bg_snooze_schedule', fatal: false);
+    } catch (_) {
+      // Firebase bu isolate'te hazır değil → yalnız konsol.
+    }
+  }
 }

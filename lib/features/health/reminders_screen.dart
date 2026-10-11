@@ -107,7 +107,8 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
       if (next.isLoading) return;
       final list = next.asData?.value;
       if (list != null) {
-        NotificationService.instance.sync(list);
+        NotificationService.instance.sync(list,
+            allActiveIds: ref.read(healthRepositoryProvider).activeReminderIds);
         _pruneExpiredOnce(baby.id, list);
       }
     });
@@ -678,7 +679,7 @@ class _FeedReminderCard extends ConsumerWidget {
                   activeThumbColor: AppColors.coral,
                   onChanged: (v) {
                     final next = cfg.copyWith(enabled: v);
-                    updateFeedReminder(ref, babyId, next);
+                    updateFeedReminder(ref, babyId, next, context: context);
                     // Açılınca ayar sheet'i otomatik açılır (detayları ayarlasın).
                     if (v) showFeedReminderSheet(context, ref, babyId, next);
                   },

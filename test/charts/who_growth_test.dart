@@ -319,9 +319,10 @@ void main() {
       applyWhoLms([
         {
           'key': 'wt_M',
-          'l': [1, 2, 3],
-          'm': [4, 5, 6],
-          's': [0, 0, 0],
+          // D29: gerçek seri 61 nokta; kısa seri reddedilir.
+          'l': List<int>.filled(61, 1),
+          'm': [4, 5, ...List<int>.filled(59, 6)],
+          's': List<int>.filled(61, 0),
         }
       ]);
       expect(whoLms['wt_M']!.m[1], 5.0);

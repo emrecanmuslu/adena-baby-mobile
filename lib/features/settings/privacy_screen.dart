@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
@@ -10,7 +14,10 @@ import '../../core/legal_links.dart';
 import '../../core/providers.dart';
 import '../../core/restart_widget.dart';
 import '../../core/theme.dart';
+import '../../core/notification_service.dart';
+import '../../data/feed_input_cache.dart';
 import '../../data/local_session.dart';
+import '../../data/slot_registry.dart';
 import '../records/record_controller.dart';
 import '../../data/sync_gate.dart';
 import '../auth/auth_controller.dart';
@@ -198,7 +205,9 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
         content: Text(tr(
             'Hesabın devre dışı bırakılacak ve oturumun her cihazda kapanacak. '
             '30 gün içinde tekrar giriş yapmazsan hesabın ve tüm bebek verilerin '
-            'kalıcı olarak silinir. Bu süre içinde giriş yaparsan silme iptal olur.')),
+            'kalıcı olarak silinir. Bu süre içinde giriş yaparsan silme iptal olur. '
+            'Bu cihazdaki kayıtlar ve fotoğraflar hemen silinir; geri almak için '
+            'yeniden giriş yaptığında sunucudan indirilir.')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogCtx, false),
@@ -245,8 +254,15 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
     );
     if (confirm != true) return;
     try {
-      SyncService.wiping = true; // silme sırasında sync re-insert etmesin (yarış)
-      await ref.read(databaseProvider).wipeAllData();
+      // Silme sırasında sync re-insert etmesin (yarış); bayrak bitince sıfırlanır.
+      await SyncService.whileWiping(
+          () => ref.read(databaseProvider).wipeAllData());
+      // O33: "kalıcı silinecek" denen fotoğraflar, planlı bildirimler ve
+      // slot/giriş önbellekleri de temizlenir.
+      await _wipeLocalPhotoDirs();
+      await NotificationService.instance.cancelAll();
+      await SlotRegistry.instance.clear();
+      await FeedInputCache.clear();
       await LocalSession.clearLocalProfile();
       if (mounted) RestartWidget.restartApp(context);
     } catch (e) {
@@ -291,4 +307,16 @@ class _Note extends StatelessWidget {
       ),
     );
   }
+}
+
+/// O33: anı/bebek fotoğraflarının yerel kopyaları (ApplicationSupport/memories,
+/// /babies) — DB tabloları silinince diskte kalmasın.
+Future<void> _wipeLocalPhotoDirs() async {
+  try {
+    final dir = await getApplicationSupportDirectory();
+    for (final name in const ['memories', 'babies']) {
+      final d = Directory(p.join(dir.path, name));
+      if (await d.exists()) await d.delete(recursive: true);
+    }
+  } catch (_) {}
 }

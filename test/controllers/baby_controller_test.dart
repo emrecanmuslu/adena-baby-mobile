@@ -2,10 +2,15 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:drift/native.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mocktail/mocktail.dart';
 
+import 'package:adena_baby/core/providers.dart';
 import 'package:adena_baby/data/baby_repository.dart';
+import 'package:adena_baby/data/local/app_database.dart';
 import 'package:adena_baby/data/local_session.dart';
+import 'package:adena_baby/data/subscription_repository.dart';
 import 'package:adena_baby/data/sync_gate.dart';
 import 'package:adena_baby/features/babies/baby_controller.dart';
 import 'package:adena_baby/models/baby.dart';
@@ -26,6 +31,7 @@ void main() {
   late StreamController<List<Baby>> watchCtrl;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({}); // J5: SlotRegistry._persist
     repo = MockBabyRepository();
     watchCtrl = StreamController<List<Baby>>.broadcast();
     when(() => repo.watchAll()).thenAnswer((_) => watchCtrl.stream);
@@ -40,6 +46,13 @@ void main() {
         includeOwned: any(named: 'includeOwned'))).thenAnswer((_) async {});
     when(() => repo.pullFromServer(accountId: any(named: 'accountId')))
         .thenAnswer((_) async => const <Baby>[]);
+    // O4: ayar push/pull aynı turda (named argümanlı → any(named:)).
+    when(() => repo.pushSettings(
+        accountId: any(named: 'accountId'),
+        includeOwned: any(named: 'includeOwned'))).thenAnswer((_) async {});
+    when(() => repo.getAll(accountId: any(named: 'accountId')))
+        .thenAnswer((_) async => const <Baby>[]);
+    when(() => repo.pullSettings(any())).thenAnswer((_) async => false);
     // Active account must be set so the controller is scoped to a session.
     LocalSession.setActiveAccount('acct1');
   });
@@ -54,7 +67,13 @@ void main() {
   /// kendi premium'uma (cloudSync) bağlı. Premium daima oturum açık demektir →
   /// loggedIn verilmezse cloudSync'i izler.
   ProviderContainer makeContainer({bool cloudSync = false, bool? loggedIn}) {
+    // J5: deleteBaby artık (loading'de de) bildirim iptali için sağlık repo'suna
+    // (DB) ve SlotRegistry'ye (prefs) dokunur → gerçek DB/path_provider yerine
+    // bellek-içi DB; iptal çağrıları gerçek plugin'de MissingPlugin → yutulur.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
     final c = ProviderContainer(overrides: [
+      databaseProvider.overrideWithValue(db),
       babyRepositoryProvider.overrideWithValue(repo),
       loggedInProvider.overrideWithValue(loggedIn ?? cloudSync),
       cloudSyncEnabledProvider.overrideWithValue(cloudSync),
@@ -277,7 +296,27 @@ void main() {
       expect(c.read(activeBabyProvider), isNull);
     });
   });
-}
+  group('M5 — O4 pullSettings yalnız bulut-uygun bebekte', () {
+    test('free sahip + yerel dolu ayar → GET /settings çağrılmaz, ayar değişmez', () async {
+      when(() => repo.getAll(accountId: any(named: 'accountId')))
+          .thenAnswer((_) async => [_baby(id: 'own')]);
+      when(() => repo.getAll()).thenAnswer((_) async => [_baby(id: 'own')]);
+      final c = ProviderContainer(overrides: [
+        babyRepositoryProvider.overrideWithValue(repo),
+        loggedInProvider.overrideWithValue(true),
+        cloudSyncEnabledProvider.overrideWithValue(false),
+        isPremiumProvider.overrideWithValue(false),
+      ]);
+      addTearDown(c.dispose);
+      await c.read(babyControllerProvider.future);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      verify(() => repo.pullFromServer(accountId: any(named: 'accountId'))).called(1);
+      verifyNever(() => repo.pullSettings(any()));
+      verify(() => repo.pushSettings(
+          accountId: any(named: 'accountId'), includeOwned: false)).called(1);
+    });
+  });}
 
 BabyController ctrlOf(ProviderContainer c) =>
     c.read(babyControllerProvider.notifier);

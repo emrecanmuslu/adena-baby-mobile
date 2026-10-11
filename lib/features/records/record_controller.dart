@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/foundation.dart' show debugPrint, setEquals;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -12,12 +12,15 @@ import '../../core/notification_service.dart';
 import '../../core/review_service.dart';
 import '../../core/analytics_service.dart';
 import '../../core/providers.dart';
+import '../../data/cycle_repository.dart';
 import '../../data/health_repository.dart';
+import '../../data/local_session.dart';
 import '../../data/record_repository.dart';
 import '../../data/subscription_repository.dart';
 import '../../data/sync_gate.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
+import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 import '../babies/family_settings.dart';
 
@@ -123,13 +126,33 @@ final latestByTypeProvider =
       ref.watch(recordRepositoryProvider).watchLatestByType(babyId),
 );
 
+/// Yerel takvim günü (gece yarısında ilerler) — O13: "Bugün" özeti uygulama
+/// açık kalıp gece yarısını geçince dünü saymasın.
+final currentDayProvider = StreamProvider<DateTime>((ref) {
+  final ctrl = StreamController<DateTime>();
+  Timer? timer;
+  void tick() {
+    final now = DateTime.now();
+    ctrl.add(DateTime(now.year, now.month, now.day));
+    final next = DateTime(now.year, now.month, now.day + 1);
+    timer = Timer(next.difference(now) + const Duration(seconds: 1), tick);
+  }
+
+  tick();
+  ref.onDispose(() {
+    timer?.cancel();
+    ctrl.close();
+  });
+  return ctrl.stream;
+});
+
 /// Bugünün kayıtları (gece yarısından beri) — "Bugün" özeti için.
 final todayRecordsProvider = StreamProvider.family<List<Record>, String>(
   (ref, babyId) {
     final now = DateTime.now();
-    return ref
-        .watch(recordRepositoryProvider)
-        .watchSince(babyId, DateTime(now.year, now.month, now.day));
+    final day = ref.watch(currentDayProvider).asData?.value ??
+        DateTime(now.year, now.month, now.day);
+    return ref.watch(recordRepositoryProvider).watchSince(babyId, day);
   },
 );
 
@@ -182,7 +205,21 @@ class SyncService with WidgetsBindingObserver {
   bool _running = false; // çakışan eşitleme turlarını önle
   bool _pending = false; // tur sürerken gelen istek → tur bitince bir kez daha çalış
   // GDPR "yerel verileri sil" sırasında sync re-insert etmesin (wipe yarışı).
+  // Doğrudan set ETME → [whileWiping] kullan: bayrak eskiden hiç false'a
+  // dönmüyordu ve (RestartWidget süreci öldürmediği için) silme sonrası sync
+  // süreç ömrü boyunca sessizce kapalı kalıyordu (BULGULAR.md K3).
   static bool wiping = false;
+
+  /// [body] (yerel silme) çalışırken sync'i durdurur; gövde başarılı da bitse
+  /// hata da fırlatsa bayrak her durumda sıfırlanır.
+  static Future<T> whileWiping<T>(Future<T> Function() body) async {
+    wiping = true;
+    try {
+      return await body();
+    } finally {
+      wiping = false;
+    }
+  }
 
   static const _pollInterval = Duration(minutes: 1);
 
@@ -197,7 +234,7 @@ class SyncService with WidgetsBindingObserver {
   SyncService(this._ref) {
     _sub = Connectivity().onConnectivityChanged.listen((results) {
       if (!results.contains(ConnectivityResult.none)) syncAll();
-    });
+    }, onError: (_) {}); // platform yoksa (test) akış hatası yutulur
     WidgetsBinding.instance.addObserver(this);
     _startPolling();
   }
@@ -232,8 +269,11 @@ class SyncService with WidgetsBindingObserver {
     // Oturum yoksa hiç senkron yok (saf local-first).
     if (!_ref.read(loggedInProvider)) return;
     if (_running) {
-      _pending = true; // tur sürüyor → isteği yut yerine kuyruğa al (push nudge kaybolmasın)
-      return;
+      // Tur sürüyor → kuyruğa al (push nudge kaybolmasın). O11: çağıran, takip
+      // turu BİTENE kadar bekleyebilsin ("Kaydet → sunucu onayını bekle" sözü).
+      _pending = true;
+      _pendingDone ??= Completer<void>();
+      return _pendingDone!.future;
     }
     _running = true;
     // Tur başladı → UI'ya "senkronize ediliyor" ara-durumunu bildir (önceki
@@ -259,6 +299,10 @@ class SyncService with WidgetsBindingObserver {
         try {
           await repo.sync(b.id);
           await _syncMedicationPlans(b.id);
+          // K4/K-3: sağlık delta push her turda (ucuz, yalnız dirty varsa istek
+          // atar); pull yalnız tam turlarda (açılış/öne geliş/işaretleme) —
+          // 1 dk polling'e eklenmez.
+          await _syncHealth(b.id, pullToo: !sharedOnly);
           // Başarılı → geçici 403 işaretini kaldır (varsa). Artık restart gerekmez.
           _ref.read(cloudReadonlyBabiesProvider.notifier).remove(b.id);
         } on DioException catch (e) {
@@ -279,6 +323,9 @@ class SyncService with WidgetsBindingObserver {
           hadError = true;
         }
       }
+      // Adet modülü (kişisel, bebekten bağımsız): dirty ayar/kayıt yeniden
+      // denenir + pull (O6/O7). Yalnız tam turlarda; hata kaydı turunu etkilemez.
+      if (!sharedOnly) await _syncCycle();
       _ref.read(syncStatusProvider.notifier).set(hadError
           ? SyncStatus(
               lastSyncedAt: _ref.read(syncStatusProvider).lastSyncedAt,
@@ -301,16 +348,64 @@ class SyncService with WidgetsBindingObserver {
     // Bkz. AppDatabase._open (shareAcrossIsolates neden kapalı).
     _ref.read(databaseProvider).refreshSyncedStreams();
     // Tur sırasında istek geldiyse bir kez daha (tam) çek → kaçan değişiklik kalmasın.
+    final waiters = _pendingDone;
+    _pendingDone = null;
     if (_pending) {
       _pending = false;
       await syncAll(sharedOnly: false);
     }
+    waiters?.complete(); // O11: kuyruktaki çağıranlar takip turu bitince döner
+  }
+
+  /// O11: tur sürerken gelen `syncAll` çağrılarının beklediği takip turu.
+  Completer<void>? _pendingDone;
+
+  /// Adet ayarı + kayıtlarının bulut senkronu (yalnız kendi premium'um;
+  /// cycleRepository kapıyı kendisi uygular). Bilinçli sessiz.
+  Future<void> _syncCycle() async {
+    try {
+      await _ref.read(cycleRepositoryProvider).syncIfCloud();
+    } catch (_) {}
   }
 
   /// İlaç/vitamin planlarının aile senkronu. Kayıt senkronundan BAĞIMSIZ hata
   /// yönetimi: burada düşen bir istek (çevrimdışı, premium 403'ü) kayıt turunu
   /// başarısız saydırmaz, bebeği salt-okunur işaretlemez — plan yerelde kalır,
   /// sonraki turda yeniden denenir.
+  /// Sağlık durumu (aşı/gelişim/diş) delta push (+ pull). Push'un geçici
+  /// hatası (ağ/5xx/403) dışarı fırlar → çağıran bebek döngüsü ele alır.
+  Future<void> _syncHealth(String babyId, {required bool pullToo}) async {
+    final repo = _ref.read(healthRepositoryProvider);
+    // M9(a): polling turunda (pullToo=false) yankılanmamış aşılar yeniden denenmez.
+    await repo.pushDirty(babyId, retryUnechoed: pullToo);
+    if (!pullToo) return;
+    // I1 kapısı: sahip bebekte pull yalnız bu hesabın yerel kümesi bir kez tam
+    // yüklendiyse (göç bitti) ve lapse sonrası yeniden-tohumlama beklemiyorsa.
+    // Aksi hâlde sunucunun boş/bayat kümesi v14'ten kalan TEMİZ tikleri silerdi.
+    final baby = _ref
+        .read(babyControllerProvider)
+        .asData
+        ?.value
+        .where((b) => b.id == babyId)
+        .firstOrNull;
+    final shared = baby?.myRole == 'parent' || baby?.myRole == 'caregiver';
+    final acct = _ref.read(activeAccountIdProvider);
+    final allowed = healthPullAllowed(
+      shared: shared,
+      premiumSynced: acct != null && LocalSession.premiumSyncedForAccount(acct),
+      reseedPending: acct != null && LocalSession.healthReseedPending(acct),
+    );
+    if (!allowed) {
+      debugPrint('[health-sync] pull kapalı (göç/yeniden-tohumlama bekliyor): $babyId');
+      return;
+    }
+    if (await repo.pull(babyId)) {
+      _ref.invalidate(vaccinesProvider(babyId));
+      _ref.invalidate(milestonesProvider(babyId));
+      _ref.invalidate(teethProvider(babyId));
+    }
+  }
+
   Future<void> _syncMedicationPlans(String babyId) async {
     try {
       final r =
@@ -368,9 +463,11 @@ class RecordActions {
     // hale gelirdi. Çevrimdışıyken hiç denemeyiz (dio 15-20 sn timeout'a kadar
     // bekletirdi) → local-first devam. Sunucu hata dönerse de (syncAll hatayı
     // zaten yutar, bkz. SyncService.syncAll) yine local-first'e düşülür.
+    // O11: bağlantı durumu henüz bilinmiyorsa (asData yok) BEKLEME — local-first;
+    // çevrimdışıyken 10 sn'ye kadar boşuna bekleniyordu.
     if (ad &&
         r.type == RecordType.feed &&
-        (_ref.read(onlineProvider).asData?.value ?? true)) {
+        (_ref.read(onlineProvider).asData?.value ?? false)) {
       // Üst sınır: "bağlı ama internetsiz" wifi gibi uç durumlarda kullanıcıyı
       // dio'nun 15-20 sn timeout'una kadar bekletmeyelim — tur arka planda
       // sürmeye devam eder (future iptal edilmez), yalnız burada beklemeyi bırakırız.
@@ -450,7 +547,10 @@ class RecordActions {
         ad: true,
       );
 
-  Future<void> startSleep(String babyId) {
+  Future<void> startSleep(String babyId) async {
+    // D23: çift dokunuşta iki süren uyku oluşmasın (ikincisi akışta sonsuza
+    // dek "Uyuyor…" kalıyordu).
+    if (await _repo.watchOngoingSleep(babyId).first != null) return;
     final now = DateTime.now();
     return _saveAndSync(Record(
       id: _uuid.v4(),
@@ -466,17 +566,20 @@ class RecordActions {
     final start =
         DateTime.tryParse(sleep.data['start_ts'] as String? ?? '')?.toLocal() ??
             sleep.ts;
+    // O27: başka cihazın saat sapmasıyla start > now olabilir → negatif süre yok.
+    final end = now.isBefore(start) ? start : now;
     return _saveAndSync(
         sleep.copyWith(data: {
           ...sleep.data,
-          'end_ts': now.toUtc().toIso8601String(),
-          'duration': now.difference(start).inMinutes,
+          'end_ts': end.toUtc().toIso8601String(),
+          'duration': end.difference(start).inMinutes,
         }),
         ad: true);
   }
 
   /// Uykuyu elle girilen başlangıç/bitişle tamamla (kaydetmeden önce süre düzenleme).
   Future<void> stopSleepWithTimes(Record sleep, DateTime start, DateTime end) {
+    if (end.isBefore(start)) end = start; // O27: negatif süre yok
     return _saveAndSync(
         sleep.copyWith(ts: start, data: {
           ...sleep.data,
@@ -502,12 +605,16 @@ class RecordActions {
       final key = side == 'right' ? 'right_ms' : 'left_ms';
       d[key] = ((data[key] as num?) ?? 0) + addMs;
     }
-    d['seg_start_ts'] = now.toUtc().toIso8601String();
+    // O28: duraklatılmışken (meme değiştirme) segment YENİDEN BAŞLAMAZ — aksi
+    // halde "Kaydet"e kadar geçen duraklama süresi hayalet dakika olarak eklenirdi.
+    d['seg_start_ts'] =
+        data['paused'] == true ? null : now.toUtc().toIso8601String();
     return d;
   }
 
   /// Emzirmeyi başlat — seçilen memeyle süren kayıt oluşturur.
-  Future<void> startBreast(String babyId, String side) {
+  Future<void> startBreast(String babyId, String side) async {
+    if (await _repo.watchOngoingBreast(babyId).first != null) return; // D23
     final now = DateTime.now();
     final s = side == 'right' ? 'right' : 'left';
     return _saveAndSync(Record(

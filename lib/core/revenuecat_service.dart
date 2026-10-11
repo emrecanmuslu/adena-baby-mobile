@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import 'config.dart';
@@ -45,7 +46,12 @@ class RevenueCatService {
 
   /// Giriş sonrası: RC kullanıcı kimliğini bizim `user.id`'ye sabitle (webhook
   /// app_user_id eşleşmesi için). Henüz configure olmadıysa önce dener.
+  /// Yalnız test: identify çağrılarını gözlemlemek için kanca.
+  @visibleForTesting
+  void Function(String userId)? identifyHook;
+
   Future<void> identify(String userId) async {
+    identifyHook?.call(userId);
     if (!_configured) await configure();
     if (!_configured) return;
     try {
@@ -61,12 +67,27 @@ class RevenueCatService {
     } catch (_) {}
   }
 
+  /// D6: `configure()` main'de unawaited → ilk build'de henüz hazır olmayabilir;
+  /// dinleyici düşmesin diye kuyruğa alınır, configure bitince takılır.
+  final List<void Function(CustomerInfo)> _pendingListeners = [];
+
   void addUpdateListener(void Function(CustomerInfo) cb) {
-    if (!_configured) return;
-    Purchases.addCustomerInfoUpdateListener(cb);
+    if (_configured) {
+      Purchases.addCustomerInfoUpdateListener(cb);
+      return;
+    }
+    _pendingListeners.add(cb);
+    configure().then((_) {
+      if (!_configured) return;
+      for (final l in List.of(_pendingListeners)) {
+        _pendingListeners.remove(l);
+        Purchases.addCustomerInfoUpdateListener(l);
+      }
+    });
   }
 
   void removeUpdateListener(void Function(CustomerInfo) cb) {
+    _pendingListeners.remove(cb);
     if (!_configured) return;
     Purchases.removeCustomerInfoUpdateListener(cb);
   }

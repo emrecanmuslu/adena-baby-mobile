@@ -79,8 +79,9 @@ Future<void> setCycleLifecycleMode(
         '${ttcStartedAt.month.toString().padLeft(2, '0')}-'
         '${ttcStartedAt.day.toString().padLeft(2, '0')}';
   }
+  // D35 KABUL: ttc'den çıkınca damga TARİHÇE olarak bilinçli korunur (J4
+  // yolculuk testi bunu belgeliyor; sihirbaz yeniden ttc seçince aynı damga).
   await repo.patchSettings(fields);
-  ref.invalidate(cycleSettingsProvider);
 }
 
 /// Ayarlar/ana ekranda gösterilen mod seçici — "Hedefim" (Flo pariteti).

@@ -132,8 +132,11 @@ class CycleSettings {
         learningWindow: (j['learning_window'] as num?)?.toInt(),
       );
 
-  Map<String, dynamic> toPatchJson() => {
-        if (babyId != null) 'baby': babyId,
+  /// PATCH gövdesi. `baby` null ise varsayılan olarak GÖNDERİLMEZ (alan
+  /// değişmediyse sunucudaki bağ korunur); [includeNullBaby] true → `baby: null`
+  /// açıkça gider (bağ koparma; backend `allow_null` — K-8).
+  Map<String, dynamic> toPatchJson({bool includeNullBaby = false}) => {
+        if (babyId != null || includeNullBaby) 'baby': babyId,
         'birth_date': _iso(birthDate),
         'breastfeeding': breastfeeding?.name ?? '',
         'first_period_date': _iso(firstPeriodDate),

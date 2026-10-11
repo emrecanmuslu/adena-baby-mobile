@@ -260,6 +260,9 @@ class NotificationService: UNNotificationServiceExtension {
   /// next = lastTs + interval(dk). Tarih ayrıştırılamazsa nil.
   private func nextFeedMs(lastTs: String, est: FeedEstimate) -> Int64? {
     guard let last = parseDate(lastTs) else { return nil }
+    // O17: ileri tarihli çapa (şimdi + 1 saatten sonra) hatırlatıcıyı günler
+    // sonrasına kurmasın — Dart feedAnchorPlausible ile aynı eşik.
+    if last.timeIntervalSinceNow > 3600 { return nil }
     let next = last.addingTimeInterval(est.intervalMin * 60)
     return Int64(next.timeIntervalSince1970 * 1000)
   }

@@ -26,7 +26,16 @@ void applyWhoLms(List<dynamic> data) {
     final l = (e['l'] as List?)?.map((x) => (x as num).toDouble()).toList();
     final m = (e['m'] as List?)?.map((x) => (x as num).toDouble()).toList();
     final s = (e['s'] as List?)?.map((x) => (x as num).toDouble()).toList();
-    if (key != null && l != null && m != null && s != null) {
+    // D29: seri uzunluğu doğrulanır (0..60 ay = 61 nokta); kısa/uyumsuz seri
+    // gömülüyü ezmesin (yoksa büyüme grafiği RangeError ile çöküyor, cache
+    // yüzünden çevrimdışı da sürüyordu).
+    if (key != null &&
+        l != null &&
+        m != null &&
+        s != null &&
+        l.length >= 61 &&
+        m.length == l.length &&
+        s.length == l.length) {
       next[key] = WhoLms(l, m, s);
     }
   }

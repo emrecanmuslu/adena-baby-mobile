@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../data/activity_notif_cache.dart';
@@ -8,6 +10,7 @@ import '../data/feed_reminder_cache.dart';
 import '../data/notification_prefs.dart';
 import '../data/slot_registry.dart';
 import 'api_client.dart';
+import 'i18n_warm.dart';
 import 'background_sync.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
@@ -26,10 +29,22 @@ import 'widget_service.dart';
 /// isolate'te çalışır (bayrak varsayılan false → OS bildirimi göster).
 bool appInForeground = false;
 
+/// D4: `inactive` (bildirim paneli, iOS app switcher) de ön plandır — aksi hâlde
+/// push hem OS bildirimi hem in-app banner olarak çift görünür. Saf, testli.
+bool isForegroundLifecycle(AppLifecycleState state) =>
+    state == AppLifecycleState.resumed || state == AppLifecycleState.inactive;
+
+/// O17: push çapası makul mü — ön plan `lastFeedAt` kuralıyla aynı eşik
+/// (şimdi + 1 saatten ileri kayıt çapa OLMAZ). "En yeni kayıt" kuralı backend
+/// tarafında (BACKEND-TALEPLERI #10); bg turu / öne geliş yine düzeltir.
+bool feedAnchorPlausible(DateTime lastFeed, {DateTime? now}) =>
+    !lastFeed.isAfter((now ?? DateTime.now()).add(const Duration(hours: 1)));
+
 /// Arka plan (uygulama kapalı/arka planda) mesaj işleyici — TOP-LEVEL olmalı.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
+  await warmI18nFromCache(); // M7: bildirim metinleri kullanıcının dilinde
   await handlePushMessage(message);
 }
 
@@ -54,7 +69,10 @@ Future<void> handlePushMessage(RemoteMessage message) async {
     // 1) Beslenme EKLEME olayı: widget + yerel hatırlatıcı güncellemesi. last_feed_ts
     //    süren emzirme dahil her beslenmede gelir; widget_update yalnız TAMAMLANMIŞ
     //    beslenmede (widget süren emzirmeyi "son beslenme" saymaz).
-    final lastFeed = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
+    // O17: ileri tarihli (yanlış girilmiş) çapa widget'ı/hatırlatıcıyı günler
+    // sonrasına kurmasın — ön plan/bg sync'teki "gelecek tarih eşiği" ile aynı.
+    final rawLast = DateTime.tryParse(data['last_feed_ts'] ?? '')?.toLocal();
+    final lastFeed = rawLast != null && feedAnchorPlausible(rawLast) ? rawLast : null;
     if (data['widget_update'] == 'feed') {
       // Widget artık SONRAKİ beslenmeyi gösterir → son beslenme + aralıktan hesapla.
       // Çok-bebek: bu bebeğin verisini per-baby anahtarına yaz (o bebeği seçen widget tazelenir).
@@ -161,7 +179,9 @@ Future<void> _handleSyncNudge(Map<String, dynamic> data, String babyNameFallback
     if (snap != null) {
       final cfg = snap.toConfig().effectiveForEstimate;
       final tsStr = data['last_feed_${cfg.baseType}'] as String?;
-      final lastFeed = tsStr != null ? DateTime.tryParse(tsStr)?.toLocal() : null;
+      final rawLast = tsStr != null ? DateTime.tryParse(tsStr)?.toLocal() : null;
+      final lastFeed =
+          rawLast != null && feedAnchorPlausible(rawLast) ? rawLast : null; // O17
       if (lastFeed != null) {
         final next = lastFeed.add(Duration(minutes: cfg.intervalMin));
         final babyName = (data['baby_name'] as String?) ?? babyNameFallback;
@@ -248,7 +268,19 @@ class PushService {
   }
 
   /// FCM token'ını al ve sunucuya kaydet (oturum açıkken çağır). İzin de ister.
-  Future<void> registerToken(ApiClient api) async {
+  /// D5: eşzamanlı çağrılar (resume + auth listener) tek uçuşta birleşir —
+  /// iOS'ta 15 sn APNs yoklaması paralel koşmasın, çift POST atılmasın.
+  Future<void>? _registering;
+
+  Future<void> registerToken(ApiClient api) {
+    final inflight = _registering;
+    if (inflight != null) return inflight;
+    final run = _registerTokenNow(api).whenComplete(() => _registering = null);
+    _registering = run;
+    return run;
+  }
+
+  Future<void> _registerTokenNow(ApiClient api) async {
     // Açılışta Firebase.initializeApp() timeout'a ya da bir eklenti (Crashlytics)
     // component hatasına takılıp başarısız olmuş olabilir → FirebaseMessaging.instance
     // [core/no-app] fırlatır ve token kaydı sessizce düşerdi. FCM'e dokunmadan önce
@@ -266,8 +298,7 @@ class PushService {
       _refreshSubscribed = true;
       FirebaseMessaging.instance.onTokenRefresh.listen((t) {
         if (t == _lastRegistered) return;
-        _lastRegistered = t;
-        _post(api, t);
+        postToken(api, t);
       });
     }
     try {
@@ -284,8 +315,7 @@ class PushService {
       }
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token != _lastRegistered) {
-        _lastRegistered = token;
-        await _post(api, token);
+        await postToken(api, token);
       }
     } catch (_) {
       // İzin reddi / ağ / APNs hatası → sessiz; onTokenRefresh backstop kalır.
@@ -305,16 +335,32 @@ class PushService {
     }
   }
 
-  Future<void> _post(ApiClient api, String token) async {
+  /// Token'ı sunucuya kaydeder; `_lastRegistered` YALNIZ başarılı POST'ta
+  /// işaretlenir (O1 artığı): zorunlu çıkış → `deleteToken` → FCM yeni token
+  /// üretir → `onTokenRefresh` oturum yokken gelir. Eskiden token önce
+  /// işaretlenip POST 401 ile düşüyordu; yeniden girişte `registerToken` aynı
+  /// token'ı "zaten kayıtlı" sanıp hiç göndermiyordu → aile push'u ölü kalırdı.
+  /// Oturum yoksa istek hiç atılmaz (yetkisiz 401 → refresh yolu tetiklenmesin).
+  @visibleForTesting
+  Future<bool> postToken(ApiClient api, String token) async {
     try {
+      if (!await api.hasSession) return false;
       await api.dio.post('/me/devices', data: {
         'push_token': token,
         'platform': Platform.isIOS ? 'ios' : 'android',
       });
+      _lastRegistered = token;
+      return true;
     } catch (_) {
-      // Oturum yoksa 401 → giriş sonrası tekrar denenir.
+      return false; // ağ/401 → giriş sonrası / sonraki öne gelişte tekrar denenir
     }
   }
+
+  @visibleForTesting
+  String? get lastRegistered => _lastRegistered;
+
+  @visibleForTesting
+  void resetForTests() => _lastRegistered = null;
 
   /// Çıkışta çağrılır: bu cihazın FCM token'ını sunucudan siler (token HÂLÂ
   /// geçerliyken, yani _repo.logout()'tan ÖNCE çağır). Böylece çıkılan hesaba bu

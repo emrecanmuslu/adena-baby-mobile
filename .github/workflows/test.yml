@@ -1,0 +1,88 @@
+name: Test (analyze + flutter test)
+
+# Her push/PR'da statik analiz + tam test suite'i; üç saat diliminde (M6/KB-6
+# DST testleri: Windows'ta TZ yok sayıldığından yalnız burada doğrulanır).
+#
+# Çeviri bütünlüğü testi (test/i18n/translation_keys_test.dart, I11) CI'da
+# (CI=true) kardeş api repo'sunun `apps/translations/data/*.json` dosyalarını
+# `../api` yolunda İSTER; yoksa test KIRMIZIDIR. Bu yüzden api repo'su
+# `api/` dizinine checkout edilir. Gerekli secret: API_REPO_TOKEN
+# (emrecanmuslu/adena-baby-api için "Contents: read" izinli fine-grained PAT
+# ya da `repo` kapsamlı classic PAT). Bkz. YAYIN-KONTROL.md §6.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test:
+    name: test (TZ=${{ matrix.tz }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # UTC = ubuntu-latest varsayılanı. Tam suite yerelde ~40 sn (1334 test)
+        # → her saat diliminde TAM suite koşmak ucuz; DST'ye duyarlı yerler
+        # yalnız test/engines + journeys + cycle_* değil (ev ekranı "Bugün",
+        # yaş/atak haftası, bildirim tarihleri — KB-6 ek listesi).
+        tz: ['UTC', 'Europe/Berlin', 'America/New_York']
+    env:
+      TZ: ${{ matrix.tz }}
+    defaults:
+      run:
+        working-directory: mobile-app
+    steps:
+      - name: Checkout (mobil)
+        uses: actions/checkout@v5
+        with:
+          path: mobile-app
+
+      # translation_keys_test `../api/apps/translations/data` bekler → kardeş dizin.
+      - name: Checkout (api — çeviri JSON'ları)
+        uses: actions/checkout@v5
+        with:
+          repository: emrecanmuslu/adena-baby-api
+          ref: main
+          token: ${{ secrets.API_REPO_TOKEN }}
+          path: api
+          sparse-checkout: |
+            apps/translations/data
+          sparse-checkout-cone-mode: true
+
+      - name: Flutter kur
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.1' # android.yml / ios.yml ile aynı
+          cache: true
+
+      - name: Sürüm
+        run: |
+          flutter --version
+          date
+          echo "TZ=$TZ"
+
+      - name: Bağımlılıklar
+        run: flutter pub get
+
+      # Release iş akışları build_runner ile yeniden üretir; test edilen
+      # (izlenen) app_database.g.dart ile aynı olduğunu doğrula.
+      - name: Codegen (drift) + izlenen dosya güncel mi
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          git diff --exit-code -- lib/data/local/app_database.g.dart \
+            || { echo "::error::app_database.g.dart güncel değil — build_runner çıktısını commit'le"; exit 1; }
+
+      - name: flutter analyze
+        run: flutter analyze
+
+      - name: flutter test
+        env:
+          CI: 'true' # I11: api çeviri JSON'ları yoksa test kırmızı (sessiz atlama yok)
+        run: flutter test --reporter expanded

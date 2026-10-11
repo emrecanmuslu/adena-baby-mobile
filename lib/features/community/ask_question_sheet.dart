@@ -89,9 +89,14 @@ class _AskQuestionSheetState extends State<_AskQuestionSheet> {
     }
   }
 
+  // D39: ebeveyn ekranın ref'iyle watch → sheet rebuild olmuyordu; kendi
+  // Consumer'ı ile kategoriler sonradan yüklenince de yansır.
   @override
-  Widget build(BuildContext context) {
-    final cats = widget.ref.watch(contentCategoriesProvider).asData?.value ?? const [];
+  Widget build(BuildContext context) =>
+      Consumer(builder: (context, ref, _) => _build(context, ref));
+
+  Widget _build(BuildContext context, WidgetRef ref) {
+    final cats = ref.watch(contentCategoriesProvider).asData?.value ?? const [];
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(

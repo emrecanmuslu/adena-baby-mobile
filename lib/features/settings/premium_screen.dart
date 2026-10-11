@@ -99,7 +99,8 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
   @override
   Widget build(BuildContext context) {
     final sub = ref.watch(subscriptionProvider).asData?.value;
-    final isPremium = sub?.isPremium ?? false;
+    // D22: çevrimdışı premium kullanıcıya "Premium ol" gösterilmesin.
+    final isPremium = ref.watch(isPremiumProvider);
     // Yönetilebilir fiyatlar (DB) — RC fiyatı yoksa fallback + indirim gösterimi.
     final pricing = ref.watch(pricingProvider).asData?.value ??
         const <String, PlanPricing>{};
@@ -472,8 +473,10 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
       final ok = await RevenueCatService.instance.purchase(pkg);
       if (ok) {
         unawaited(AnalyticsService.instance.log('purchase_completed', {'plan': _plan}));
-        await ref.read(subscriptionRepositoryProvider).refresh();
-        ref.invalidate(subscriptionProvider);
+        // O12: satın alma RevenueCat'te DOĞRULANDI → premium artık gerçek.
+        // Backend refresh (webhook kısayolu) düşerse hata GÖSTERİLMEZ: son
+        // bilinen durum premium yapılır, RC webhook / sonraki açılış senkronlar.
+        await ref.read(purchaseConfirmProvider).applyConfirmed();
         if (mounted) {
           showAdToast(context, tr('Premium etkinleştirildi 🎉'));
           Navigator.maybePop(context);

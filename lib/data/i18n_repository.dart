@@ -15,12 +15,16 @@ class I18nRepository {
   final ApiClient _api;
   I18nRepository(this._api);
 
-  Future<File> _cacheFile(String locale) async {
+  static Future<File> _cacheFile(String locale) async {
     final dir = await getApplicationSupportDirectory();
     return File('${dir.path}/i18n_$locale.json');
   }
 
-  Future<(int, Map<String, String>)> readCache(String locale) async {
+  Future<(int, Map<String, String>)> readCache(String locale) =>
+      readCachedStrings(locale);
+
+  /// Diskteki çeviri cache'i — ApiClient gerektirmez (bg isolate'te de, M7).
+  static Future<(int, Map<String, String>)> readCachedStrings(String locale) async {
     try {
       final f = await _cacheFile(locale);
       if (!await f.exists()) return (0, <String, String>{});

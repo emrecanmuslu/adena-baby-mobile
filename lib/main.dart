@@ -44,6 +44,7 @@ import 'data/subscription_repository.dart';
 import 'data/theme_cache.dart';
 import 'features/babies/baby_controller.dart';
 import 'features/babies/notification_sync.dart';
+import 'features/cycle/cycle_notif_sync.dart';
 import 'features/home/home_layout.dart';
 import 'features/records/record_controller.dart';
 import 'features/settings/locale_controller.dart';
@@ -221,7 +222,7 @@ Future<void> main() async {
   runApp(RestartWidget(
     child: ProviderScope(
       overrides: [
-        cachedPremiumProvider.overrideWithValue(cachedPremium),
+        cachedPremiumProvider.overrideWith(() => LastKnownPremium(cachedPremium)),
         cachedThemeProvider.overrideWithValue(cachedTheme),
         cachedHomeLayoutProvider.overrideWithValue(cachedHomeLayout),
       ],
@@ -262,6 +263,9 @@ class AdenaApp extends ConsumerStatefulWidget {
 }
 
 class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver {
+  /// O18: FCM ön plan dinleyicisi — RestartWidget (dil/tema/wipe) sonrası eski
+  /// State'in closure'ı disposed ref ile çalışmasın diye dispose'da iptal.
+  StreamSubscription<RemoteMessage>? _pushSub;
   // Ön plan in-app banner'ının aynı olayı iki kez göstermesini önleyen basit
   // in-memory dedup (onMessage + iOS native köprü aynı push'u sevk edebilir).
   String? _lastBannerEventId;
@@ -307,7 +311,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
         _showActivityBanner(t, data);
       }
 
-      FirebaseMessaging.onMessage.listen((m) => dispatch(m.data));
+      _pushSub = FirebaseMessaging.onMessage.listen((m) => dispatch(m.data));
       // iOS native köprü: AppDelegate her gelen push'ta 'adena/push' kanalını
       // çağırır → FlutterFire onMessage yeni UIScene yaşam döngüsünde güvenilir
       // ateşlenmese bile ön planda sync/refresh/banner DETERMİNİSTİK tetiklenir.
@@ -327,6 +331,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
 
   @override
   void dispose() {
+    _pushSub?.cancel(); // O18
+    const MethodChannel('adena/push').setMethodCallHandler(null);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -335,7 +341,9 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Ön plan/arka plan bayrağı: ön planda push OS bildirimi yerine in-app banner
     // gösterir (handlePushMessage appInForeground'a bakar).
-    appInForeground = state == AppLifecycleState.resumed;
+    // D4: `inactive` (bildirim paneli, iOS app switcher) de ön plandır — aksi
+    // halde push hem OS bildirimi hem in-app banner olarak çift görünürdü.
+    appInForeground = isForegroundLifecycle(state);
     if (state == AppLifecycleState.resumed) {
       _onForeground();
       DbWatchdog.instance.startPulse(ref.read(databaseProvider));
@@ -386,6 +394,18 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     final db = ref.read(databaseProvider);
     if (!await GuestMigration.hasData(db, accountId)) return;
     _guestMigChecked = true; // veri var → bu oturumda bir kez teklif et
+    // K7: bebeksiz (yalnız adet takvimi) misafir için metin adet verisine uygun.
+    final hasBaby = await GuestMigration.hasBabyData(db, accountId);
+    final offerBody = hasBaby
+        ? tr('Kayıt olmadan eklediğin bebek ve kayıtlar bu cihazda duruyor. '
+            'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.')
+        : tr('Kayıt olmadan tuttuğun adet takvimi kayıtların bu cihazda duruyor. '
+            'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.');
+    final deleteBody = hasBaby
+        ? tr('Aktarmadığın bebek ve kayıtlar bu cihazdan KALICI olarak '
+            'silinecek. Bu işlem geri alınamaz.')
+        : tr('Aktarmadığın adet kayıtların bu cihazdan KALICI olarak silinecek. '
+            'Bu işlem geri alınamaz.');
     // KRİTİK: kayıt/giriş anında dinleyici tetikleniyor ama go_router aynı anda
     // yeni hesabı yönlendiriyor (bebek yoksa → /onboarding, varsa → /home). Diyalog
     // bu geçişten ÖNCE basılırsa kök navigator geçişte onu anında kaldırıyor
@@ -403,9 +423,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
           canPop: false,
           child: AlertDialog(
             title: Text(tr('Kayıtlarını hesabına aktaralım mı?')),
-            content: Text(
-                tr('Kayıt olmadan eklediğin bebek ve kayıtlar bu cihazda duruyor. '
-                    'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.')),
+            content: Text(offerBody),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(c, false),
@@ -437,9 +455,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
           canPop: false,
           child: AlertDialog(
             title: Text(tr('Misafir verileri silinsin mi?')),
-            content: Text(
-                tr('Aktarmadığın bebek ve kayıtlar bu cihazdan KALICI olarak '
-                    'silinecek. Bu işlem geri alınamaz.')),
+            content: Text(deleteBody),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(c, false),
@@ -479,6 +495,9 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     // Bildirim izni sistem ayarlarından sonradan açıldıysa, devam eden uyku/
     // emzirme sayacının bildirimini yeniden post et (reaktif sync tetiklenmez).
     repostActiveTimers(ref);
+    // O1: token başka isolate'te (bg turu) refresh reddiyle silindiyse ön plan
+    // habersizdir → state User ama token yoksa zorunlu çıkışı uygula.
+    unawaited(ref.read(authControllerProvider.notifier).verifySession());
     // FCM token iOS'ta ilk açılışta geç gelmiş olabilir → oturum varsa cihaz
     // kaydını yeniden dene (token artık hazırsa /me/devices'a düşer). Güvence.
     if (ref.read(authControllerProvider).asData?.value != null) {
@@ -562,6 +581,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
           children: [
             ?child,
             const Offstage(child: FamilyNotificationSync()),
+            // Adet hatırlatıcıları — döngü tahmini değiştikçe (O25).
+            const Offstage(child: CycleNotifSync()),
             // free→premium yükleme sürecini gösteren tam-ekran overlay
             // (yalnız migrasyon çalışırken/biterken görünür).
             const MigrationOverlay(),

@@ -12,9 +12,11 @@ import '../../data/health_repository.dart';
 import '../../data/memory_repository.dart';
 import '../../data/mom_repository.dart';
 import '../../data/record_repository.dart';
+import '../../data/slot_registry.dart';
 import '../../data/sync_gate.dart';
 import '../../models/baby.dart';
 import '../auth/auth_controller.dart';
+import 'family_settings.dart';
 
 const _uuid = Uuid();
 
@@ -88,8 +90,30 @@ class BabyController extends AsyncNotifier<List<Baby>> {
   }
 
   Future<void> deleteBaby(String id) async {
+    await _cancelBabyNotifications(id);
     await _repo.delete(id);
     _pushSoon();
+  }
+
+  /// O15: silinen / erişimi kalkan bebeğin TÜM planlı bildirimleri (sağlık,
+  /// periyodik dürtmeler, ilaç planları, beslenme, sayaçlar) iptal edilir —
+  /// `_HealthNotifSync` ağaçtan düştüğü için bir daha temizlenmezdi.
+  Future<void> _cancelBabyNotifications(String id, {int? slot}) async {
+    // J5: slot `state`'ten DEĞİL registry'den — riverpod 3'te `asData`
+    // AsyncLoading'de null (önceki değer olsa da) → iptal sessizce atlanıyordu.
+    // `Baby.notifSlot` zaten `SlotRegistry.slotFor(id)`; bebek nesnesi gerekmez.
+    final s = slot ?? SlotRegistry.instance.slotFor(id);
+    List<int> planIds = const [];
+    List<int> reminderIds = const [];
+    try {
+      final health = ref.read(healthRepositoryProvider);
+      planIds = (await health.medicationPlans(id)).map((p) => p.id).toList();
+      reminderIds = await health.reminderIdsForBaby(id); // I5: özel/randevu
+    } catch (_) {}
+    try {
+      await NotificationService.instance.cancelBabyScheduled(
+          slot: s, medicationPlanIds: planIds, reminderIds: reminderIds);
+    } catch (_) {}
   }
 
   /// Yerel dirty bebekleri arka planda sunucuya gönderir. Kendi (sahip) bebeklerimin
@@ -117,9 +141,19 @@ class BabyController extends AsyncNotifier<List<Baby>> {
       // free'de kendi verim telefonda kalır); paylaşımlı (parent) bebeğin profil/foto
       // değişikliği ise sahibin bulutuna bağlı → oturum yeterli, premium'um şart değil.
       // pullFromServer her oturumda koşar → paylaşılan bebek profilini/üyeliği tazeler.
-      await _repo.pushDirty(
-          accountId: acct, includeOwned: ref.read(cloudSyncEnabledProvider));
+      final includeOwned = ref.read(cloudSyncEnabledProvider);
+      await _repo.pushDirty(accountId: acct, includeOwned: includeOwned);
+      // O4: ayar önce PUSH (yerel dirty sunucuya), sonra PULL (yeni cihaz/üye
+      // sahibin ayarını görür). Yalnız bulut-uygun bebekler çekilir — free
+      // sahibin yerel ayarını sunucu varsayılanı ezmesin.
+      await _repo.pushSettings(accountId: acct, includeOwned: includeOwned);
       removed = await _repo.pullFromServer(accountId: acct);
+      for (final b in await _repo.getAll(accountId: acct)) {
+        if (!ref.read(babyCloudEligibleProvider(b.id))) continue;
+        if (await _repo.pullSettings(b.id)) {
+          ref.invalidate(familySettingsProvider(b.id));
+        }
+      }
     } catch (_) {
       return; // çevrimdışı/hata → yerel korunur
     }
@@ -128,6 +162,8 @@ class BabyController extends AsyncNotifier<List<Baby>> {
       // TÜM yerel verisini temizle. Veri sahibe aitti, cihazda kalmamalı:
       // kayıt + anı + anne + SAĞLIK (aşı/gelişim/diş) + hatırlatıcılar. Bebek
       // satırının kendisi pullFromServer'da zaten silinir.
+      // O15: ilaç plan id'leri purge'den ÖNCE okunmalı (bildirim iptali için).
+      await _cancelBabyNotifications(b.id, slot: b.notifSlot);
       try {
         await ref.read(recordRepositoryProvider).purgeBaby(b.id);
         await ref.read(memoryRepositoryProvider).purgeBaby(b.id);
@@ -135,13 +171,6 @@ class BabyController extends AsyncNotifier<List<Baby>> {
         await ref.read(healthRepositoryProvider).purgeBaby(b.id);
       } catch (_) {}
       await ActivityNotifCache().clearSeen(b.id);
-      final slot = b.notifSlot;
-      NotificationService.instance
-          .cancelTimer(NotificationService.sleepIdFor(slot));
-      NotificationService.instance
-          .cancelTimer(NotificationService.breastIdFor(slot));
-      NotificationService.instance.scheduleFeedReminder(
-          enabled: false, nextTime: null, preMin: 0, slot: slot, babyName: b.name);
       NotificationService.instance.showActivity(
           title: b.name, body: tr('Bu bebeğe erişimin kaldırıldı'));
     }

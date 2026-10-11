@@ -5,10 +5,10 @@ import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../data/sync_gate.dart';
 import '../../core/theme.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
-import '../babies/baby_controller.dart';
 import '../babies/family_settings.dart';
 import '../babies/members_screen.dart';
 import 'record_controller.dart';
@@ -37,10 +37,10 @@ class _DeleteRecordSheet extends ConsumerWidget {
     final who = _resolveWho(ref);
     final stamp = fmtDayMonthTime(record.ts);
     // Bakıcı yalnız KENDİ eklediği kaydı silebilir; owner/parent hepsini.
-    final baby = ref.watch(activeBabyProvider);
+    // N1: kaydın bebeğine göre rol (aktif bebek değil).
     final me = ref.watch(authControllerProvider).asData?.value;
     final canDelete =
-        (baby?.canFullWrite ?? true) || record.createdBy == me?.id;
+        ref.watch(canFullWriteProvider(record.baby)) || record.createdBy == me?.id;
 
     return SafeArea(
       child: Padding(
