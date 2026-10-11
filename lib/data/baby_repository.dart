@@ -551,22 +551,29 @@ class BabyRepository {
           // R5 / I2: POST sürerken (özellikle multipart foto) kullanıcı yeniden
           // düzenlemiş olabilir → satırın GÖNDERİLEN hâliyle aynı olduğu
           // doğrulanmadan dirty temizlenmez, foto URL'i yeni yerel yolu ezmez.
-          final cur = await _byIdRow(r.id);
-          final unchanged = cur != null && _samePushedState(cur, r);
-          if (needsPhotoUpload && unchanged) {
-            // Sunucudan dönen imzalı foto URL'ini yerele yaz (yeniden yüklenmesin).
-            final srvPhoto = (resp.data as Map<String, dynamic>)['photo'] as String?;
-            if (srvPhoto != null) {
+          // J14: karşılaştırma + yazım TEK transaction'da — iki ifade arasına
+          // giren bir düzenleme `dirty=false` ile ezilmesin.
+          final srvPhoto = needsPhotoUpload
+              ? (resp.data as Map<String, dynamic>)['photo'] as String?
+              : null;
+          await _db.transaction(() async {
+            final cur = await _byIdRow(r.id);
+            final unchanged = cur != null && _samePushedState(cur, r);
+            if (needsPhotoUpload && unchanged && srvPhoto != null) {
+              // Sunucudan dönen imzalı foto URL'ini yerele yaz (yeniden yüklenmesin).
               await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
                   .write(BabiesCompanion(photo: Value(srvPhoto)));
             }
-          }
-          if (!unchanged) {
-            // Uçuş içi düzenleme/silme → dirty kalır, bir sonraki tur gönderir.
-            await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
-                .write(const BabiesCompanion(pushError: Value(null)));
-            continue;
-          }
+            if (!unchanged) {
+              // Uçuş içi düzenleme/silme → dirty kalır, bir sonraki tur gönderir.
+              await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
+                  .write(const BabiesCompanion(pushError: Value(null)));
+              return;
+            }
+            await (_db.update(_db.babies)..where((x) => x.id.equals(r.id))).write(
+                const BabiesCompanion(dirty: Value(false), pushError: Value(null)));
+          });
+          continue;
         }
         await (_db.update(_db.babies)..where((x) => x.id.equals(r.id)))
             .write(const BabiesCompanion(dirty: Value(false), pushError: Value(null)));

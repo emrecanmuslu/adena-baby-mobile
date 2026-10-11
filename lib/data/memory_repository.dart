@@ -319,24 +319,28 @@ class MemoryRepository {
         // R5 / I3: POST (foto yüklemesi) uçuştayken satır silindiyse tombstone
         // dirty KALIR → DELETE bir sonraki turda gider (eskiden dirty=false
         // yazılıp satır yerelde gizli, sunucuda canlı kalıyordu).
-        final cur = await (_db.select(_db.memories)..where((m) => m.id.equals(r.id)))
-            .getSingleOrNull();
-        final unchanged = cur != null &&
-            cur.clientUpdatedAt == r.clientUpdatedAt &&
-            cur.isDeleted == r.isDeleted &&
-            cur.title == r.title &&
-            cur.note == r.note &&
-            cur.date == r.date &&
-            cur.firstTag == r.firstTag &&
-            cur.localPhotoPath == r.localPhotoPath;
-        await (_db.update(_db.memories)..where((m) => m.id.equals(r.id))).write(
-          MemoriesCompanion(
-            photo: Value(srv['photo'] as String?),
-            serverUpdatedAt: Value(_parseTs(srv['updated_at'])),
-            dirty: unchanged ? const Value(false) : const Value.absent(),
-            pushError: const Value(null),
-          ),
-        );
+        // J14: karşılaştırma + yazım TEK transaction'da (bkz. BabyRepository).
+        await _db.transaction(() async {
+          final cur = await (_db.select(_db.memories)
+                ..where((m) => m.id.equals(r.id)))
+              .getSingleOrNull();
+          final unchanged = cur != null &&
+              cur.clientUpdatedAt == r.clientUpdatedAt &&
+              cur.isDeleted == r.isDeleted &&
+              cur.title == r.title &&
+              cur.note == r.note &&
+              cur.date == r.date &&
+              cur.firstTag == r.firstTag &&
+              cur.localPhotoPath == r.localPhotoPath;
+          await (_db.update(_db.memories)..where((m) => m.id.equals(r.id))).write(
+            MemoriesCompanion(
+              photo: Value(srv['photo'] as String?),
+              serverUpdatedAt: Value(_parseTs(srv['updated_at'])),
+              dirty: unchanged ? const Value(false) : const Value.absent(),
+              pushError: const Value(null),
+            ),
+          );
+        });
       } on DioException catch (e) {
         await _noteFailure(babyId, r.id, e); // dirty kalır
       } catch (e) {
