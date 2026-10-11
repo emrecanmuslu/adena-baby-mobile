@@ -611,9 +611,23 @@ class CycleRepository {
       await _db.transaction(() async {
         for (final r in upserts) {
           if (saved.contains(r.id)) {
+            // R5 / I3: bulk uçuştayken aynı satır yeniden düzenlendi/silindiyse
+            // dirty KALIR (sonraki tur gönderir); yalnız pushError temizlenir.
+            final cur = await (_db.select(_db.cycleEntries)
+                  ..where((e) => e.id.equals(r.id)))
+                .getSingleOrNull();
+            final unchanged = cur != null &&
+                cur.clientUpdatedAt == r.clientUpdatedAt &&
+                cur.isDeleted == r.isDeleted &&
+                cur.flow == r.flow &&
+                cur.lochiaColor == r.lochiaColor &&
+                cur.symptoms == r.symptoms &&
+                cur.mood == r.mood &&
+                cur.note == r.note;
             await (_db.update(_db.cycleEntries)..where((e) => e.id.equals(r.id)))
-                .write(const CycleEntriesCompanion(
-                    dirty: Value(false), pushError: Value(null)));
+                .write(CycleEntriesCompanion(
+                    dirty: unchanged ? const Value(false) : const Value.absent(),
+                    pushError: const Value(null)));
           } else if (failed.containsKey(r.id)) {
             // sunucu bu öğeyi reddetti (kalıcı)
             await _setEntryPushError(r.id, _short(failed[r.id]!));

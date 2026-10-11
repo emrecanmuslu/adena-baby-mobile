@@ -271,9 +271,23 @@ class MomRepository {
       await _db.transaction(() async {
         for (final r in upserts) {
           if (saved.contains(r.id)) {
+            // R5 / I3: bulk uçuştayken silindiyse/değiştiyse dirty KALIR
+            // (tombstone bir sonraki turda DELETE olarak gider).
+            final cur = await (_db.select(_db.momEntries)
+                  ..where((m) => m.id.equals(r.id)))
+                .getSingleOrNull();
+            final unchanged = cur != null &&
+                cur.clientUpdatedAt == r.clientUpdatedAt &&
+                cur.isDeleted == r.isDeleted &&
+                cur.kind == r.kind &&
+                cur.date == r.date &&
+                cur.weightKg == r.weightKg &&
+                cur.title == r.title &&
+                cur.note == r.note;
             await (_db.update(_db.momEntries)..where((m) => m.id.equals(r.id)))
-                .write(const MomEntriesCompanion(
-                    dirty: Value(false), pushError: Value(null)));
+                .write(MomEntriesCompanion(
+                    dirty: unchanged ? const Value(false) : const Value.absent(),
+                    pushError: const Value(null)));
           } else if (failed.containsKey(r.id)) {
             // sunucu bu öğeyi reddetti (kalıcı)
             await _setPushError(r.id, _short(failed[r.id]!));
