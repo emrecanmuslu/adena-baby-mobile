@@ -70,6 +70,27 @@ bool longAmenorrheaWarning(CycleSettings s, CycleStatus st, {DateTime? today}) {
   return false;
 }
 
+/// C2 (karar S10): adet 8 günden uzun → hekim önerisi. Aktif takipte:
+///  • ortalama adet süresi > 8 gün, ya da
+///  • son döngünün başlangıcından itibaren kesintisiz adet ≥ 9 gün, ya da
+///  • son adette ardışık ≥ 7 gün "yoğun" akış.
+bool longPeriodWarning(List<CycleEntry> entries, CycleStatus st) {
+  if (st.mode != CycleMode.active || st.spans.isEmpty) return false;
+  if (st.avgPeriodDays > 8) return true;
+  final byDay = <DateTime, CycleEntry>{for (final e in entries) _d(e.date): e};
+  var day = _d(st.spans.last.start);
+  var run = 0, heavy = 0, maxHeavy = 0;
+  while (true) {
+    final e = byDay[day];
+    if (e == null || !e.isPeriod) break;
+    run++;
+    heavy = e.flow == FlowLevel.heavy ? heavy + 1 : 0;
+    if (heavy > maxHeavy) maxHeavy = heavy;
+    day = DateTime(day.year, day.month, day.day + 1);
+  }
+  return run >= 9 || maxHeavy >= 7;
+}
+
 LamState lamState(CycleSettings s, {DateTime? today}) {
   final bf = s.breastfeeding;
   if (s.birthDate == null || bf == null || bf == Breastfeeding.none) {

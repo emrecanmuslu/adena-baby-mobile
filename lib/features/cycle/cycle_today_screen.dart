@@ -505,6 +505,14 @@ class _Today extends ConsumerWidget {
       }
     }
 
+    // C2 (karar S10): uzun / yoğun adet → hekim önerisi (her durumda).
+    if (longPeriodWarning(entries, status)) {
+      out.addAll([
+        const SizedBox(height: 12),
+        cycNote(context,
+            icon: Icons.medical_services_outlined, body: CycleTexts.longPeriod),
+      ]);
+    }
     if (longAmenorrheaWarning(settings, status)) {
       out.addAll([const SizedBox(height: 12), _longAmenorrheaCard(context)]);
     }
