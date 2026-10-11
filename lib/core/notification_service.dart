@@ -640,7 +640,9 @@ class NotificationService {
       body: tr('Hatırlatma zamanı ⏰'),
       scheduledDate: when,
       notificationDetails: _details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      // J6: günlük tekrar (ilaç dozu / özel hatırlatıcı) da kesin alarm izni
+      // varsa exact — M4 diyaloğu "ilaç … tam saatinde" vaadiyle tutarlı.
+      androidScheduleMode: await _alarmMode(),
       matchDateTimeComponents: DateTimeComponents.time, // her gün aynı saat
     );
   }
