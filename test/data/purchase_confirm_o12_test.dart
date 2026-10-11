@@ -27,6 +27,7 @@ void main() {
     await c.read(purchaseConfirmProvider).applyConfirmed();
 
     expect(c.read(cachedPremiumProvider), isTrue);
+    await pumpEventQueue(); // J16: kalıcı yazım `unawaited` — gerçek prefs'te asenkron
     expect((await SharedPreferences.getInstance()).getString('sub_is_premium'), '1');
     verify(() => repo.refresh()).called(1);
   });

@@ -134,8 +134,10 @@ void main() {
         dirty: const Value(false)));
   }
 
-  ProviderContainer container({String? role, bool premium = true}) {
-    _Babies.list = [_baby('b1', role: role)];
+  ProviderContainer container(
+      {String? role, bool premium = true, bool withBaby = true}) {
+    // J16: fixture DB ile tutarlı — "veri yok" testinde listede de bebek yok.
+    _Babies.list = withBaby ? [_baby('b1', role: role)] : const [];
     final cycle = _MockCycle();
     when(() => cycle.syncIfCloud()).thenAnswer((_) async {});
     when(() => cycle.markAllDirty(accountId: any(named: 'accountId'))).thenAnswer((_) async {});
@@ -249,7 +251,7 @@ void main() {
   group('I1 — MigrationService bayrakları', () {
     test('yüklenecek yerel veri yokken (yeni cihaz/boş hesap) premiumSynced işaretlenir',
         () async {
-      final c = container();
+      final c = container(withBaby: false);
       await c.read(babyControllerProvider.future);
       expect(LocalSession.premiumSyncedForAccount(acct), isFalse);
       await c.read(migrationControllerProvider.notifier).run();

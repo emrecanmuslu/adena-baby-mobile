@@ -64,6 +64,7 @@ void main() {
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     api = ApiClient(_Tokens());
+    LocalSession.resetForTests(); // J16
     LocalSession.setActiveAccount('u1');
     await db.into(db.babies).insert(
         BabiesCompanion.insert(id: 'b1', name: 'T', accountId: const Value('u1')));

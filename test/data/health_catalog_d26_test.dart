@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http_mock_adapter/http_mock_adapter.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -86,8 +87,13 @@ void main() {
     final cat = await HealthCatalogRepository(api).load();
 
     expect(cat.vaccines, isNotEmpty, reason: 'assets/health_catalog_tr.json');
-    expect(cat.vaccines.any((v) => v.key == 'BCG'), isFalse,
-        reason: 'bozuk cache\'ten değil asset\'ten gelmeli (asset anahtarları yerelleştirilmiş adlar)');
+    // J16: varsayım yerine asset'in kendisi okunur — katalog değişse de doğru nedenle geçer.
+    final asset = HealthCatalog.fromJson(jsonDecode(
+            await rootBundle.loadString('assets/health_catalog_tr.json'))
+        as Map<String, dynamic>);
+    expect(cat.vaccines.map((v) => v.key).toSet(),
+        asset.vaccines.map((v) => v.key).toSet(),
+        reason: 'bozuk cache\'ten değil asset\'ten gelmeli');
   });
 
   test('geçerli API yanıtı parse edilir ve cache\'e yazılır (regresyon)', () async {
