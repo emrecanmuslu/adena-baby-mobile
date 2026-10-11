@@ -47,6 +47,20 @@ Future<void> returnToTrackingFromLoss(WidgetRef ref) async {
   });
 }
 
+/// Gebelik modundan "Adet takibine dön" (O23): bekleyen (expecting) bebek
+/// YETİM BIRAKILMAZ — kayıp akışındaki gibi sessizce kaldırılır, ayarlardaki
+/// bağ kopar (`baby: null`). Çapa (`first_period_date`) KORUNUR: yanlış-alarm
+/// senaryosunda kullanıcı yeni adetini loglar (KARAR-BEKLEYEN KB-5).
+Future<void> returnToTrackingFromPregnancy(
+    WidgetRef ref, CycleSettings settings) async {
+  await _removeExpectingBabyForLoss(ref, settings);
+  await ref.read(cycleRepositoryProvider).patchSettings({
+    'lifecycle_mode': CycleLifecycleMode.tracking.name,
+    'predictions_hidden': false,
+    'baby': null,
+  });
+}
+
 /// Gebelik durumunu güncelle sayfası: doğum / kayıp / takibe dön.
 /// Gebelik modundan çıkışın tek kapısı (Flo pariteti).
 Future<void> showCycleLossOrEnd(
@@ -95,7 +109,11 @@ Future<void> showCycleLossOrEnd(
       if (!context.mounted) return;
       context.go(baby != null ? '/born-flow' : '/baby-add');
     } else if (choice == 'tracking') {
-      await returnToTrackingFromLoss(ref);
+      if (settings.lifecycleMode == CycleLifecycleMode.pregnant) {
+        await returnToTrackingFromPregnancy(ref, settings); // O23
+      } else {
+        await returnToTrackingFromLoss(ref);
+      }
       if (context.mounted) showAdToast(context, tr('Adet takibine dönüldü'));
     }
   } catch (e) {
