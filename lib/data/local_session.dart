@@ -22,6 +22,7 @@ class LocalSession {
   static const _kImportedAccts = 'cloud_imported_accounts_v1'; // göçü yapılmış hesaplar (CSV)
   static const _kPremiumSynced = 'premium_synced_accounts_v1'; // tam buluta yükleme yapılmış hesaplar (CSV)
   static const _kPurgeHandled = 'purge_handled_v1'; // hesap → işlenen son cloud_purged_at (acct=iso;...)
+  static const _kHealthReseed = 'health_reseed_accounts_v1'; // premium bitmiş (lapse) hesaplar: yeniden abonelikte sağlık tam kümesi önce gönderilir (I1)
   static const _kName = 'local_user_name'; // ebeveyn adı (hesapsız profil)
   static const _kCachedUser = 'cached_auth_user_v1'; // son başarılı /auth/me (offline açılış için)
   static const _kGuest = 'guest_mode_v1'; // "kayıt olmadan devam et" — hesapsız yerel oturum açık mı
@@ -40,6 +41,7 @@ class LocalSession {
   static Set<String> _importedAccounts = {}; // cloud→local göçü yapılmış hesaplar
   static Set<String> _premiumSyncedAccounts = {}; // free→premium tam yüklemesi yapılmış hesaplar
   static Map<String, String> _purgeHandled = {}; // hesap → işlenen son cloud_purged_at (iso)
+  static Set<String> _healthReseedAccounts = {}; // lapse sonrası sağlık yeniden-tohumlama bekleyen hesaplar (I1)
 
   /// main()'de bir kez çağrılır; localUserId + rıza durumunu belleğe yükler,
   /// localUserId yoksa üretip kalıcılaştırır.
@@ -71,6 +73,7 @@ class LocalSession {
         read(_kImportedAccts),
         read(_kPremiumSynced),
         read(_kPurgeHandled),
+        read(_kHealthReseed),
       ]);
       final (existingId, idFailed) = results[0];
       if (existingId != null && existingId.isNotEmpty) {
@@ -105,6 +108,10 @@ class LocalSession {
         ..._csvSet(results[8].$1)
       };
       _purgeHandled = _mergePurge(_purgeHandled, _parsePurge(results[9].$1));
+      _healthReseedAccounts = {
+        ..._healthReseedAccounts,
+        ..._csvSet(results[10].$1)
+      };
     } catch (_) {
       // prefs bile açılamadı (çok nadir): localUserId'yi UYDURMA (yetim riski),
       // rıza/ad güvenli varsayılanlar. Sonraki açılış yeniden dener.
@@ -277,6 +284,25 @@ class LocalSession {
         remove: accountId);
   }
 
+  // ── I1: lapse → yeniden abonelikte sağlık tam kümesi önce gönderilir ──
+  // premiumSynced bayrağı grace-içi lapse'te bilerek korunur (tam yeniden
+  // yükleme yok); ama v14'te lapse sırasında işaretlenmiş TEMİZ aşı satırları
+  // sunucuda yoktur. Bu bayrak dururken sahip bebekte sağlık pull'u kapalıdır
+  // (healthPullAllowed) ve MigrationService yalnız `pushAll` ile bayrağı düşürür.
+  static bool healthReseedPending(String accountId) =>
+      _healthReseedAccounts.contains(accountId);
+
+  static Future<void> markHealthReseedForAccount(String accountId) async {
+    _healthReseedAccounts.add(accountId);
+    await _writeCsvMerged(_kHealthReseed, _healthReseedAccounts);
+  }
+
+  static Future<void> clearHealthReseedForAccount(String accountId) async {
+    _healthReseedAccounts.remove(accountId);
+    await _writeCsvMerged(_kHealthReseed, _healthReseedAccounts,
+        remove: accountId);
+  }
+
   // ── O35: set/map bayrakları için diskle-birleştiren yazım ──
   // Bellek-içi yapı tek başına "gerçek" değildir: ensureLoaded tamamlanmadan
   // (bg isolate, 8 sn güvenlik ağı) ya da başka isolate'in yazımından sonra
@@ -338,6 +364,7 @@ class LocalSession {
     _importedAccounts = {};
     _premiumSyncedAccounts = {};
     _purgeHandled = {};
+    _healthReseedAccounts = {};
     loaded = false;
   }
 

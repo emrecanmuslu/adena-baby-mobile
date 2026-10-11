@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http_mock_adapter/http_mock_adapter.dart';
 
 import 'package:adena_baby/core/api_client.dart';
+import 'package:adena_baby/core/sync_telemetry.dart';
 import 'package:adena_baby/core/token_storage.dart';
 import 'package:adena_baby/data/health_catalog.dart';
 import 'package:adena_baby/data/health_repository.dart';
@@ -183,8 +184,16 @@ void main() {
   });
 
   group('K4 — pull (R1)', () {
-    test('ilk v15 turu: AŞIDA SUNUCU KAZANIR — temiz done=true, sunucu pending → yapılmadı',
-        () async {
+    test(
+        'SENKRONİZE hesapta (kapı açık — I1) ilk v15 turu: AŞIDA SUNUCU KAZANIR — '
+        'temiz done=true, sunucu pending → yapılmadı; geçiş telemetriye düşer', () async {
+      // Bağlam: repo.pull yalnız `healthPullAllowed` true iken çağrılır
+      // (SyncService._syncHealth; test/data/health_pull_gate_i1_test.dart).
+      // Bu kontrat "bu hesabın yerel kümesi bir kez tam yüklendi" varsayar;
+      // free→premium / lapse yolunda pull HİÇ çağrılmaz.
+      final reports = <(String, Map<String, Object?>)>[];
+      SyncTelemetry.override = (e, i) async => reports.add((e, i));
+      addTearDown(() => SyncTelemetry.override = null);
       await seed('vaccine', 'BCG', true, date: DateTime(2026, 3, 4)); // migrated, temiz
       stubGets(vaccines: [
         {'vaccine_name': 'BCG', 'status': 'pending', 'done_date': null},
@@ -197,6 +206,22 @@ void main() {
       expect(hep.done, isTrue);
       expect(hep.dirty, isFalse);
       expect(hep.statusDate, DateTime(2026, 1, 2));
+      expect(reports, hasLength(1));
+      expect(reports.single.$1, 'health_pull_cleared_done');
+      expect(reports.single.$2['vaccine'], 1);
+      expect(reports.single.$2['baby'], 'b1');
+    });
+
+    test('telemetri: temiz done=true → sunucu pending geçişi yoksa rapor yok', () async {
+      final reports = <String>[];
+      SyncTelemetry.override = (e, _) async => reports.add(e);
+      addTearDown(() => SyncTelemetry.override = null);
+      await seed('vaccine', 'BCG', true, date: DateTime(2026, 3, 4));
+      stubGets(vaccines: [
+        {'vaccine_name': 'BCG', 'status': 'done', 'done_date': '2026-03-04'},
+      ]);
+      await repo.pull('b1');
+      expect(reports, isEmpty);
     });
 
     test('işaret kaldırma yayılır (gelişim/diş temiz satıra done=false yazılır)',

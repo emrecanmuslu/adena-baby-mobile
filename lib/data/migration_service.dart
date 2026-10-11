@@ -95,7 +95,14 @@ class MigrationController extends Notifier<MigrationState> {
     // → bu kontrol olmadan "buluta yükleniyor" ekranı HER girişte çıkardı. Bayrak
     // YALNIZ cloud gerçekten silinince (purge damgası, subscription_repository) temizlenir
     // → grace-içi lapse/yeniden-abonelikte zaten cloud'da olan veri tekrar yüklenmez.
-    if (LocalSession.premiumSyncedForAccount(acct)) return;
+    if (LocalSession.premiumSyncedForAccount(acct)) {
+      // I1: premium bitip (lapse) yeniden abone olundu → sunucu kümesi bayat,
+      // yerelde v14'ten kalma TEMİZ tikler olabilir. Tam yeniden yükleme (foto/
+      // kayıt) gerekmez; yalnız sağlık TAM kümesi (yerel = doğru kaynak) bir kez
+      // gönderilir, sonra bayrak düşer ve sağlık pull kapısı açılır. Overlay yok.
+      if (LocalSession.healthReseedPending(acct)) await _reseedHealth(acct);
+      return;
+    }
 
     final db = ref.read(databaseProvider);
     final babyRepo = ref.read(babyRepositoryProvider);
@@ -148,7 +155,12 @@ class MigrationController extends Notifier<MigrationState> {
     ];
     // Yüklenecek yerel (dirty) veri yoksa overlay'i hiç gösterme — mevcut premium
     // kullanıcıda boş yanıp sönmesin. Yalnız gerçek free→premium göçünde görünür.
-    if (steps.every((s) => s.count == 0)) return;
+    if (steps.every((s) => s.count == 0)) {
+      // I1: kaybedilecek yerel veri yok (yeni cihaz / boş hesap) → hesap
+      // "senkron" sayılır; sağlık pull kapısı (healthPullAllowed) açılsın.
+      await LocalSession.markPremiumSyncedForAccount(acct);
+      return;
+    }
     state = MigrationState(MigrationPhase.running, steps);
 
     Future<void> step(String key, Future<void> Function() work) async {
@@ -280,6 +292,24 @@ class MigrationController extends Notifier<MigrationState> {
   void dismiss() => state = const MigrationState.idle();
 
   /// `fromWhere` = "tablo WHERE ..." (tek `?` parametresi = aktif hesap id).
+  /// I1: lapse sonrası yeniden abonelikte sahip bebeklerin sağlık TAM kümesini
+  /// gönderir; HEPSİ başarılıysa bayrağı düşürür (biri düşerse bir sonraki
+  /// cloudSync false→true geçişinde — her açılışta olur — yeniden denenir).
+  Future<void> _reseedHealth(String acct) async {
+    final ref = this.ref;
+    final babies = await ref.read(babyRepositoryProvider).getAll();
+    final owned = babies.where((b) => b.myRole == null || b.myRole == 'owner');
+    var allOk = true;
+    for (final b in owned) {
+      try {
+        await ref.read(healthRepositoryProvider).pushAll(b.id);
+      } catch (_) {
+        allOk = false;
+      }
+    }
+    if (allOk) await LocalSession.clearHealthReseedForAccount(acct);
+  }
+
   static Future<int> _dirtyCount(
       AppDatabase db, String fromWhere, String acct) async {
     try {
@@ -305,6 +335,15 @@ final localToCloudMigrationProvider = Provider<void>((ref) {
     final became = (prev ?? false) == false && next == true;
     if (became) {
       unawaited(ref.read(migrationControllerProvider.notifier).run());
+      return;
+    }
+    // I1: premium bitti (lapse) — oturum hâlâ açıkken. Çıkış/zorunlu çıkışta
+    // kapsam (activeAccountId) bu geçişten ÖNCE kapandığı için burada null →
+    // bayrak kurulmaz. premiumSynced bilerek korunur (tam yeniden yükleme yok);
+    // yeniden abonelikte yalnız sağlık tam kümesi gönderilir (_reseedHealth).
+    if ((prev ?? false) && !next) {
+      final acct = LocalSession.activeAccountId;
+      if (acct != null) unawaited(LocalSession.markHealthReseedForAccount(acct));
     }
   });
 });

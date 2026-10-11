@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/foundation.dart' show debugPrint, setEquals;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -14,11 +14,13 @@ import '../../core/analytics_service.dart';
 import '../../core/providers.dart';
 import '../../data/cycle_repository.dart';
 import '../../data/health_repository.dart';
+import '../../data/local_session.dart';
 import '../../data/record_repository.dart';
 import '../../data/subscription_repository.dart';
 import '../../data/sync_gate.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
+import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 import '../babies/family_settings.dart';
 
@@ -377,6 +379,26 @@ class SyncService with WidgetsBindingObserver {
     // M9(a): polling turunda (pullToo=false) yankılanmamış aşılar yeniden denenmez.
     await repo.pushDirty(babyId, retryUnechoed: pullToo);
     if (!pullToo) return;
+    // I1 kapısı: sahip bebekte pull yalnız bu hesabın yerel kümesi bir kez tam
+    // yüklendiyse (göç bitti) ve lapse sonrası yeniden-tohumlama beklemiyorsa.
+    // Aksi hâlde sunucunun boş/bayat kümesi v14'ten kalan TEMİZ tikleri silerdi.
+    final baby = _ref
+        .read(babyControllerProvider)
+        .asData
+        ?.value
+        .where((b) => b.id == babyId)
+        .firstOrNull;
+    final shared = baby?.myRole == 'parent' || baby?.myRole == 'caregiver';
+    final acct = _ref.read(activeAccountIdProvider);
+    final allowed = healthPullAllowed(
+      shared: shared,
+      premiumSynced: acct != null && LocalSession.premiumSyncedForAccount(acct),
+      reseedPending: acct != null && LocalSession.healthReseedPending(acct),
+    );
+    if (!allowed) {
+      debugPrint('[health-sync] pull kapalı (göç/yeniden-tohumlama bekliyor): $babyId');
+      return;
+    }
     if (await repo.pull(babyId)) {
       _ref.invalidate(vaccinesProvider(babyId));
       _ref.invalidate(milestonesProvider(babyId));

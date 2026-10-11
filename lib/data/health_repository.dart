@@ -14,10 +14,24 @@ import '../models/milestone.dart';
 import '../models/reminder.dart';
 import '../models/tooth.dart';
 import '../models/vaccine.dart';
+import '../core/sync_telemetry.dart';
 import 'health_catalog.dart';
 import 'local/app_database.dart';
 import 'sync_gate.dart';
 import 'sync_merge.dart';
+
+/// I1 — sahip bebekte sağlık pull'u (R1 "temiz satıra sunucu yazılır") yalnız
+/// bu hesabın yerel kümesi bir kez buluta TAM yüklendikten sonra güvenlidir:
+/// free→premium geçişinde ve lapse→yeniden abonelikte sunucu kümesi boş/bayat
+/// olduğundan pull, v14'te işaretlenmiş TEMİZ (dirty=0, K-4 aşı backfill'i yok)
+/// tikleri siler, ardından göç `pushAll` bunu mühürlerdi. Paylaşılan bebek
+/// (parent/caregiver) sahibin bulutundan beslenir → kapı yok.
+bool healthPullAllowed({
+  required bool shared,
+  required bool premiumSynced,
+  required bool reseedPending,
+}) =>
+    shared || (premiumSynced && !reseedPending);
 
 /// Sağlık (aşı/gelişim/diş/hatırlatıcı) — **local-first**. Liste = içerik
 /// kataloğu (cache'li/asset) + bebeğe özel durum (Drift). Cloud yalnız premium'da
@@ -688,6 +702,9 @@ class HealthRepository {
   /// Döner: yerelde bir şey değişti mi (çağıran provider'ları invalidate eder).
   Future<bool> pull(String babyId) async {
     var changed = false;
+    // I1 telemetri (TASARIM §5B "ek güvence"): temiz done=true → sunucu
+    // pending geçişleri sayılır, Crashlytics non-fatal. Davranış değişmez.
+    final clearedDone = <String, int>{};
     final echo = _vaccineEcho[babyId] ??
         const <String, ({bool done, DateTime? date, DateTime? stamp})>{};
     Future<void> apply(String kind, String key, bool done, DateTime? date) async {
@@ -705,6 +722,9 @@ class HealthRepository {
       }
       if (cur != null && cur.done == done && cur.statusDate == (done ? date : null)) {
         return;
+      }
+      if (cur != null && cur.done && !done) {
+        clearedDone[kind] = (clearedDone[kind] ?? 0) + 1;
       }
       await _writeStatus(babyId, kind, key, done, date, dirty: false);
       changed = true;
@@ -760,6 +780,12 @@ class HealthRepository {
       }
     }
     // Hatırlatıcılar KİŞİSEL (karar 2026-07-07) → buluttan içeri alınmaz.
+    if (clearedDone.isNotEmpty) {
+      await SyncTelemetry.report('health_pull_cleared_done', {
+        'baby': babyId,
+        for (final e in clearedDone.entries) e.key: e.value,
+      });
+    }
     return changed;
   }
 
