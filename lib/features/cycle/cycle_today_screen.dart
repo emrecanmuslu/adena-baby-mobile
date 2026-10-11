@@ -271,7 +271,8 @@ class _Today extends ConsumerWidget {
     } else if (isOvu) {
       state = 'ovu';
       dialIcon = const Text('🌸', style: TextStyle(fontSize: 36));
-      dialLabel = tr('Yumurtlama');
+      // C3: tahmin etiketleri "tahmini".
+      dialLabel = tr('Tahmini yumurtlama');
       dialSub = tr('Doğurgan pencere');
       accent = AppColors.gold;
       action = tr('Adeti başlat');
@@ -279,7 +280,7 @@ class _Today extends ConsumerWidget {
     } else if (inFertile) {
       state = 'fertile';
       big = '${status.dayInCycle}';
-      dialLabel = tr('Doğurganlık');
+      dialLabel = tr('Doğurgan pencere (tahmini)');
       dialSub = d2n == null ? null : trp('Sonraki ~{n} gün', {'n': d2n});
       accent = AppColors.sageD;
       action = tr('Bugünü kaydet');
@@ -291,7 +292,7 @@ class _Today extends ConsumerWidget {
           ? null
           : status.irregular
               ? trp('Sonraki adet tahmini: {d}', {'d': _nextRange()})
-              : trp('Sonraki adet · {d}', {'d': fmtDayMonth(np)});
+              : trp('Sonraki adet (tahmini) · {d}', {'d': fmtDayMonth(np)});
       accent = AppColors.rose;
       action = tr('Erken geldi? Kaydet');
       ghost = true;
@@ -426,7 +427,7 @@ class _Today extends ConsumerWidget {
         _ => (
             tr('Akış'),
             _todayEntry?.flow != null ? flowLabel(_todayEntry!.flow!) : '—',
-            tr('Sonraki adet'),
+            tr('Sonraki adet (tahmini)'),
             np == null ? '—' : fmtDayMonth(np)
           ),
       };
@@ -617,7 +618,7 @@ class _Today extends ConsumerWidget {
         const SizedBox(width: 11),
         cycMini(
             context,
-            label: tr('Yumurtlama'),
+            label: tr('Tahmini yumurtlama'),
             value: toOvu == null
                 ? '—'
                 : toOvu == 0

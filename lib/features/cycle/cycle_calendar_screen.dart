@@ -561,8 +561,9 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       children: [
         chip(AppColors.rose, null, tr('Adet')),
         chip(AppColors.roseBg, AppColors.rose, tr('Tahmini')),
-        chip(AppColors.sageBg, AppColors.sageD, tr('Doğurganlık')),
-        chip(AppColors.goldBg, AppColors.gold, tr('Yumurtlama')),
+        // C3: tahmin lejantı "tahmini".
+        chip(AppColors.sageBg, AppColors.sageD, tr('Doğurganlık (tahmini)')),
+        chip(AppColors.goldBg, AppColors.gold, tr('Yumurtlama (tahmini)')),
         chip(AppColors.lochiaBg, AppColors.lochia, tr('Loşia')),
         AdInfoDot(title: tr('Takvim renkleri'), body: CycleInfo.estimate),
       ],
@@ -795,10 +796,10 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     }
     // 2) Yumurtlama / doğurganlık işareti (sol alt).
     if (isOvu) {
-      rows.add((dot(AppColors.gold), tr('Yumurtlama günü — en yüksek doğurganlık')));
+      rows.add((dot(AppColors.gold), tr('Tahmini yumurtlama günü')));
     } else if (kind == 'frt') {
       rows.add((Icon(Icons.eco_rounded, size: 15, color: AppColors.sageD),
-          tr('Doğurgan gün')));
+          tr('Tahmini doğurgan gün')));
     }
     // 3) Kayıt ikonları (sağ alt).
     if (e?.flow != null) {
