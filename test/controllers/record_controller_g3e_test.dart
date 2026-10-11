@@ -157,4 +157,28 @@ void main() {
           reason: 'dünkü kayıtlar artık "Bugün"de sayılmamalı');
     });
   });
+
+  group('D23 — süren kayıt varken başlatma', () {
+    test('startSleep: süren uyku varsa ikinci kayıt oluşturulmaz', () async {
+      final running = Record(
+          id: 'sl', baby: 'b1', type: RecordType.sleep, ts: DateTime(2026, 6, 1),
+          data: const {'start_ts': '2026-06-01T10:00:00Z', 'end_ts': null});
+      when(() => repo.watchOngoingSleep('b1'))
+          .thenAnswer((_) => Stream<Record?>.value(running));
+      final c = container();
+      await c.read(recordActionsProvider).startSleep('b1');
+      expect(saved, isEmpty, reason: 'çift dokunuşta iki süren uyku olmasın');
+    });
+
+    test('startBreast: süren emzirme varsa ikinci kayıt oluşturulmaz', () async {
+      final running = Record(
+          id: 'br', baby: 'b1', type: RecordType.feed, ts: DateTime(2026, 6, 1),
+          data: const {'sub': 'breast', 'end_ts': null, 'side': 'left'});
+      when(() => repo.watchOngoingBreast('b1'))
+          .thenAnswer((_) => Stream<Record?>.value(running));
+      final c = container();
+      await c.read(recordActionsProvider).startBreast('b1', 'right');
+      expect(saved, isEmpty);
+    });
+  });
 }

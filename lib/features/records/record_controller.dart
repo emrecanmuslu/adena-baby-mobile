@@ -524,7 +524,10 @@ class RecordActions {
         ad: true,
       );
 
-  Future<void> startSleep(String babyId) {
+  Future<void> startSleep(String babyId) async {
+    // D23: çift dokunuşta iki süren uyku oluşmasın (ikincisi akışta sonsuza
+    // dek "Uyuyor…" kalıyordu).
+    if (await _repo.watchOngoingSleep(babyId).first != null) return;
     final now = DateTime.now();
     return _saveAndSync(Record(
       id: _uuid.v4(),
@@ -587,7 +590,8 @@ class RecordActions {
   }
 
   /// Emzirmeyi başlat — seçilen memeyle süren kayıt oluşturur.
-  Future<void> startBreast(String babyId, String side) {
+  Future<void> startBreast(String babyId, String side) async {
+    if (await _repo.watchOngoingBreast(babyId).first != null) return; // D23
     final now = DateTime.now();
     final s = side == 'right' ? 'right' : 'left';
     return _saveAndSync(Record(
