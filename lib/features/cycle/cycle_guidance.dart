@@ -1,4 +1,5 @@
 import '../../models/cycle.dart';
+import 'cycle_engine.dart';
 
 /// Adet modülü sağlık yönlendirmeleri — SAF karar fonksiyonları (ADET-INCELEME
 /// düzeltme turu). Ekranlar hangi uyarının görüneceğini buradan sorar; metinler
@@ -40,6 +41,33 @@ enum LamState {
   /// Koşullardan biri bozuldu (6 ay geçti / karışık / adet döndü) →
   /// "Emzirme artık tek başına korunma sağlamaz".
   notProtective,
+}
+
+/// C1 (karar S8): "Uzun süredir adet görmedin — hekimine danış" kartı.
+///  • Aktif takip: son adetten ≥90 gün (düzensiz döngüde ≥180 gün — temkinli
+///    ek eşik; düzenli için karar S8).
+///  • Kayıp sonrası adet dönmedi: kayıptan ≥8 hafta (56 gün).
+///  • Emzirmeyen lohusa, adet dönmedi: doğumdan ≥12 hafta (84 gün).
+///  • Emziren lohusada GÖSTERİLMEZ (emzirmede uzun amenore sık); gebelikte yok.
+bool longAmenorrheaWarning(CycleSettings s, CycleStatus st, {DateTime? today}) {
+  final t = today ?? DateTime.now();
+  if (s.lifecycleMode == CycleLifecycleMode.pregnant) return false;
+  final bf = s.breastfeeding;
+  final birth = s.birthDate;
+  final breastfeedingMom = birth != null &&
+      (bf == Breastfeeding.exclusive || bf == Breastfeeding.mixed);
+  if (st.mode == CycleMode.active) {
+    if (breastfeedingMom) return false;
+    final since = st.dayInCycle - 1;
+    return since >= (st.irregular ? 180 : 90);
+  }
+  final loss = s.lastLossDate;
+  final lossIsLatest = loss != null && (birth == null || !birth.isAfter(loss));
+  if (lossIsLatest) return cycleDaysBetween(t, loss) >= 56;
+  if (birth != null && bf == Breastfeeding.none) {
+    return cycleDaysBetween(t, birth) >= 84;
+  }
+  return false;
 }
 
 LamState lamState(CycleSettings s, {DateTime? today}) {

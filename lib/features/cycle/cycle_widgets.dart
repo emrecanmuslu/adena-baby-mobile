@@ -184,6 +184,10 @@ class CycleTexts {
       'ovülasyon daha erken, 3–4. haftada olabilir. İlk adetini görmeden gebe '
       'kalabilirsin — korunma gerekiyorsa doktoruna danış.');
 
+  /// C1: uzun süre adet görmeme kartı.
+  static String get longAmenorrhea =>
+      tr('Uzun süredir adet görmedin — hekimine danışmanı öneririz.');
+
   /// A5: doğum yapmış herkese (emzirme şartı yok).
   static String get ovulationBeforeFirstPeriod => tr(
       'İlk adetini görmeden de gebe kalabilirsin — ovülasyon adetten önce '

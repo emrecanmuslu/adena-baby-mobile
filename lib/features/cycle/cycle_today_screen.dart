@@ -252,10 +252,13 @@ class _Today extends ConsumerWidget {
     String action;
     bool ghost = false;
     if (d2n != null && d2n < 0) {
+      // C1 (karar S8): "gecikti" yerine "Beklenen tarihten {n} gün geçti".
       state = 'late';
       big = '${-d2n}';
-      dialLabel = tr('Gün gecikti');
-      dialSub = np == null ? null : trp('{d} bekleniyordu', {'d': fmtDayMonth(np)});
+      dialLabel = tr('Gün geçti');
+      dialSub = np == null
+          ? null
+          : trp('Beklenen tarih (tahmini): {d}', {'d': fmtDayMonth(np)});
       accent = AppColors.roseD;
       action = tr('Adeti kaydet');
     } else if (inPeriod) {
@@ -397,10 +400,10 @@ class _Today extends ConsumerWidget {
     } else {
       final (String l1, String v1, String l2, String v2) = switch (state) {
         'late' => (
-            tr('Gecikme'),
-            trp('{n} gün', {'n': -(d2n ?? 0)}),
+            tr('Beklenen tarihten'),
+            trp('{n} gün geçti', {'n': -(d2n ?? 0)}),
             tr('Test'),
-            tr('Gerekirse')
+            -(d2n ?? 0) >= 7 ? tr('Önerilir') : tr('Gerekirse')
           ),
         'count' when status.irregular => (
             tr('Döngü günü'),
@@ -446,9 +449,18 @@ class _Today extends ConsumerWidget {
                     'yapmayı düşünebilirsin.')
                 : tr('Gecikmeler stres, yolculuk veya hastalıkla da olabilir. '
                     'Endişe varsa test yapabilir ya da doktoruna danışabilirsin.');
+        final late = -(d2n ?? 0);
         out.addAll([
           const SizedBox(height: 12),
-          cycNote(context, icon: Icons.favorite_rounded, body: lateBody),
+          cycNote(context,
+              icon: Icons.favorite_rounded,
+              body: late >= 7
+                  // C1: ≥7 gün → açık test önerisi.
+                  ? '${trp('Beklenen tarihten {n} gün geçti.', {'n': late})} '
+                      '${tr('Gebelik testi yapmanı öneririz; negatifse birkaç gün '
+                          'sonra tekrarlayabilirsin.')}'
+                  : '${trp('Beklenen tarihten {n} gün geçti.', {'n': late})} '
+                      '$lateBody'),
         ]);
       } else if (state == 'count') {
         out.addAll([
@@ -491,6 +503,10 @@ class _Today extends ConsumerWidget {
           ],
         ]);
       }
+    }
+
+    if (longAmenorrheaWarning(settings, status)) {
+      out.addAll([const SizedBox(height: 12), _longAmenorrheaCard(context)]);
     }
 
     // ── TTC (gebe kalma) bölümü: bugünün olasılığı + ovülasyon geri sayımı +
@@ -699,12 +715,23 @@ class _Today extends ConsumerWidget {
   }
 
   // ════════ İYİLEŞME (gebelik kaybı — şefkatli mod) ════════
-  List<Widget> _loss(BuildContext context, WidgetRef ref) => cycleLossToday(
-        context,
-        ref,
-        settings,
-        lastLoss: settings.lastLossDate,
-      );
+  List<Widget> _loss(BuildContext context, WidgetRef ref) => [
+        // C1: kayıptan 8 hafta sonra hâlâ adet yoksa hekim kartı.
+        if (longAmenorrheaWarning(settings, status)) ...[
+          const SizedBox(height: 8),
+          _longAmenorrheaCard(context),
+        ],
+        ...cycleLossToday(
+          context,
+          ref,
+          settings,
+          lastLoss: settings.lastLossDate,
+        ),
+      ];
+
+  /// C1 (karar S8): uzun süre adet görmeme → hekim önerisi.
+  Widget _longAmenorrheaCard(BuildContext context) => cycNote(context,
+      icon: Icons.medical_services_outlined, body: CycleTexts.longAmenorrhea);
 
   // ════════ LOHUSALIK ════════
   List<Widget> _lochia(BuildContext context, WidgetRef ref) {
@@ -860,6 +887,10 @@ class _Today extends ConsumerWidget {
       const SizedBox(height: 16),
       cycCta(context, tr('İlk adetimi kaydet'),
           onTap: () => _quickStartPeriod(context, ref)),
+      if (longAmenorrheaWarning(settings, status)) ...[
+        const SizedBox(height: 12),
+        _longAmenorrheaCard(context),
+      ],
       const SizedBox(height: 18),
       // BULGU-2: bekleme moduna bebeksiz kullanıcı da düşebilir (LMP girilmedi);
       // emzirme/LAM içeriği yalnız doğum yapmış kullanıcıya gösterilir.
