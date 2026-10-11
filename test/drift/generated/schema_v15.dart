@@ -870,6 +870,14 @@ class CycleSettingsTable extends Table with TableInfo {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> baseJson = GeneratedColumn<String>(
+    'base_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -895,6 +903,7 @@ class CycleSettingsTable extends Table with TableInfo {
     lastLossDate,
     learningWindow,
     pushError,
+    baseJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;

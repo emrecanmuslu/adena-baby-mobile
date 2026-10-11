@@ -95,23 +95,45 @@ class CycleRepository {
     // Uçuş sırasında yerel değişiklik olduysa (dirty oldu) sunucuyu uygulama.
     final again = await _settingsRow();
     if (again != null && again.dirty) return;
-    await _writeSettings(srv, dirty: false);
+    await _writeSettings(srv, dirty: false, base: _baseOf(srv));
   }
 
   /// Dirty ayar satırını PATCH eder; gövde yerel gerçektir (`baby` null dahil —
   /// satır dirty ise bağ koparma niyeti de yerelde yazılıdır). Başarıda sunucu
   /// yanıtı yerele uygulanır ve satır temizlenir. Döner: başarılı mı.
   Future<bool> _pushDirtySettings(CycleSettingsRow row) async {
+    // M2: gövde = yerel gerçek − sunucunun son onayladığı (`baseJson`) ile
+    // AYNI olan alanlar. Böylece B cihazındaki bayat `baby: null` (yerelde
+    // değişmedi) A'nın kurduğu bebek bağını çözmez; bilinçli null (K-8: base'de
+    // dolu, yerelde null) yine gider. Base yoksa (ilk kullanım/migration) tam
+    // sözlük (eski kontrat).
+    final full = _rowToSettings(row).toPatchJson(includeNullBaby: true);
+    final base = _decodeBase(row.baseJson);
+    final body = base == null
+        ? full
+        : {
+            for (final e in full.entries)
+              if (_canon(e.value) != _canon(base[e.key])) e.key: e.value
+          };
+    if (body.isEmpty) {
+      // Sunucuyla zaten aynı → istek yok, temiz.
+      await (_db.update(_db.cycleSettingsTable)..where((s) => s.id.equals(row.id)))
+          .write(const CycleSettingsTableCompanion(
+              dirty: Value(false), pushError: Value(null)));
+      return true;
+    }
     try {
-      final resp = await _api.dio.patch('/cycle/settings',
-          data: _rowToSettings(row).toPatchJson(includeNullBaby: true));
+      final resp = await _api.dio.patch('/cycle/settings', data: body);
       final srv = CycleSettings.fromJson(resp.data as Map<String, dynamic>);
       final again = await _settingsRow();
-      // Uçuşta yeniden düzenlendiyse (damga değişti) dirty kalsın.
+      // Uçuşta yeniden düzenlendiyse (damga değişti) dirty kalsın; base yine
+      // sunucu yanıtı (bir sonraki diff doğru olsun).
       if (again != null && again.clientUpdatedAt != row.clientUpdatedAt) {
+        await (_db.update(_db.cycleSettingsTable)..where((s) => s.id.equals(row.id)))
+            .write(CycleSettingsTableCompanion(baseJson: Value(_baseOf(srv))));
         return true;
       }
-      await _writeSettings(srv, dirty: false);
+      await _writeSettings(srv, dirty: false, base: _baseOf(srv));
       return true;
     } on DioException catch (e) {
       if (classifyDioError(e) == PushFailure.permanent) {
@@ -124,6 +146,29 @@ class CycleRepository {
     } catch (_) {
       return false;
     }
+  }
+
+  static String _baseOf(CycleSettings s) =>
+      jsonEncode(s.toPatchJson(includeNullBaby: true));
+
+  static Map<String, dynamic>? _decodeBase(String? json) {
+    if (json == null) return null;
+    try {
+      final v = jsonDecode(json);
+      return v is Map ? Map<String, dynamic>.from(v) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Anahtar sırası bağımsız kanonik JSON (BabyRepository ile aynı yöntem).
+  static String _canon(dynamic v) {
+    if (v is Map) {
+      final keys = v.keys.map((k) => k.toString()).toList()..sort();
+      return '{${keys.map((k) => '${jsonEncode(k)}:${_canon(v[k])}').join(',')}}';
+    }
+    if (v is List) return '[${v.map(_canon).join(',')}]';
+    return jsonEncode(v);
   }
 
   CycleSettings _rowToSettings(CycleSettingsRow? row) {
@@ -186,12 +231,16 @@ class CycleRepository {
     return next;
   }
 
-  Future<void> _writeSettings(CycleSettings s, {required bool dirty}) async {
+  /// [base] sunucudan gelen/onaylanan JSON (`toPatchJson(includeNullBaby:true)`)
+  /// — yalnız sunucu kaynaklı yazımlarda verilir; yerel yazımda korunur (M2).
+  Future<void> _writeSettings(CycleSettings s,
+      {required bool dirty, String? base}) async {
     final acct = _acct;
     if (acct == null) return;
     await _db.into(_db.cycleSettingsTable).insertOnConflictUpdate(
           CycleSettingsTableCompanion(
             id: Value(acct),
+            baseJson: base == null ? const Value.absent() : Value(base),
             baby: Value(s.babyId),
             birthDate: Value(s.birthDate),
             breastfeeding: Value(s.breastfeeding?.name),
@@ -435,7 +484,7 @@ class CycleRepository {
       final resp = await _api.dio.get('/cycle/settings');
       if (resp.statusCode != 200 || resp.data is! Map) return RevertResult.failed;
       final srv = CycleSettings.fromJson(Map<String, dynamic>.from(resp.data as Map));
-      await _writeSettings(srv, dirty: false);
+      await _writeSettings(srv, dirty: false, base: _baseOf(srv));
       return RevertResult.applied;
     } catch (_) {
       return RevertResult.failed;

@@ -133,6 +133,9 @@ class CycleSettingsTable extends Table with _SyncCols {
   // Akıllı tahmin öğrenme penceresi (kaç döngü ortalanır): null → 6 varsayılan.
   IntColumn get learningWindow => integer().nullable()();
   TextColumn get pushError => text().nullable()(); // v15, K-1
+  // v15 (M2): sunucunun son onayladığı ayar JSON'u — dirty PATCH yalnız bundan
+  // FARKLI alanları gönderir (aile ayarı `settingsBase` ile aynı yöntem).
+  TextColumn get baseJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -360,6 +363,7 @@ class AppDatabase extends _$AppDatabase {
               await m.addColumn(memories, memories.pushError);
               await m.addColumn(momEntries, momEntries.pushError);
               await m.addColumn(cycleSettingsTable, cycleSettingsTable.pushError);
+              await m.addColumn(cycleSettingsTable, cycleSettingsTable.baseJson);
               await m.addColumn(cycleEntries, cycleEntries.pushError);
             }
             if (from >= 7) {

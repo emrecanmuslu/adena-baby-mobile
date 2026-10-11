@@ -3657,6 +3657,17 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _baseJsonMeta = const VerificationMeta(
+    'baseJson',
+  );
+  @override
+  late final GeneratedColumn<String> baseJson = GeneratedColumn<String>(
+    'base_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     isDeleted,
@@ -3682,6 +3693,7 @@ class $CycleSettingsTableTable extends CycleSettingsTable
     lastLossDate,
     learningWindow,
     pushError,
+    baseJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3875,6 +3887,12 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         pushError.isAcceptableOrUnknown(data['push_error']!, _pushErrorMeta),
       );
     }
+    if (data.containsKey('base_json')) {
+      context.handle(
+        _baseJsonMeta,
+        baseJson.isAcceptableOrUnknown(data['base_json']!, _baseJsonMeta),
+      );
+    }
     return context;
   }
 
@@ -3976,6 +3994,10 @@ class $CycleSettingsTableTable extends CycleSettingsTable
         DriftSqlType.string,
         data['${effectivePrefix}push_error'],
       ),
+      baseJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}base_json'],
+      ),
     );
   }
 
@@ -4010,6 +4032,7 @@ class CycleSettingsRow extends DataClass
   final DateTime? lastLossDate;
   final int? learningWindow;
   final String? pushError;
+  final String? baseJson;
   const CycleSettingsRow({
     required this.isDeleted,
     this.clientUpdatedAt,
@@ -4034,6 +4057,7 @@ class CycleSettingsRow extends DataClass
     this.lastLossDate,
     this.learningWindow,
     this.pushError,
+    this.baseJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4087,6 +4111,9 @@ class CycleSettingsRow extends DataClass
     if (!nullToAbsent || pushError != null) {
       map['push_error'] = Variable<String>(pushError);
     }
+    if (!nullToAbsent || baseJson != null) {
+      map['base_json'] = Variable<String>(baseJson);
+    }
     return map;
   }
 
@@ -4139,6 +4166,9 @@ class CycleSettingsRow extends DataClass
       pushError: pushError == null && nullToAbsent
           ? const Value.absent()
           : Value(pushError),
+      baseJson: baseJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseJson),
     );
   }
 
@@ -4175,6 +4205,7 @@ class CycleSettingsRow extends DataClass
       lastLossDate: serializer.fromJson<DateTime?>(json['lastLossDate']),
       learningWindow: serializer.fromJson<int?>(json['learningWindow']),
       pushError: serializer.fromJson<String?>(json['pushError']),
+      baseJson: serializer.fromJson<String?>(json['baseJson']),
     );
   }
   @override
@@ -4204,6 +4235,7 @@ class CycleSettingsRow extends DataClass
       'lastLossDate': serializer.toJson<DateTime?>(lastLossDate),
       'learningWindow': serializer.toJson<int?>(learningWindow),
       'pushError': serializer.toJson<String?>(pushError),
+      'baseJson': serializer.toJson<String?>(baseJson),
     };
   }
 
@@ -4231,6 +4263,7 @@ class CycleSettingsRow extends DataClass
     Value<DateTime?> lastLossDate = const Value.absent(),
     Value<int?> learningWindow = const Value.absent(),
     Value<String?> pushError = const Value.absent(),
+    Value<String?> baseJson = const Value.absent(),
   }) => CycleSettingsRow(
     isDeleted: isDeleted ?? this.isDeleted,
     clientUpdatedAt: clientUpdatedAt.present
@@ -4269,6 +4302,7 @@ class CycleSettingsRow extends DataClass
         ? learningWindow.value
         : this.learningWindow,
     pushError: pushError.present ? pushError.value : this.pushError,
+    baseJson: baseJson.present ? baseJson.value : this.baseJson,
   );
   CycleSettingsRow copyWithCompanion(CycleSettingsTableCompanion data) {
     return CycleSettingsRow(
@@ -4325,6 +4359,7 @@ class CycleSettingsRow extends DataClass
           ? data.learningWindow.value
           : this.learningWindow,
       pushError: data.pushError.present ? data.pushError.value : this.pushError,
+      baseJson: data.baseJson.present ? data.baseJson.value : this.baseJson,
     );
   }
 
@@ -4353,7 +4388,8 @@ class CycleSettingsRow extends DataClass
           ..write('predictionsHidden: $predictionsHidden, ')
           ..write('lastLossDate: $lastLossDate, ')
           ..write('learningWindow: $learningWindow, ')
-          ..write('pushError: $pushError')
+          ..write('pushError: $pushError, ')
+          ..write('baseJson: $baseJson')
           ..write(')'))
         .toString();
   }
@@ -4383,6 +4419,7 @@ class CycleSettingsRow extends DataClass
     lastLossDate,
     learningWindow,
     pushError,
+    baseJson,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -4410,7 +4447,8 @@ class CycleSettingsRow extends DataClass
           other.predictionsHidden == this.predictionsHidden &&
           other.lastLossDate == this.lastLossDate &&
           other.learningWindow == this.learningWindow &&
-          other.pushError == this.pushError);
+          other.pushError == this.pushError &&
+          other.baseJson == this.baseJson);
 }
 
 class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
@@ -4437,6 +4475,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
   final Value<DateTime?> lastLossDate;
   final Value<int?> learningWindow;
   final Value<String?> pushError;
+  final Value<String?> baseJson;
   final Value<int> rowid;
   const CycleSettingsTableCompanion({
     this.isDeleted = const Value.absent(),
@@ -4462,6 +4501,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.lastLossDate = const Value.absent(),
     this.learningWindow = const Value.absent(),
     this.pushError = const Value.absent(),
+    this.baseJson = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CycleSettingsTableCompanion.insert({
@@ -4488,6 +4528,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     this.lastLossDate = const Value.absent(),
     this.learningWindow = const Value.absent(),
     this.pushError = const Value.absent(),
+    this.baseJson = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   static Insertable<CycleSettingsRow> custom({
@@ -4514,6 +4555,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Expression<DateTime>? lastLossDate,
     Expression<int>? learningWindow,
     Expression<String>? pushError,
+    Expression<String>? baseJson,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4542,6 +4584,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
       if (lastLossDate != null) 'last_loss_date': lastLossDate,
       if (learningWindow != null) 'learning_window': learningWindow,
       if (pushError != null) 'push_error': pushError,
+      if (baseJson != null) 'base_json': baseJson,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4570,6 +4613,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     Value<DateTime?>? lastLossDate,
     Value<int?>? learningWindow,
     Value<String?>? pushError,
+    Value<String?>? baseJson,
     Value<int>? rowid,
   }) {
     return CycleSettingsTableCompanion(
@@ -4596,6 +4640,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
       lastLossDate: lastLossDate ?? this.lastLossDate,
       learningWindow: learningWindow ?? this.learningWindow,
       pushError: pushError ?? this.pushError,
+      baseJson: baseJson ?? this.baseJson,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4674,6 +4719,9 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
     if (pushError.present) {
       map['push_error'] = Variable<String>(pushError.value);
     }
+    if (baseJson.present) {
+      map['base_json'] = Variable<String>(baseJson.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4706,6 +4754,7 @@ class CycleSettingsTableCompanion extends UpdateCompanion<CycleSettingsRow> {
           ..write('lastLossDate: $lastLossDate, ')
           ..write('learningWindow: $learningWindow, ')
           ..write('pushError: $pushError, ')
+          ..write('baseJson: $baseJson, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -8922,6 +8971,7 @@ typedef $$CycleSettingsTableTableCreateCompanionBuilder =
       Value<DateTime?> lastLossDate,
       Value<int?> learningWindow,
       Value<String?> pushError,
+      Value<String?> baseJson,
       Value<int> rowid,
     });
 typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
@@ -8949,6 +8999,7 @@ typedef $$CycleSettingsTableTableUpdateCompanionBuilder =
       Value<DateTime?> lastLossDate,
       Value<int?> learningWindow,
       Value<String?> pushError,
+      Value<String?> baseJson,
       Value<int> rowid,
     });
 
@@ -9073,6 +9124,11 @@ class $$CycleSettingsTableTableFilterComposer
 
   ColumnFilters<String> get pushError => $composableBuilder(
     column: $table.pushError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baseJson => $composableBuilder(
+    column: $table.baseJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9200,6 +9256,11 @@ class $$CycleSettingsTableTableOrderingComposer
     column: $table.pushError,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get baseJson => $composableBuilder(
+    column: $table.baseJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CycleSettingsTableTableAnnotationComposer
@@ -9309,6 +9370,9 @@ class $$CycleSettingsTableTableAnnotationComposer
 
   GeneratedColumn<String> get pushError =>
       $composableBuilder(column: $table.pushError, builder: (column) => column);
+
+  GeneratedColumn<String> get baseJson =>
+      $composableBuilder(column: $table.baseJson, builder: (column) => column);
 }
 
 class $$CycleSettingsTableTableTableManager
@@ -9374,6 +9438,7 @@ class $$CycleSettingsTableTableTableManager
                 Value<DateTime?> lastLossDate = const Value.absent(),
                 Value<int?> learningWindow = const Value.absent(),
                 Value<String?> pushError = const Value.absent(),
+                Value<String?> baseJson = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion(
                 isDeleted: isDeleted,
@@ -9399,6 +9464,7 @@ class $$CycleSettingsTableTableTableManager
                 lastLossDate: lastLossDate,
                 learningWindow: learningWindow,
                 pushError: pushError,
+                baseJson: baseJson,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9426,6 +9492,7 @@ class $$CycleSettingsTableTableTableManager
                 Value<DateTime?> lastLossDate = const Value.absent(),
                 Value<int?> learningWindow = const Value.absent(),
                 Value<String?> pushError = const Value.absent(),
+                Value<String?> baseJson = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CycleSettingsTableCompanion.insert(
                 isDeleted: isDeleted,
@@ -9451,6 +9518,7 @@ class $$CycleSettingsTableTableTableManager
                 lastLossDate: lastLossDate,
                 learningWindow: learningWindow,
                 pushError: pushError,
+                baseJson: baseJson,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
