@@ -9,12 +9,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../data/feed_reminder_cache.dart';
+import '../data/health_repository.dart';
 import '../data/local_session.dart';
 import '../data/record_repository.dart';
 import '../data/sync_gate.dart';
 import '../features/auth/auth_controller.dart';
 import '../data/baby_repository.dart';
 import '../features/babies/family_settings.dart';
+import '../features/health/med_scheduler_sync.dart';
+import 'medication/med_scheduler.dart';
 import '../models/baby.dart';
 import '../models/record.dart';
 import 'db_watchdog.dart';
@@ -124,6 +127,32 @@ Future<String> runBackgroundSyncWith(
 /// Döner: oturum sunucu tarafından reddedildi mi (401 → refresh reddi, token
 /// silindi). Bg'de başka iş yapılmaz; ön plan öne gelişte `verifySession` ile
 /// zorunlu çıkışı uygular.
+/// İlaç v2 (M6) — bg turunun ilaç adımı. Test kancası: [bgMedHook].
+class BgMedHook {
+  /// Bir bebeğin ilaç planlarını sunucuyla eşitler.
+  final Future<void> Function(ProviderContainer c, String babyId) syncPlans;
+  /// İlaç bildirimlerini (TÜM doğmuş bebekler) DB'den yeniden kurar.
+  final Future<void> Function(ProviderContainer c, List<Baby> babies) rebuild;
+  const BgMedHook({required this.syncPlans, required this.rebuild});
+}
+
+@visibleForTesting
+BgMedHook? bgMedHook;
+
+final _defaultBgMed = BgMedHook(
+  syncPlans: (c, id) async {
+    await c.read(healthRepositoryProvider).syncMedicationPlans(id);
+  },
+  rebuild: (c, list) => MedicationScheduler.instance.rebuild(
+    medSchedLoader(
+      babies: () async => list,
+      health: c.read(healthRepositoryProvider),
+      records: c.read(recordRepositoryProvider),
+    ),
+    reason: 'bg',
+  ),
+);
+
 Future<bool> _syncBabies(ProviderContainer container,
     {String? onlyBabyId}) async {
   var sessionLost = false;
@@ -134,6 +163,7 @@ Future<bool> _syncBabies(ProviderContainer container,
   final babies =
       await container.read(babyRepositoryProvider).getAll(accountId: acct);
   final repo = container.read(recordRepositoryProvider);
+  final med = bgMedHook ?? _defaultBgMed;
   for (final b in babies) {
     if (onlyBabyId != null) {
       if (b.id != onlyBabyId) continue;
@@ -141,6 +171,11 @@ Future<bool> _syncBabies(ProviderContainer container,
       continue; // periyodik tur: yalnız paylaşımlı bebek
     }
     if (b.isExpecting) continue; // bekleme modunda kayıt/beslenme işi yok
+    // İlaç v2 (M6): başka üyenin plan değişikliği (sil/duraklat/saat) uygulama
+    // açılmadan da bu cihaza insin. Hata turu düşürmez (yerel planlarla kurulur).
+    try {
+      await med.syncPlans(container, b.id);
+    } catch (_) {}
     try {
       await repo.sync(b.id);
     } on DioException catch (e) {
@@ -155,6 +190,11 @@ Future<bool> _syncBabies(ProviderContainer container,
     // de yereldeki veriyle çalışır (zararsız, idempotent).
     await _refreshFeedState(repo, b);
   }
+  // İlaç v2 (M1/M6): senkronla gelen kayıt ve plan değişikliklerine göre ilaç
+  // bildirimlerini (TÜM doğmuş bebekler — pencere de kayar) yeniden kur.
+  try {
+    await med.rebuild(container, [for (final b in babies) if (!b.isExpecting) b]);
+  } catch (_) {}
   return sessionLost;
 }
 

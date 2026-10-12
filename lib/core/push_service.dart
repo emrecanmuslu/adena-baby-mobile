@@ -12,6 +12,7 @@ import '../data/slot_registry.dart';
 import 'api_client.dart';
 import 'i18n_warm.dart';
 import 'background_sync.dart';
+import 'medication/med_scheduler.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
 
@@ -40,6 +41,27 @@ bool isForegroundLifecycle(AppLifecycleState state) =>
 bool feedAnchorPlausible(DateTime lastFeed, {DateTime? now}) =>
     !lastFeed.isAfter((now ?? DateTime.now()).add(const Duration(hours: 1)));
 
+/// İlaç v2 (A5): `med_dose` push'unda iptal edilecek doz — yalnız "verildi" /
+/// "atlandı" olayında ve kimlik (plan + gün + saat) varsa. "Geri alındı"da
+/// hatırlatma geri gelmeli → senkron + yeniden kurma yapar (iptal değil).
+({String plan, String date, String time})? medDoseCancelTarget(Map<String, dynamic> data) {
+  if (data['type'] != 'med_dose') return null;
+  final ev = data['event'];
+  if (ev != 'given' && ev != 'skipped') return null;
+  final plan = data['plan_uuid'], date = data['dose_date'], time = data['dose_time'];
+  if (plan is! String || date is! String || time is! String) return null;
+  if (plan.isEmpty || date.isEmpty || time.isEmpty) return null;
+  return (plan: plan, date: date, time: time);
+}
+
+/// İlaç v2 (M10): üyelikten çıkarılma push'u — bu bebeğin zamanlanmış tüm
+/// bildirimleri uygulama açılmadan iptal edilir.
+String? accessRemovedBabyId(Map<String, dynamic> data) {
+  if (data['type'] != 'access_removed') return null;
+  final id = data['baby_id'];
+  return id is String && id.isNotEmpty ? id : null;
+}
+
 /// Arka plan (uygulama kapalı/arka planda) mesaj işleyici — TOP-LEVEL olmalı.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -58,7 +80,33 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   // sync_nudge = başka üye bir kaydı GÜNCELLEDİ ya da SİLDİ (bkz. push_sync_nudge
   // backend'te). family_activity'nin (EKLEME) tersine hangi kayıt değiştiğini
   // TEK başına bilmeyiz — kendi widget/hatırlatıcı mantığı _handleSyncNudge'de.
-  if (type == 'sync_nudge') {
+  if (type == 'med_dose') {
+    // İlaç v2: önce ağsız iptal (doz verildi/atlandı → o dozun "İlaç zamanı" ve
+    // +30 dk hatırlatması), sonra (arka plandaysak) tam senkron + yeniden kurma.
+    final t = medDoseCancelTarget(data);
+    if (t != null) {
+      try {
+        await MedicationScheduler.instance.cancelDose(t.plan, t.date, t.time);
+      } catch (_) {}
+    }
+    final babyId = (data['baby_id'] as String?) ?? '';
+    if (!appInForeground && babyId.isNotEmpty) {
+      await refreshBabyFeedStateFromPush(babyId);
+    }
+    // Bildirim gösterme adımına DÜŞER (görünür gövde → aile bildirimi).
+  } else if (type == 'access_removed') {
+    final babyId = accessRemovedBabyId(data);
+    if (babyId != null) {
+      try {
+        await MedicationScheduler.instance.cancelBaby(babyId);
+        final slot = await SlotRegistry.instance.slotForStored(babyId);
+        if (slot != null) {
+          await NotificationService.instance.cancelBabyScheduled(slot: slot);
+        }
+      } catch (_) {}
+    }
+    // Bildirim gösterme adımına DÜŞER ("bu bebeğe erişimin kaldırıldı").
+  } else if (type == 'sync_nudge') {
     await _handleSyncNudge(data, title);
     // Bildirim gösterme adımına (aşağı) DÜŞER — family_activity ile aynı yoldan.
   } else if (type == 'baby_update') {
@@ -136,6 +184,13 @@ Future<void> handlePushMessage(RemoteMessage message) async {
     // (aile etkinliği tercihi kapalı üye) body zaten boştur → gösterilecek bir
     // şey olmaz, showActivity çağrısı görünürde bir etki yapmaz.
     if (body.isNotEmpty && await ActivityNotifCache().enabled()) {
+      await NotificationService.instance.showActivity(title: title, body: body);
+    }
+  } else if (type == 'med_dose' || type == 'access_removed') {
+    // İlaç v2 (K2): "Ayşe · D vitamini verildi · 08:00". Sunucu "Ailenin ilaç
+    // işaretleri" kapalı üyeye gövdesiz (sessiz) gönderir → gösterilecek şey yok.
+    // access_removed: Android data-only olduğundan yerelde basılmalı (M10).
+    if (body.isNotEmpty) {
       await NotificationService.instance.showActivity(title: title, body: body);
     }
   } else if (type.startsWith('community')) {

@@ -64,9 +64,13 @@ void main() {
         .thenAnswer((_) async => [_baby('shared'), _baby('solo', members: 1)]);
     when(() => records.watchRecent(any()))
         .thenAnswer((_) => Stream.value(const <Record>[]));
+    // İlaç v2 adımı bu dosyanın genel testlerinde etkisiz (ağ/eklenti yok);
+    // kendi grubu aşağıda gerçek davranışı doğrular.
+    bgMedHook = BgMedHook(syncPlans: (_, _) async {}, rebuild: (_, _) async {});
   });
 
   tearDown(() async {
+    bgMedHook = null;
     LocalSession.setActiveAccount(null);
     await db.close();
   });
@@ -175,5 +179,52 @@ void main() {
     expect(await runBackgroundSyncWith(c, timeout: const Duration(seconds: 5)),
         bgOutcomeNoSession);
     expect(disposed, isTrue);
+  });
+
+  group('İlaç v2 (M6) — arka plan turunda plan senkronu + ilaç bildirimi yeniden kurma', () {
+    late List<String> planSynced;
+    late List<List<String>> rebuilt;
+
+    setUp(() {
+      planSynced = [];
+      rebuilt = [];
+      bgMedHook = BgMedHook(
+        syncPlans: (c, id) async => planSynced.add(id),
+        rebuild: (c, list) async => rebuilt.add([for (final b in list) b.id]),
+      );
+      when(() => records.sync(any())).thenAnswer((_) async {});
+    });
+
+    test('periyodik tur: planlar yalnız paylaşımlı bebekte çekilir; yeniden kurma TÜM bebekler', () async {
+      final c = make();
+      await runBackgroundSyncWith(c, timeout: const Duration(seconds: 5));
+      expect(planSynced, ['shared']);
+      expect(rebuilt.single, ['shared', 'solo']);
+    });
+
+    test('FCM sync_nudge (plans): o bebeğin planları çekilir ve yeniden kurulur', () async {
+      final c = make();
+      await runBackgroundSyncWith(c, timeout: const Duration(seconds: 5), onlyBabyId: 'solo');
+      expect(planSynced, ['solo']);
+      expect(rebuilt.single, ['shared', 'solo']);
+    });
+
+    test('plan senkronu düşse de yeniden kurma yapılır (yerel planlarla)', () async {
+      bgMedHook = BgMedHook(
+        syncPlans: (c, id) async => throw DioException(requestOptions: RequestOptions()),
+        rebuild: (c, list) async => rebuilt.add([for (final b in list) b.id]),
+      );
+      final c = make();
+      expect(await runBackgroundSyncWith(c, timeout: const Duration(seconds: 5)), bgOutcomeDone);
+      expect(rebuilt, hasLength(1));
+    });
+
+    test('bekleme bebeği yeniden kurmaya girmez', () async {
+      when(() => babies.getAll(accountId: any(named: 'accountId'))).thenAnswer(
+          (_) async => [_baby('preg', status: BabyStatus.expecting), _baby('shared')]);
+      final c = make();
+      await runBackgroundSyncWith(c, timeout: const Duration(seconds: 5));
+      expect(rebuilt.single, ['shared']);
+    });
   });
 }

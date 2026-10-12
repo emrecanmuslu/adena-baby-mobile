@@ -297,7 +297,9 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
         final t = data['type'] as String?;
         // family_activity = başka üye kayıt ekledi; sync_nudge = güncelleme/silme
         // (uyku/emzirme bitirme dahil). İkisi de yerel kayıtları hemen çeksin.
-        if (t == 'family_activity' || t == 'sync_nudge') {
+        // med_dose (İlaç v2) = başka üye dozu verdi/atladı/geri aldı — kayıtlar
+        // hemen çekilsin (kart + ilaç bildirimleri yeniden kurulur).
+        if (t == 'family_activity' || t == 'sync_nudge' || t == 'med_dose') {
           ref.read(syncServiceProvider).requestSyncSoon();
         }
         // baby_update = sahip bebek profilini değiştirdi (ör. gebelik→doğdu);
