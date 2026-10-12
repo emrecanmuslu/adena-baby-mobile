@@ -9,8 +9,13 @@
 /// ile aynı (V8: daha uzun ad sunucuda kesilip ek çakışmasına yol açıyordu).
 const kMedPlanNameMax = 120;
 
+/// V26: backend `med_names._WS_CHARS` ile AYNI açık boşluk kümesi (Dart ve
+/// Python `\s` tanımları farklı).
+final _ws = RegExp('[\t\n\x0B\x0C\r \u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005'
+    '\u2006\u2007\u2008\u2009\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+');
+
 String medNameKey(String name) {
-  final s = name.trim().replaceAll(RegExp(r'\s+'), ' ');
+  final s = name.replaceAll(_ws, ' ').trimSpaces();
   final b = StringBuffer();
   for (final r in s.runes) {
     final c = String.fromCharCode(r);
@@ -21,5 +26,19 @@ String medNameKey(String name) {
     }
   }
   // "İ" bazı yollarda i + birleşik nokta (U+0307) olarak gelir.
-  return b.toString().replaceAll('i̇', 'i');
+  return b.toString().replaceAll('i\u0307', 'i');
+}
+
+extension on String {
+  /// Yalnız düz boşluğu kırpar (String.trim'in Unicode kümesi değil).
+  String trimSpaces() {
+    var a = 0, z = length;
+    while (a < z && codeUnitAt(a) == 0x20) {
+      a++;
+    }
+    while (z > a && codeUnitAt(z - 1) == 0x20) {
+      z--;
+    }
+    return substring(a, z);
+  }
 }
