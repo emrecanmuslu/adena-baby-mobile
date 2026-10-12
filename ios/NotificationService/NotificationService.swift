@@ -22,6 +22,9 @@ class NotificationService: UNNotificationServiceExtension {
     self.contentHandler = contentHandler
     self.bestAttempt = request.content.mutableCopy() as? UNMutableNotificationContent
     updateWidget(request.content.userInfo)
+    // İlaç v2 (A6): aile üyesinin doz işareti / üyelikten çıkarılma → ilgili
+    // bekleyen ilaç hatırlatmalarını iptal et (ya da geri alındıysa geri ekle).
+    handleMedication(request.content.userInfo)
     // Bildirimi olduğu gibi teslim et (yalnız yan etki: App Group + widget güncellendi).
     contentHandler(bestAttempt ?? request.content)
   }
@@ -29,6 +32,93 @@ class NotificationService: UNNotificationServiceExtension {
   override func serviceExtensionTimeWillExpire() {
     if let handler = contentHandler, let content = bestAttempt {
       handler(content)
+    }
+  }
+
+  // MARK: - İlaç v2 (ILAC-TASARIM §4.3)
+
+  /// Dart `MedicationScheduler` defteri (App Group `med_notif_registry`):
+  /// `{"planUuid|YYYY-MM-DD|HH:MM|m|x": {"id": Int, "at": ms, "b": babyId,
+  /// "t": başlık, "y": gövde, ...}}`. Bildirim kimliği = String(id) (FLN).
+  private func loadMedRegistry(_ defaults: UserDefaults) -> [String: [String: Any]] {
+    guard let raw = defaults.string(forKey: "med_notif_registry"),
+          let data = raw.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return [:] }
+    var out: [String: [String: Any]] = [:]
+    for (k, v) in obj { if let e = v as? [String: Any] { out[k] = e } }
+    return out
+  }
+
+  private func saveMedRegistry(_ defaults: UserDefaults, _ reg: [String: [String: Any]]) {
+    guard let data = try? JSONSerialization.data(withJSONObject: reg),
+          let raw = String(data: data, encoding: .utf8) else { return }
+    defaults.set(raw, forKey: "med_notif_registry")
+  }
+
+  private func medId(_ e: [String: Any]) -> String? {
+    if let i = e["id"] as? Int { return String(i) }
+    if let n = e["id"] as? NSNumber { return n.stringValue }
+    return nil
+  }
+
+  /// `med_dose` (verildi/atlandı → o dozun ana + "işaretlenmedi" bildirimini
+  /// bekleyen ve ekrandakilerden kaldır; geri alındı → defterdeki içerikle,
+  /// zamanı gelmemişse geri ekle) ve `access_removed` (+ baby_id → o bebeğin
+  /// TÜM ilaç bildirimleri). Uygulama force-quit olsa da çalışır.
+  private func handleMedication(_ info: [AnyHashable: Any]) {
+    guard let type = info["type"] as? String,
+          let defaults = UserDefaults(suiteName: appGroupId) else { return }
+    let center = UNUserNotificationCenter.current()
+    var reg = loadMedRegistry(defaults)
+    if reg.isEmpty { return }
+
+    if type == "access_removed" {
+      guard let babyId = info["baby_id"] as? String, !babyId.isEmpty else { return }
+      var ids: [String] = []
+      for (k, e) in reg where (e["b"] as? String) == babyId {
+        if let id = medId(e) { ids.append(id) }
+        reg.removeValue(forKey: k)
+      }
+      if ids.isEmpty { return }
+      center.removePendingNotificationRequests(withIdentifiers: ids)
+      center.removeDeliveredNotifications(withIdentifiers: ids)
+      saveMedRegistry(defaults, reg)
+      return
+    }
+
+    guard type == "med_dose",
+          let event = info["event"] as? String,
+          let plan = info["plan_uuid"] as? String, !plan.isEmpty,
+          let date = info["dose_date"] as? String, !date.isEmpty,
+          let time = info["dose_time"] as? String, !time.isEmpty else { return }
+    let base = "\(plan)|\(date)|\(time)"
+    let keys = ["\(base)|m", "\(base)|x"]
+
+    if event == "given" || event == "skipped" {
+      var ids: [String] = []
+      for k in keys {
+        if let e = reg[k], let id = medId(e) { ids.append(id) }
+      }
+      if ids.isEmpty { return }
+      center.removePendingNotificationRequests(withIdentifiers: ids)
+      center.removeDeliveredNotifications(withIdentifiers: ids)
+      // Defterde KALIR: ön plan yeniden kurması "bekleyen değil" görüp kaydın
+      // çözüldüğünü senkronla öğrenir; geri alınırsa NSE içerikten geri ekler.
+      return
+    }
+
+    if event == "undone" {
+      let now = Date()
+      for k in keys {
+        guard let e = reg[k], let id = medId(e),
+              let atMs = (e["at"] as? NSNumber)?.doubleValue else { continue }
+        let fire = Date(timeIntervalSince1970: atMs / 1000)
+        if fire <= now { continue }
+        scheduleLocal(center, id: id, fireDate: fire,
+                      title: (e["t"] as? String) ?? "", body: (e["y"] as? String) ?? "",
+                      sound: true, category: nil)
+      }
     }
   }
 

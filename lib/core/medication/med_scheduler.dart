@@ -10,6 +10,7 @@ import '../../models/record.dart';
 import '../i18n.dart';
 import '../medication.dart';
 import '../notification_service.dart';
+import '../widget_service.dart';
 
 /// İlaç v2 bildirim planlayıcısı (ILAC-TASARIM §3) — TÜM bebekler için tek,
 /// serileştirilmiş yeniden kurma:
@@ -205,11 +206,9 @@ class MedicationScheduler {
           {DateTime Function()? now, bool ios = false, Future<void> Function(String)? mirror}) =>
       MedicationScheduler._(svc, now ?? DateTime.now, ios, mirror ?? (_) async {});
 
-  /// iOS App Group aynası (NSE okur) — `WidgetService` ile aynı kanal.
-  static Future<void> Function(String json) _defaultMirror = (_) async {};
-
-  /// Üretim: uygulama açılışında App Group yazıcısı atanır (bkz. main.dart).
-  static set appGroupMirror(Future<void> Function(String json) f) => _defaultMirror = f;
+  /// iOS App Group aynası (NSE okur) — `WidgetService` ile aynı kanal; Android'de
+  /// no-op. Ön plan ve arka plan isolate'ında aynı.
+  static Future<void> _defaultMirror(String json) => WidgetService.saveMedRegistry(json);
 
   final NotificationService _svc;
   final DateTime Function() _now;

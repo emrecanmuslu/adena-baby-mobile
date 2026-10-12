@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:home_widget/home_widget.dart';
 
@@ -27,6 +28,17 @@ class WidgetService {
     if (_inited) return;
     await HomeWidget.setAppGroupId(_appGroupId);
     _inited = true;
+  }
+
+  /// İlaç v2 (A6): ilaç bildirim defteri (doz anahtarı → bildirim id/an/içerik)
+  /// App Group'a — iOS NSE uygulama kapalıyken `med_dose` / `access_removed`
+  /// push'unda ilgili bekleyen bildirimleri iptal eder ya da geri ekler.
+  static Future<void> saveMedRegistry(String json) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _ensureInit();
+      await HomeWidget.saveWidgetData<String>('med_notif_registry', json);
+    } catch (_) {}
   }
 
   /// TÜM bebeklerin sonraki-beslenme verisini + bebek listesini yazar (ön plan,
