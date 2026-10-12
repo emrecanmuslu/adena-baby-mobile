@@ -343,6 +343,13 @@ class MedicationScheduler {
         for (final k in drop) {
           await _svc.cancelId(reg.remove(k)!.id);
         }
+        // Bebeğe ait olmayan "pencere sonu" uyarısı: başka bebeğin ilaç
+        // bildirimi kalmadıysa o da gitsin (yanıltıcı "duracak" uyarısı olmasın).
+        const w = 'window|${MedNotifKind.windowEnd}';
+        if (reg.containsKey(w) && !reg.values.any((e) => e.baby.isNotEmpty)) {
+          await _svc.cancelId(reg.remove(w)!.id);
+          drop.add(w);
+        }
         if (drop.isNotEmpty) await _save(p, reg);
       });
 
