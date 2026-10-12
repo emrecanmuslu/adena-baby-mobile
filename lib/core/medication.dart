@@ -65,8 +65,12 @@ int medicationMinutes(String t) {
 
 /// Duraklatma anı [t]'yi kapsıyor mu? Süren duraklatma geçmişi olmayan
 /// (v16 öncesi duraklatılmış) plan her anı kapsar.
+/// V3: plan AKTİFSE kapanmamış (`to == null`) aralık kapanmış sayılır (bitişi
+/// bilinmediği için yok sayılır) — aksi hâlde aktif görünen plan sessizce hiç
+/// doz üretmezdi (ör. eski sürümdeki üye `pauses` göndermeden devam ettirdi).
 bool _pausedAt(MedicationPlan p, DateTime t) {
   for (final x in p.pauses) {
+    if (x.to == null && p.active) continue;
     if (x.covers(t.toUtc())) return true;
   }
   if (!p.active && !p.pauses.any((x) => x.to == null)) return true;

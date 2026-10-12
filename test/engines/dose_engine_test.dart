@@ -450,4 +450,15 @@ void main() {
       expect(ds.every((d) => d.records.isEmpty), isTrue);
     });
   });
+
+  // ILAC-INCELEME-2 V3: aktif plan + kapanmamış duraklatma aralığı (ör. eski
+  // sürümdeki üye "devam ettir" dedi, pauses göndermedi) doz kaybettirmemeli.
+  test('V3: aktif planda kapanmamış duraklatma aralığı kapanmış sayılır — dozlar üretilir', () {
+    final p = _p(times: ['09:00'], active: true, pauses: [MedPause(DateTime.utc(2026, 10, 10))]);
+    final ds = generateDoses(p, from: DateTime(2026, 10, 12), to: DateTime(2026, 10, 13));
+    expect(_keys(ds), ['2026-10-12 09:00']);
+    // Duraklatılmış (active=false) planda aynı açık aralık dozları keser.
+    final paused = _p(times: ['09:00'], active: false, pauses: [MedPause(DateTime.utc(2026, 10, 10))]);
+    expect(generateDoses(paused, from: DateTime(2026, 10, 12), to: DateTime(2026, 10, 13)), isEmpty);
+  });
 }
