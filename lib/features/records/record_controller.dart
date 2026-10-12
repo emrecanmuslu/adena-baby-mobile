@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show debugPrint, setEquals;
+import 'package:flutter/foundation.dart' show debugPrint, setEquals, visibleForTesting;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -199,6 +199,19 @@ final ongoingBreastProvider = Provider.family<Record?, String>(
 /// olunca, uygulama öne gelince ve **dakikada bir**. Her turda bekleyen yerel
 /// değişiklikler gönderilir + sunucudaki (diğer aile üyelerinin) değişiklikleri
 /// çekilir. Arka planda pili korumak için yoklama durdurulur.
+/// V11: bir bebeğin bulut turu sırası — önce ilaç planları (hatası yutulur;
+/// kayıt senkronunu bozmaz), sonra kayıtlar (hatası çağırana fırlar).
+@visibleForTesting
+Future<void> syncPlansThenRecords({
+  required Future<void> Function() plans,
+  required Future<void> Function() records,
+}) async {
+  try {
+    await plans();
+  } catch (_) {}
+  await records();
+}
+
 class SyncService with WidgetsBindingObserver {
   final Ref _ref;
   StreamSubscription? _sub;
@@ -302,8 +315,11 @@ class SyncService with WidgetsBindingObserver {
         if (!_ref.read(babyCloudEligibleProvider(b.id))) continue;
         _stage = SyncStage.sync;
         try {
-          await repo.sync(b.id);
-          await _syncMedicationPlans(b.id);
+          // V11 (M11): plan senkronu ÖNCE ve kendi hata sınırında — kayıt /sync
+          // 403'ü (sahibin premium'u bitti) planların GET ile okunmasını
+          // engellemesin.
+          await syncPlansThenRecords(
+              plans: () => _syncMedicationPlans(b.id), records: () => repo.sync(b.id));
           // K4/K-3: sağlık delta push her turda (ucuz, yalnız dirty varsa istek
           // atar); pull yalnız tam turlarda (açılış/öne geliş/işaretleme) —
           // 1 dk polling'e eklenmez.
