@@ -95,7 +95,10 @@ class NotificationService: UNNotificationServiceExtension {
     let base = "\(plan)|\(date)|\(time)"
     let keys = ["\(base)|m", "\(base)|x"]
 
-    if event == "given" || event == "skipped" {
+    // V7: geri alınan kaydın dozunu başka biri de vermiş (still_given) → doz
+    // HÂLÂ verildi: "verildi" gibi işlenir, hatırlatma geri EKLENMEZ.
+    let stillGiven = event == "undone" && (info["still_given"] as? String) == "1"
+    if event == "given" || event == "skipped" || stillGiven {
       var ids: [String] = []
       for k in keys {
         if let e = reg[k], let id = medId(e) { ids.append(id) }
@@ -103,7 +106,8 @@ class NotificationService: UNNotificationServiceExtension {
       if ids.isEmpty { return }
       center.removePendingNotificationRequests(withIdentifiers: ids)
       center.removeDeliveredNotifications(withIdentifiers: ids)
-      // Defterde KALIR: ön plan yeniden kurması "bekleyen değil" görüp kaydın
+      // Defterde KALIR (V6 — Dart cancelDose ile aynı model: girdi iptal
+      // işaretli kalır): ön plan yeniden kurması "bekleyen değil" görüp kaydın
       // çözüldüğünü senkronla öğrenir; geri alınırsa NSE içerikten geri ekler.
       return
     }

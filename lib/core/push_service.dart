@@ -44,10 +44,13 @@ bool feedAnchorPlausible(DateTime lastFeed, {DateTime? now}) =>
 /// İlaç v2 (A5): `med_dose` push'unda iptal edilecek doz — yalnız "verildi" /
 /// "atlandı" olayında ve kimlik (plan + gün + saat) varsa. "Geri alındı"da
 /// hatırlatma geri gelmeli → senkron + yeniden kurma yapar (iptal değil).
+/// V7: "geri alındı" ama doz başkasınca HÂLÂ verilmiş (`still_given=1`) → iptal
+/// (geri ekleme yok).
 ({String plan, String date, String time})? medDoseCancelTarget(Map<String, dynamic> data) {
   if (data['type'] != 'med_dose') return null;
   final ev = data['event'];
-  if (ev != 'given' && ev != 'skipped') return null;
+  final stillGiven = ev == 'undone' && data['still_given'] == '1';
+  if (ev != 'given' && ev != 'skipped' && !stillGiven) return null;
   final plan = data['plan_uuid'], date = data['dose_date'], time = data['dose_time'];
   if (plan is! String || date is! String || time is! String) return null;
   if (plan.isEmpty || date.isEmpty || time.isEmpty) return null;
