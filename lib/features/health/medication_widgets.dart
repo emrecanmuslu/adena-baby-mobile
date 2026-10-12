@@ -510,6 +510,9 @@ class _DoseSheetState extends ConsumerState<_DoseSheet> {
   }
 
   Future<void> _skipToGiven(Record r) async {
+    // V12: atlandı → verildi de bir "verildi" yazımıdır — K3 (gizli çift) denetimi.
+    if (!await medConfirmNotDuplicate(context, ref, widget.babyId, _dose.plan, _dose)) return;
+    if (!mounted) return;
     final data = Map<String, dynamic>.from(r.data)
       ..remove('skipped')
       ..remove('skip_reason')
@@ -585,7 +588,9 @@ class _DoseSheetState extends ConsumerState<_DoseSheet> {
                   TextButton(
                       onPressed: () => _editTime(r),
                       child: Text(tr('Saati düzelt'), style: action)),
-                if (skipped)
+                // V12: doz zaten verilmişse (verildi + atlandı) ikinci "verildi"
+                // sahte çift doz üretir → gizli.
+                if (skipped && _dose.givenRecords.isEmpty)
                   TextButton(
                       onPressed: () => _skipToGiven(r),
                       child: Text(tr('Verildi yap'), style: action)),
