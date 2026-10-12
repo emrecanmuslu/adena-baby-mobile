@@ -297,6 +297,11 @@ class MedicationScheduler {
   /// temizler. Anahtar adı `NotificationService.swift` ile BİREBİR.
   static const kNseCanceled = 'med_nse_canceled';
 
+  /// W8 (ILAC-INCELEME-3): force-quit'te `access_removed`'ı yalnız NSE işlerse
+  /// App Group'a yazdığı bebek id'leri (JSON dizi). Dart yeniden kurmada [kRevoked]
+  /// ile birleştirir; [clearRevoked] siler. Anahtar adı Swift ile BİREBİR.
+  static const kNseRevoked = 'med_revoked_babies';
+
   static String _syncKey(String babyId) => 'med_rec_synced_$babyId';
 
   /// W2: kayıt senkronu bu bebek için BAŞARIYLA bitti; [startedAt] = isteğin
@@ -433,6 +438,12 @@ class MedicationScheduler {
         await _cleanLegacy(p, input);
         final now = _now();
         final revoked = (p.getStringList(kRevoked) ?? const <String>[]).toSet();
+        // W8: NSE'nin işlediği access_removed'lar da (Dart defteri habersiz).
+        final nseRevoked = await _readNseRevoked();
+        if (!revoked.containsAll(nseRevoked)) {
+          revoked.addAll(nseRevoked);
+          await p.setStringList(kRevoked, revoked.toList());
+        }
         final plan = planMedNotifications(
             revoked.isEmpty
                 ? input
@@ -615,6 +626,7 @@ class MedicationScheduler {
         await _save(p, {});
         try {
           await _groupWrite(kNseCanceled, null);
+          await _groupWrite(kNseRevoked, null);
         } catch (_) {}
       });
 
@@ -623,7 +635,20 @@ class MedicationScheduler {
   Future<void> clearRevoked() => _serial(() async {
         final p = await _kv();
         await p.remove(kRevoked);
+        try {
+          await _groupWrite(kNseRevoked, null);
+        } catch (_) {}
       });
+
+  Future<Set<String>> _readNseRevoked() async {
+    try {
+      final raw = await _groupRead(kNseRevoked);
+      if (raw == null || raw.isEmpty) return {};
+      return {for (final x in jsonDecode(raw) as List) if (x is String && x.isNotEmpty) x};
+    } catch (_) {
+      return {};
+    }
+  }
 
   /// Eski günlük-tekrar id'leri (670000–679999) — bir kez. V4: bekleyen listeye
   /// BAĞLI DEĞİL — yerel planların eski şemadaki id'leri (`670000 +

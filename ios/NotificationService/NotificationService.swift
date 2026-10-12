@@ -81,6 +81,24 @@ class NotificationService: UNNotificationServiceExtension {
     defaults.set(raw, forKey: nseCanceledKey)
   }
 
+  /// W8: `med_revoked_babies` = bebek id'leri (JSON dizi METNİ). Dart
+  /// `MedicationScheduler.kNseRevoked` ile aynı anahtar; `clearRevoked` siler.
+  private let nseRevokedKey = "med_revoked_babies"
+
+  private func addNseRevoked(_ defaults: UserDefaults, _ babyId: String) {
+    var list: [String] = []
+    if let raw = defaults.string(forKey: nseRevokedKey),
+       let data = raw.data(using: .utf8),
+       let arr = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+      list = arr.compactMap { $0 as? String }
+    }
+    if list.contains(babyId) { return }
+    list.append(babyId)
+    guard let data = try? JSONSerialization.data(withJSONObject: list),
+          let raw = String(data: data, encoding: .utf8) else { return }
+    defaults.set(raw, forKey: nseRevokedKey)
+  }
+
   private func medId(_ e: [String: Any]) -> String? {
     if let i = e["id"] as? Int { return String(i) }
     if let n = e["id"] as? NSNumber { return n.stringValue }
@@ -96,10 +114,14 @@ class NotificationService: UNNotificationServiceExtension {
           let defaults = UserDefaults(suiteName: appGroupId) else { return }
     let center = UNUserNotificationCenter.current()
     var reg = loadMedRegistry(defaults)
-    if reg.isEmpty { return }
 
     if type == "access_removed" {
       guard let babyId = info["baby_id"] as? String, !babyId.isEmpty else { return }
+      // W8 (ILAC-INCELEME-3): Dart defteri / kRevoked bundan habersiz → uygulama
+      // açılınca (bebek listesi tazelenmeden) bu bebeğin hatırlatmalarını geri
+      // kurmasın diye bebek App Group'a yazılır (defter boş olsa da).
+      addNseRevoked(defaults, babyId)
+      if reg.isEmpty { return }
       var ids: [String] = []
       for (k, e) in reg where (e["b"] as? String) == babyId {
         if let id = medId(e) { ids.append(id) }
@@ -112,6 +134,7 @@ class NotificationService: UNNotificationServiceExtension {
       return
     }
 
+    if reg.isEmpty { return }
     guard type == "med_dose",
           let event = info["event"] as? String,
           let plan = info["plan_uuid"] as? String, !plan.isEmpty,

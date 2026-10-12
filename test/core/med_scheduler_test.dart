@@ -597,6 +597,26 @@ void main() {
     });
   });
 
+  // ILAC-INCELEME-3 W8: force-quit'te access_removed'ı yalnız NSE işledi — App
+  // Group'taki `med_revoked_babies` Dart yeniden kurmasında kRevoked ile birleşir.
+  test('W8: NSE\'nin yazdığı erişimi kalkan bebek yeniden kurulmaz; clearRevoked sonrası kurulur',
+      () async {
+    final s = sched(ios: true);
+    await s.rebuild(input([_p()]));
+    expect(plugin.pending, isNotEmpty);
+    // NSE: bekleyenleri sildi + bebeği yazdı (Dart defteri/kRevoked habersiz).
+    plugin.pending.clear();
+    appGroup[MedicationScheduler.kNseRevoked] = jsonEncode(['b1']);
+    await s.rebuild(input([_p()])); // açılış: bebek listesi henüz tazelenmedi
+    expect(plugin.pending, isEmpty);
+    expect((await SharedPreferences.getInstance()).getStringList(MedicationScheduler.kRevoked),
+        contains('b1'));
+    await s.clearRevoked(); // bebek listesi başarıyla tazelendi (yeniden davet)
+    expect(appGroup.containsKey(MedicationScheduler.kNseRevoked), isFalse);
+    await s.rebuild(input([_p()]));
+    expect(plugin.pending, isNotEmpty);
+  });
+
   // ILAC-INCELEME-3 W7: iki isolate (FCM bg + workmanager) aynı anda yeniden
   // kurunca biri diğerinin bildirimlerini ezmemeli / yetim sayıp silmemeli.
   group('W7 — eşzamanlı iki isolate', () {
