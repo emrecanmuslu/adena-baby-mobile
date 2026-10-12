@@ -58,11 +58,16 @@ class NotificationPrefs {
   /// hatırlatma (varsayılan AÇIK).
   static const medicationMissed = 'notif_medication_missed';
 
+  /// İlaç v2 (S2/K2): "Ailenin ilaç işaretleri" — bir üye dozu verdi/atladı/
+  /// geri aldığında görünür bildirim (varsayılan AÇIK). Sunucuya da yansır
+  /// (`notification_prefs.medication_activity`): kapalıysa push SESSİZ gelir.
+  static const medicationActivity = 'notif_medication_activity';
+
   /// Bu sınıfın yönettiği tüm anahtarlar (toplu okuma için).
   static const all = [
     timers, community, inAppBanner,
     vaccine, leap, growth, pregnancyWeek, milestone, tooth, medication,
-    medicationMissed,
+    medicationMissed, medicationActivity,
   ];
 
   Future<bool> enabled(String key) async {

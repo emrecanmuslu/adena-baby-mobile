@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../models/medication_plan.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
 import '../../data/auth_repository.dart';
@@ -127,8 +128,19 @@ Future<Map<String, dynamic>> _localExport(WidgetRef ref) async {
       ],
       'medication_plans': [
         for (final pl in plans)
-          {'id': pl.id, 'name': pl.name, 'dose': pl.dose, 'times': pl.times,
-           'active': pl.active, 'created_at': pl.createdAt.toIso8601String()},
+          {'id': pl.id, 'uuid': pl.uuid, 'name': pl.name, 'dose': pl.dose,
+           'times': pl.times, 'active': pl.active,
+           'created_at': pl.createdAt.toIso8601String(),
+           // İlaç v2: tür/sıklık/kür/PRN/duraklatma geçmişi.
+           'kind': pl.kind.wire, 'freq': pl.freq.wire,
+           'interval_hours': pl.intervalHours, 'every_n_days': pl.everyNDays,
+           'weekdays': pl.weekdays, 'start_date': medDateToWire(pl.startDate),
+           'end_date': medDateToWire(pl.endDate),
+           'prn_min_interval_min': pl.prnMinIntervalMin, 'prn_max_per_day': pl.prnMaxPerDay,
+           'pauses': [
+             for (final x in pl.pauses)
+               [x.from.toIso8601String(), x.to?.toIso8601String()]
+           ]},
       ],
       'records': [
         for (final r in records.where((r) => !r.isDeleted))

@@ -7,6 +7,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/i18n.dart';
+import '../../core/in_app_notification.dart';
 import '../../core/ad_service.dart';
 import '../../core/review_service.dart';
 import '../../core/analytics_service.dart';
@@ -441,6 +443,13 @@ class SyncService with WidgetsBindingObserver {
       // Bildirimler: provider yenilenince planlayıcı (MedSchedulerSync) kurar/iptal eder.
       if (r.changed || r.removed.isNotEmpty) {
         _ref.invalidate(medicationPlansProvider(babyId));
+      }
+      // İlaç v2 (M7/S11): ailede aynı adlı plan vardı → sunucu "(2)" ekledi.
+      for (final name in r.renamed.values) {
+        showInAppNotification(
+            title: tr('İlaç planı'),
+            body: trp('Ailende aynı adlı bir plan vardı; bu plan "{name}" olarak adlandırıldı.',
+                {'name': name}));
       }
     } catch (e, st) {
       // Bilinçli sessiz (bkz. yukarı) ama artık İZLİ: Adım 0 — "eşe ilaç

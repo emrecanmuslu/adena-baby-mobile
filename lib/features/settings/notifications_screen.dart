@@ -9,6 +9,7 @@ import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
 import '../../core/theme.dart';
 import '../../data/notification_prefs.dart';
+import '../../data/auth_repository.dart';
 import '../babies/activity_watcher.dart';
 import '../babies/baby_controller.dart';
 import '../babies/exact_alarm_resync.dart';
@@ -152,6 +153,17 @@ class NotificationsScreen extends ConsumerWidget {
                 onChanged: (v) => setPref(NotificationPrefs.medication, v),
               ),
             ),
+            // İlaç v2 (K4): işaretlenmeyen doz için 30 dk sonra tek ek hatırlatma.
+            if (prefs[NotificationPrefs.medication] ?? true)
+              _SwitchTile(
+                icon: 'clock',
+                color: AppColors.med,
+                bg: AppColors.medBg,
+                title: tr('Kaçırılan doz hatırlatması'),
+                meta: tr('Doz işaretlenmediyse 30 dk sonra bir kez'),
+                value: prefs[NotificationPrefs.medicationMissed] ?? true,
+                onChanged: (v) => setPref(NotificationPrefs.medicationMissed, v),
+              ),
           ],
 
           // ——— Gebelik (bekleme modu) ———
@@ -179,6 +191,24 @@ class NotificationsScreen extends ConsumerWidget {
             value: familyOn,
             onChanged: (v) =>
                 ref.read(activityNotifEnabledProvider.notifier).set(v),
+          ),
+          // İlaç v2 (S2): aile etkinliğinden AYRI — ilaç güvenlik ağı kapanmasın.
+          _SwitchTile(
+            icon: 'med',
+            color: AppColors.med,
+            bg: AppColors.medBg,
+            title: tr('Ailenin ilaç işaretleri'),
+            meta: tr('Bir üye dozu verdi, atladı ya da geri aldığında haber ver'),
+            value: prefs[NotificationPrefs.medicationActivity] ?? true,
+            onChanged: (v) async {
+              setPref(NotificationPrefs.medicationActivity, v);
+              try {
+                await ref.read(authRepositoryProvider).updateSettings(
+                    {'notification_prefs': {'medication_activity': v}});
+              } catch (_) {
+                // Çevrimdışı → oturum başında (registerToken) yeniden yansıtılır.
+              }
+            },
           ),
           // Kapalıyken senkron etkisini AÇIKÇA söyle (kullanıcı "veri gelmiyor"
           // sanmasın); açıkken de aynı bilgi sessiz notla durur.

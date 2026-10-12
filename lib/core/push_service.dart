@@ -382,8 +382,11 @@ class PushService {
       _prefSynced = true;
       try {
         final on = await ActivityNotifCache().enabled();
-        await api.dio.patch('/auth/me/settings',
-            data: {'notification_prefs': {'family_activity': on}});
+        final med = await NotificationPrefs.instance
+            .enabled(NotificationPrefs.medicationActivity);
+        await api.dio.patch('/auth/me/settings', data: {
+          'notification_prefs': {'family_activity': on, 'medication_activity': med}
+        });
       } catch (_) {
         _prefSynced = false; // başarısızsa bir sonraki çağrıda tekrar dene
       }

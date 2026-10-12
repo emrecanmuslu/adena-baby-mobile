@@ -28,6 +28,7 @@ import 'features/cycle/cycle_settings_screen.dart';
 import 'features/cycle/cycle_shell.dart';
 import 'features/cycle/cycle_stats_screen.dart';
 import 'features/discover/discover_screen.dart';
+import 'features/health/medication_history_screen.dart';
 import 'features/health/medications_screen.dart';
 import 'features/health/reminders_screen.dart';
 import 'features/health/vaccines_screen.dart';
@@ -166,6 +167,12 @@ final routerProvider = Provider<GoRouter>((ref) {
               const TourMount(tourKey: 'reminders', child: RemindersScreen())),
       GoRoute(
           path: '/medications', builder: (_, _) => const MedicationsScreen()),
+      // İlaç v2 (K11): plan başına doz geçmişi (7/30 gün).
+      GoRoute(
+          path: '/medications/history/:babyId/:planId',
+          builder: (_, s) => MedicationHistoryScreen(
+              babyId: s.pathParameters['babyId']!,
+              planId: int.parse(s.pathParameters['planId']!))),
       GoRoute(path: '/appearance', builder: (_, _) => const AppearanceScreen()),
       // Tüm bildirimlerin (yerel + push) tek merkezden yönetildiği sayfa.
       GoRoute(

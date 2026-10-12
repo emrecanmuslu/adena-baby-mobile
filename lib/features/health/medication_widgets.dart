@@ -981,7 +981,12 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
   }
 }
 
-String _doseSemantics(MedicationDose d) => switch (d.status) {
+String _doseSemantics(MedicationDose d) =>
+    (d.fromYesterday ? '${tr('Dün')} · ' : '') +
+    (d.multiple ? '${trp('{n} kez verildi', {'n': d.givenRecords.length})} · ' : '') +
+    _doseStatusText(d);
+
+String _doseStatusText(MedicationDose d) => switch (d.status) {
       MedicationDoseStatus.given => trp('Verildi · {t}', {'t': d.time}),
       MedicationDoseStatus.skipped => trp('Atlandı · {t}', {'t': d.time}),
       MedicationDoseStatus.overdue ||
@@ -1053,9 +1058,18 @@ class MedDoseButton extends ConsumerWidget {
                   circle,
                   if (who != null)
                     PositionedDirectional(bottom: -4, end: -5, child: MedWhoDot(who)),
+                  // İlaç v2: çift işaret (K3) her zaman görünür.
+                  if (d.multiple)
+                    PositionedDirectional(
+                        top: -5, end: -6, child: _MultiBadge(n: d.givenRecords.length)),
                 ],
               ),
               const SizedBox(height: 4),
+              if (d.fromYesterday)
+                Text(tr('Dün'),
+                    maxLines: 1,
+                    style: const TextStyle(
+                        fontSize: 9.5, fontWeight: FontWeight.w900, color: AppColors.coralDd)),
               Text(d.time,
                   maxLines: 1,
                   softWrap: false,
@@ -1107,7 +1121,7 @@ class MedTimeChip extends ConsumerWidget {
             AdenaIcon('close', size: 12, color: tone.text, sw: 2.4),
             const SizedBox(width: 6),
           ],
-          Text(d.time,
+          Text(d.fromYesterday ? '${tr('Dün')} ${d.time}' : d.time,
               style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 12.5,
@@ -1169,11 +1183,38 @@ class _MedDayCardState extends ConsumerState<MedDayCard> {
       boxShadow: widget.flat ? null : AppColors.softShadow,
     );
 
+    final prnRows = [
+      for (var i = 0; i < day.prn.length; i++)
+        _PrnRow(babyId: widget.babyId, status: day.prn[i], divider: true),
+    ];
+    if (day.rows.isEmpty) {
+      // Yalnız "ihtiyaç halinde" planlar (saatsiz).
+      return Container(
+        decoration: decoration,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < day.prn.length; i++)
+              _PrnRow(babyId: widget.babyId, status: day.prn[i], divider: i > 0),
+          ],
+        ),
+      );
+    }
+    final multiple = day.rows.any((r) => r.hasMultiple);
+
     if (day.allDone && !_expanded) {
       return Container(
         decoration: decoration,
         clipBehavior: Clip.antiAlias,
-        child: _doneRow(day),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (multiple) _multiStrip(),
+            _doneRow(day),
+            ...prnRows,
+          ],
+        ),
       );
     }
 
@@ -1188,6 +1229,7 @@ class _MedDayCardState extends ConsumerState<MedDayCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _bar(day),
+          if (multiple) _multiStrip(),
           if (day.overdue > 0) _strip(day.overdue),
           for (var i = 0; i < shown.length; i++)
             _PlanRow(babyId: widget.babyId, row: shown[i], divider: i > 0),
@@ -1204,10 +1246,30 @@ class _MedDayCardState extends ConsumerState<MedDayCard> {
               up: true,
               onTap: () => setState(() => _expanded = false),
             ),
+          ...prnRows,
         ],
       ),
     );
   }
+
+  /// K3: bugün bir doz birden çok kez "verildi" işaretlendi — her zaman görünür.
+  Widget _multiStrip() => Container(
+        margin: const EdgeInsets.only(top: 8),
+        color: AppColors.feverBg,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            const AdenaIcon('shieldAlert', size: 16, color: AppColors.coralDd),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(tr('Bir doz birden çok kez verildi olarak işaretlendi — dozuna dokunup kontrol et'),
+                  style: const TextStyle(
+                      fontSize: 12, height: 1.35, fontWeight: FontWeight.w800,
+                      color: AppColors.coralDd)),
+            ),
+          ],
+        ),
+      );
 
   Widget _bar(MedicationDay day) {
     final segs = day.timeline;
@@ -1827,4 +1889,139 @@ class _SheetOption extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Çift işaret rozeti ("2×").
+class _MultiBadge extends StatelessWidget {
+  final int n;
+  const _MultiBadge({required this.n});
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        decoration: BoxDecoration(
+            color: AppColors.coralDd, borderRadius: BorderRadius.circular(8)),
+        child: Text('$n×',
+            style: const TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w900, color: Colors.white)),
+      );
+}
+
+/// "İhtiyaç halinde" (PRN) planın kart satırı (K7): son veriliş + geçen süre,
+/// kullanıcının girdiği en kısa aralık / günlük sınır uyarısı, "Verdim".
+class _PrnRow extends ConsumerWidget {
+  final String babyId;
+  final PrnStatus status;
+  final bool divider;
+  const _PrnRow({required this.babyId, required this.status, required this.divider});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = status;
+    final last = s.last;
+    final muted = TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted);
+    final lines = <String>[
+      if (last != null)
+        trp('Son: {t} ({ago} önce) · {who}', {
+          't': fmtTime(last.ts),
+          'ago': _ago(s.sinceLast!),
+          'who': medWhoName(ref, babyId, last),
+        })
+      else
+        tr('Bugüne kadar verilmedi'),
+      if (s.tooSoon)
+        trp('En kısa aralık {min} — {left} sonra', {
+          'min': _ago(s.minInterval!),
+          'left': _ago(s.remaining!),
+        }),
+      if (s.plan.prnMaxPerDay != null)
+        trp('Bugün {n}/{max} doz', {'n': s.countToday, 'max': s.plan.prnMaxPerDay!}),
+    ];
+    return Container(
+      decoration: divider
+          ? BoxDecoration(border: Border(top: BorderSide(color: AppColors.line)))
+          : null,
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
+        children: [
+          AdIconChip('med', color: AppColors.med, bg: AppColors.medBg, size: 34),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    [s.plan.name, if (s.plan.dose.trim().isNotEmpty) s.plan.dose.trim()]
+                        .join(' · '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
+                Text(tr('İhtiyaç halinde'), style: muted),
+                for (final l in lines)
+                  Text(l,
+                      style: (s.tooSoon || s.atDailyMax) && l != lines.first
+                          ? muted.copyWith(color: AppColors.coralDd)
+                          : muted),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: AppColors.med,
+                padding: const EdgeInsets.symmetric(horizontal: 14)),
+            onPressed: () => medGivePrn(context, ref, babyId, s),
+            child: Text(tr('Verdim'), style: const TextStyle(fontWeight: FontWeight.w900)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// PRN "Verdim" (K7): kullanıcının girdiği en kısa aralık dolmadıysa ya da
+/// günlük sınıra ulaşıldıysa önce onay; kayıt gerçek veriliş anıyla yazılır.
+Future<void> medGivePrn(
+    BuildContext context, WidgetRef ref, String babyId, PrnStatus s) async {
+  final p = s.plan;
+  final key = 'prn:${medPlanKey(p)}';
+  if (s.tooSoon) {
+    final last = s.last!;
+    final ok = await _confirm(context,
+        title: tr('En kısa aralık dolmadı'),
+        body: trp(
+            'Son doz {ago} önce ({time}) {who} tarafından verildi; belirlediğin en kısa aralık {min}. Yine de kaydedilsin mi?',
+            {
+              'ago': _ago(s.sinceLast!),
+              'time': fmtTime(last.ts),
+              'who': medWhoName(ref, babyId, last),
+              'min': _ago(s.minInterval!),
+            }),
+        yes: tr('Yine de kaydet'));
+    if (!ok || !context.mounted) return;
+  } else if (s.atDailyMax) {
+    final ok = await _confirm(context,
+        title: tr('Günlük sınıra ulaşıldı'),
+        body: trp('Bugün {n} doz verildi; belirlediğin günlük sınır {max}. Yine de kaydedilsin mi?',
+            {'n': s.countToday, 'max': p.prnMaxPerDay!}),
+        yes: tr('Yine de kaydet'));
+    if (!ok || !context.mounted) return;
+  }
+  if (!_claim(key)) return;
+  final now = DateTime.now();
+  final actions = ref.read(recordActionsProvider);
+  final rec = medDoseRecord(
+    id: _uuid.v4(),
+    babyId: babyId,
+    plan: p,
+    doseDate: DateTime(now.year, now.month, now.day),
+    at: now,
+    skipped: false,
+  );
+  await actions.upsertQuiet(rec);
+  if (!context.mounted) return;
+  showAdToast(context, trp('{name} · {t} verildi', {'name': p.name, 't': fmtTime(now)}),
+      type: AdToastType.success,
+      duration: const Duration(seconds: 4),
+      onUndo: () => actions.delete(rec.id));
 }
