@@ -367,6 +367,9 @@ class HealthRepository {
       r.dirty && !(r.uuid != null && serverKnown.contains(r.uuid));
 
   Future<List<MedicationPlan>> medicationPlans(String babyId) async {
+    // V2: ortak kimliği olmayan (v13'ten kalan) satıra okumada da kimlik ver —
+    // planlayıcı ve kimlikli doz kaydı buna dayanır.
+    await _ensurePlanUuids(babyId);
     // N2/KB-10: bakıcıda sunucuya hiç gitmemiş dirty satır = yerel-only plan.
     final caregiver = await _isCaregiver(babyId);
     final known = caregiver ? await _serverKnownPlanIds(babyId) : const <String>{};
@@ -386,6 +389,22 @@ class HealthRepository {
   /// Cihazdaki TÜM bebeklerin aktif (silinmemiş) ilaç planı yerel id'leri —
   /// `NotificationService.syncMedicationPlans` yetim-bildirim mutabakatı için
   /// (BULGULAR.md K5).
+  /// v13'ten kalan (uuid'siz) satırlara ortak kimlik verir (V2: göç de atar;
+  /// bu, göç sonrası herhangi bir yoldan uuid'siz kalan satır için emniyet).
+  Future<void> _ensurePlanUuids(String babyId) async {
+    final rows = await (_db.select(_db.medicationPlans)
+          ..where((r) => r.baby.equals(babyId) & r.uuid.isNull()))
+        .get();
+    for (final r in rows) {
+      await (_db.update(_db.medicationPlans)
+            ..where((t) => t.localId.equals(r.localId) & t.uuid.isNull()))
+          .write(MedicationPlansCompanion(
+        uuid: Value(_uuid.v4()),
+        clientUpdatedAt: Value(r.clientUpdatedAt ?? r.createdAt ?? DateTime.now()),
+      ));
+    }
+  }
+
   Future<Set<int>> activeMedicationPlanIds() async {
     final rows = await (_db.select(_db.medicationPlans)
           ..where((r) => r.active.equals(true) & r.isDeleted.equals(false)))
@@ -650,15 +669,7 @@ class HealthRepository {
     Future<List<MedicationPlanRow>> load() =>
         (_db.select(_db.medicationPlans)..where((r) => r.baby.equals(babyId))).get();
 
-    // v13'ten kalan (uuid'siz) satırlara ortak kimlik ver.
-    for (final r in await load()) {
-      if (r.uuid != null) continue;
-      await (_db.update(_db.medicationPlans)..where((t) => t.localId.equals(r.localId)))
-          .write(MedicationPlansCompanion(
-        uuid: Value(_uuid.v4()),
-        clientUpdatedAt: Value(r.clientUpdatedAt ?? r.createdAt ?? DateTime.now()),
-      ));
-    }
+    await _ensurePlanUuids(babyId);
 
     final dirty = readOnly
         ? const <MedicationPlanRow>[]

@@ -261,4 +261,14 @@ void main() {
     expect(p.isCompletedAt(DateTime(2026, 10, 7, 23, 59)), isFalse);
     expect(p.isCompletedAt(DateTime(2026, 10, 8, 0, 0)), isTrue);
   });
+
+  test('V2: uuid\'siz (v13 dönemi) satır okumada ortak kimlik alır ve kalıcı yazılır', () async {
+    await db.into(db.medicationPlans).insert(MedicationPlansCompanion.insert(
+        baby: babyId, name: 'Eski', createdAt: Value(DateTime(2026, 9, 30))));
+    final plans = await repo.medicationPlans(babyId);
+    expect(plans.single.uuid, isNotNull);
+    final row = await db.select(db.medicationPlans).getSingle();
+    expect(row.uuid, plans.single.uuid);
+    expect((await repo.medicationPlans(babyId)).single.uuid, row.uuid, reason: 'kararlı');
+  });
 }

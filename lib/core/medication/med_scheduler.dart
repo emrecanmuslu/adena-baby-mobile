@@ -101,13 +101,15 @@ MedPlanResult planMedNotifications(MedSchedInput input, DateTime now, {required 
     final prefix = b.name.isNotEmpty ? '${b.name} · ' : '';
     final plans = [
       for (final p in b.plans)
-        if (!p.isPrn && p.uuid != null && !p.isCompletedAt(now)) p
+        if (!p.isPrn && !p.isCompletedAt(now)) p
     ];
     if (plans.isEmpty) continue;
     final doses = resolveDoses(plans, b.records,
         from: now.subtract(const Duration(days: 1)), to: end.add(const Duration(days: 1)), now: now);
     for (final d in doses) {
-      final base = '${d.plan.uuid}|${_ymd(d.doseDate)}|${d.time}';
+      // V2: uuid'siz plan (henüz kimlik atanmamış) yerel anahtarla kurulur.
+      final pk = medPlanKey(d.plan);
+      final base = '$pk|${_ymd(d.doseDate)}|${d.time}';
       if (d.isResolved) {
         resolved
           ..add('$base|${MedNotifKind.main}')
@@ -119,7 +121,7 @@ MedPlanResult planMedNotifications(MedSchedInput input, DateTime now, {required 
         if (d.dueAt.isAfter(end)) {
           beyond = true;
         } else {
-          cands.add(MedNotifSpec('$base|${MedNotifKind.main}', b.id, d.plan.uuid!, d.dueAt,
+          cands.add(MedNotifSpec('$base|${MedNotifKind.main}', b.id, pk, d.dueAt,
               '$prefix${trp('{name} · {t}', {'name': d.plan.name, 't': d.time})}', body));
         }
       }
@@ -128,7 +130,7 @@ MedPlanResult planMedNotifications(MedSchedInput input, DateTime now, {required 
         cands.add(MedNotifSpec(
             '$base|${MedNotifKind.missed}',
             b.id,
-            d.plan.uuid!,
+            pk,
             missedAt,
             '$prefix${trp('{name} {t} dozu işaretlenmedi', {'name': d.plan.name, 't': d.time})}',
             tr('Verildiyse uygulamadan işaretle.')));
@@ -140,8 +142,8 @@ MedPlanResult planMedNotifications(MedSchedInput input, DateTime now, {required 
       if (e == null) continue;
       final at = DateTime(e.year, e.month, e.day, 20);
       if (!at.isAfter(now) || at.isAfter(end)) continue;
-      courseEnds.add(MedNotifSpec('${p.uuid}|${_ymd(e)}|20:00|${MedNotifKind.courseEnd}', b.id,
-          p.uuid!, at, '$prefix${trp('{name} · kür bugün bitiyor', {'name': p.name})}',
+      courseEnds.add(MedNotifSpec('${medPlanKey(p)}|${_ymd(e)}|20:00|${MedNotifKind.courseEnd}', b.id,
+          medPlanKey(p), at, '$prefix${trp('{name} · kür bugün bitiyor', {'name': p.name})}',
           tr('Son dozları işaretlemeyi unutma.')));
     }
   }

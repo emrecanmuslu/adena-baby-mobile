@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:uuid/uuid.dart';
 
 part 'app_database.g.dart';
 
@@ -443,6 +444,17 @@ class AppDatabase extends _$AppDatabase {
             await m.database.customStatement(
                 "UPDATE medication_plans SET schedule_from = created_at "
                 "WHERE schedule_from IS NULL AND created_at IS NOT NULL");
+            // V2 (ILAC-INCELEME-2): v13'ten kalan, hiç senkronlanmamış (free/tek
+            // kullanıcı) satırların ortak kimliği yoktu → v2 planlayıcısı onları
+            // atlıyordu. Burada atanır (senkronda atanmasını bekleme).
+            final missing = await m.database
+                .customSelect('SELECT local_id FROM medication_plans WHERE uuid IS NULL')
+                .get();
+            for (final r in missing) {
+              await m.database.customStatement(
+                  'UPDATE medication_plans SET uuid = ? WHERE local_id = ?',
+                  [const Uuid().v4(), r.read<int>('local_id')]);
+            }
           }
           await debugMigrationHook?.call();
           });

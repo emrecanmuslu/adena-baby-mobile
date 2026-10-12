@@ -106,6 +106,10 @@ void main() {
               '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
           expect(plan.startDate, ymd(created));
           expect(plan.scheduleFrom, created);
+          // V2 (ILAC-INCELEME-2): v13'ten kalan / hiç senkronlanmamış satıra
+          // ortak kimlik göçte atanır (planlayıcı uuid'siz planı atlamasın).
+          expect(plan.uuid, isNotNull);
+          expect(plan.uuid, matches(RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-')));
         }
       });
     }

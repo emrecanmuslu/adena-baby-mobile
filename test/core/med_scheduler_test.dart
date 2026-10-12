@@ -312,4 +312,12 @@ void main() {
     expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 9)), isTrue);
     expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 9, 30)), isTrue);
   });
+
+  test('V2: uuid\'siz plan için de hatırlatma kurulur (yerel anahtar yedeği)', () async {
+    final p = MedicationPlan(
+        id: 9, name: 'Eski', dose: '', times: const ['09:00'], active: true,
+        createdAt: DateTime(2026, 10, 1), startDate: DateTime(2026, 10, 1));
+    await sched().rebuild(input([p]));
+    expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 9)), isTrue);
+  });
 }
