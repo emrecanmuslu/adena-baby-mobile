@@ -210,6 +210,11 @@ class NotificationsScreen extends ConsumerWidget {
               }
             },
           ),
+          // V25 (ILAC-TASARIM §4.3a, §5.9): kapalıyken push sessiz gider; iOS'ta
+          // uygulama kapalıysa NSE çalışmaz → iptal edilemeyen hatırlatma.
+          if (isIOS && !(prefs[NotificationPrefs.medicationActivity] ?? true))
+            _Note(tr("Kapalıyken: iPhone'da uygulama tamamen kapatılmışsa (kaydırılarak), "
+                'başkasının verdiği dozun hatırlatması iptal edilemez ve yine çalabilir.')),
           // Kapalıyken senkron etkisini AÇIKÇA söyle (kullanıcı "veri gelmiyor"
           // sanmasın); açıkken de aynı bilgi sessiz notla durur.
           if (!familyOn)
