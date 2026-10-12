@@ -323,6 +323,21 @@ void main() {
     expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 9, 30)), isTrue);
   });
 
+  test('W5: 23:00→07:00 (bugün 00:20) + kimliksiz 00:30 kaydı → bugünün 07:00 ana ve +30 dk kurulur',
+      () async {
+    now = DateTime(2026, 10, 12, 0, 40);
+    final p = MedicationPlan(
+        id: 1, uuid: 'p1', name: 'Demir', dose: '1 ml', times: const ['07:00'], active: true,
+        createdAt: DateTime(2026, 10, 1), startDate: DateTime(2026, 10, 1),
+        scheduleFrom: DateTime(2026, 10, 12, 0, 20));
+    final legacy = Record(
+        id: 'L1', baby: 'b1', type: RecordType.medication, ts: DateTime(2026, 10, 12, 0, 30),
+        data: {'name': 'Demir', 'given': true});
+    await sched().rebuild(input([p], records: [legacy]));
+    expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 7)), isTrue);
+    expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 7, 30)), isTrue);
+  });
+
   test('V2: uuid\'siz plan için de hatırlatma kurulur (yerel anahtar yedeği)', () async {
     final p = MedicationPlan(
         id: 9, name: 'Eski', dose: '', times: const ['09:00'], active: true,

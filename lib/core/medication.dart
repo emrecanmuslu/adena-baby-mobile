@@ -29,6 +29,13 @@ const kMedOpenWindow = Duration(hours: 12);
 /// Erken işaretleme penceresi (S9).
 const kMedEarlyWindow = Duration(hours: 2);
 
+/// W5 (ILAC-INCELEME-3): kimliksiz (eski istemci / v15) kaydın bir doza
+/// bağlanabileceği en büyük uzaklık. Ham takvim GÜNCEL saatlerle kurulur (saat
+/// değişikliğinden önceki günlerin gerçek saatleri bilinmez); yarım boşluk (≤12
+/// sa) bu yüzden dünün eski saatli dozu için verilmiş kaydı bugünün yeni dozuna
+/// bağlayabiliyordu.
+const kMedLegacyAttachWindow = Duration(hours: 3);
+
 /// Planlanan TEK doz (kimliği: plan uuid + yerel gün + yerel saat).
 class PlannedDose {
   final MedicationPlan plan;
@@ -282,7 +289,9 @@ List<MedicationDose> resolveDoses(
     for (var i = 0; i < list.length; i++) {
       final d = list[i];
       if (o.legacy ? d.doseDate.isAfter(atDay) : d.doseDate != o.date) continue;
-      var half = kMedOpenWindow;
+      // W5: kimliksiz kayıtta en çok 3 sa. scheduleFrom gününün ilk yeni dozundan
+      // 3 sa'ten daha önceki kayıt da böylece o günün hiçbir dozuna bağlanmaz.
+      var half = o.legacy ? kMedLegacyAttachWindow : kMedOpenWindow;
       if (i > 0) {
         final g = d.dueAt.difference(list[i - 1].dueAt) ~/ 2;
         if (g < half) half = g;

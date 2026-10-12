@@ -441,6 +441,33 @@ void main() {
       expect(ds.single.records, isEmpty);
     });
 
+    // ILAC-INCELEME-3 W5: ham takvim güncel saatlerle kurulur (tarihsel saatler
+    // bilinmez) → kimliksiz kayıtta bağlanma eşiği en çok 3 sa.
+    test('W5: 23:00→07:00 (bugün 00:20) + kimliksiz 00:30 kaydı bugünün 07:00 dozunu kapatmaz', () {
+      final p = _p(times: ['07:00'], scheduleFrom: DateTime(2026, 10, 12, 0, 20));
+      final recs = [_legacy('Demir', DateTime(2026, 10, 12, 0, 30))];
+      final today = todaysMedicationDoses([p], recs, now: DateTime(2026, 10, 12, 0, 40));
+      expect(today.single.time, '07:00');
+      expect(today.single.status, MedicationDoseStatus.upcoming);
+      expect(today.single.records, isEmpty);
+    });
+
+    test('W5: kimliksiz kayıt en çok 3 sa uzaktaki doza bağlanır (sınır dahil)', () {
+      final p = _p(times: ['09:00']);
+      DateTime? attached(DateTime ts) {
+        final ds = resolveDoses([p], [_legacy('Demir', ts)],
+            from: DateTime(2026, 10, 12), to: DateTime(2026, 10, 13),
+            now: DateTime(2026, 10, 12, 13));
+        final d = ds.single;
+        return d.records.isEmpty ? null : d.dueAt;
+      }
+
+      expect(attached(DateTime(2026, 10, 12, 12)), DateTime(2026, 10, 12, 9));
+      expect(attached(DateTime(2026, 10, 12, 6)), DateTime(2026, 10, 12, 9));
+      expect(attached(DateTime(2026, 10, 12, 12, 1)), isNull);
+      expect(attached(DateTime(2026, 10, 12, 5, 59)), isNull);
+    });
+
     test('kimlikli yetim yalnız aynı dose_date\'in dozuna bağlanır', () {
       final p = _p(times: ['09:00'], scheduleFrom: DateTime(2026, 10, 12, 7));
       final recs = [_dose('2026-10-11', '22:00', ts: DateTime(2026, 10, 11, 22, 1))];
