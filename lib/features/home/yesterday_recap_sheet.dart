@@ -13,6 +13,7 @@ import '../../core/adena_icons.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/medication.dart';
+import '../../core/medication/dose_write.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../../core/yesterday_recap.dart';
@@ -20,6 +21,7 @@ import '../../data/health_repository.dart';
 import '../../data/local_session.dart';
 import '../../data/record_repository.dart';
 import '../../models/baby.dart';
+import '../../models/medication_plan.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
 import '../babies/family_settings.dart';
@@ -221,15 +223,29 @@ class _RecapSheetState extends ConsumerState<_RecapSheet>
     if (_adding) return;
     setState(() => _adding = true);
     final repo = ref.read(recordRepositoryProvider);
-    final day = _b.recap.day;
+    // İlaç v2 (M20): kimlikli kayıt, gerçek saat bilinmediği için plan saatine
+    // "plan saatinde kaydedildi" işaretiyle yazılır (doz sayfasından düzeltilir).
+    // K3: bu arada (senkronla) verilmiş görünen doz yeniden yazılmaz.
+    final fresh = await repo
+        .watchSince(widget.baby.id, _b.recap.day.subtract(const Duration(days: 1)))
+        .first;
     for (final d in doses) {
-      final m = medicationMinutes(d.time);
-      await repo.upsertLocal(Record(
+      if (medDuplicateCheck(d.plan, d, fresh, now: DateTime.now())?.sameDose == true) continue;
+      final already = fresh.any((r) =>
+          !r.isDeleted &&
+          r.data['plan_uuid'] == d.plan.uuid &&
+          r.data['dose_date'] == medDateToWire(d.doseDate) &&
+          r.data['dose_time'] == d.time);
+      if (already) continue;
+      await repo.upsertLocal(medDoseRecord(
         id: _uuid.v4(),
-        baby: widget.baby.id,
-        type: RecordType.medication,
-        ts: DateTime(day.year, day.month, day.day, m ~/ 60, m % 60),
-        data: {'name': d.plan.name, 'dose': d.plan.dose, 'given': true},
+        babyId: widget.baby.id,
+        plan: d.plan,
+        doseDate: d.doseDate,
+        doseTime: d.time,
+        at: d.dueAt,
+        skipped: false,
+        timeAssumed: true,
       ));
     }
     if (!mounted) return; // D24
