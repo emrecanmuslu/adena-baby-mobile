@@ -220,8 +220,22 @@ class MedicationScheduler {
   static const kRegistry = 'med_notif_registry_v2';
   static const kNextId = 'med_notif_next_id';
   static const kLegacyCleaned = 'med_notif_legacy_cleaned_v1';
+  /// V5: `access_removed` alınan bebekler — yerel veri ön planda temizlenene
+  /// (ya da bebek listesi başarıyla tazelenene) dek ilaç bildirimi kurulmaz.
+  static const kRevoked = 'med_notif_revoked_babies';
 
   Future<void> _chain = Future.value();
+
+  /// V5: SharedPreferences isolate başına önbelleklidir; ön plan, FCM bg ve
+  /// workmanager isolate'ları birbirinin yazdığını görmez. Her iş diskten
+  /// TAZE okuyarak başlar.
+  static Future<SharedPreferences> _prefs() async {
+    final p = await SharedPreferences.getInstance();
+    try {
+      await p.reload();
+    } catch (_) {}
+    return p;
+  }
 
   Future<T> _serial<T>(Future<T> Function() f) {
     final run = _chain.then((_) => f());
@@ -274,10 +288,19 @@ class MedicationScheduler {
           debugPrint('[med-sched] girdi okunamadı ($reason): $e');
           return;
         }
-        final p = await SharedPreferences.getInstance();
+        final p = await _prefs();
         await _cleanLegacy(p, input);
         final now = _now();
-        final plan = planMedNotifications(input, now, ios: _ios);
+        final revoked = (p.getStringList(kRevoked) ?? const <String>[]).toSet();
+        final plan = planMedNotifications(
+            revoked.isEmpty
+                ? input
+                : MedSchedInput(
+                    babies: [for (final b in input.babies) if (!revoked.contains(b.id)) b],
+                    enabled: input.enabled,
+                    missedOn: input.missedOn),
+            now,
+            ios: _ios);
         final reg = await _load(p);
         final mode = await _svc.medScheduleMode();
         final pending =
@@ -310,10 +333,15 @@ class MedicationScheduler {
               id: id, when: d.fireAt, title: d.title, body: d.body, payload: 'med:${d.key}');
           next[d.key] = _Entry(id, at, hash, d.planUuid, d.babyId, d.title, d.body);
         }
-        // Yetim: aralıkta bekleyen ama defterde olmayan.
-        if (pending != null) {
+        // Yetim: aralıkta bekleyen ama defterde olmayan. V5: bekleyenler kurulumdan
+        // SONRA taze okunur — bu sırada başka isolate'ın kurduğu (yinelenen)
+        // bildirim de yakalanır. Bu turun sonucu otoriterdir.
+        final after = pending == null
+            ? null
+            : await _svc.pendingIdsIn(NotificationService.medIdLo, NotificationService.medIdHi);
+        if (after != null) {
           final known = {for (final e in next.values) e.id};
-          for (final id in pending) {
+          for (final id in after) {
             if (!known.contains(id)) await _svc.cancelId(id);
           }
         }
@@ -323,7 +351,7 @@ class MedicationScheduler {
   /// Push/NSE eşleniği: dozun ([planUuid] + [date] + [time]) ana ve K4
   /// bildirimlerini HEMEN iptal eder (ekrandaki dahil) — ağsız, DB'siz.
   Future<void> cancelDose(String planUuid, String date, String time) => _serial(() async {
-        final p = await SharedPreferences.getInstance();
+        final p = await _prefs();
         final reg = await _load(p);
         final base = '$planUuid|$date|$time';
         var changed = false;
@@ -338,8 +366,14 @@ class MedicationScheduler {
       });
 
   /// Bebek silindi / erişim kalktı: o bebeğin TÜM ilaç bildirimleri.
-  Future<void> cancelBaby(String babyId) => _serial(() async {
-        final p = await SharedPreferences.getInstance();
+  /// [revoke] (V5, `access_removed`): yerel veri henüz temizlenmediği için
+  /// sonraki yeniden kurmalar (bg turu) bu bebeği [clearRevoked]'a dek atlar.
+  Future<void> cancelBaby(String babyId, {bool revoke = false}) => _serial(() async {
+        final p = await _prefs();
+        if (revoke) {
+          await p.setStringList(
+              kRevoked, {...?p.getStringList(kRevoked), babyId}.toList());
+        }
         final reg = await _load(p);
         final drop = [for (final e in reg.entries) if (e.value.baby == babyId) e.key];
         for (final k in drop) {
@@ -357,8 +391,16 @@ class MedicationScheduler {
 
   /// Çıkış: defteri temizler (bildirimleri `NotificationService.cancelAll` siler).
   Future<void> clearRegistry() => _serial(() async {
-        final p = await SharedPreferences.getInstance();
+        final p = await _prefs();
+        await p.remove(kRevoked);
         await _save(p, {});
+      });
+
+  /// V5: ön plan bebek listesini sunucudan BAŞARIYLA tazeledi — erişimi gerçekten
+  /// kalkan bebek yerelden temizlendi, kalan (yeniden davet) bebek yine kurulur.
+  Future<void> clearRevoked() => _serial(() async {
+        final p = await _prefs();
+        await p.remove(kRevoked);
       });
 
   /// Eski günlük-tekrar id'leri (670000–679999) — bir kez. V4: bekleyen listeye

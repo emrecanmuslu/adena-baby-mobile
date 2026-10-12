@@ -98,12 +98,16 @@ Future<void> handlePushMessage(RemoteMessage message) async {
     final babyId = accessRemovedBabyId(data);
     if (babyId != null) {
       try {
-        await MedicationScheduler.instance.cancelBaby(babyId);
+        // V5: revoke → yerel veri ön planda temizlenene dek sonraki yeniden
+        // kurmalar (bg turu) bu bebeği geri KURMAZ.
+        await MedicationScheduler.instance.cancelBaby(babyId, revoke: true);
         final slot = await SlotRegistry.instance.slotForStored(babyId);
         if (slot != null) {
           await NotificationService.instance.cancelBabyScheduled(slot: slot);
         }
       } catch (_) {}
+      // V5: bu isolate'in defteri bayat olabilir → kalanları yetim temizliği alsın.
+      if (!appInForeground) await rebuildMedicationFromPush();
     }
     // Bildirim gösterme adımına DÜŞER ("bu bebeğe erişimin kaldırıldı").
   } else if (type == 'sync_nudge') {

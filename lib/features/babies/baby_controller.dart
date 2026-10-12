@@ -160,6 +160,11 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     } catch (_) {
       return; // çevrimdışı/hata → yerel korunur
     }
+    // V5: bebek listesi sunucudan tazelendi — erişimi kalkan bebek aşağıda
+    // temizlenir; kalanlar (yeniden davet / yanlış alarm) ilaç bildirimi alsın.
+    try {
+      await MedicationScheduler.instance.clearRevoked();
+    } catch (_) {}
     for (final b in removed) {
       // Erişim kaldırıldı (paylaşımdan düşme / sahibin premium'u bitti): bu bebeğin
       // TÜM yerel verisini temizle. Veri sahibe aitti, cihazda kalmamalı:

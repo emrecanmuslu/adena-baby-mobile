@@ -249,6 +249,30 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
   }
 }
 
+/// V5: `access_removed` push'undan sonra (arka plan) ilaç bildirimlerini yerel
+/// DB'den — erişimi kalkan bebek planlayıcıda atlanarak — yeniden kurar; ağ yok.
+/// Bayat önbellekle kaçan girdileri planlayıcının yetim temizliği yakalar.
+Future<void> rebuildMedicationFromPush() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ensureLocalSessionForBackground(); // K9
+  final container = ProviderContainer(overrides: [
+    runningInBackgroundProvider.overrideWithValue(true),
+  ]);
+  try {
+    await container.read(authControllerProvider.future);
+    if (!container.read(loggedInProvider)) return;
+    final acct = container.read(activeAccountIdProvider);
+    final babies =
+        await container.read(babyRepositoryProvider).getAll(accountId: acct);
+    await (bgMedHook ?? _defaultBgMed)
+        .rebuild(container, [for (final b in babies) if (!b.isExpecting) b])
+        .timeout(bgPushTimeout);
+  } catch (_) {
+  } finally {
+    container.dispose();
+  }
+}
+
 /// 'sync_nudge' push'u geldiğinde (başka üye kaydı GÜNCELLEDİ/SİLDİ) uygulama
 /// arka plandayken/kapalıyken TEK bebeği hemen senkronlar + widget/hatırlatıcıyı
 /// tazeler — 30 dk'lık periyodik turu beklemeden. `runBackgroundSync` ile AYNI

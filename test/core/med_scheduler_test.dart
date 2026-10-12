@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 import 'package:timezone/timezone.dart';
 
 import 'package:adena_baby/core/medication/med_scheduler.dart';
@@ -319,5 +320,45 @@ void main() {
         createdAt: DateTime(2026, 10, 1), startDate: DateTime(2026, 10, 1));
     await sched().rebuild(input([p]));
     expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 9)), isTrue);
+  });
+
+  group('V5 — isolate\'lar arası defter (SharedPreferences önbelleği)', () {
+    Future<void> otherIsolateWrites(Map<String, dynamic> reg) =>
+        SharedPreferencesStorePlatform.instance
+            .setValue('String', 'flutter.${MedicationScheduler.kRegistry}', jsonEncode(reg));
+
+    test('başka isolate dozu yeni id ile kurduysa cancelDose GÜNCEL defteri okur', () async {
+      final s = sched();
+      await s.rebuild(input([_p()])); // bu isolate'in önbelleği yüklendi
+      final reg = (jsonDecode((await SharedPreferences.getInstance())
+              .getString(MedicationScheduler.kRegistry)!) as Map)
+          .cast<String, dynamic>();
+      const k = 'p1|2026-10-12|08:00|m';
+      final oldId = (reg[k] as Map)['id'] as int;
+      plugin.pending.remove(oldId);
+      const newId = NotificationService.medIdLo + 99999;
+      plugin.pending[newId] =
+          (at: DateTime(2026, 10, 12, 8), title: 'Ada · Demir · 08:00', body: '1 ml', payload: null);
+      reg[k] = {...(reg[k] as Map), 'id': newId};
+      await otherIsolateWrites(reg);
+      await s.cancelDose('p1', '2026-10-12', '08:00');
+      expect(plugin.pending.containsKey(newId), isFalse,
+          reason: 'bayat önbellek eski id\'yi iptal eder, yenisi çalardı');
+    });
+
+    test('erişimi kalkan bebek (access_removed) sonraki yeniden kurmada geri kurulmaz', () async {
+      final s = sched();
+      await s.rebuild(input([_p()]));
+      expect(plugin.pending, isNotEmpty);
+      await s.cancelBaby('b1', revoke: true);
+      expect(plugin.pending, isEmpty);
+      // bg turu: yerel DB'de bebek henüz duruyor (temizlik ön planda) → kurulmamalı.
+      await s.rebuild(input([_p()]));
+      expect(plugin.pending, isEmpty);
+      // Ön plan bebek listesini başarıyla tazeledi (yeniden davet / yanlış alarm).
+      await s.clearRevoked();
+      await s.rebuild(input([_p()]));
+      expect(plugin.pending, isNotEmpty);
+    });
   });
 }
