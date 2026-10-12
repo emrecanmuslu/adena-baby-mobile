@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:firebase_messaging/firebase_messaging.dart' show RemoteMessage;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +9,7 @@ import 'package:timezone/timezone.dart';
 
 import 'package:adena_baby/core/medication/med_scheduler.dart';
 import 'package:adena_baby/core/notification_service.dart';
+import 'package:adena_baby/core/push_service.dart';
 import 'package:adena_baby/models/medication_plan.dart';
 import 'package:adena_baby/models/record.dart';
 
@@ -441,6 +443,48 @@ void main() {
       plugin.advance(now);
       await s.rebuild(input([_p()]));
       expect((jsonDecode(mirrored.last) as Map).containsKey('p1|2026-10-12|08:00|m'), isFalse);
+    });
+  });
+
+  // V34: handlePushMessage uçtan uca — med_dose olayından planlayıcıya.
+  group('V34 — handlePushMessage (med_dose)', () {
+    late MedicationScheduler prev;
+    setUp(() {
+      prev = MedicationScheduler.instance;
+      appInForeground = true; // bg tam senkronu (ağ) tetiklenmesin
+    });
+    tearDown(() {
+      MedicationScheduler.instance = prev;
+      appInForeground = false;
+    });
+
+    Future<void> push(Map<String, String> data) => handlePushMessage(RemoteMessage(data: {
+          'type': 'med_dose', 'baby_id': 'b1', 'plan_uuid': 'p1',
+          'dose_date': '2026-10-12', 'dose_time': '08:00', ...data,
+        }));
+    bool has0800() => plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 8));
+    bool has0830() => plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 8, 30));
+
+    test('verildi → o dozun ana + K4 hatırlatması iptal', () async {
+      MedicationScheduler.instance = sched();
+      await MedicationScheduler.instance.rebuild(input([_p()]));
+      expect(has0800() && has0830(), isTrue);
+      await push({'event': 'given'});
+      expect(has0800() || has0830(), isFalse);
+    });
+
+    test('geri alındı → iptal YOK (hatırlatma senkron + yeniden kurmayla döner)', () async {
+      MedicationScheduler.instance = sched();
+      await MedicationScheduler.instance.rebuild(input([_p()]));
+      await push({'event': 'undone'});
+      expect(has0800(), isTrue);
+    });
+
+    test('geri alındı + still_given (doz başkasınca hâlâ verildi) → iptal', () async {
+      MedicationScheduler.instance = sched();
+      await MedicationScheduler.instance.rebuild(input([_p()]));
+      await push({'event': 'undone', 'still_given': '1'});
+      expect(has0800() || has0830(), isFalse);
     });
   });
 }

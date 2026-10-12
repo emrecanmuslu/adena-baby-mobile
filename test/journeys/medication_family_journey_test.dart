@@ -199,7 +199,7 @@ void main() {
     expect(bHasAt(DateTime(2026, 10, 12, 8)), isTrue);
   });
 
-  test('S13: dünkü 22:00 dozu 00:20\'de verilir → dünün dozu; bugünün 08:00 hatırlatması durur', () async {
+  test('S13: dünkü 22:00 dozu 00:20\'de verilir → dünün dozu; bugünün 08:00 hatırlatması kurulu kalır', () async {
     plans = [plan(times: const ['08:00', '22:00'])];
     now = DateTime(2026, 10, 13, 0, 20);
     server.add(mark('A', now, '2026-10-12', '22:00'));

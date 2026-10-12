@@ -150,4 +150,94 @@ void main() {
       verifyNever(() => actions.upsertQuiet(any()));
     });
   });
+
+  group('V34 — M16 bakıcı yalnız kendi kaydını', () {
+    testWidgets('bakıcı: başkasının kaydında düzeltme/geri alma yok, kendi kaydında var', (t) async {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final recs = [
+        _rec('a', today, '08:00', today.add(const Duration(hours: 8, minutes: 1)), by: 'u2'),
+        _rec('m', today, '08:00', today.add(const Duration(hours: 8, minutes: 4)), by: 'me'),
+      ];
+      final dose = doseOf(recs, today.add(const Duration(hours: 9)), '08:00');
+      await pump(t, dose, fullWrite: false, recent: recs);
+      // İki kayıt satırı; yalnız kendi kaydında eylem düğmeleri.
+      expect(find.text('Kaydı geri al'), findsOneWidget);
+      expect(find.text('Saati düzelt'), findsOneWidget);
+      await t.tap(find.text('Kaydı geri al'));
+      await t.pumpAndSettle();
+      verify(() => actions.delete('m')).called(1);
+      verifyNever(() => actions.delete('a'));
+    });
+
+    testWidgets('ebeveyn/sahip (tam yazma): her kaydı geri alabilir', (t) async {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final recs = [
+        _rec('a', today, '08:00', today.add(const Duration(hours: 8, minutes: 1)), by: 'u2'),
+      ];
+      final dose = doseOf(recs, today.add(const Duration(hours: 9)), '08:00');
+      await pump(t, dose, fullWrite: true, recent: recs);
+      expect(find.text('Kaydı geri al'), findsOneWidget);
+    });
+  });
+
+  testWidgets('V34 — S9: saatine 2 saatten fazla olan doz onaysız işaretlenmez', (t) async {
+    final now = DateTime.now();
+    final p = MedicationPlan(
+        id: 1, uuid: 'u1', name: 'Demir', dose: '1 ml', times: const ['23:59'], active: true,
+        createdAt: DateTime(2026, 1, 1), startDate: DateTime(2026, 1, 1));
+    final dose = todaysMedicationDoses([p], const [],
+            now: DateTime(now.year, now.month, now.day, 10))
+        .single;
+    expect(dose.role, MedicationDoseRole.early);
+    await pump(t, dose);
+    expect(find.text('Erken işaretleme'), findsOneWidget);
+    await t.tap(find.text('Vazgeç'));
+    await t.pumpAndSettle();
+    verifyNever(() => actions.upsertQuiet(any()));
+  });
+
+  group('V34 — K3 çift doz diyaloğu', () {
+    testWidgets('yakında verilmiş aynı plan (gizli çift) → "Bu doz zaten verildi"; Vazgeç yazmaz',
+        (t) async {
+      final at = DateTime.now();
+      final today = DateTime(at.year, at.month, at.day);
+      final p = MedicationPlan(
+          id: 1, uuid: 'u1', name: 'Demir', dose: '1 ml', times: const ['00:00', '12:00'],
+          active: true, createdAt: DateTime(2026, 1, 1), startDate: DateTime(2026, 1, 1));
+      // Başka doz kimliğiyle 10 dk önce verilmiş kayıt (saat değişikliği/eski kayıt).
+      final other = _rec('g', today, '00:00', at.subtract(const Duration(minutes: 10)), by: 'u2');
+      final dose = MedicationDose(
+          plan: p, time: '12:00', status: MedicationDoseStatus.overdue,
+          role: MedicationDoseRole.next, doseDate: today, dueAt: at);
+      await pump(t, dose, recent: [other]);
+      expect(find.text('Bu doz zaten verildi'), findsOneWidget);
+      expect(find.textContaining('Ayşe'), findsOneWidget);
+      await t.tap(find.text('Vazgeç'));
+      await t.pumpAndSettle();
+      verifyNever(() => actions.upsertQuiet(any()));
+      await t.pump(const Duration(seconds: 3)); // O22 çift dokunma koruması süresi
+    });
+
+    testWidgets('"Yine de kaydet" → kimlikli verildi kaydı yazılır', (t) async {
+      final at = DateTime.now();
+      final today = DateTime(at.year, at.month, at.day);
+      final p = MedicationPlan(
+          id: 1, uuid: 'u1', name: 'Demir', dose: '1 ml', times: const ['00:00', '12:00'],
+          active: true, createdAt: DateTime(2026, 1, 1), startDate: DateTime(2026, 1, 1));
+      final other = _rec('g', today, '00:00', at.subtract(const Duration(minutes: 10)), by: 'u2');
+      final dose = MedicationDose(
+          plan: p, time: '12:00', status: MedicationDoseStatus.overdue,
+          role: MedicationDoseRole.next, doseDate: today, dueAt: at);
+      await pump(t, dose, recent: [other]);
+      await t.tap(find.text('Yine de kaydet'));
+      await t.pumpAndSettle();
+      final rec = verify(() => actions.upsertQuiet(captureAny())).captured.single as Record;
+      expect(rec.data['plan_uuid'], 'u1');
+      expect(rec.data['dose_time'], '12:00');
+      expect(rec.data['given'], isTrue);
+      await t.pump(const Duration(seconds: 5));
+    });
+  });
 }
