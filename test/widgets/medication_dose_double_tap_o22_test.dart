@@ -27,7 +27,9 @@ void main() {
     final plan = MedicationPlan(
         id: 41, name: 'D vitamini', dose: '1 damla', times: const ['20:00'],
         active: true, createdAt: DateTime(2026));
-    final day = medicationDay([plan], const [], now: DateTime(2026, 1, 1, 14));
+    // İlaç v2 (S9): 2 saatten ileri doz "erken"dir (onay ister) → sıradaki
+    // doz için saate 1 saat kala dokunulur.
+    final day = medicationDay([plan], const [], now: DateTime(2026, 1, 1, 19));
     final dose = day.rows.single.doses.single;
     expect(dose.role, MedicationDoseRole.next);
 

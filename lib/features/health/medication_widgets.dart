@@ -43,10 +43,15 @@ final medicationDayProvider =
   if (plans == null) return null;
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
+  final yesterday = DateTime(now.year, now.month, now.day - 1);
   final records =
       ref.watch(dayRecordsProvider((babyId: babyId, day: today))).asData?.value;
-  if (records == null) return null;
-  return medicationDay(plans, records, now: now);
+  // İlaç v2 (M4/S6): dünün açık dozu ve gece yarısından sonra işaretlenen
+  // dünkü doz için dünün kayıtları da gerekir.
+  final prev =
+      ref.watch(dayRecordsProvider((babyId: babyId, day: yesterday))).asData?.value;
+  if (records == null || prev == null) return null;
+  return medicationDay(plans, [...prev, ...records], now: now);
 });
 
 /// Ana sayfa keşif kartı kapatıldı mı (cihaz-yerel bayrak).
@@ -742,6 +747,7 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
         faded: false
       );
     case MedicationDoseStatus.overdue:
+    case MedicationDoseStatus.missed: // kartta görünmez (geçmiş ekranı)
       return (
         bg: AppColors.feverBg,
         border: AppColors.coral,
@@ -771,7 +777,9 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
 String _doseSemantics(MedicationDose d) => switch (d.status) {
       MedicationDoseStatus.given => trp('Verildi · {t}', {'t': d.time}),
       MedicationDoseStatus.skipped => trp('Atlandı · {t}', {'t': d.time}),
-      MedicationDoseStatus.overdue => trp('Saati geçti · {t}', {'t': d.time}),
+      MedicationDoseStatus.overdue ||
+      MedicationDoseStatus.missed =>
+        trp('Saati geçti · {t}', {'t': d.time}),
       MedicationDoseStatus.upcoming => trp('Planlanan · {t}', {'t': d.time}),
     };
 
@@ -1011,7 +1019,9 @@ class _MedDayCardState extends ConsumerState<MedDayCard> {
                   color: switch (segs[i].status) {
                     MedicationDoseStatus.given => AppColors.growth,
                     MedicationDoseStatus.skipped => AppColors.muted2,
-                    MedicationDoseStatus.overdue => AppColors.coral,
+                    MedicationDoseStatus.overdue ||
+                    MedicationDoseStatus.missed =>
+                      AppColors.coral,
                     MedicationDoseStatus.upcoming => AppColors.line,
                   },
                 ),

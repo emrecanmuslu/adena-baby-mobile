@@ -355,7 +355,8 @@ YesterdayRecap? buildYesterdayRecap({
   final dayPlans = plans.where((p) => p.active && p.createdAt.isBefore(end)).toList();
   if (dayPlans.isNotEmpty) {
     final md = medicationDay(dayPlans, yRecs, now: end.subtract(const Duration(seconds: 1)));
-    final doses = md.timeline.where((d) {
+    // İlaç v2: kart hesabı önceki günün açık dozunu da taşır — özet yalnız DÜN.
+    final doses = md.timeline.where((d) => !d.fromYesterday).where((d) {
       if (!d.plan.createdAt.isAfter(day)) return true;
       return d.isResolved || medicationMinutes(d.time) >= minOf(d.plan.createdAt);
     }).toList();
