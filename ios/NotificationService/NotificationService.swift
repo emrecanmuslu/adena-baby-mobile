@@ -15,6 +15,15 @@ class NotificationService: UNNotificationServiceExtension {
   private var bestAttempt: UNMutableNotificationContent?
   private let appGroupId = "group.com.adenababy.adenaBaby"
 
+  /// W9 (ILAC-INCELEME-3): bildirim merkezine verilen işler (add / remove)
+  /// tamamlanmadan `contentHandler` çağrılırsa uzantı süreci sonlanıp işi
+  /// kaybedebilir. Her iş bu gruba girer; teslim en çok [workTimeout] bekler
+  /// (NSE ~30 sn sınırının çok altında).
+  private let work = DispatchGroup()
+  private let workTimeout: TimeInterval = 5
+  private let deliverLock = NSLock()
+  private var delivered = false
+
   override func didReceive(
     _ request: UNNotificationRequest,
     withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
@@ -25,14 +34,36 @@ class NotificationService: UNNotificationServiceExtension {
     // İlaç v2 (A6): aile üyesinin doz işareti / üyelikten çıkarılma → ilgili
     // bekleyen ilaç hatırlatmalarını iptal et (ya da geri alındıysa geri ekle).
     handleMedication(request.content.userInfo)
-    // Bildirimi olduğu gibi teslim et (yalnız yan etki: App Group + widget güncellendi).
-    contentHandler(bestAttempt ?? request.content)
+    // Bildirimi olduğu gibi teslim et (yalnız yan etki: App Group + widget güncellendi)
+    // — W9: bildirim merkezi işleri bitince (en çok workTimeout).
+    let fallback = request.content
+    DispatchQueue.global(qos: .userInitiated).async {
+      _ = self.work.wait(timeout: .now() + self.workTimeout)
+      self.deliver(self.bestAttempt ?? fallback)
+    }
   }
 
   override func serviceExtensionTimeWillExpire() {
-    if let handler = contentHandler, let content = bestAttempt {
-      handler(content)
+    if let content = bestAttempt {
+      deliver(content)
     }
+  }
+
+  /// `contentHandler` en çok BİR kez (zaman aşımı ile normal teslim yarışabilir).
+  private func deliver(_ content: UNNotificationContent) {
+    deliverLock.lock()
+    let handler = delivered ? nil : contentHandler
+    delivered = true
+    deliverLock.unlock()
+    handler?(content)
+  }
+
+  /// W9: `removePending…`/`removeDelivered…` tamamlanma bildirmez; bildirim
+  /// merkezi istekleri sırayla işlediğinden ardından gelen bu sorgunun dönmesi
+  /// öncekilerin işlendiğini gösterir.
+  private func barrier(_ center: UNUserNotificationCenter) {
+    work.enter()
+    center.getPendingNotificationRequests { _ in self.work.leave() }
   }
 
   // MARK: - İlaç v2 (ILAC-TASARIM §4.3)
@@ -130,6 +161,7 @@ class NotificationService: UNNotificationServiceExtension {
       if ids.isEmpty { return }
       center.removePendingNotificationRequests(withIdentifiers: ids)
       center.removeDeliveredNotifications(withIdentifiers: ids)
+      barrier(center)
       saveMedRegistry(defaults, reg)
       return
     }
@@ -154,6 +186,7 @@ class NotificationService: UNNotificationServiceExtension {
       if ids.isEmpty { return }
       center.removePendingNotificationRequests(withIdentifiers: ids)
       center.removeDeliveredNotifications(withIdentifiers: ids)
+      barrier(center)
       // Defterde KALIR (V6): geri alınırsa NSE içerikten geri ekler.
       // W2 (ILAC-INCELEME-3): iptal anı `med_nse_canceled`'a yazılır — Dart, kayıt
       // senkronu bunu doğrulayana dek bu hatırlatmayı yeniden KURMAZ.
@@ -280,6 +313,7 @@ class NotificationService: UNNotificationServiceExtension {
     let preId = String(810000 + slot)
     let forgotId = String(820000 + slot)
     center.removePendingNotificationRequests(withIdentifiers: [mainId, preId, forgotId])
+    barrier(center)
 
     let prefix = name.isEmpty ? "" : "\(name) · "
     let mainTitle = defaults.string(forKey: "fr_main_title") ?? "Beslenme zamanı"
@@ -359,7 +393,11 @@ class NotificationService: UNNotificationServiceExtension {
     let comps = Calendar.current.dateComponents(
       [.year, .month, .day, .hour, .minute, .second], from: fireDate)
     let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-    center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+    // W9: eklemenin tamamlanması beklenir (teslimden önce).
+    work.enter()
+    center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger)) { _ in
+      self.work.leave()
+    }
   }
 
   /// QuietHours.covers ile birebir aynı: "1|startMin|endMin" / "0".
