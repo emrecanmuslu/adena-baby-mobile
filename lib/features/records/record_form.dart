@@ -129,6 +129,10 @@ class _RecordFormSheet extends ConsumerStatefulWidget {
 
 class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
   late DateTime _ts;
+
+  /// İlaç v2: plan kaynaklı (kimlikli) doz kaydı mı (M15).
+  bool get _planLinked =>
+      widget.type == RecordType.medication && widget.existing?.data['plan_uuid'] is String;
   DateTime? _endTs; // sleep bitişi
   late String _sub; // diaper/feed alt tipi
   String _unit = 'C'; // temperature
@@ -357,6 +361,14 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           if (v == null) return _warn(tr('Ateş değerini gir'));
           data = {'value': v, 'unit': _unit};
         case RecordType.medication:
+          if (_planLinked) {
+            // İlaç v2 (M15): plan kaydının kimliği (plan_uuid/dose_date/
+            // dose_time), adı, dozu ve atlama nedeni KORUNUR; yalnız saat değişir.
+            data = Map<String, dynamic>.from(widget.existing!.data)
+              ..['at_hm'] = fmtTime(_ts)
+              ..remove('time_assumed');
+            break;
+          }
           if (ctl('name').text.trim().isEmpty) return _warn(tr('İlaç adını gir'));
           // "Atlandı" kaydı düzenlenirken atlandı kalır (verildi'ye dönmesin).
           final skipped = widget.existing?.data['skipped'] == true;
@@ -586,6 +598,21 @@ class _RecordFormSheetState extends ConsumerState<_RecordFormSheet> {
           const SizedBox(height: 14),
         ];
       case RecordType.medication:
+        if (_planLinked) {
+          // İlaç v2 (M15): plan kaydında ad/doz kilitli — plan ekranından yönetilir.
+          final d = widget.existing!.data;
+          return [
+            AdField(
+              label: tr('İlaç / vitamin'),
+              child: Text(
+                  [d['name'] ?? '', if ((d['dose'] as String? ?? '').isNotEmpty) d['dose']]
+                      .join(' · '),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            ),
+            _infoNote(tr('Plan kaydı — adı ve dozu ilaç ekranından yönetilir; burada yalnız saati düzeltebilirsin.')),
+            const SizedBox(height: 14),
+          ];
+        }
         return [
           AdField(
             label: tr('İlaç / vitamin'),

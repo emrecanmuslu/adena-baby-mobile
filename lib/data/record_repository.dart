@@ -1,9 +1,11 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/medication/med_scheduler.dart';
 import '../core/providers.dart';
 import '../models/record.dart';
 import 'local/app_database.dart';
@@ -214,6 +216,7 @@ class RecordRepository {
   static const syncBatchSize = 500;
 
   Future<void> sync(String babyId) async {
+    final startedAt = DateTime.now(); // W2: damga = isteğin BAŞLANGICI
     final dirtyRows = await (_db.select(_db.records)
           ..where((r) => r.baby.equals(babyId) & r.dirty.equals(true)))
         .get();
@@ -255,6 +258,9 @@ class RecordRepository {
       final data = resp.data as Map<String, dynamic>;
       cursor = await _applySyncResponse(babyId, data, sentStamp) ?? cursor;
     } while (offset < dirtyRows.length);
+    // W2 (ILAC-INCELEME-3): ilaç planlayıcısı, NSE'nin "verildi" iptalini bu andan
+    // SONRAKİ bir senkron doğrulamadıkça hatırlatmayı yeniden kurmaz.
+    await MedicationScheduler.markRecordsSynced(babyId, startedAt);
   }
 
   /// Bir /sync yanıtını uygular; yeni cursor'ı (varsa) döner.
@@ -265,6 +271,7 @@ class RecordRepository {
           sentStamp) async {
     final applied = (data['applied'] as List? ?? []).cast<String>();
     final conflicts = (data['conflicts'] as List? ?? []);
+    final rejected = (data['rejected'] as List? ?? []);
     final serverChanges = (data['server_changes'] as List? ?? []);
     final nextCursor = data['next_cursor'] as String?;
 
@@ -283,6 +290,16 @@ class RecordRepository {
             cur.ts == sent.ts &&
             cur.isDeleted == sent.deleted;
         if (!unchanged) continue; // uçuşta düzenlendi → dirty kalır (D3)
+        await (_db.update(_db.records)..where((t) => t.id.equals(id)))
+            .write(const RecordsCompanion(dirty: Value(false)));
+      }
+      // W10 (ILAC-INCELEME-3): sunucu reddetti (ör. id başka bebeğe ait) → gönderim
+      // durur; yerel kopya SİLİNMEZ (yalnız dirty'den çıkar), iz loga düşer.
+      for (final x in rejected) {
+        if (x is! Map) continue;
+        final id = x['id'];
+        if (id is! String) continue;
+        debugPrint('[sync] kayıt reddedildi ($babyId/$id): ${x['reason']}');
         await (_db.update(_db.records)..where((t) => t.id.equals(id)))
             .write(const RecordsCompanion(dirty: Value(false)));
       }

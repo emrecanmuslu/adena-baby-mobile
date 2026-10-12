@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart';
 
+import 'package:adena_baby/core/medication/med_scheduler.dart';
 import 'package:adena_baby/core/notification_service.dart';
+import 'package:adena_baby/models/medication_plan.dart';
 
 class _FakeAndroid implements AndroidFlutterLocalNotificationsPlugin {
   final bool canExact;
@@ -61,23 +63,31 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  // İlaç v2 (A4): günlük tekrar yerine doz başına tek seferlik bildirim
+  // (MedicationScheduler); kip kuralı aynı — izin varsa exact.
   Future<List<AndroidScheduleMode>> modesFor(bool canExact) async {
     final plugin = _FakePlugin(_FakeAndroid(canExact));
     final svc = NotificationService.withPlugin(plugin);
-    await svc.syncMedicationPlan(
-        enabled: true, planId: 1, name: 'D vitamini', times: ['09:00', '21:00']);
+    final sched = MedicationScheduler.forTest(svc, now: () => DateTime(2026, 1, 10, 8));
+    await sched.rebuild(() async => MedSchedInput(missedOn: false, babies: [
+          MedSchedBaby(id: 'b', name: '', records: const [], plans: [
+            MedicationPlan(
+                id: 1, uuid: 'u1', name: 'D vitamini', dose: '', times: const ['09:00', '21:00'],
+                active: true, createdAt: DateTime(2026, 1, 1), startDate: DateTime(2026, 1, 1)),
+          ]),
+        ]));
     return plugin.modes;
   }
 
   test('izin var → ilaç dozları exact', () async {
     final modes = await modesFor(true);
-    expect(modes, hasLength(2));
+    expect(modes, hasLength(15)); // 7 gün × 2 doz + pencere sonu uyarısı
     expect(modes.toSet(), {AndroidScheduleMode.exactAllowWhileIdle});
   });
 
   test('izin yok → inexact (bildirim kaybolmaz)', () async {
     final modes = await modesFor(false);
-    expect(modes, hasLength(2));
+    expect(modes, hasLength(15));
     expect(modes.toSet(), {AndroidScheduleMode.inexactAllowWhileIdle});
   });
 }

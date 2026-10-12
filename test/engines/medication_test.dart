@@ -70,38 +70,42 @@ void main() {
     });
   });
 
-  group('doz rolleri (yalnız sıradaki + son verilen dokunulabilir)', () {
+  // İlaç v2 (ILAC-TASARIM §5.2 / S9): sıralı kilit KALDIRILDI — her çözülmemiş
+  // doz işaretlenebilir (saatine ≤2 sa kaldıysa [next], daha ileriyse [early]:
+  // onay ister); her işaretlenmiş doz [undo] (doz sayfası). Eski beklentiler
+  // (ilk doz next, gerisi lock; yalnız son işaretlenen undo) bu kararla değişti.
+  group('doz rolleri (v2: sıralı kilit yok, erken işaretleme onaylı)', () {
     final plan = _plan(times: ['08:00', '14:00', '20:00']);
 
-    test('hiç verilmemiş: ilk doz next, gerisi lock', () {
+    test('hiç verilmemiş: saati geçen ikisi de next, 5 sa sonraki early', () {
       final doses = todaysMedicationDoses([plan], [], now: DateTime(2026, 1, 1, 15));
       expect(doses.map((d) => d.role), [
         MedicationDoseRole.next,
-        MedicationDoseRole.lock,
-        MedicationDoseRole.lock,
+        MedicationDoseRole.next,
+        MedicationDoseRole.early,
       ]);
-      // 14:00 da geçmiş ama sırası gelmedi → overdue görünür, dokunulamaz.
+      // 14:00 da geçmiş → overdue ve artık doğrudan işaretlenebilir.
       expect(doses[1].status, MedicationDoseStatus.overdue);
     });
 
-    test('biri verilmiş: o undo, sonraki next, sonuncu lock', () {
+    test('biri verilmiş: o undo, sonrakiler (≥5 sa ileride) early', () {
       final rec = _rec('D Vitamini', DateTime(2026, 1, 1, 8, 5));
       final doses = todaysMedicationDoses([plan], [rec], now: DateTime(2026, 1, 1, 9));
       expect(doses.map((d) => d.role), [
         MedicationDoseRole.undo,
-        MedicationDoseRole.next,
-        MedicationDoseRole.lock,
+        MedicationDoseRole.early,
+        MedicationDoseRole.early,
       ]);
     });
 
-    test('hepsi verilmiş: yalnız sonuncu undo, next yok', () {
+    test('hepsi verilmiş: hepsi undo (her kayıt kendi doz sayfasından geri alınır)', () {
       final recs = [
         for (final h in [8, 14, 20]) _rec('D Vitamini', DateTime(2026, 1, 1, h, 1)),
       ];
       final doses = todaysMedicationDoses([plan], recs, now: DateTime(2026, 1, 1, 21));
       expect(doses.map((d) => d.role), [
-        MedicationDoseRole.lock,
-        MedicationDoseRole.lock,
+        MedicationDoseRole.undo,
+        MedicationDoseRole.undo,
         MedicationDoseRole.undo,
       ]);
     });
@@ -171,8 +175,8 @@ void main() {
       final doses = day.rows.single.doses;
       expect(doses.map((x) => x.status),
           [MedicationDoseStatus.given, MedicationDoseStatus.skipped]);
-      // Son işaretlenen (atlanan) geri alınabilir; önceki kilitli.
-      expect(doses.map((x) => x.role), [MedicationDoseRole.lock, MedicationDoseRole.undo]);
+      // v2: işaretlenen her doz kendi sayfasından geri alınabilir.
+      expect(doses.map((x) => x.role), [MedicationDoseRole.undo, MedicationDoseRole.undo]);
       expect(day.done, 1);
       expect(day.total, 2);
       expect(day.overdue, 0);
@@ -193,7 +197,11 @@ void main() {
       final doses = day.rows.single.doses;
       expect(doses[0].status, MedicationDoseStatus.skipped);
       expect(doses[1].status, MedicationDoseStatus.upcoming);
-      expect(doses[1].role, MedicationDoseRole.next);
+      // v2 (S9): 20:00'ye 9 sa var → erken (onaylı); 18:00'den itibaren next.
+      expect(doses[1].role, MedicationDoseRole.early);
+      expect(day.rows.single.next, doses[1]);
+      expect(medicationDay([fe], [skip], now: DateTime(2026, 1, 1, 18)).rows.single.doses[1].role,
+          MedicationDoseRole.next);
       expect(day.allDone, isFalse);
     });
 

@@ -17,6 +17,7 @@ import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
 import '../babies/family_settings.dart';
+import '../health/med_scheduler_sync.dart';
 import '../records/record_controller.dart';
 import '../settings/notification_prefs_controller.dart';
 import 'baby_controller.dart';
@@ -27,6 +28,25 @@ import 'baby_controller.dart';
 /// slotuna göre ayrık (çakışmaz) ve başlığı bebek adıyla başlar.
 ///
 /// Görünmez; uygulama ağacında bir kez (MaterialApp.builder) render edilir.
+/// V23 (M17): cihaz saat dilimi değişince artar — duvar saatine bağlı günlük
+/// hatırlatıcı senkronları (özel/randevu, sağlık 09:00, beslenme sessiz saatleri)
+/// bunu izleyip yeni `tz.local` ile yeniden kurar.
+final timezoneEpochProvider = NotifierProvider<TimezoneEpoch, int>(TimezoneEpoch.new);
+
+class TimezoneEpoch extends Notifier<int> {
+  @override
+  int build() => 0;
+  void bump() => state++;
+}
+
+/// V23: öne gelişte saat dilimini yeniden okur; değiştiyse [bump] (tüm günlük
+/// hatırlatıcı senkronları yeniden kurar). Döner: değişti mi.
+Future<bool> refreshTimezoneAndBump(Future<bool> Function() refresh, void Function() bump) async {
+  final changed = await refresh();
+  if (changed) bump();
+  return changed;
+}
+
 class FamilyNotificationSync extends ConsumerWidget {
   const FamilyNotificationSync({super.key});
 
@@ -45,6 +65,8 @@ class FamilyNotificationSync extends ConsumerWidget {
         const _WidgetSync(),
         // iOS Live Activity (süren sayaç — kilit ekranı + Dynamic Island).
         const _LiveActivitySync(),
+        // İlaç v2: doz başına tek seferlik hatırlatmalar (tüm bebekler).
+        const MedSchedulerSync(),
       ],
     );
   }
@@ -246,33 +268,15 @@ class _HealthNotifSync extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final slot = baby.notifSlot;
+    ref.watch(timezoneEpochProvider); // V23: saat dilimi değişince yeniden kur
     final vaccineOn = ref.watch(notifPrefProvider(NotificationPrefs.vaccine));
     final leapOn = ref.watch(notifPrefProvider(NotificationPrefs.leap));
     final growthOn = ref.watch(notifPrefProvider(NotificationPrefs.growth));
     final pregOn = ref.watch(notifPrefProvider(NotificationPrefs.pregnancyWeek));
     final milestoneOn = ref.watch(notifPrefProvider(NotificationPrefs.milestone));
     final toothOn = ref.watch(notifPrefProvider(NotificationPrefs.tooth));
-    final medicationOn = ref.watch(notifPrefProvider(NotificationPrefs.medication));
-
-    // İlaç/vitamin — her aktif planın kendi günlük saatlerinde. Bebek
-    // durumundan bağımsız hesaplanır (bekleme moduna dönerse de temizlensin
-    // diye enabled'a !isExpecting eklenir, plan listesi zaten yalnız
-    // doğmuş bebekte oluşturulabilir).
-    // Yenileme (invalidate) sırasında `asData` ESKİ listeyi taşır → silinen/
-    // duraklatılan plan bayat listeden geri kuruluyordu (BULGULAR.md K5). Yalnız
-    // oturmuş veriyle çalış; liste bazlı kurulum + DB'den taze aktif kümeyle
-    // yetim temizliği + serileştirme syncMedicationPlans içinde.
-    final medPlans =
-        settledListOrNull(ref.watch(medicationPlansProvider(baby.id)));
-    if (medPlans != null) {
-      NotificationService.instance.syncMedicationPlans(
-        medPlans,
-        enabled: medicationOn && !baby.isExpecting,
-        babyName: baby.name,
-        activePlanIds:
-            ref.read(healthRepositoryProvider).activeMedicationPlanIds,
-      );
-    }
+    // İlaç/vitamin bildirimleri: TÜM bebekler için tek planlayıcı
+    // (MedicationScheduler, ön planda [MedSchedulerSync]) — İlaç v2 A4.
 
     if (baby.isExpecting) {
       // Gebelik haftası — hafta değişince (09:00) tek seferlik.
@@ -390,6 +394,7 @@ class _ReminderSync extends ConsumerWidget {
     // provider izlendiğinden rebuild = liste değişimi; sync idempotenttir.
     // Yenileme (invalidate) sırasında asData ESKİ listeyi taşır — silinmiş bir
     // hatırlatıcıyı yeniden kurmamak için yalnız oturmuş veriyle çalış.
+    ref.watch(timezoneEpochProvider); // V23: saat dilimi değişince yeniden kur
     final async = ref.watch(remindersProvider(baby.id));
     final list = async.isLoading ? null : async.asData?.value;
     if (list != null) {
@@ -426,6 +431,7 @@ class _BabyNotifSync extends ConsumerWidget {
     }
 
     // Süren sayaç bildirimi kullanıcı tercihiyle kapatılabilir (cihaz-yerel).
+    ref.watch(timezoneEpochProvider); // V23: sessiz saatler duvar saatine bağlı
     final timersOn = ref.watch(notifPrefProvider(NotificationPrefs.timers));
 
     // Bekleme (gebelik) modunda kayıt/sayaç/beslenme uyarısı yok.

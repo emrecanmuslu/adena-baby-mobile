@@ -5,8 +5,10 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http_mock_adapter/http_mock_adapter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:adena_baby/core/api_client.dart';
+import 'package:adena_baby/core/medication/med_scheduler.dart';
 import 'package:adena_baby/core/token_storage.dart';
 import 'package:adena_baby/data/local/app_database.dart';
 import 'package:adena_baby/data/record_repository.dart';
@@ -289,6 +291,64 @@ void main() {
       await repo.markAllDirty(babyId);
       final row = await rawRow('r1');
       expect(row!.dirty, isTrue);
+    });
+  });
+
+  // ILAC-INCELEME-3 W2: başarılı kayıt senkronu bebek başına BAŞLANGIÇ anını
+  // kalıcı yazar (ilaç planlayıcısı NSE iptaliyle karşılaştırır); hata → yazılmaz.
+  group('W2 — kayıt senkronu damgası', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    test('başarılı senkron başlangıç anını yazar', () async {
+      adapter.onPost('/sync', (server) => server.reply(200, {
+            'applied': [], 'conflicts': [], 'server_changes': [],
+            'next_cursor': '2026-01-02T00:00:00.000Z',
+          }), data: Matchers.any);
+      final before = DateTime.now();
+      await repo.sync(babyId);
+      final at = await MedicationScheduler.recordsSyncedAt(babyId);
+      expect(at, isNotNull);
+      expect(at!.isBefore(before.subtract(const Duration(seconds: 1))), isFalse);
+      expect(at.isAfter(DateTime.now()), isFalse);
+    });
+
+    test('başarısız senkron damga yazmaz', () async {
+      adapter.onPost('/sync', (server) => server.reply(500, {}), data: Matchers.any);
+      await expectLater(repo.sync(babyId), throwsA(anything));
+      expect(await MedicationScheduler.recordsSyncedAt(babyId), isNull);
+    });
+  });
+
+  // ILAC-INCELEME-3 W10: sunucu başka bebeğe ait id'yi 'rejected: foreign' ile
+  // bildirir → gönderim durur (dirty=false), yerel kopya SİLİNMEZ.
+  group('W10 — rejected (foreign)', () {
+    test('reddedilen kayıt dirty durumundan çıkar, yerelde kalır; diğerleri etkilenmez', () async {
+      await repo.upsertLocal(rec('r1', RecordType.feed, DateTime.utc(2026, 1, 1, 8)));
+      await repo.upsertLocal(rec('r2', RecordType.feed, DateTime.utc(2026, 1, 1, 9)));
+      adapter.onPost('/sync', (server) => server.reply(200, {
+            'applied': [],
+            'conflicts': [],
+            'rejected': [
+              {'id': 'r1', 'reason': 'foreign'}
+            ],
+            'server_changes': [],
+            'next_cursor': '2026-01-02T00:00:00.000Z',
+          }), data: Matchers.any);
+      await repo.sync(babyId);
+      final r1 = await rawRow('r1');
+      expect(r1, isNotNull, reason: 'yerel kopya silinmez');
+      expect(r1!.dirty, isFalse);
+      expect((await rawRow('r2'))!.dirty, isTrue);
+    });
+
+    test('rejected alanı olmayan (eski sunucu) yanıt sorunsuz', () async {
+      await repo.upsertLocal(rec('r1', RecordType.feed, DateTime.utc(2026, 1, 1, 8)));
+      adapter.onPost('/sync', (server) => server.reply(200, {
+            'applied': ['r1'], 'conflicts': [], 'server_changes': [],
+            'next_cursor': '2026-01-02T00:00:00.000Z',
+          }), data: Matchers.any);
+      await repo.sync(babyId);
+      expect((await rawRow('r1'))!.dirty, isFalse);
     });
   });
 

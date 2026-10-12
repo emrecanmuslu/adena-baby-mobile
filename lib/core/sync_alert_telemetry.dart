@@ -325,6 +325,30 @@ class SyncAlertTelemetry {
     }
   }
 
+  /// Kullanıcıya uyarı GÖSTERMEYEN sessiz aşamaların (ilaç planı senkronu)
+  /// hatası — Adım 0 (ILAC-DEVAM): plan senkronu her hatayı yutuyordu, "eşe
+  /// hatırlatma gelmiyor" vakası sahada görünmüyordu. Uyarı imzalarına / tur
+  /// sayaçlarına DOKUNMAZ; aynı (aşama + hata türü) oturumda bir kez non-fatal.
+  final _seenSilent = <String>{};
+
+  Future<void> onSilentStageError({
+    required String stage,
+    required Object error,
+    StackTrace? stack,
+  }) async {
+    try {
+      final info = classifySyncError(stage, error);
+      if (!_seenSilent.add(info.signature)) return;
+      _sink.setCustomKey('sync_silent_stage', info.stage);
+      final line = '[sync] silent_error sig=${info.signature} msg=${info.message}';
+      debugPrint(line);
+      _sink.log(line);
+      await _sink.recordError(SyncAlertError(info), stack, reason: 'sync-silent');
+    } catch (_) {
+      // Telemetri hiçbir zaman senkronu düşürmez.
+    }
+  }
+
   /// Tur bitti. [failed] = uyarıyı tetikleyen en az bir hata oldu.
   void onTourFinished({required bool failed}) {
     if (failed) {

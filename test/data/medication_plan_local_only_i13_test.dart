@@ -79,7 +79,8 @@ void main() {
   });
 
   test('senkron sunucu plan kümesini prefs\'e yazar (sonraki açılış için kalıcı)', () async {
-    adapter.onPost(
+    // İlaç v2 (M11): bakıcı değişiklik göndermez → GET.
+    adapter.onGet(
         '/babies/cg/medication-plans/sync',
         (s) => s.reply(200, {
               'applied': [],
@@ -105,8 +106,7 @@ void main() {
                   'created_at': '2026-01-01T00:00:00Z',
                 },
               ],
-            }),
-        data: Matchers.any);
+            }));
     await health.syncMedicationPlans('cg');
     final known = (await SharedPreferences.getInstance()).getStringList('med_server_plan_ids_cg');
     expect(known!.toSet(), {'srv1', 'srv2'});

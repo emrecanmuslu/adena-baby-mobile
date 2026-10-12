@@ -290,7 +290,45 @@ class HealthRepository {
         active: r.active,
         createdAt: r.createdAt ?? DateTime.now(),
         localOnly: localOnly,
+        uuid: r.uuid,
+        kind: MedKind.fromWire(r.kind),
+        freq: MedFreq.fromWire(r.freq),
+        intervalHours: r.intervalHours,
+        everyNDays: r.everyNDays,
+        weekdays: _decodeInts(r.weekdaysJson),
+        startDate: medDateFromWire(r.startDate),
+        endDate: medDateFromWire(r.endDate),
+        prnMinIntervalMin: r.prnMinIntervalMin,
+        prnMaxPerDay: r.prnMaxPerDay,
+        pauses: _decodePauses(r.pausesJson),
+        scheduleFrom: r.scheduleFrom?.toUtc(),
+        syncError: r.pushError,
       );
+
+  static List<int> _decodeInts(String json) {
+    try {
+      return [for (final v in jsonDecode(json) as List) (v as num).toInt()];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static List<MedPause> _decodePauses(String json) {
+    try {
+      return [
+        for (final p in jsonDecode(json) as List)
+          MedPause(DateTime.parse((p as List)[0] as String).toUtc(),
+              p[1] == null ? null : DateTime.parse(p[1] as String).toUtc()),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static String _encodePauses(List<MedPause> ps) => jsonEncode([
+        for (final p in ps)
+          [p.from.toUtc().toIso8601String(), p.to?.toUtc().toIso8601String()]
+      ]);
 
   /// Son-yazan-kazanır damgası. drift DateTime'ı saniyeye yuvarlar → aynı
   /// saniyedeki ardışık düzenleme sunucuda "eski" sayılmasın diye bir öncekinden
@@ -329,6 +367,9 @@ class HealthRepository {
       r.dirty && !(r.uuid != null && serverKnown.contains(r.uuid));
 
   Future<List<MedicationPlan>> medicationPlans(String babyId) async {
+    // V2: ortak kimliği olmayan (v13'ten kalan) satıra okumada da kimlik ver —
+    // planlayıcı ve kimlikli doz kaydı buna dayanır.
+    await _ensurePlanUuids(babyId);
     // N2/KB-10: bakıcıda sunucuya hiç gitmemiş dirty satır = yerel-only plan.
     final caregiver = await _isCaregiver(babyId);
     final known = caregiver ? await _serverKnownPlanIds(babyId) : const <String>{};
@@ -348,6 +389,22 @@ class HealthRepository {
   /// Cihazdaki TÜM bebeklerin aktif (silinmemiş) ilaç planı yerel id'leri —
   /// `NotificationService.syncMedicationPlans` yetim-bildirim mutabakatı için
   /// (BULGULAR.md K5).
+  /// v13'ten kalan (uuid'siz) satırlara ortak kimlik verir (V2: göç de atar;
+  /// bu, göç sonrası herhangi bir yoldan uuid'siz kalan satır için emniyet).
+  Future<void> _ensurePlanUuids(String babyId) async {
+    final rows = await (_db.select(_db.medicationPlans)
+          ..where((r) => r.baby.equals(babyId) & r.uuid.isNull()))
+        .get();
+    for (final r in rows) {
+      await (_db.update(_db.medicationPlans)
+            ..where((t) => t.localId.equals(r.localId) & t.uuid.isNull()))
+          .write(MedicationPlansCompanion(
+        uuid: Value(_uuid.v4()),
+        clientUpdatedAt: Value(r.clientUpdatedAt ?? r.createdAt ?? DateTime.now()),
+      ));
+    }
+  }
+
   Future<Set<int>> activeMedicationPlanIds() async {
     final rows = await (_db.select(_db.medicationPlans)
           ..where((r) => r.active.equals(true) & r.isDeleted.equals(false)))
@@ -365,8 +422,21 @@ class HealthRepository {
     if (b?.myRole == 'caregiver') throw StateError('caregiver_readonly: $babyId');
   }
 
-  Future<MedicationPlan> createMedicationPlan(String babyId,
-      {required String name, required String dose, required List<String> times}) async {
+  Future<MedicationPlan> createMedicationPlan(
+    String babyId, {
+    required String name,
+    required String dose,
+    required List<String> times,
+    MedKind kind = MedKind.scheduled,
+    MedFreq freq = MedFreq.daily,
+    int? intervalHours,
+    int? everyNDays,
+    List<int> weekdays = const [],
+    DateTime? startDate,
+    DateTime? endDate,
+    int? prnMinIntervalMin,
+    int? prnMaxPerDay,
+  }) async {
     await _requireFullWrite(babyId);
     final now = DateTime.now();
     final id = await _db.into(_db.medicationPlans).insert(
@@ -378,6 +448,16 @@ class HealthRepository {
             createdAt: Value(now),
             uuid: Value(_uuid.v4()),
             clientUpdatedAt: Value(now),
+            kind: Value(kind.wire),
+            freq: Value(freq.wire),
+            intervalHours: Value(intervalHours),
+            everyNDays: Value(everyNDays),
+            weekdaysJson: Value(jsonEncode(weekdays)),
+            startDate: Value(medDateToWire(startDate ?? now)),
+            endDate: Value(medDateToWire(endDate)),
+            prnMinIntervalMin: Value(prnMinIntervalMin),
+            prnMaxPerDay: Value(prnMaxPerDay),
+            scheduleFrom: Value(now),
           ),
         );
     final row = await (_db.select(_db.medicationPlans)
@@ -387,21 +467,75 @@ class HealthRepository {
     return _toPlan(row);
   }
 
-  Future<void> updateMedicationPlan(int id,
-      {String? name, String? dose, List<String>? times, bool? active}) async {
+  /// Plan düzenleme. Nullable alanlar `Value` ile (absent = dokunma, `Value(null)`
+  /// = temizle). Zamanlama (saatler/tür/sıklık/parametreler/başlangıç) gerçekten
+  /// değişirse `scheduleFrom` ilerler; duraklatma ([active]) zamanlama değildir —
+  /// `pauses` geçmişine aralık açar/kapatır.
+  Future<void> updateMedicationPlan(
+    int id, {
+    String? name,
+    String? dose,
+    List<String>? times,
+    bool? active,
+    MedKind? kind,
+    MedFreq? freq,
+    Value<int?> intervalHours = const Value.absent(),
+    Value<int?> everyNDays = const Value.absent(),
+    List<int>? weekdays,
+    DateTime? startDate,
+    Value<DateTime?> endDate = const Value.absent(),
+    Value<int?> prnMinIntervalMin = const Value.absent(),
+    Value<int?> prnMaxPerDay = const Value.absent(),
+  }) async {
     final row = await (_db.select(_db.medicationPlans)
           ..where((r) => r.localId.equals(id)))
         .getSingleOrNull();
     if (row == null) return;
     await _requireFullWrite(row.baby); // KB-8
+    final now = DateTime.now();
+    final timesJson = times != null ? jsonEncode(times) : null;
+    final weekdaysJson = weekdays != null ? jsonEncode(weekdays) : null;
+    final start = startDate != null ? medDateToWire(startDate) : null;
+    final scheduleChanged = (timesJson != null && timesJson != row.timesJson) ||
+        (kind != null && kind.wire != row.kind) ||
+        (freq != null && freq.wire != row.freq) ||
+        (intervalHours.present && intervalHours.value != row.intervalHours) ||
+        (everyNDays.present && everyNDays.value != row.everyNDays) ||
+        (weekdaysJson != null && weekdaysJson != row.weekdaysJson) ||
+        (start != null && start != row.startDate);
+    String? pausesJson;
+    if (active != null && active != row.active) {
+      final ps = [..._decodePauses(row.pausesJson)];
+      if (!active) {
+        ps.add(MedPause(now.toUtc()));
+      } else if (ps.isNotEmpty && ps.last.to == null) {
+        ps[ps.length - 1] = MedPause(ps.last.from, now.toUtc());
+      }
+      pausesJson = _encodePauses(ps);
+    }
     await (_db.update(_db.medicationPlans)..where((r) => r.localId.equals(id))).write(
       MedicationPlansCompanion(
         name: name != null ? Value(name) : const Value.absent(),
         dose: dose != null ? Value(dose) : const Value.absent(),
-        timesJson: times != null ? Value(jsonEncode(times)) : const Value.absent(),
+        timesJson: timesJson != null ? Value(timesJson) : const Value.absent(),
         active: active != null ? Value(active) : const Value.absent(),
+        kind: kind != null ? Value(kind.wire) : const Value.absent(),
+        freq: freq != null ? Value(freq.wire) : const Value.absent(),
+        intervalHours: intervalHours,
+        everyNDays: everyNDays,
+        weekdaysJson: weekdaysJson != null ? Value(weekdaysJson) : const Value.absent(),
+        startDate: start != null ? Value(start) : const Value.absent(),
+        endDate: endDate.present ? Value(medDateToWire(endDate.value)) : const Value.absent(),
+        prnMinIntervalMin: prnMinIntervalMin,
+        prnMaxPerDay: prnMaxPerDay,
+        pausesJson: pausesJson != null ? Value(pausesJson) : const Value.absent(),
+        // Damga gibi kesin ileri (drift saniyeye yuvarlar; aynı saniyedeki
+        // ikinci zamanlama değişikliği de "sonra" sayılsın).
+        scheduleFrom:
+            scheduleChanged ? Value(_planStamp(row.scheduleFrom)) : const Value.absent(),
         clientUpdatedAt: Value(_planStamp(row.clientUpdatedAt)),
         dirty: const Value(true),
+        pushError: const Value(null),
       ),
     );
     onPlansChanged?.call(row.baby);
@@ -437,61 +571,133 @@ class HealthRepository {
     }
   }
 
+  Map<String, dynamic> _planWire(MedicationPlanRow r) => {
+        'id': r.uuid,
+        'op': r.isDeleted ? 'delete' : 'upsert',
+        'name': r.name,
+        'dose': r.dose,
+        'times': jsonDecode(r.timesJson),
+        'active': r.active,
+        'kind': r.kind,
+        'freq': r.freq,
+        'interval_hours': r.intervalHours,
+        'every_n_days': r.everyNDays,
+        'weekdays': _decodeInts(r.weekdaysJson),
+        'start_date': r.startDate,
+        'end_date': r.endDate,
+        'prn_min_interval_min': r.prnMinIntervalMin,
+        'prn_max_per_day': r.prnMaxPerDay,
+        'pauses': jsonDecode(r.pausesJson),
+        'schedule_from': r.scheduleFrom?.toUtc().toIso8601String(),
+        'client_updated_at': r.clientUpdatedAt?.toUtc().toIso8601String(),
+      };
+
+  /// Sunucu plan JSON'u → yerel satır alanları (insert/update ortak). Yanıtta
+  /// OLMAYAN v2 anahtarı yerel değere dokunmaz (eksik anahtar = değiştirme —
+  /// sunucu sözleşmesinin simetriği); yeni satırda tablo varsayılanı kalır.
+  MedicationPlansCompanion _serverCompanion(Map<String, dynamic> sp) {
+    int? n(dynamic v) => v is num ? v.toInt() : null;
+    Value<T> opt<T>(String k, T Function(dynamic v) f) =>
+        sp.containsKey(k) ? Value(f(sp[k])) : const Value.absent();
+    return MedicationPlansCompanion(
+      name: Value(sp['name'] as String? ?? ''),
+      dose: Value(sp['dose'] as String? ?? ''),
+      timesJson: Value(jsonEncode((sp['times'] as List? ?? const []).cast<String>())),
+      active: Value(sp['active'] != false),
+      kind: opt('kind', (v) => MedKind.fromWire(v as String?).wire),
+      freq: opt('freq', (v) => MedFreq.fromWire(v as String?).wire),
+      intervalHours: opt('interval_hours', n),
+      everyNDays: opt('every_n_days', n),
+      weekdaysJson: opt('weekdays',
+          (v) => jsonEncode([for (final x in (v as List? ?? const [])) (x as num).toInt()])),
+      startDate: opt('start_date', (v) => v as String?),
+      endDate: opt('end_date', (v) => v as String?),
+      prnMinIntervalMin: opt('prn_min_interval_min', n),
+      prnMaxPerDay: opt('prn_max_per_day', n),
+      pausesJson: opt('pauses', (v) => jsonEncode(v as List? ?? const [])),
+      scheduleFrom: opt('schedule_from', (v) => _parse(v)?.toLocal()),
+      clientUpdatedAt: Value(_parse(sp['client_updated_at'])?.toLocal()),
+      isDeleted: const Value(false),
+      dirty: const Value(false),
+      pushError: const Value(null),
+    );
+  }
+
+  /// Görünen plan alanları sunucu sürümünden farklı mı (provider tazelensin mi)?
+  /// Yanıtta olmayan (absent) alan karşılaştırılmaz.
+  bool _differs(MedicationPlanRow l, MedicationPlansCompanion c) {
+    bool d<T>(Value<T> v, T local) => v.present && v.value != local;
+    return l.isDeleted ||
+        d(c.name, l.name) ||
+        d(c.dose, l.dose) ||
+        d(c.timesJson, l.timesJson) ||
+        d(c.active, l.active) ||
+        d(c.kind, l.kind) ||
+        d(c.freq, l.freq) ||
+        d(c.intervalHours, l.intervalHours) ||
+        d(c.everyNDays, l.everyNDays) ||
+        d(c.weekdaysJson, l.weekdaysJson) ||
+        d(c.startDate, l.startDate) ||
+        d(c.endDate, l.endDate) ||
+        d(c.prnMinIntervalMin, l.prnMinIntervalMin) ||
+        d(c.prnMaxPerDay, l.prnMaxPerDay) ||
+        d(c.pausesJson, l.pausesJson) ||
+        (c.scheduleFrom.present && !_sameMoment(l.scheduleFrom, c.scheduleFrom.value));
+  }
+
+  static bool _sameMoment(DateTime? a, DateTime? b) =>
+      a == null || b == null ? a == b : a.isAtSameMomentAs(b);
+
   /// Bekleyen yerel plan değişikliklerini gönderir ve sunucudaki TÜM planları
   /// (tombstone dahil) çekip yerele uygular — küme küçük olduğundan cursor yok,
-  /// yanıt otoriterdir. Hata atarsa (çevrimdışı/403) çağıran yutar; yerel korunur.
+  /// yanıt otoriterdir. Gönderilecek değişiklik yoksa (ya da bakıcıysa) **GET**:
+  /// salt-okunur/premium bitişinde de okunur (M11). Hata atarsa (çevrimdışı/403)
+  /// çağıran yutar; yerel korunur.
   ///
   /// Döner: `changed` → görünen plan listesi değişti (provider tazelenmeli);
-  /// `removed` → silinen satırların yerel id'leri (bildirimleri iptal edilmeli).
+  /// `removed` → silinen satırların yerel id'leri (bildirimleri iptal edilmeli);
+  /// `renamed` → sunucunun ad çakışması yüzünden eklediği ad (uuid → yeni ad).
+  /// Sunucunun reddettiği (`rejected`) plan dirty kalır, `pushError` yazılır.
   ///
   /// Bakıcı sağlık verisinde salt-okunurdur: değişiklik göndermez, sunucudaki
   /// planlar yereldeki düzenlemesini ezer (kendi eklediği yerel plan ise kalır).
-  Future<({bool changed, List<int> removed})> syncMedicationPlans(String babyId) async {
+  Future<({bool changed, List<int> removed, Map<String, String> renamed})>
+      syncMedicationPlans(String babyId) async {
     final baby = await (_db.select(_db.babies)..where((b) => b.id.equals(babyId)))
         .getSingleOrNull();
     final readOnly = baby?.myRole == 'caregiver';
     Future<List<MedicationPlanRow>> load() =>
         (_db.select(_db.medicationPlans)..where((r) => r.baby.equals(babyId))).get();
 
-    // v13'ten kalan (uuid'siz) satırlara ortak kimlik ver.
-    for (final r in await load()) {
-      if (r.uuid != null) continue;
-      await (_db.update(_db.medicationPlans)..where((t) => t.localId.equals(r.localId)))
-          .write(MedicationPlansCompanion(
-        uuid: Value(_uuid.v4()),
-        clientUpdatedAt: Value(r.clientUpdatedAt ?? r.createdAt ?? DateTime.now()),
-      ));
-    }
+    await _ensurePlanUuids(babyId);
 
     final dirty = readOnly
         ? const <MedicationPlanRow>[]
         : (await load()).where((r) => r.dirty).toList();
     // Gönderilen damga → uçuş sırasında yeniden düzenlenen plan ezilmesin.
     final sent = {for (final r in dirty) r.uuid!: r.clientUpdatedAt};
-    final resp = await _api.dio.post('/babies/$babyId/medication-plans/sync', data: {
-      'changes': [
-        for (final r in dirty)
-          {
-            'id': r.uuid,
-            'op': r.isDeleted ? 'delete' : 'upsert',
-            'name': r.name,
-            'dose': r.dose,
-            'times': jsonDecode(r.timesJson),
-            'active': r.active,
-            'client_updated_at': r.clientUpdatedAt?.toUtc().toIso8601String(),
-          }
-      ],
-    });
+    final url = '/babies/$babyId/medication-plans/sync';
+    final resp = dirty.isEmpty
+        ? await _api.dio.get(url)
+        : await _api.dio.post(url, data: {
+            'changes': [for (final r in dirty) _planWire(r)],
+          });
     final data = resp.data as Map<String, dynamic>;
     final applied = (data['applied'] as List? ?? const []).cast<String>().toSet();
+    final rejected = {
+      for (final x in (data['rejected'] as List? ?? const []))
+        (x as Map)['id'] as String: (x['reason'] as String?) ?? 'invalid'
+    };
+    final renamed = {
+      for (final e in ((data['renamed'] as Map?) ?? const {}).entries)
+        e.key as String: e.value as String
+    };
     final plans = (data['plans'] as List? ?? const []).cast<Map<String, dynamic>>();
     // I13: sunucunun bildiği plan kümesi (bakıcı "yalnız bu cihazda" ayrımı için).
     await _rememberServerPlanIds(babyId, [for (final sp in plans) sp['id'] as String]);
 
     var changed = false;
     final removed = <int>[];
-    bool sameStamp(DateTime? a, DateTime? b) =>
-        a == null || b == null ? a == b : a.isAtSameMomentAs(b);
 
     await _db.transaction(() async {
       final local = {
@@ -505,6 +711,15 @@ class HealthRepository {
         if (!r.isDeleted) changed = true;
       }
 
+      // Reddedilen: dirty kalır, neden görünür olsun (yalnız uçuşta değişmediyse).
+      for (final e in rejected.entries) {
+        final l = local[e.key];
+        if (l == null || !_sameMoment(sent[e.key], l.clientUpdatedAt)) continue;
+        await (_db.update(_db.medicationPlans)..where((t) => t.localId.equals(l.localId)))
+            .write(MedicationPlansCompanion(pushError: Value(e.value)));
+        if (l.pushError != e.value) changed = true;
+      }
+
       for (final sp in plans) {
         final id = sp['id'] as String;
         final l = local[id];
@@ -512,8 +727,11 @@ class HealthRepository {
         final editedMidFlight = l != null &&
             l.dirty &&
             !readOnly &&
-            !(sent.containsKey(id) && sameStamp(sent[id], l.clientUpdatedAt));
+            !(sent.containsKey(id) && _sameMoment(sent[id], l.clientUpdatedAt));
         if (editedMidFlight) continue;
+        // Reddedilen ve hâlâ dirty plan: sunucu sürümüyle EZİLMEZ (kullanıcı
+        // düzeltsin); yalnız neden işaretlendi (yukarıda).
+        if (l != null && l.dirty && rejected.containsKey(id)) continue;
         if (sp['is_deleted'] == true) {
           if (l != null) {
             local.remove(id);
@@ -521,55 +739,31 @@ class HealthRepository {
           }
           continue;
         }
-        final name = sp['name'] as String? ?? '';
-        final dose = sp['dose'] as String? ?? '';
-        final timesJson = jsonEncode((sp['times'] as List? ?? const []).cast<String>());
-        final active = sp['active'] != false;
-        final stamp = _parse(sp['client_updated_at'])?.toLocal();
+        final c = _serverCompanion(sp);
         if (l == null) {
-          await _db.into(_db.medicationPlans).insert(MedicationPlansCompanion.insert(
-                baby: babyId,
-                name: name,
-                dose: Value(dose),
-                timesJson: Value(timesJson),
-                active: Value(active),
-                createdAt: Value(_parse(sp['created_at'])?.toLocal() ?? DateTime.now()),
+          await _db.into(_db.medicationPlans).insert(c.copyWith(
+                baby: Value(babyId),
                 uuid: Value(id),
-                clientUpdatedAt: Value(stamp),
-                dirty: const Value(false),
+                createdAt: Value(_parse(sp['created_at'])?.toLocal() ?? DateTime.now()),
               ));
           changed = true;
           continue;
         }
-        if (l.isDeleted ||
-            l.name != name ||
-            l.dose != dose ||
-            l.timesJson != timesJson ||
-            l.active != active) {
-          changed = true;
-        }
+        if (_differs(l, c) || l.pushError != null) changed = true;
         await (_db.update(_db.medicationPlans)..where((t) => t.localId.equals(l.localId)))
-            .write(MedicationPlansCompanion(
-          name: Value(name),
-          dose: Value(dose),
-          timesJson: Value(timesJson),
-          active: Value(active),
-          isDeleted: const Value(false),
-          clientUpdatedAt: Value(stamp),
-          dirty: const Value(false),
-        ));
+            .write(c);
       }
       // Sunucuda hiç olmamış planın silinmesi (applied ama listede yok) → tombstone'u at.
       for (final l in local.values) {
         if (l.isDeleted &&
             applied.contains(l.uuid) &&
-            sameStamp(sent[l.uuid], l.clientUpdatedAt) &&
+            _sameMoment(sent[l.uuid], l.clientUpdatedAt) &&
             !plans.any((sp) => sp['id'] == l.uuid)) {
           await drop(l);
         }
       }
     });
-    return (changed: changed, removed: removed);
+    return (changed: changed, removed: removed, renamed: renamed);
   }
 
   // ── Cloud (premium) ──

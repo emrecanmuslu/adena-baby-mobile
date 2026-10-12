@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:home_widget/home_widget.dart';
 
@@ -27,6 +28,38 @@ class WidgetService {
     if (_inited) return;
     await HomeWidget.setAppGroupId(_appGroupId);
     _inited = true;
+  }
+
+  /// İlaç v2 (A6): ilaç bildirim defteri (doz anahtarı → bildirim id/an/içerik)
+  /// App Group'a — iOS NSE uygulama kapalıyken `med_dose` / `access_removed`
+  /// push'unda ilgili bekleyen bildirimleri iptal eder ya da geri ekler.
+  static Future<void> saveMedRegistry(String json) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _ensureInit();
+      await HomeWidget.saveWidgetData<String>('med_notif_registry', json);
+    } catch (_) {}
+  }
+
+  /// ILAC-INCELEME-3 W2/W8: NSE'nin App Group'a yazdığı metin anahtarını okur
+  /// (`med_nse_canceled`, `med_revoked_babies`). Android'de / hata durumunda null.
+  static Future<String?> readGroupString(String key) async {
+    if (!Platform.isIOS) return null;
+    try {
+      await _ensureInit();
+      return await HomeWidget.getWidgetData<String>(key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// [readGroupString] eşleniği; [value] null → anahtar silinir. Android'de no-op.
+  static Future<void> writeGroupString(String key, String? value) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _ensureInit();
+      await HomeWidget.saveWidgetData<String>(key, value);
+    } catch (_) {}
   }
 
   /// TÜM bebeklerin sonraki-beslenme verisini + bebek listesini yazar (ön plan,

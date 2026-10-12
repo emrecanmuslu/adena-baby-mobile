@@ -9,6 +9,7 @@ import '../../core/i18n.dart';
 import '../../core/notification_service.dart';
 import '../../core/theme.dart';
 import '../../data/notification_prefs.dart';
+import '../../data/auth_repository.dart';
 import '../babies/activity_watcher.dart';
 import '../babies/baby_controller.dart';
 import '../babies/exact_alarm_resync.dart';
@@ -152,6 +153,17 @@ class NotificationsScreen extends ConsumerWidget {
                 onChanged: (v) => setPref(NotificationPrefs.medication, v),
               ),
             ),
+            // İlaç v2 (K4): işaretlenmeyen doz için 30 dk sonra tek ek hatırlatma.
+            if (prefs[NotificationPrefs.medication] ?? true)
+              _SwitchTile(
+                icon: 'clock',
+                color: AppColors.med,
+                bg: AppColors.medBg,
+                title: tr('Kaçırılan doz hatırlatması'),
+                meta: tr('Doz işaretlenmediyse 30 dk sonra bir kez'),
+                value: prefs[NotificationPrefs.medicationMissed] ?? true,
+                onChanged: (v) => setPref(NotificationPrefs.medicationMissed, v),
+              ),
           ],
 
           // ——— Gebelik (bekleme modu) ———
@@ -180,6 +192,36 @@ class NotificationsScreen extends ConsumerWidget {
             onChanged: (v) =>
                 ref.read(activityNotifEnabledProvider.notifier).set(v),
           ),
+          // İlaç v2 (S2): aile etkinliğinden AYRI — ilaç güvenlik ağı kapanmasın.
+          _SwitchTile(
+            icon: 'med',
+            color: AppColors.med,
+            bg: AppColors.medBg,
+            title: tr('Ailenin ilaç işaretleri'),
+            meta: tr('Bir üye dozu verdi, atladı ya da geri aldığında haber ver'),
+            value: prefs[NotificationPrefs.medicationActivity] ?? true,
+            onChanged: (v) async {
+              setPref(NotificationPrefs.medicationActivity, v);
+              try {
+                await ref.read(authRepositoryProvider).updateSettings(
+                    {'notification_prefs': {'medication_activity': v}});
+              } catch (_) {
+                // Çevrimdışı → oturum başında (registerToken) yeniden yansıtılır.
+              }
+            },
+          ),
+          // V25 (ILAC-TASARIM §4.3a, §5.9): kapalıyken push sessiz gider; iOS'ta
+          // uygulama kapalıysa NSE çalışmaz → iptal edilemeyen hatırlatma.
+          if (isIOS && !(prefs[NotificationPrefs.medicationActivity] ?? true))
+            _Note(tr("Kapalıyken: iPhone'da uygulama tamamen kapatılmışsa (kaydırılarak), "
+                'başkasının verdiği dozun hatırlatması iptal edilemez ve yine çalabilir.')),
+          // W3 (ILAC-INCELEME-3): bugün/dün dozları her zaman görünür ve kimlikli
+          // gelir (NSE iptal eder); yalnız eski tarihli işaretler sessiz/özet —
+          // iOS'ta sessiz push uygulama kapalıyken işlenmez.
+          if (isIOS && (prefs[NotificationPrefs.medicationActivity] ?? true))
+            _Note(tr("iPhone'da dünden eski tarihli doz işaretleri bildirim göstermeden gelir; "
+                'uygulama tamamen kapatılmışsa işlenmez (bu dozların hatırlatma saati zaten '
+                "geçmiştir). Aynı anda 3'ten fazla gelirse tek özet bildirim gösterilir.")),
           // Kapalıyken senkron etkisini AÇIKÇA söyle (kullanıcı "veri gelmiyor"
           // sanmasın); açıkken de aynı bilgi sessiz notla durur.
           if (!familyOn)

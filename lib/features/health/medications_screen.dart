@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/dates.dart';
 import '../../core/i18n.dart';
-import '../../core/notification_service.dart';
 import '../../data/sync_gate.dart';
 import '../../core/medication.dart';
 import '../../core/skeleton.dart';
@@ -124,14 +125,25 @@ class _PlansBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final active = plans.where((p) => p.active).toList();
-    final paused = plans.where((p) => !p.active).toList();
+    final now = DateTime.now();
+    final completed = plans.where((p) => p.isCompletedAt(now)).toList();
+    final active = plans.where((p) => p.active && !p.isCompletedAt(now)).toList();
+    final paused = plans.where((p) => !p.active && !p.isCompletedAt(now)).toList();
+    // M11: sahip premium'u bitti / erişim 403 → aile senkronu durdu.
+    final readonly = ref.watch(cloudReadonlyBabiesProvider).contains(babyId);
     final rows = {for (final r in day?.rows ?? const <MedicationPlanDay>[]) r.plan.id: r};
     final notifOn = ref.watch(notifPrefProvider(NotificationPrefs.medication));
 
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).padding.bottom),
       children: [
+        if (readonly) ...[
+          const SizedBox(height: 4),
+          _InfoNote(
+              icon: 'cloud',
+              text: tr('Aile senkronu durdu — değişikliklerin yalnız bu telefonda kalır.')),
+          const SizedBox(height: 6),
+        ],
         if (active.isNotEmpty) ...[
           adSec(trp('Aktif planlar · {n}', {'n': active.length})),
           for (final p in active)
@@ -140,6 +152,10 @@ class _PlansBody extends ConsumerWidget {
         if (paused.isNotEmpty) ...[
           adSec(tr('Duraklatılan')),
           for (final p in paused) _PausedCard(babyId: babyId, plan: p),
+        ],
+        if (completed.isNotEmpty) ...[
+          adSec(tr('Tamamlananlar')),
+          for (final p in completed) _PausedCard(babyId: babyId, plan: p, completed: true),
         ],
         adSec(tr('Hatırlatma')),
         Container(
@@ -203,8 +219,9 @@ class _PlanCard extends ConsumerWidget {
     void edit() => showMedicationPlanSheet(context, babyId, existing: plan);
     final meta = [
       if (plan.dose.isNotEmpty) plan.dose,
-      trp('her gün · {n} doz', {'n': plan.times.length}),
+      medPlanSchedule(plan),
       if (plan.localOnly) tr('Bu plan yalnız bu cihazda; ailenle paylaşılmadı'), // N2
+      if (plan.syncError != null) tr('Sunucu bu değişikliği kabul etmedi — planı düzenle'),
     ].join(' · ');
 
     return Container(
@@ -231,7 +248,6 @@ class _PlanCard extends ConsumerWidget {
                   child: GestureDetector(
                     onTap: () async {
                       await ref.read(healthRepositoryProvider).deleteMedicationPlan(plan.id);
-                      await NotificationService.instance.cancelMedicationPlan(plan.id);
                       ref.invalidate(medicationPlansProvider(babyId));
                     },
                     child: Container(
@@ -273,6 +289,7 @@ class _PlanCard extends ConsumerWidget {
                 ],
               ),
             ),
+          _HistoryLink(babyId: babyId, plan: plan),
         ],
       ),
     );
@@ -282,13 +299,17 @@ class _PlanCard extends ConsumerWidget {
 class _PausedCard extends ConsumerWidget {
   final String babyId;
   final MedicationPlan plan;
-  const _PausedCard({required this.babyId, required this.plan});
+  /// K8: kürü biten plan — "Yeniden başlat" düzenleme sayfasını açar.
+  final bool completed;
+  const _PausedCard({required this.babyId, required this.plan, this.completed = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final meta = [
       if (plan.dose.isNotEmpty) plan.dose,
-      trp('{n} doz · hatırlatma yok', {'n': plan.times.length}),
+      completed && plan.endDate != null
+          ? trp('{d} tarihinde bitti', {'d': fmtDayMon(plan.endDate!)})
+          : tr('hatırlatma yok'),
     ].join(' · ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -313,17 +334,19 @@ class _PausedCard extends ConsumerWidget {
                   elevation: 0,
                   child: InkWell(
                     borderRadius: BorderRadius.circular(12),
-                    onTap: () async {
-                      await ref
-                          .read(healthRepositoryProvider)
-                          .updateMedicationPlan(plan.id, active: true);
-                      ref.invalidate(medicationPlansProvider(babyId));
-                    },
+                    onTap: completed
+                        ? () => showMedicationPlanSheet(context, babyId, existing: plan)
+                        : () async {
+                            await ref
+                                .read(healthRepositoryProvider)
+                                .updateMedicationPlan(plan.id, active: true);
+                            ref.invalidate(medicationPlansProvider(babyId));
+                          },
                     child: Container(
                       constraints: const BoxConstraints(minHeight: 36),
                       padding: const EdgeInsets.symmetric(horizontal: 13),
                       alignment: Alignment.center,
-                      child: Text(tr('Devam ettir'),
+                      child: Text(completed ? tr('Yeniden başlat') : tr('Devam ettir'),
                           style: const TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 12,
@@ -482,4 +505,43 @@ class _EmptyBody extends StatelessWidget {
       ],
     );
   }
+}
+
+
+/// Planın sıklık özeti (yönetim kartı meta satırı).
+String medPlanSchedule(MedicationPlan p) {
+  if (p.isPrn) return tr('ihtiyaç halinde');
+  final n = p.times.length;
+  final base = switch (p.freq) {
+    MedFreq.interval => trp('her {h} saatte', {'h': p.intervalHours ?? 0}),
+    MedFreq.everyNDays => p.everyNDays == 2
+        ? trp('gün aşırı · {n} doz', {'n': n})
+        : trp('{d} günde bir · {n} doz', {'d': p.everyNDays ?? 0, 'n': n}),
+    MedFreq.weekly => trp('{days} · {n} doz', {
+        'days': [for (final d in [...p.weekdays]..sort()) fmtWeekdayShort(DateTime(2026, 10, 11 + d))]
+            .join(', '),
+        'n': n,
+      }),
+    MedFreq.daily => trp('her gün · {n} doz', {'n': n}),
+  };
+  final end = p.endDate;
+  return end == null ? base : '$base · ${trp('bitiş {d}', {'d': fmtDayMon(end)})}';
+}
+
+/// K11: "Geçmiş" bağlantısı (plan başına 7/30 gün).
+class _HistoryLink extends StatelessWidget {
+  final String babyId;
+  final MedicationPlan plan;
+  const _HistoryLink({required this.babyId, required this.plan});
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: AlignmentDirectional.centerEnd,
+        child: TextButton(
+          onPressed: () => context.push('/medications/history/$babyId/${plan.id}'),
+          child: Text(tr('Geçmiş'),
+              style: const TextStyle(
+                  fontWeight: FontWeight.w900, fontSize: 12.5, color: AppColors.coralDark)),
+        ),
+      );
 }

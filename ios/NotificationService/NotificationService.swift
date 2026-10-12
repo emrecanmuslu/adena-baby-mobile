@@ -15,6 +15,15 @@ class NotificationService: UNNotificationServiceExtension {
   private var bestAttempt: UNMutableNotificationContent?
   private let appGroupId = "group.com.adenababy.adenaBaby"
 
+  /// W9 (ILAC-INCELEME-3): bildirim merkezine verilen işler (add / remove)
+  /// tamamlanmadan `contentHandler` çağrılırsa uzantı süreci sonlanıp işi
+  /// kaybedebilir. Her iş bu gruba girer; teslim en çok [workTimeout] bekler
+  /// (NSE ~30 sn sınırının çok altında).
+  private let work = DispatchGroup()
+  private let workTimeout: TimeInterval = 5
+  private let deliverLock = NSLock()
+  private var delivered = false
+
   override func didReceive(
     _ request: UNNotificationRequest,
     withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
@@ -22,13 +31,190 @@ class NotificationService: UNNotificationServiceExtension {
     self.contentHandler = contentHandler
     self.bestAttempt = request.content.mutableCopy() as? UNMutableNotificationContent
     updateWidget(request.content.userInfo)
-    // Bildirimi olduğu gibi teslim et (yalnız yan etki: App Group + widget güncellendi).
-    contentHandler(bestAttempt ?? request.content)
+    // İlaç v2 (A6): aile üyesinin doz işareti / üyelikten çıkarılma → ilgili
+    // bekleyen ilaç hatırlatmalarını iptal et (ya da geri alındıysa geri ekle).
+    handleMedication(request.content.userInfo)
+    // Bildirimi olduğu gibi teslim et (yalnız yan etki: App Group + widget güncellendi)
+    // — W9: bildirim merkezi işleri bitince (en çok workTimeout).
+    let fallback = request.content
+    DispatchQueue.global(qos: .userInitiated).async {
+      _ = self.work.wait(timeout: .now() + self.workTimeout)
+      self.deliver(self.bestAttempt ?? fallback)
+    }
   }
 
   override func serviceExtensionTimeWillExpire() {
-    if let handler = contentHandler, let content = bestAttempt {
-      handler(content)
+    if let content = bestAttempt {
+      deliver(content)
+    }
+  }
+
+  /// `contentHandler` en çok BİR kez (zaman aşımı ile normal teslim yarışabilir).
+  private func deliver(_ content: UNNotificationContent) {
+    deliverLock.lock()
+    let handler = delivered ? nil : contentHandler
+    delivered = true
+    deliverLock.unlock()
+    handler?(content)
+  }
+
+  /// W9: `removePending…`/`removeDelivered…` tamamlanma bildirmez; bildirim
+  /// merkezi istekleri sırayla işlediğinden ardından gelen bu sorgunun dönmesi
+  /// öncekilerin işlendiğini gösterir.
+  private func barrier(_ center: UNUserNotificationCenter) {
+    work.enter()
+    center.getPendingNotificationRequests { _ in self.work.leave() }
+  }
+
+  // MARK: - İlaç v2 (ILAC-TASARIM §4.3)
+
+  /// Dart `MedicationScheduler` defteri (App Group `med_notif_registry`):
+  /// `{"planUuid|YYYY-MM-DD|HH:MM|m|x": {"id": Int, "at": ms, "b": babyId,
+  /// "t": başlık, "y": gövde, ...}}`. Bildirim kimliği = String(id) (FLN).
+  private func loadMedRegistry(_ defaults: UserDefaults) -> [String: [String: Any]] {
+    guard let raw = defaults.string(forKey: "med_notif_registry"),
+          let data = raw.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return [:] }
+    var out: [String: [String: Any]] = [:]
+    for (k, v) in obj { if let e = v as? [String: Any] { out[k] = e } }
+    return out
+  }
+
+  private func saveMedRegistry(_ defaults: UserDefaults, _ reg: [String: [String: Any]]) {
+    guard let data = try? JSONSerialization.data(withJSONObject: reg),
+          let raw = String(data: data, encoding: .utf8) else { return }
+    defaults.set(raw, forKey: "med_notif_registry")
+  }
+
+  /// W2 (ILAC-INCELEME-3): `med_nse_canceled` = {defter anahtarı: iptal anı ms}.
+  /// Dart `MedicationScheduler.kNseCanceled` ile aynı anahtar; değer JSON METNİ
+  /// (Dart `HomeWidget.getWidgetData<String>` okur).
+  private let nseCanceledKey = "med_nse_canceled"
+
+  private func loadNseCanceled(_ defaults: UserDefaults) -> [String: NSNumber] {
+    guard let raw = defaults.string(forKey: nseCanceledKey),
+          let data = raw.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return [:] }
+    var out: [String: NSNumber] = [:]
+    for (k, v) in obj { if let n = v as? NSNumber { out[k] = n } }
+    return out
+  }
+
+  private func saveNseCanceled(_ defaults: UserDefaults, _ m: [String: NSNumber]) {
+    if m.isEmpty {
+      defaults.removeObject(forKey: nseCanceledKey)
+      return
+    }
+    guard let data = try? JSONSerialization.data(withJSONObject: m),
+          let raw = String(data: data, encoding: .utf8) else { return }
+    defaults.set(raw, forKey: nseCanceledKey)
+  }
+
+  /// W8: `med_revoked_babies` = bebek id'leri (JSON dizi METNİ). Dart
+  /// `MedicationScheduler.kNseRevoked` ile aynı anahtar; `clearRevoked` siler.
+  private let nseRevokedKey = "med_revoked_babies"
+
+  private func addNseRevoked(_ defaults: UserDefaults, _ babyId: String) {
+    var list: [String] = []
+    if let raw = defaults.string(forKey: nseRevokedKey),
+       let data = raw.data(using: .utf8),
+       let arr = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+      list = arr.compactMap { $0 as? String }
+    }
+    if list.contains(babyId) { return }
+    list.append(babyId)
+    guard let data = try? JSONSerialization.data(withJSONObject: list),
+          let raw = String(data: data, encoding: .utf8) else { return }
+    defaults.set(raw, forKey: nseRevokedKey)
+  }
+
+  private func medId(_ e: [String: Any]) -> String? {
+    if let i = e["id"] as? Int { return String(i) }
+    if let n = e["id"] as? NSNumber { return n.stringValue }
+    return nil
+  }
+
+  /// `med_dose` (verildi/atlandı → o dozun ana + "işaretlenmedi" bildirimini
+  /// bekleyen ve ekrandakilerden kaldır; geri alındı → defterdeki içerikle,
+  /// zamanı gelmemişse geri ekle) ve `access_removed` (+ baby_id → o bebeğin
+  /// TÜM ilaç bildirimleri). Uygulama force-quit olsa da çalışır.
+  private func handleMedication(_ info: [AnyHashable: Any]) {
+    guard let type = info["type"] as? String,
+          let defaults = UserDefaults(suiteName: appGroupId) else { return }
+    let center = UNUserNotificationCenter.current()
+    var reg = loadMedRegistry(defaults)
+
+    if type == "access_removed" {
+      guard let babyId = info["baby_id"] as? String, !babyId.isEmpty else { return }
+      // W8 (ILAC-INCELEME-3): Dart defteri / kRevoked bundan habersiz → uygulama
+      // açılınca (bebek listesi tazelenmeden) bu bebeğin hatırlatmalarını geri
+      // kurmasın diye bebek App Group'a yazılır (defter boş olsa da).
+      addNseRevoked(defaults, babyId)
+      if reg.isEmpty { return }
+      var ids: [String] = []
+      for (k, e) in reg where (e["b"] as? String) == babyId {
+        if let id = medId(e) { ids.append(id) }
+        reg.removeValue(forKey: k)
+      }
+      if ids.isEmpty { return }
+      center.removePendingNotificationRequests(withIdentifiers: ids)
+      center.removeDeliveredNotifications(withIdentifiers: ids)
+      barrier(center)
+      saveMedRegistry(defaults, reg)
+      return
+    }
+
+    if reg.isEmpty { return }
+    guard type == "med_dose",
+          let event = info["event"] as? String,
+          let plan = info["plan_uuid"] as? String, !plan.isEmpty,
+          let date = info["dose_date"] as? String, !date.isEmpty,
+          let time = info["dose_time"] as? String, !time.isEmpty else { return }
+    let base = "\(plan)|\(date)|\(time)"
+    let keys = ["\(base)|m", "\(base)|x"]
+
+    // V7: geri alınan kaydın dozunu başka biri de vermiş (still_given) → doz
+    // HÂLÂ verildi: "verildi" gibi işlenir, hatırlatma geri EKLENMEZ.
+    let stillGiven = event == "undone" && (info["still_given"] as? String) == "1"
+    if event == "given" || event == "skipped" || stillGiven {
+      var ids: [String] = []
+      for k in keys {
+        if let e = reg[k], let id = medId(e) { ids.append(id) }
+      }
+      if ids.isEmpty { return }
+      center.removePendingNotificationRequests(withIdentifiers: ids)
+      center.removeDeliveredNotifications(withIdentifiers: ids)
+      barrier(center)
+      // Defterde KALIR (V6): geri alınırsa NSE içerikten geri ekler.
+      // W2 (ILAC-INCELEME-3): iptal anı `med_nse_canceled`'a yazılır — Dart, kayıt
+      // senkronu bunu doğrulayana dek bu hatırlatmayı yeniden KURMAZ.
+      var canceled = loadNseCanceled(defaults)
+      let nowMs = NSNumber(value: Int64(Date().timeIntervalSince1970 * 1000))
+      for k in keys where reg[k] != nil { canceled[k] = nowMs }
+      saveNseCanceled(defaults, canceled)
+      return
+    }
+
+    if event == "undone" {
+      // W2: geri alındı → Dart'ın "yeniden kurma" engeli kalkar.
+      var canceled = loadNseCanceled(defaults)
+      var removed = false
+      for k in keys {
+        if canceled.removeValue(forKey: k) != nil { removed = true }
+      }
+      if removed { saveNseCanceled(defaults, canceled) }
+      let now = Date()
+      for k in keys {
+        guard let e = reg[k], let id = medId(e),
+              let atMs = (e["at"] as? NSNumber)?.doubleValue else { continue }
+        let fire = Date(timeIntervalSince1970: atMs / 1000)
+        if fire <= now { continue }
+        scheduleLocal(center, id: id, fireDate: fire,
+                      title: (e["t"] as? String) ?? "", body: (e["y"] as? String) ?? "",
+                      sound: true, category: nil, payload: "med:\(k)")
+      }
     }
   }
 
@@ -127,28 +313,31 @@ class NotificationService: UNNotificationServiceExtension {
     let preId = String(810000 + slot)
     let forgotId = String(820000 + slot)
     center.removePendingNotificationRequests(withIdentifiers: [mainId, preId, forgotId])
+    barrier(center)
 
     let prefix = name.isEmpty ? "" : "\(name) · "
     let mainTitle = defaults.string(forKey: "fr_main_title") ?? "Beslenme zamanı"
     let mainBody = defaults.string(forKey: "fr_main_body") ?? ""
 
     if next > now {
+      let s = soundOn && !quietCovers(next, babyId: babyId, defaults: defaults)
       scheduleLocal(
         center, id: mainId, fireDate: next,
         title: prefix + mainTitle, body: mainBody,
-        sound: soundOn && !quietCovers(next, babyId: babyId, defaults: defaults),
-        category: "feed_snooze")
+        sound: s, category: "feed_snooze",
+        payload: feedPayload(sound: s, slot: slot, babyName: name))
     }
     if preMin > 0 {
       let pre = next.addingTimeInterval(Double(-preMin * 60))
       if pre > now {
         let preTitle = defaults.string(forKey: "fr_pre_title_\(babyId)") ?? mainTitle
         let preBody = defaults.string(forKey: "fr_pre_body_\(babyId)") ?? ""
+        let s = soundOn && !quietCovers(pre, babyId: babyId, defaults: defaults)
         scheduleLocal(
           center, id: preId, fireDate: pre,
           title: prefix + preTitle, body: preBody,
-          sound: soundOn && !quietCovers(pre, babyId: babyId, defaults: defaults),
-          category: nil)
+          sound: s, category: nil,
+          payload: feedPayload(sound: s, slot: slot, babyName: name))
       }
     }
     // "Kaydı unuttun mu?" dürtmesi — tahmini beslenme saatinden 30 dk sonra.
@@ -164,27 +353,51 @@ class NotificationService: UNNotificationServiceExtension {
     if forgotOn && forgot > now {
       let forgotTitle = defaults.string(forKey: "fr_forgot_title") ?? "Kaydı unuttun mu?"
       let forgotBody = defaults.string(forKey: "fr_forgot_body") ?? ""
+      let s = soundOn && !quietCovers(forgot, babyId: babyId, defaults: defaults)
       scheduleLocal(
         center, id: forgotId, fireDate: forgot,
         title: prefix + forgotTitle, body: forgotBody,
-        sound: soundOn && !quietCovers(forgot, babyId: babyId, defaults: defaults),
-        category: "feed_snooze")
+        sound: s, category: "feed_snooze",
+        payload: feedPayload(sound: s, slot: slot, babyName: name))
     }
   }
 
+  /// Dart `NotificationService.feedPayload` ile aynı biçim (U+0001 ayraçlı).
+  private func feedPayload(sound: Bool, slot: Int, babyName: String) -> String {
+    return "feed\u{1}\(sound ? 1 : 0)\u{1}\(slot)\u{1}\(babyName)"
+  }
+
+  /// V4 (ILAC-INCELEME-2): userInfo, flutter_local_notifications'ın kendi
+  /// isteklerine koyduğu anahtarlarla doldurulur (`NotificationId`, `payload`,
+  /// `present*`). Aksi hâlde FLN'nin Dart tarafı `pendingNotificationRequests`
+  /// listesinin TAMAMINI (`id` null → TypeError) düşürür ve ön planda/dokunmada
+  /// bu bildirimi kendi bildirimi saymaz.
   private func scheduleLocal(
     _ center: UNUserNotificationCenter, id: String, fireDate: Date,
-    title: String, body: String, sound: Bool, category: String?
+    title: String, body: String, sound: Bool, category: String?, payload: String? = nil
   ) {
     let content = UNMutableNotificationContent()
     content.title = title
     content.body = body
     if sound { content.sound = .default }
     if let cat = category { content.categoryIdentifier = cat }
+    content.userInfo = [
+      "NotificationId": NSNumber(value: Int(id) ?? 0),
+      "payload": payload.map { $0 as Any } ?? NSNull(),
+      "presentAlert": NSNumber(value: true),
+      "presentSound": NSNumber(value: sound),
+      "presentBadge": NSNumber(value: true),
+      "presentBanner": NSNumber(value: true),
+      "presentList": NSNumber(value: true),
+    ]
     let comps = Calendar.current.dateComponents(
       [.year, .month, .day, .hour, .minute, .second], from: fireDate)
     let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-    center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+    // W9: eklemenin tamamlanması beklenir (teslimden önce).
+    work.enter()
+    center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger)) { _ in
+      self.work.leave()
+    }
   }
 
   /// QuietHours.covers ile birebir aynı: "1|startMin|endMin" / "0".

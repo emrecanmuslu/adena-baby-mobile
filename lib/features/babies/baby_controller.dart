@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/analytics_service.dart';
 import '../../core/i18n.dart';
+import '../../core/medication/med_scheduler.dart';
 import '../../core/notification_service.dart';
 import '../../data/activity_notif_cache.dart';
 import '../../data/baby_repository.dart';
@@ -103,16 +104,18 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     // AsyncLoading'de null (önceki değer olsa da) → iptal sessizce atlanıyordu.
     // `Baby.notifSlot` zaten `SlotRegistry.slotFor(id)`; bebek nesnesi gerekmez.
     final s = slot ?? SlotRegistry.instance.slotFor(id);
-    List<int> planIds = const [];
     List<int> reminderIds = const [];
     try {
       final health = ref.read(healthRepositoryProvider);
-      planIds = (await health.medicationPlans(id)).map((p) => p.id).toList();
       reminderIds = await health.reminderIdsForBaby(id); // I5: özel/randevu
     } catch (_) {}
     try {
-      await NotificationService.instance.cancelBabyScheduled(
-          slot: s, medicationPlanIds: planIds, reminderIds: reminderIds);
+      await NotificationService.instance
+          .cancelBabyScheduled(slot: s, reminderIds: reminderIds);
+    } catch (_) {}
+    // İlaç v2: bebeğin ilaç bildirimleri planlayıcı defterinden.
+    try {
+      await MedicationScheduler.instance.cancelBaby(id);
     } catch (_) {}
   }
 
@@ -157,6 +160,11 @@ class BabyController extends AsyncNotifier<List<Baby>> {
     } catch (_) {
       return; // çevrimdışı/hata → yerel korunur
     }
+    // V5: bebek listesi sunucudan tazelendi — erişimi kalkan bebek aşağıda
+    // temizlenir; kalanlar (yeniden davet / yanlış alarm) ilaç bildirimi alsın.
+    try {
+      await MedicationScheduler.instance.clearRevoked();
+    } catch (_) {}
     for (final b in removed) {
       // Erişim kaldırıldı (paylaşımdan düşme / sahibin premium'u bitti): bu bebeğin
       // TÜM yerel verisini temizle. Veri sahibe aitti, cihazda kalmamalı:

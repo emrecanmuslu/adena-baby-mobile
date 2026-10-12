@@ -352,10 +352,15 @@ YesterdayRecap? buildYesterdayRecap({
 
   // İlaç/vitamin planı — dün var olan planların dozları. Plan dün gün içinde
   // oluşturulduysa, oluşturulmadan önceki saatler "kayıtlı değil" sayılmaz.
-  final dayPlans = plans.where((p) => p.active && p.createdAt.isBefore(end)).toList();
+  // İlaç v2 (M12): bugün duraklatılan plan DÜNÜ gizlemez — motor duraklatma
+  // aralıklarını (pauses), başlangıç/bitişi ve zamanlama çapasını kendisi uygular.
+  final dayPlans = plans.where((p) => !p.isPrn && p.createdAt.isBefore(end)).toList();
   if (dayPlans.isNotEmpty) {
-    final md = medicationDay(dayPlans, yRecs, now: end.subtract(const Duration(seconds: 1)));
-    final doses = md.timeline.where((d) {
+    // Kimlikli kayıt dünün dozuna ait olabilir ama gece yarısından SONRA
+    // işaretlenmiş olabilir (M4) → tüm geçmişle çözümle.
+    final md = medicationDay(dayPlans, history, now: end.subtract(const Duration(seconds: 1)));
+    // İlaç v2: kart hesabı önceki günün açık dozunu da taşır — özet yalnız DÜN.
+    final doses = md.timeline.where((d) => !d.fromYesterday).where((d) {
       if (!d.plan.createdAt.isAfter(day)) return true;
       return d.isResolved || medicationMinutes(d.time) >= minOf(d.plan.createdAt);
     }).toList();

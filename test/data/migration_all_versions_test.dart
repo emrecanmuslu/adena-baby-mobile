@@ -5,30 +5,30 @@ import 'package:adena_baby/data/local/app_database.dart';
 
 import '../drift/generated/schema.dart';
 
-/// M1 — git geçmişindeki HER yayınlanmış şema sürümünden v15'e migration.
-/// Anlık görüntüler `test/drift/schemas/drift_schema_v{2,3,5,7,8,9,11,12,13,14}.json`
+/// M1 — git geçmişindeki HER yayınlanmış şema sürümünden GÜNCEL sürüme (v16)
+/// migration. Anlık görüntüler `test/drift/schemas/drift_schema_v{2,3,5,7,8,9,11,12,13,14,15}.json`
 /// (ilgili commit'teki `app_database.dart`'tan `drift_dev schema dump`; v4/v6/v10
-/// hiç yayınlanmadı — tek commit'te atlandı). Yapısal doğrulama + v12/v13/v14'ten
+/// hiç yayınlanmadı — tek commit'te atlandı). Yapısal doğrulama + v12–v15'ten
 /// veri dolu geçiş (backfill kuralları, eski kolonlar).
 void main() {
   late SchemaVerifier verifier;
   setUpAll(() => verifier = SchemaVerifier(GeneratedHelper()));
 
-  const versions = [2, 3, 5, 7, 8, 9, 11, 12, 13, 14];
+  const versions = [2, 3, 5, 7, 8, 9, 11, 12, 13, 14, 15];
 
-  group('yapısal: her sürümden v15', () {
+  group('yapısal: her sürümden v16', () {
     for (final v in versions) {
-      test('v$v → v15', () async {
+      test('v$v → v16', () async {
         final db = AppDatabase(await verifier.startAt(v));
         addTearDown(db.close);
-        await verifier.migrateAndValidate(db, 15);
+        await verifier.migrateAndValidate(db, 16);
       });
     }
   });
 
   group('veri dolu geçiş', () {
-    for (final v in [12, 13, 14]) {
-      test('v$v → v15: backfill + eski veri korunur', () async {
+    for (final v in [12, 13, 14, 15]) {
+      test('v$v → v16: backfill + eski veri korunur', () async {
         final schema = await verifier.schemaAt(v);
         final raw = schema.rawDatabase;
         raw.execute("INSERT INTO babies (id, name, my_role, settings, dirty, account_id) VALUES "
@@ -47,16 +47,20 @@ void main() {
             "('c1', 1700000000, 1, 'u1')");
         raw.execute("INSERT INTO cycle_settings_table (id, dirty, expected_cycle_length) VALUES ('u1', 1, 30)");
         if (v >= 13) {
-          raw.execute("INSERT INTO medication_plans (baby, name, dose, times_json, active) VALUES "
-              "('owner_full', 'D vit', '1 damla', '[\"09:00\"]', 1)");
+          // created_at = 2026-10-01 12:00 UTC (drift DateTime = unix saniye).
+          raw.execute("INSERT INTO medication_plans (baby, name, dose, times_json, active, created_at) VALUES "
+              "('owner_full', 'D vit', '1 damla', '[\"09:00\"]', 1, 1759320000)");
         }
 
         final db = AppDatabase(schema.newConnection());
         addTearDown(db.close);
-        await verifier.migrateAndValidate(db, 15);
+        await verifier.migrateAndValidate(db, 16);
 
         final babies = {for (final b in await db.select(db.babies).get()) b.id: b};
-        expect(babies['owner_full']!.settingsDirty, isTrue);
+        // v14→v15 backfill'i yalnız v<15 kaynağında koşar; v15 kaynağında
+        // satırlar zaten v15 şemasında yazıldı (settings_dirty varsayılanı 0) ve
+        // v16 adımı onlara dokunmaz.
+        expect(babies['owner_full']!.settingsDirty, v < 15);
         expect(babies['owner_empty']!.settingsDirty, isFalse);
         expect(babies['parent_full']!.settingsDirty, isFalse);
         expect(babies['caregiver_full']!.settingsDirty, isFalse);
@@ -68,8 +72,8 @@ void main() {
         final hs = {for (final r in await db.select(db.healthStatuses).get()) '${r.kind}/${r.itemKey}': r};
         expect(hs['vaccine/Hepatit B (1. doz)']!.dirty, isFalse);
         expect(hs['vaccine/Hepatit B (1. doz)']!.done, isTrue);
-        expect(hs['milestone/smile']!.dirty, isTrue);
-        expect(hs['tooth/lower_central_1']!.dirty, isTrue);
+        expect(hs['milestone/smile']!.dirty, v < 15); // K-4 backfill (v14→v15)
+        expect(hs['tooth/lower_central_1']!.dirty, v < 15);
         expect(hs['milestone/walk']!.dirty, isFalse);
         final mem = await db.select(db.memories).getSingle();
         expect(mem.title, 'ilk gülüş');
@@ -82,9 +86,30 @@ void main() {
         if (v >= 13) {
           final plan = await db.select(db.medicationPlans).getSingle();
           expect(plan.name, 'D vit');
-          // v13→14 adımı: senkron kolonları eklendi, dirty=true ile yüklenir.
+          // v13→14 adımı (ya da v14/v15 varsayılanı): dirty=true ile yüklenir.
           expect(plan.dirty, isTrue);
           expect(plan.isDeleted, isFalse);
+          // v16 (İlaç v2): yeni kolonlar varsayılanlı; başlangıç/zamanlama çapası
+          // created_at'ten doldurulur.
+          expect(plan.kind, 'scheduled');
+          expect(plan.freq, 'daily');
+          expect(plan.weekdaysJson, '[]');
+          expect(plan.pausesJson, '[]');
+          expect(plan.intervalHours, isNull);
+          expect(plan.everyNDays, isNull);
+          expect(plan.endDate, isNull);
+          expect(plan.prnMinIntervalMin, isNull);
+          expect(plan.prnMaxPerDay, isNull);
+          expect(plan.pushError, isNull);
+          final created = DateTime.fromMillisecondsSinceEpoch(1759320000 * 1000);
+          String ymd(DateTime d) =>
+              '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+          expect(plan.startDate, ymd(created));
+          expect(plan.scheduleFrom, created);
+          // V2 (ILAC-INCELEME-2): v13'ten kalan / hiç senkronlanmamış satıra
+          // ortak kimlik göçte atanır (planlayıcı uuid'siz planı atlamasın).
+          expect(plan.uuid, isNotNull);
+          expect(plan.uuid, matches(RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-')));
         }
       });
     }

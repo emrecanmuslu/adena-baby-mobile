@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' show PathMetric;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -9,14 +10,20 @@ import 'package:uuid/uuid.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/dates.dart';
+import '../../core/exact_alarm_prompt.dart';
 import '../../core/i18n.dart';
 import '../../core/medication.dart';
+import '../../core/medication/dose_write.dart';
+import '../../core/modal_gate.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
 import '../../data/home_nudge_prefs.dart';
 import '../../data/local_session.dart';
+import '../../data/sync_gate.dart';
+import '../../models/medication_plan.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
+import '../babies/exact_alarm_resync.dart';
 import '../babies/members_screen.dart' show membersProvider;
 import '../records/record_controller.dart';
 import '../records/record_form.dart';
@@ -43,10 +50,15 @@ final medicationDayProvider =
   if (plans == null) return null;
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
+  final yesterday = DateTime(now.year, now.month, now.day - 1);
   final records =
       ref.watch(dayRecordsProvider((babyId: babyId, day: today))).asData?.value;
-  if (records == null) return null;
-  return medicationDay(plans, records, now: now);
+  // İlaç v2 (M4/S6): dünün açık dozu ve gece yarısından sonra işaretlenen
+  // dünkü doz için dünün kayıtları da gerekir.
+  final prev =
+      ref.watch(dayRecordsProvider((babyId: babyId, day: yesterday))).asData?.value;
+  if (records == null || prev == null) return null;
+  return medicationDay(plans, [...prev, ...records], now: now);
 });
 
 /// Ana sayfa keşif kartı kapatıldı mı (cihaz-yerel bayrak).
@@ -100,32 +112,30 @@ MedGiver? medOtherGiver(WidgetRef ref, String babyId, Record? record,
   return (name: '', initial: '?', color: color);
 }
 
-// ───────── işaretleme / atlama / düzeltme ─────────
+// ───────── işaretleme / atlama / düzeltme (İlaç v2) ─────────
 
-/// Doza dokunma.
-/// - Sıradaki doz ([MedicationDoseRole.next]) → tek adımda "verildi" kaydı
-///   yazar, 4 sn "Geri al" toast'ı gösterir.
-/// - İşaretlenmiş doz (verildi/atlandı) → doz sayfası: verildiği saati düzelt,
-///   kaydı geri al (yalnız son işaretlenen), atlananı "verildi"ye çevir.
-/// - Sırası gelmemiş kilitli doz → hiçbir şey.
+/// Doza dokunma (ILAC-TASARIM §5.2):
+/// - İşaretlenmiş doz → doz sayfası (kayıtlar, saat düzelt, geri al, K3).
+/// - Çözülmemiş doz → "verildi" (K3 çift doz denetimiyle); saatine 2 saatten
+///   fazla varsa önce onay (S9).
 Future<void> medTapDose(
     BuildContext context, WidgetRef ref, String babyId, MedicationDose dose) async {
   if (dose.isResolved) return _showDoseSheet(context, ref, babyId, dose);
-  if (dose.role != MedicationDoseRole.next) return;
-  await _writeDose(context, ref, babyId, dose, skipped: false);
+  if (!await _confirmEarly(context, dose)) return;
+  if (!context.mounted) return;
+  await _markGiven(context, ref, babyId, dose);
 }
 
-/// Sıradaki doza uzun basma → "Verildi / Bu dozu atla" seçenekleri.
+/// Çözülmemiş doza uzun basma → "Verildi / Bu dozu atla" seçenekleri.
 Future<void> medLongPressDose(
     BuildContext context, WidgetRef ref, String babyId, MedicationDose dose) async {
   if (dose.isResolved) return _showDoseSheet(context, ref, babyId, dose);
-  if (dose.role != MedicationDoseRole.next) return;
   final skip = await showModalBottomSheet<bool>(
     context: context,
     showDragHandle: false,
     shape: adSheetShape,
     builder: (ctx) => _SheetFrame(
-      title: trp('{name} · {t} dozu', {'name': dose.plan.name, 't': dose.time}),
+      title: _doseTitle(dose),
       children: [
         Text(
             tr('Bilinçli olarak verilmediyse atla. Atlanan doz "saati geçti" '
@@ -150,46 +160,153 @@ Future<void> medLongPressDose(
     ),
   );
   if (skip == null || !context.mounted) return;
-  await _writeDose(context, ref, babyId, dose, skipped: skip);
+  if (skip) return _markSkipped(context, ref, babyId, dose);
+  if (!await _confirmEarly(context, dose) || !context.mounted) return;
+  await _markGiven(context, ref, babyId, dose);
 }
 
-/// Sıradaki dozu doğrudan "atlandı" işaretler (satırdaki "Atla" bağlantısı).
+/// Çözülmemiş dozu "atlandı" işaretler (satırdaki "Atla" bağlantısı) — önce
+/// isteğe bağlı neden (K10).
 Future<void> medSkipDose(
         BuildContext context, WidgetRef ref, String babyId, MedicationDose dose) =>
-    dose.role == MedicationDoseRole.next && !dose.isResolved
-        ? _writeDose(context, ref, babyId, dose, skipped: true)
-        : Future.value();
+    dose.isResolved ? Future.value() : _markSkipped(context, ref, babyId, dose);
 
-/// "Verildi" / "atlandı" kaydı — ikisi de aile-paylaşımlı `RecordType.medication`
-/// satırıdır; atlanan `given:false, skipped:true` taşır.
-/// O22: aynı doz (plan + saat) için uçuş-içi / çift-dokunma koruması. Drift
-/// akışı yeni kaydı yayınlayana kadar ikinci dokunuş da `next` rolünü görür →
-/// hayalet ikinci "verildi" kaydı (2 dozlu planda ikinci doz da verildi olurdu).
+String _doseTitle(MedicationDose d) => d.fromYesterday
+    ? trp('{name} · dün {t} dozu', {'name': d.plan.name, 't': d.time})
+    : trp('{name} · {t} dozu', {'name': d.plan.name, 't': d.time});
+
+/// S9: saatine 2 saatten fazla olan dozu işaretlemeden önce onay.
+Future<bool> _confirmEarly(BuildContext context, MedicationDose dose) async {
+  if (dose.role != MedicationDoseRole.early) return true;
+  final ok = await _confirm(
+    context,
+    title: tr('Erken işaretleme'),
+    body: trp('Bu doz {t} için. Şimdi verildi olarak işaretlensin mi?', {'t': dose.time}),
+    yes: tr('Verildi olarak işaretle'),
+  );
+  return ok;
+}
+
+Future<bool> _confirm(BuildContext context,
+    {required String title, required String body, required String yes}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: Theme.of(ctx).colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text(title),
+      content: Text(body),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(tr('Vazgeç'),
+                style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w800))),
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(yes,
+                style: const TextStyle(color: AppColors.coralDd, fontWeight: FontWeight.w900))),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+/// Kaydı kimin girdiği — kısa ad ("Sen" / üye adı / "Başka bir aile üyesi").
+String medWhoName(WidgetRef ref, String babyId, Record r) {
+  final other = medOtherGiver(ref, babyId, r, watch: false);
+  if (other == null) return tr('Sen');
+  return other.name.isEmpty ? tr('Başka bir aile üyesi') : other.name;
+}
+
+String _ago(Duration d) {
+  final h = d.inHours, m = d.inMinutes % 60;
+  if (h > 0 && m > 0) return trp('{h} sa {m} dk', {'h': h, 'm': m});
+  if (h > 0) return trp('{h} sa', {'h': h});
+  return trp('{m} dk', {'m': m});
+}
+
+/// K3 denetimi için yakın kayıtlar — kartın izlediği akışlardan (bugün + dün),
+/// BEKLEMEDEN (dokunma gecikmesin). [extra]: çağıranın elindeki kayıtlar (doz
+/// nesnesindekiler, PRN kartının izlediği geniş pencere).
+List<Record> _recentRecords(WidgetRef ref, String babyId, [Iterable<Record> extra = const []]) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final out = <String, Record>{for (final r in extra) r.id: r};
+  for (final day in [today, DateTime(now.year, now.month, now.day - 1)]) {
+    final recs = ref.read(dayRecordsProvider((babyId: babyId, day: day))).asData?.value;
+    for (final r in recs ?? const <Record>[]) {
+      out[r.id] = r;
+    }
+  }
+  return out.values.toList();
+}
+
+/// K3: "verildi" yazmadan önce çift doz uyarısı. true → yazılabilir.
+Future<bool> medConfirmNotDuplicate(BuildContext context, WidgetRef ref, String babyId,
+    MedicationPlan plan, MedicationDose? dose, {Iterable<Record> extra = const []}) async {
+  final recent = _recentRecords(ref, babyId, [...?dose?.records, ...extra]);
+  final now = DateTime.now();
+  final hit = medDuplicateCheck(plan, dose, recent, now: now);
+  if (hit == null || !context.mounted) return hit == null;
+  final who = medWhoName(ref, babyId, hit.record);
+  final at = fmtTime(hit.record.ts);
+  final body = hit.sameDose
+      ? trp('Bu doz {who} tarafından verildi · {time}. Yine de kaydedilsin mi?',
+          {'who': who, 'time': at})
+      : trp('Bu ilaç {ago} önce {who} tarafından verildi · {time}. Yine de kaydedilsin mi?',
+          {'ago': _ago(now.difference(hit.record.ts)), 'who': who, 'time': at});
+  return _confirm(context,
+      title: tr('Bu doz zaten verildi'), body: body, yes: tr('Yine de kaydet'));
+}
+
+/// O22: aynı doz için uçuş-içi / çift-dokunma koruması. Drift akışı yeni kaydı
+/// yayınlayana kadar ikinci dokunuş da çözülmemiş dozu görür → hayalet ikinci
+/// "verildi" kaydı.
 final _inFlightDoses = <String>{};
 const _doseGuard = Duration(seconds: 2);
 
-Future<void> _writeDose(BuildContext context, WidgetRef ref, String babyId,
-    MedicationDose dose,
-    {required bool skipped}) async {
-  final key = '${dose.plan.id}/${dose.time}';
-  if (_inFlightDoses.contains(key)) return;
+bool _claim(String key) {
+  if (_inFlightDoses.contains(key)) return false;
   _inFlightDoses.add(key);
   // Akış güncellenene dek kısa koruma; hata olsa da serbest kalır.
   Future<void>.delayed(_doseGuard, () => _inFlightDoses.remove(key));
+  return true;
+}
+
+/// "Verildi" kaydı (kimlikli, ILAC-TASARIM §1b). [force] → K3 denetimi atlanır
+/// (çağıran zaten onay aldı).
+Future<void> _markGiven(
+    BuildContext context, WidgetRef ref, String babyId, MedicationDose dose,
+    {bool force = false}) async {
+  if (!_claim(dose.key)) return;
+  if (!force && !await medConfirmNotDuplicate(context, ref, babyId, dose.plan, dose)) return;
+  if (!context.mounted) return;
+  await _write(context, ref, babyId, dose, skipped: false);
+}
+
+Future<void> _markSkipped(
+    BuildContext context, WidgetRef ref, String babyId, MedicationDose dose) async {
+  final r = await showMedSkipReasonSheet(context, dose);
+  if (r == null || !context.mounted) return;
+  if (!_claim(dose.key)) return;
+  await _write(context, ref, babyId, dose, skipped: true, reason: r.reason, note: r.note);
+}
+
+Future<void> _write(BuildContext context, WidgetRef ref, String babyId, MedicationDose dose,
+    {required bool skipped, MedSkipReason? reason, String? note}) async {
   final actions = ref.read(recordActionsProvider);
-  final id = _uuid.v4();
-  await actions.upsertQuiet(Record(
-    id: id,
-    baby: babyId,
-    type: RecordType.medication,
-    ts: DateTime.now(),
-    data: {
-      'name': dose.plan.name,
-      'dose': dose.plan.dose,
-      'given': !skipped,
-      if (skipped) 'skipped': true,
-    },
-  ));
+  final rec = medDoseRecord(
+    id: _uuid.v4(),
+    babyId: babyId,
+    plan: dose.plan,
+    doseDate: dose.doseDate,
+    doseTime: dose.time,
+    at: DateTime.now(),
+    skipped: skipped,
+    reason: reason,
+    note: note,
+  );
+  await actions.upsertQuiet(rec);
   if (!context.mounted) return;
   showAdToast(
     context,
@@ -197,8 +314,96 @@ Future<void> _writeDose(BuildContext context, WidgetRef ref, String babyId,
         {'name': dose.plan.name, 't': dose.time}),
     type: skipped ? AdToastType.info : AdToastType.success,
     duration: const Duration(seconds: 4),
-    onUndo: () => actions.delete(id),
+    onUndo: () => actions.delete(rec.id),
   );
+}
+
+/// Atlama nedeni seçimi (K10, isteğe bağlı). null → vazgeçildi.
+Future<({MedSkipReason? reason, String? note})?> showMedSkipReasonSheet(
+    BuildContext context, MedicationDose dose) {
+  return showModalBottomSheet<({MedSkipReason? reason, String? note})>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: false,
+    shape: adSheetShape,
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+      child: _SkipReasonSheet(title: _doseTitle(dose)),
+    ),
+  );
+}
+
+String medSkipReasonLabel(MedSkipReason r) => switch (r) {
+      MedSkipReason.vomited => tr('Kustu'),
+      MedSkipReason.asleep => tr('Uyuyordu'),
+      MedSkipReason.outOfStock => tr('İlaç bitti'),
+      MedSkipReason.doctor => tr('Doktor önerisi'),
+      MedSkipReason.other => tr('Diğer'),
+    };
+
+/// Kayıttaki atlama nedeni metni ("Diğer" + not → not).
+String? medSkipReasonText(Record r) {
+  final reason = MedSkipReason.fromWire(r.data['skip_reason'] as String?);
+  if (reason == null) return null;
+  final note = (r.data['skip_note'] as String?)?.trim();
+  if (reason == MedSkipReason.other && note != null && note.isNotEmpty) return note;
+  return medSkipReasonLabel(reason);
+}
+
+class _SkipReasonSheet extends StatefulWidget {
+  final String title;
+  const _SkipReasonSheet({required this.title});
+  @override
+  State<_SkipReasonSheet> createState() => _SkipReasonSheetState();
+}
+
+class _SkipReasonSheetState extends State<_SkipReasonSheet> {
+  MedSkipReason? _reason;
+  final _note = TextEditingController();
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetFrame(
+      title: widget.title,
+      children: [
+        Text(tr('Neden atlandı? (isteğe bağlı)'),
+            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final r in MedSkipReason.values)
+              ChoiceChip(
+                label: Text(medSkipReasonLabel(r)),
+                selected: _reason == r,
+                onSelected: (v) => setState(() => _reason = v ? r : null),
+              ),
+          ],
+        ),
+        if (_reason == MedSkipReason.other) ...[
+          const SizedBox(height: 10),
+          AdInput(
+            controller: _note,
+            hint: tr('Kısa not (isteğe bağlı)'),
+            formatters: [LengthLimitingTextInputFormatter(kMedSkipNoteMax)],
+            capitalization: TextCapitalization.sentences,
+          ),
+        ],
+        const SizedBox(height: 16),
+        AdSaveButton(
+            label: tr('Bu dozu atla'),
+            color: AppColors.coralDd,
+            onTap: () => Navigator.pop(context, (reason: _reason, note: _note.text))),
+      ],
+    );
+  }
 }
 
 /// Sayfa iskeleti: tutamak + ilaç ikonlu başlık + içerik.
@@ -252,8 +457,9 @@ Future<void> _showDoseSheet(
   );
 }
 
-/// İşaretlenmiş dozun sayfası — verildiği saati düzeltme (aşıdaki tarih
-/// düzeltme gibi), geri alma, atlananı "verildi"ye çevirme.
+/// İşaretlenmiş dozun sayfası (İlaç v2): bağlı TÜM kayıtlar (kim, saat, neden);
+/// çift işaret uyarısı; kayıt başına saat düzeltme / sil (M16: bakıcı yalnız
+/// kendi kaydını); atlananı "verildi"ye çevirme; "yine de verildi" (K3).
 class _DoseSheet extends ConsumerStatefulWidget {
   final String babyId;
   final MedicationDose dose;
@@ -264,172 +470,183 @@ class _DoseSheet extends ConsumerStatefulWidget {
 }
 
 class _DoseSheetState extends ConsumerState<_DoseSheet> {
-  late DateTime _at = widget.dose.record!.ts;
-
   MedicationDose get _dose => widget.dose;
-  Record get _record => _dose.record!;
-  bool get _changed => _at != _record.ts;
 
-  /// Aynı planın komşu kayıtları — sıralı eşleme bozulmasın diye yeni saat
-  /// bunların ARASINDA kalmalı.
-  ({DateTime? after, DateTime? before}) _bounds() {
-    final rows = ref.read(medicationDayProvider(widget.babyId))?.rows ?? const [];
-    DateTime? after, before;
-    for (final r in rows) {
-      if (r.plan.id != _dose.plan.id) continue;
-      final recs = [
-        for (final d in r.doses)
-          if (d.record != null) d.record!,
-      ];
-      final i = recs.indexWhere((x) => x.id == _record.id);
-      if (i > 0) after = recs[i - 1].ts;
-      if (i >= 0 && i < recs.length - 1) before = recs[i + 1].ts;
-    }
-    return (after: after, before: before);
-  }
+  /// M16: tam yazma (sahip/ebeveyn) her kaydı, bakıcı yalnız kendi kaydını.
+  bool _canModify(Record r) =>
+      ref.read(canFullWriteProvider(widget.babyId)) ||
+      medOtherGiver(ref, widget.babyId, r, watch: false) == null;
 
-  Future<void> _pick() async {
+  Future<void> _editTime(Record r) async {
     final picked = await showTimePicker(
-        context: context, initialTime: TimeOfDay.fromDateTime(_at));
+        context: context, initialTime: TimeOfDay.fromDateTime(r.ts));
     if (picked == null || !mounted) return;
-    final t = DateTime(_at.year, _at.month, _at.day, picked.hour, picked.minute);
-    if (t.isAfter(DateTime.now())) {
+    final now = DateTime.now();
+    var t = DateTime(r.ts.year, r.ts.month, r.ts.day, picked.hour, picked.minute);
+    // Gece yarısı: seçilen saat bugün için gelecekteyse önceki gün kastedilmiştir.
+    if (t.isAfter(now)) t = DateTime(t.year, t.month, t.day - 1, t.hour, t.minute);
+    if (t.isAfter(now)) {
       showAdError(context, tr('Gelecek bir saat seçilemez'));
       return;
     }
-    final b = _bounds();
-    if ((b.after != null && !t.isAfter(b.after!)) ||
-        (b.before != null && !t.isBefore(b.before!))) {
-      showAdError(context, tr('Bu saat başka bir dozun kaydıyla çakışıyor'));
+    if (t.isBefore(_dose.dueAt.subtract(kMedOpenWindow))) {
+      showAdError(context, tr('Bu saat dozun saatinden çok önce'));
       return;
     }
-    setState(() => _at = t);
-  }
-
-  Future<void> _save() async {
-    await ref.read(recordActionsProvider).upsertQuiet(_record.copyWith(ts: _at));
+    final data = Map<String, dynamic>.from(r.data)
+      ..['at_hm'] = fmtTime(t)
+      ..remove('time_assumed');
+    await ref.read(recordActionsProvider).upsertQuiet(r.copyWith(ts: t, data: data));
     if (!mounted) return;
     Navigator.pop(context);
     showAdToast(context, tr('Saat güncellendi'));
   }
 
-  Future<void> _undo() async {
-    await ref.read(recordActionsProvider).delete(_record.id);
+  Future<void> _undo(Record r) async {
+    await ref.read(recordActionsProvider).delete(r.id);
     if (!mounted) return;
     Navigator.pop(context);
     showAdToast(context, tr('Geri alındı'), type: AdToastType.info);
   }
 
-  Future<void> _markGiven() async {
-    final data = Map<String, dynamic>.from(_record.data)
+  Future<void> _skipToGiven(Record r) async {
+    // V12: atlandı → verildi de bir "verildi" yazımıdır — K3 (gizli çift) denetimi.
+    if (!await medConfirmNotDuplicate(context, ref, widget.babyId, _dose.plan, _dose)) return;
+    if (!mounted) return;
+    final data = Map<String, dynamic>.from(r.data)
       ..remove('skipped')
+      ..remove('skip_reason')
+      ..remove('skip_note')
       ..['given'] = true;
-    await ref.read(recordActionsProvider).upsertQuiet(_record.copyWith(data: data));
+    await ref.read(recordActionsProvider).upsertQuiet(r.copyWith(data: data));
     if (!mounted) return;
     Navigator.pop(context);
     showAdToast(
         context, trp('{name} · {t} verildi', {'name': _dose.plan.name, 't': _dose.time}));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final other = medOtherGiver(ref, widget.babyId, _record);
-    final canUndo = _dose.role == MedicationDoseRole.undo;
-    final muted = TextStyle(
-        fontSize: 12.5, height: 1.5, fontWeight: FontWeight.w700, color: AppColors.muted);
+  Future<void> _givenAnyway() async {
+    final nav = Navigator.of(context);
+    if (!await medConfirmNotDuplicate(context, ref, widget.babyId, _dose.plan, _dose)) return;
+    if (!mounted) return;
+    nav.pop();
+    if (!context.mounted) return;
+    await _markGiven(context, ref, widget.babyId, _dose, force: true);
+  }
 
-    return _SheetFrame(
-      title: trp('{name} · {t} dozu', {'name': _dose.plan.name, 't': _dose.time}),
-      children: [
-        if (other != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
+  Widget _recordRow(Record r) {
+    final skipped = r.data['skipped'] == true;
+    final who = medWhoName(ref, widget.babyId, r);
+    final reason = skipped ? medSkipReasonText(r) : null;
+    final assumed = r.data['time_assumed'] == true;
+    final can = _canModify(r);
+    final muted = TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted);
+    final action = TextStyle(
+        fontSize: 12.5, fontWeight: FontWeight.w900, color: AppColors.coralDark);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      decoration: BoxDecoration(
+        color: fieldBg(context),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: AppColors.line, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              AdenaIcon(skipped ? 'close' : 'check',
+                  size: 18, color: skipped ? AppColors.muted : AppColors.growth),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                    skipped
+                        ? trp('{who} · atlandı', {'who': who})
+                        : trp('{who} · verildi', {'who': who}),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+              ),
+              Text(fmtTime(r.ts),
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      fontFeatures: [FontFeature.tabularFigures()])),
+            ],
+          ),
+          if (reason != null || assumed)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 28, top: 2),
+              child: Text(
+                  [?reason, if (assumed) tr('Plan saatinde kaydedildi')].join(' · '),
+                  style: muted),
+            ),
+          if (can)
+            Wrap(
+              spacing: 4,
               children: [
-                MedWhoDot(other, size: 26, ring: false),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                      other.name.isEmpty
-                          ? tr('Bu dozu başka bir aile üyesi işaretledi')
-                          : trp('Bu dozu {who} işaretledi', {'who': other.name}),
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
-                ),
+                if (!skipped)
+                  TextButton(
+                      onPressed: () => _editTime(r),
+                      child: Text(tr('Saati düzelt'), style: action)),
+                // V12: doz zaten verilmişse (verildi + atlandı) ikinci "verildi"
+                // sahte çift doz üretir → gizli.
+                if (skipped && _dose.givenRecords.isEmpty)
+                  TextButton(
+                      onPressed: () => _skipToGiven(r),
+                      child: Text(tr('Verildi yap'), style: action)),
+                TextButton(
+                    onPressed: () => _undo(r),
+                    child: Text(tr('Kaydı geri al'), style: action)),
               ],
             ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = TextStyle(
+        fontSize: 12.5, height: 1.5, fontWeight: FontWeight.w700, color: AppColors.muted);
+    final others = _dose.records.any((r) => medOtherGiver(ref, widget.babyId, r) != null);
+    return _SheetFrame(
+      title: _doseTitle(_dose),
+      children: [
+        if (_dose.multiple)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+                color: AppColors.feverBg, borderRadius: BorderRadius.circular(13)),
+            child: Text(
+                trp('Bu doz {n} kez verildi olarak işaretlendi. Gerçekten iki kez verildiyse doktoruna danış.',
+                    {'n': _dose.givenRecords.length}),
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.coralDd)),
           ),
-        if (_dose.isSkipped)
+        AdField(
+          label: tr('Verildiği saat'),
+          child: Column(children: [for (final r in _dose.records) _recordRow(r)]),
+        ),
+        if (_dose.conflict)
           Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Text(tr('Bu doz atlandı olarak işaretlendi (bilinçli verilmedi).'),
-                style: muted),
-          )
-        else
-          AdField(
-            label: tr('Verildiği saat'),
-            child: Material(
-              color: fieldBg(context),
-              borderRadius: BorderRadius.circular(13),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(13),
-                onTap: _pick,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(13),
-                    border: Border.all(color: AppColors.line, width: 1.5),
-                  ),
-                  child: Row(
-                    children: [
-                      AdenaIcon('clock', size: 18, color: AppColors.med),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(fmtTime(_at),
-                            style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                fontFeatures: [FontFeature.tabularFigures()])),
-                      ),
-                      Text(tr('Değiştir'),
-                          style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.coralDark)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(tr('Hem verildi hem atlandı işaretlenmiş; verildi sayılır.'), style: muted),
           ),
-        if (_dose.isSkipped && canUndo)
-          AdSaveButton(
-              label: tr('Verildi olarak işaretle'),
-              color: AppColors.coral,
-              onTap: _markGiven)
-        else if (!_dose.isSkipped)
-          AdSaveButton(
-              label: _changed ? tr('Kaydet') : tr('Tamam'),
-              color: AppColors.coral,
-              onTap: _changed ? _save : () => Navigator.pop(context)),
-        if (canUndo) ...[
-          const SizedBox(height: 10),
-          AdSaveButton(
-              label: tr('Kaydı geri al'),
-              color: AppColors.coralDd,
-              ghost: true,
-              onTap: _undo),
-          if (other != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(tr('Geri alırsan ailede herkes için silinir.'),
-                  textAlign: TextAlign.center, style: muted),
-            ),
-        ] else
+        if (others)
           Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text(tr('Geri almak için önce sonraki dozun kaydını geri al.'),
-                textAlign: TextAlign.center, style: muted),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(tr('Geri alırsan ailede herkes için silinir.'), style: muted),
           ),
+        const SizedBox(height: 6),
+        AdSaveButton(
+            label: tr('Tamam'), color: AppColors.coral, onTap: () => Navigator.pop(context)),
+        const SizedBox(height: 10),
+        AdSaveButton(
+            label: tr('Yine de verildi olarak kaydet'),
+            color: AppColors.coralDd,
+            ghost: true,
+            onTap: _givenAnyway),
       ],
     );
   }
@@ -742,6 +959,7 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
         faded: false
       );
     case MedicationDoseStatus.overdue:
+    case MedicationDoseStatus.missed: // kartta görünmez (geçmiş ekranı)
       return (
         bg: AppColors.feverBg,
         border: AppColors.coral,
@@ -768,10 +986,17 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
   }
 }
 
-String _doseSemantics(MedicationDose d) => switch (d.status) {
+String _doseSemantics(MedicationDose d) =>
+    (d.fromYesterday ? '${tr('Dün')} · ' : '') +
+    (d.multiple ? '${trp('{n} kez verildi', {'n': d.givenRecords.length})} · ' : '') +
+    _doseStatusText(d);
+
+String _doseStatusText(MedicationDose d) => switch (d.status) {
       MedicationDoseStatus.given => trp('Verildi · {t}', {'t': d.time}),
       MedicationDoseStatus.skipped => trp('Atlandı · {t}', {'t': d.time}),
-      MedicationDoseStatus.overdue => trp('Saati geçti · {t}', {'t': d.time}),
+      MedicationDoseStatus.overdue ||
+      MedicationDoseStatus.missed =>
+        trp('Saati geçti · {t}', {'t': d.time}),
       MedicationDoseStatus.upcoming => trp('Planlanan · {t}', {'t': d.time}),
     };
 
@@ -786,7 +1011,6 @@ class MedDoseButton extends ConsumerWidget {
     final d = dose;
     final tone = _doseTone(d);
     final who = d.isResolved ? medOtherGiver(ref, babyId, d.record) : null;
-    final tappable = d.isResolved || d.role == MedicationDoseRole.next;
 
     Widget circle = AnimatedContainer(
       duration: const Duration(milliseconds: 150),
@@ -817,13 +1041,14 @@ class MedDoseButton extends ConsumerWidget {
     if (d.isOverdue && d.role == MedicationDoseRole.next) circle = _Pulse(child: circle);
 
     return Semantics(
-      button: tappable,
+      // İlaç v2: her doz dokunulabilir (erken doz onay ister — S9).
+      button: true,
       label: '${d.plan.name} · ${_doseSemantics(d)}',
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: tappable ? () => medTapDose(context, ref, babyId, d) : null,
-        onLongPress: tappable ? () => medLongPressDose(context, ref, babyId, d) : null,
+        onTap: () => medTapDose(context, ref, babyId, d),
+        onLongPress: () => medLongPressDose(context, ref, babyId, d),
         // 46×58 en küçük hedef; büyük sistem yazı boyutunda saat etiketi
         // büyürse düğme uzar (taşmaz), genişlik sabit kalır.
         child: ConstrainedBox(
@@ -838,9 +1063,18 @@ class MedDoseButton extends ConsumerWidget {
                   circle,
                   if (who != null)
                     PositionedDirectional(bottom: -4, end: -5, child: MedWhoDot(who)),
+                  // İlaç v2: çift işaret (K3) her zaman görünür.
+                  if (d.multiple)
+                    PositionedDirectional(
+                        top: -5, end: -6, child: _MultiBadge(n: d.givenRecords.length)),
                 ],
               ),
               const SizedBox(height: 4),
+              if (d.fromYesterday)
+                Text(tr('Dün'),
+                    maxLines: 1,
+                    style: const TextStyle(
+                        fontSize: 9.5, fontWeight: FontWeight.w900, color: AppColors.coralDd)),
               Text(d.time,
                   maxLines: 1,
                   softWrap: false,
@@ -870,7 +1104,6 @@ class MedTimeChip extends ConsumerWidget {
     final d = dose;
     final tone = _doseTone(d);
     final who = d.isResolved ? medOtherGiver(ref, babyId, d.record) : null;
-    final tappable = d.isResolved || d.role == MedicationDoseRole.next;
     final given = d.isGiven;
 
     Widget chip = Container(
@@ -893,7 +1126,7 @@ class MedTimeChip extends ConsumerWidget {
             AdenaIcon('close', size: 12, color: tone.text, sw: 2.4),
             const SizedBox(width: 6),
           ],
-          Text(d.time,
+          Text(d.fromYesterday ? '${tr('Dün')} ${d.time}' : d.time,
               style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 12.5,
@@ -913,13 +1146,14 @@ class MedTimeChip extends ConsumerWidget {
       );
     }
     return Semantics(
-      button: tappable,
+      // İlaç v2: her doz dokunulabilir (erken doz onay ister — S9).
+      button: true,
       label: _doseSemantics(d),
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: tappable ? () => medTapDose(context, ref, babyId, d) : null,
-        onLongPress: tappable ? () => medLongPressDose(context, ref, babyId, d) : null,
+        onTap: () => medTapDose(context, ref, babyId, d),
+        onLongPress: () => medLongPressDose(context, ref, babyId, d),
         child: chip,
       ),
     );
@@ -954,11 +1188,38 @@ class _MedDayCardState extends ConsumerState<MedDayCard> {
       boxShadow: widget.flat ? null : AppColors.softShadow,
     );
 
+    final prnRows = [
+      for (var i = 0; i < day.prn.length; i++)
+        _PrnRow(babyId: widget.babyId, status: day.prn[i], divider: true),
+    ];
+    if (day.rows.isEmpty) {
+      // Yalnız "ihtiyaç halinde" planlar (saatsiz).
+      return Container(
+        decoration: decoration,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < day.prn.length; i++)
+              _PrnRow(babyId: widget.babyId, status: day.prn[i], divider: i > 0),
+          ],
+        ),
+      );
+    }
+    final multiple = day.rows.any((r) => r.hasMultiple);
+
     if (day.allDone && !_expanded) {
       return Container(
         decoration: decoration,
         clipBehavior: Clip.antiAlias,
-        child: _doneRow(day),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (multiple) _multiStrip(),
+            _doneRow(day),
+            ...prnRows,
+          ],
+        ),
       );
     }
 
@@ -973,6 +1234,7 @@ class _MedDayCardState extends ConsumerState<MedDayCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _bar(day),
+          if (multiple) _multiStrip(),
           if (day.overdue > 0) _strip(day.overdue),
           for (var i = 0; i < shown.length; i++)
             _PlanRow(babyId: widget.babyId, row: shown[i], divider: i > 0),
@@ -989,10 +1251,30 @@ class _MedDayCardState extends ConsumerState<MedDayCard> {
               up: true,
               onTap: () => setState(() => _expanded = false),
             ),
+          ...prnRows,
         ],
       ),
     );
   }
+
+  /// K3: bugün bir doz birden çok kez "verildi" işaretlendi — her zaman görünür.
+  Widget _multiStrip() => Container(
+        margin: const EdgeInsets.only(top: 8),
+        color: AppColors.feverBg,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            const AdenaIcon('shieldAlert', size: 16, color: AppColors.coralDd),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(tr('Bir doz birden çok kez verildi olarak işaretlendi — dozuna dokunup kontrol et'),
+                  style: const TextStyle(
+                      fontSize: 12, height: 1.35, fontWeight: FontWeight.w800,
+                      color: AppColors.coralDd)),
+            ),
+          ],
+        ),
+      );
 
   Widget _bar(MedicationDay day) {
     final segs = day.timeline;
@@ -1011,7 +1293,9 @@ class _MedDayCardState extends ConsumerState<MedDayCard> {
                   color: switch (segs[i].status) {
                     MedicationDoseStatus.given => AppColors.growth,
                     MedicationDoseStatus.skipped => AppColors.muted2,
-                    MedicationDoseStatus.overdue => AppColors.coral,
+                    MedicationDoseStatus.overdue ||
+                    MedicationDoseStatus.missed =>
+                      AppColors.coral,
                     MedicationDoseStatus.upcoming => AppColors.line,
                   },
                 ),
@@ -1181,7 +1465,7 @@ class _PlanRow extends ConsumerWidget {
                         fontSize: 11.5, fontWeight: FontWeight.w800, color: color)),
               ),
               // Saati geçen doz bilinçli verilmediyse tek dokunuşla "atlandı".
-              if (late != null && late.role == MedicationDoseRole.next)
+              if (late != null && !late.isResolved)
                 Semantics(
                   button: true,
                   child: GestureDetector(
@@ -1428,6 +1712,24 @@ class MedDiscoverCard extends ConsumerWidget {
 /// plan yoksa (ve kapatılmadıysa) keşif kartı; aksi halde gizli. Bölümün
 /// sayfadaki YERİ çağıran tarafından [medicationDayProvider]`.promote`'a göre
 /// seçilir (bkz. home_screen.dart _HomeTab).
+/// M14: ilaç planı bu cihaza SENKRONLA gelse de (planı oluşturan cihaz değil)
+/// kesin alarm açıklaması bir kez gösterilsin. Testler üreticiyi değiştirir.
+@visibleForTesting
+ExactAlarmPrompt Function(WidgetRef ref) medExactPromptFactory = (ref) =>
+    ExactAlarmPrompt(onGranted: () => resyncAfterExactAlarmGranted(ref));
+bool _medExactTried = false;
+@visibleForTesting
+void resetMedExactPromptForTest() => _medExactTried = false;
+
+void _maybePromptExact(BuildContext context, WidgetRef ref) {
+  if (_medExactTried) return;
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    if (_medExactTried || ModalGate.isBlocked || !context.mounted) return;
+    _medExactTried = true; // oturumda bir kez dene (kalıcı bayrak prompt'ta)
+    await medExactPromptFactory(ref).maybeShow(context);
+  });
+}
+
 class MedHomeSection extends ConsumerWidget {
   final String babyId;
   const MedHomeSection({super.key, required this.babyId});
@@ -1438,6 +1740,7 @@ class MedHomeSection extends ConsumerWidget {
     if (day == null) return const SizedBox.shrink();
     void openPlans() => context.push('/medications');
 
+    if (day.rows.isNotEmpty) _maybePromptExact(context, ref);
     if (day.hasActive) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1591,4 +1894,139 @@ class _SheetOption extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Çift işaret rozeti ("2×").
+class _MultiBadge extends StatelessWidget {
+  final int n;
+  const _MultiBadge({required this.n});
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        decoration: BoxDecoration(
+            color: AppColors.coralDd, borderRadius: BorderRadius.circular(8)),
+        child: Text('$n×',
+            style: const TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w900, color: Colors.white)),
+      );
+}
+
+/// "İhtiyaç halinde" (PRN) planın kart satırı (K7): son veriliş + geçen süre,
+/// kullanıcının girdiği en kısa aralık / günlük sınır uyarısı, "Verdim".
+class _PrnRow extends ConsumerWidget {
+  final String babyId;
+  final PrnStatus status;
+  final bool divider;
+  const _PrnRow({required this.babyId, required this.status, required this.divider});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = status;
+    final last = s.last;
+    final muted = TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted);
+    final lines = <String>[
+      if (last != null)
+        trp('Son: {t} ({ago} önce) · {who}', {
+          't': fmtTime(last.ts),
+          'ago': _ago(s.sinceLast!),
+          'who': medWhoName(ref, babyId, last),
+        })
+      else
+        tr('Bugüne kadar verilmedi'),
+      if (s.tooSoon)
+        trp('En kısa aralık {min} — {left} sonra', {
+          'min': _ago(s.minInterval!),
+          'left': _ago(s.remaining!),
+        }),
+      if (s.plan.prnMaxPerDay != null)
+        trp('Bugün {n}/{max} doz', {'n': s.countToday, 'max': s.plan.prnMaxPerDay!}),
+    ];
+    return Container(
+      decoration: divider
+          ? BoxDecoration(border: Border(top: BorderSide(color: AppColors.line)))
+          : null,
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
+        children: [
+          AdIconChip('med', color: AppColors.med, bg: AppColors.medBg, size: 34),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    [s.plan.name, if (s.plan.dose.trim().isNotEmpty) s.plan.dose.trim()]
+                        .join(' · '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
+                Text(tr('İhtiyaç halinde'), style: muted),
+                for (final l in lines)
+                  Text(l,
+                      style: (s.tooSoon || s.atDailyMax) && l != lines.first
+                          ? muted.copyWith(color: AppColors.coralDd)
+                          : muted),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: AppColors.med,
+                padding: const EdgeInsets.symmetric(horizontal: 14)),
+            onPressed: () => medGivePrn(context, ref, babyId, s),
+            child: Text(tr('Verdim'), style: const TextStyle(fontWeight: FontWeight.w900)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// PRN "Verdim" (K7): kullanıcının girdiği en kısa aralık dolmadıysa ya da
+/// günlük sınıra ulaşıldıysa önce onay; kayıt gerçek veriliş anıyla yazılır.
+Future<void> medGivePrn(
+    BuildContext context, WidgetRef ref, String babyId, PrnStatus s) async {
+  final p = s.plan;
+  final key = 'prn:${medPlanKey(p)}';
+  if (s.tooSoon) {
+    final last = s.last!;
+    final ok = await _confirm(context,
+        title: tr('En kısa aralık dolmadı'),
+        body: trp(
+            'Son doz {ago} önce ({time}) {who} tarafından verildi; belirlediğin en kısa aralık {min}. Yine de kaydedilsin mi?',
+            {
+              'ago': _ago(s.sinceLast!),
+              'time': fmtTime(last.ts),
+              'who': medWhoName(ref, babyId, last),
+              'min': _ago(s.minInterval!),
+            }),
+        yes: tr('Yine de kaydet'));
+    if (!ok || !context.mounted) return;
+  } else if (s.atDailyMax) {
+    final ok = await _confirm(context,
+        title: tr('Günlük sınıra ulaşıldı'),
+        body: trp('Bugün {n} doz verildi; belirlediğin günlük sınır {max}. Yine de kaydedilsin mi?',
+            {'n': s.countToday, 'max': p.prnMaxPerDay!}),
+        yes: tr('Yine de kaydet'));
+    if (!ok || !context.mounted) return;
+  }
+  if (!_claim(key)) return;
+  final now = DateTime.now();
+  final actions = ref.read(recordActionsProvider);
+  final rec = medDoseRecord(
+    id: _uuid.v4(),
+    babyId: babyId,
+    plan: p,
+    doseDate: DateTime(now.year, now.month, now.day),
+    at: now,
+    skipped: false,
+  );
+  await actions.upsertQuiet(rec);
+  if (!context.mounted) return;
+  showAdToast(context, trp('{name} · {t} verildi', {'name': p.name, 't': fmtTime(now)}),
+      type: AdToastType.success,
+      duration: const Duration(seconds: 4),
+      onUndo: () => actions.delete(rec.id));
 }

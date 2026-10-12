@@ -14,6 +14,9 @@ import '../drift/generated/schema.dart';
 ///
 /// v14 anlık görüntüsü: `test/drift/schemas/drift_schema_v14.json` (90df7b7'deki
 /// şemadan dump), yardımcılar `test/drift/generated/` (drift_dev schema generate).
+/// Güncel şema sürümü — bu dosyadaki göçler hep EN SON şemaya doğrulanır.
+const kLatestSchema = 16;
+
 void main() {
   late SchemaVerifier verifier;
 
@@ -25,13 +28,13 @@ void main() {
     final connection = await verifier.startAt(14);
     final db = AppDatabase(connection);
     addTearDown(db.close);
-    await verifier.migrateAndValidate(db, 15);
+    await verifier.migrateAndValidate(db, kLatestSchema);
   });
 
-  test('taze kurulum v15: createAll, schemaVersion 15', () async {
+  test('taze kurulum: createAll, schemaVersion güncel (v15 kolonları dahil)', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 15);
+    expect(db.schemaVersion, kLatestSchema);
     // Yeni kolonlar okunabilir (taze şemada da var).
     await db.into(db.healthStatuses).insert(HealthStatusesCompanion.insert(
         baby: 'b', kind: 'vaccine', itemKey: 'k', done: const Value(true)));
@@ -70,7 +73,7 @@ void main() {
 
     final db = AppDatabase(schema.newConnection());
     addTearDown(db.close);
-    await verifier.migrateAndValidate(db, 15);
+    await verifier.migrateAndValidate(db, kLatestSchema);
 
     // ---- bebekler: settingsDirty yalnız sahip + dolu ----
     final babies = {for (final b in await db.select(db.babies).get()) b.id: b};
@@ -131,6 +134,6 @@ void main() {
     // startAt yalnız 14'ü destekler (anlık görüntü yok) → guard mantığı yapısal
     // testte dolaylı doğrulanır; burada 14→15 yolunun idempotent olduğunu
     // (ikinci validate) kontrol ediyoruz.
-    await verifier.migrateAndValidate(db, 15);
+    await verifier.migrateAndValidate(db, kLatestSchema);
   });
 }
