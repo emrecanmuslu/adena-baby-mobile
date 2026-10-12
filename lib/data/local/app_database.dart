@@ -234,6 +234,27 @@ class MedicationPlans extends Table {
   BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
   DateTimeColumn get clientUpdatedAt => dateTime().nullable()();
   BoolColumn get dirty => boolean().withDefault(const Constant(true))();
+  // ── İlaç v2 (v16, ILAC-TASARIM §1a) ──
+  /// 'scheduled' | 'prn' (ihtiyaç halinde — saatsiz).
+  TextColumn get kind => text().withDefault(const Constant('scheduled'))();
+  /// 'daily' | 'interval' | 'every_n_days' | 'weekly'.
+  TextColumn get freq => text().withDefault(const Constant('daily'))();
+  IntColumn get intervalHours => integer().nullable()();
+  IntColumn get everyNDays => integer().nullable()();
+  /// ISO hafta günleri (1=Pzt … 7=Paz), JSON dizi.
+  TextColumn get weekdaysJson => text().withDefault(const Constant('[]'))();
+  /// Yerel takvim günü 'YYYY-MM-DD' (saat dilimsiz). Bitiş dahil; null = süresiz.
+  TextColumn get startDate => text().nullable()();
+  TextColumn get endDate => text().nullable()();
+  IntColumn get prnMinIntervalMin => integer().nullable()();
+  IntColumn get prnMaxPerDay => integer().nullable()();
+  /// Duraklatma geçmişi: [[from_iso, to_iso|null]] (UTC ISO).
+  TextColumn get pausesJson => text().withDefault(const Constant('[]'))();
+  /// Zamanlama (saatler/sıklık) en son ne zaman değişti — öncesi için beklenen
+  /// doz üretilmez (geçmiş ekranı / "Dün nasıl geçti?").
+  DateTimeColumn get scheduleFrom => dateTime().nullable()();
+  /// Sunucunun reddettiği değişiklik (ör. 'invalid'); null = sorun yok.
+  TextColumn get pushError => text().nullable()();
 }
 
 @DriftDatabase(tables: [
@@ -252,7 +273,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -394,6 +415,34 @@ class AppDatabase extends _$AppDatabase {
             await m.database.customStatement(
                 "UPDATE babies SET settings_dirty = 1 "
                 "WHERE settings != '{}' AND (my_role IS NULL OR my_role = 'owner')");
+          }
+          if (from >= 13 && from < 16) {
+            // v16 (İlaç v2): plan türü/sıklık/kür/PRN/duraklatma geçmişi/zamanlama
+            // çapası + sunucu ret nedeni. (from < 13 ise tablo az önce güncel
+            // şemayla kuruldu.) Başlangıç günü ve çapa created_at'ten doldurulur.
+            for (final c in [
+              medicationPlans.kind,
+              medicationPlans.freq,
+              medicationPlans.intervalHours,
+              medicationPlans.everyNDays,
+              medicationPlans.weekdaysJson,
+              medicationPlans.startDate,
+              medicationPlans.endDate,
+              medicationPlans.prnMinIntervalMin,
+              medicationPlans.prnMaxPerDay,
+              medicationPlans.pausesJson,
+              medicationPlans.scheduleFrom,
+              medicationPlans.pushError,
+            ]) {
+              await _addColumnIfMissing(m, medicationPlans, c);
+            }
+            await m.database.customStatement(
+                "UPDATE medication_plans SET start_date = "
+                "date(created_at, 'unixepoch', 'localtime') "
+                "WHERE start_date IS NULL AND created_at IS NOT NULL");
+            await m.database.customStatement(
+                "UPDATE medication_plans SET schedule_from = created_at "
+                "WHERE schedule_from IS NULL AND created_at IS NOT NULL");
           }
           await debugMigrationHook?.call();
           });

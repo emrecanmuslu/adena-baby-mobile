@@ -34,6 +34,7 @@ void main() {
   late bool cloud;
   late List<String> notified;
   late List<Map<String, dynamic>> sentBodies;
+  late List<String> sentMethods;
   // İstek gövdesinden yanıt üretir (varsayılan: hepsini uygula, sunucu boş).
   late Future<Map<String, dynamic>> Function(Map<String, dynamic> body) respond;
 
@@ -68,14 +69,19 @@ void main() {
     cloud = true;
     notified = [];
     sentBodies = [];
+    sentMethods = [];
     respond = (body) async => {
           'applied': [for (final c in body['changes'] as List) c['id']],
           'plans': <Map<String, dynamic>>[],
         };
     api.dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) async {
       if (o.path != path) return h.next(o);
-      final body = (o.data as Map).cast<String, dynamic>();
+      // İlaç v2 (M11): gönderilecek değişiklik yoksa GET (gövdesiz).
+      final body = o.data == null
+          ? <String, dynamic>{'changes': <Map<String, dynamic>>[]}
+          : (o.data as Map).cast<String, dynamic>();
       sentBodies.add(body);
+      sentMethods.add(o.method);
       try {
         h.resolve(
             Response(requestOptions: o, statusCode: 200, data: await respond(body)));
@@ -124,9 +130,10 @@ void main() {
     final row = (await rows()).single;
     expect(row.dirty, isFalse);
 
-    // İkinci tur: gönderilecek bir şey yok.
+    // İkinci tur: gönderilecek bir şey yok → GET (İlaç v2 M11).
     await repo.syncMedicationPlans(babyId);
     expect(sentBodies.last['changes'], isEmpty);
+    expect(sentMethods, ['POST', 'GET']);
   });
 
   test('başka üyenin planı yerele eklenir ve listede görünür', () async {

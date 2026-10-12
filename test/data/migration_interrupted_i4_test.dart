@@ -14,6 +14,9 @@ import '../drift/generated/schema.dart';
 ///      → açılış başarılı, şema v15 ile birebir, backfill uygulanır;
 ///  (2) migration içinde bir adım düşerse (hook) hiçbir kolon kalmaz (rollback),
 ///      sürüm 14'te kalır; sonraki açılış temiz tamamlar.
+/// Güncel şema sürümü — bu dosyadaki göçler hep EN SON şemaya doğrulanır.
+const kLatestSchema = 16;
+
 void main() {
   late SchemaVerifier verifier;
   setUpAll(() => verifier = SchemaVerifier(GeneratedHelper()));
@@ -50,7 +53,7 @@ void main() {
 
     final db = AppDatabase(schema.newConnection());
     addTearDown(db.close);
-    await verifier.migrateAndValidate(db, 15);
+    await verifier.migrateAndValidate(db, kLatestSchema);
 
     final b = await db.select(db.babies).getSingle();
     expect(b.settingsDirty, isTrue, reason: 'backfill yarıda kalmış kolonda da uygulanır');
@@ -78,13 +81,13 @@ void main() {
     AppDatabase.debugMigrationHook = null;
     final db = AppDatabase(schema.newConnection());
     addTearDown(db.close);
-    await verifier.migrateAndValidate(db, 15);
+    await verifier.migrateAndValidate(db, kLatestSchema);
   });
 
   test('(3) hook YOKKEN normal v14→v15 (regresyon)', () async {
     final db = AppDatabase(await verifier.startAt(14));
     addTearDown(db.close);
-    await verifier.migrateAndValidate(db, 15);
+    await verifier.migrateAndValidate(db, kLatestSchema);
   });
 
   test('(1b) J11: transaction commit edilmiş, user_version yazılmadan ölüm — TÜM kolonlar + '
@@ -123,7 +126,7 @@ void main() {
 
     final db = AppDatabase(schema.newConnection());
     addTearDown(db.close);
-    await verifier.migrateAndValidate(db, 15);
+    await verifier.migrateAndValidate(db, kLatestSchema);
 
     final babies = {for (final b in await db.select(db.babies).get()) b.id: b};
     expect(babies['o']!.settingsDirty, isTrue);

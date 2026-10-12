@@ -279,4 +279,27 @@ void main() {
       expect(api.refreshInFlightSince, isNull);
     });
   });
+
+  group('onSilentStageError (Adım 0: ilaç planı senkronu sessiz hatası)', () {
+    DioException err403() {
+      final ro = RequestOptions(path: '/babies/3f2a9c1e-1b2c-4d5e-8f90-abcdef123456/medication-plans/sync');
+      return DioException(
+          requestOptions: ro,
+          response: Response(requestOptions: ro, statusCode: 403),
+          type: DioExceptionType.badResponse);
+    }
+
+    test('aynı (aşama+hata) oturumda bir kez non-fatal; uyarı imzalarına dokunmaz', () async {
+      await tel.onSilentStageError(stage: SyncStage.medication, error: err403());
+      await tel.onSilentStageError(stage: SyncStage.medication, error: err403());
+      expect(sink.errors, hasLength(1));
+      expect(sink.errors.single.$2, 'sync-silent');
+      expect(sink.keys['sync_silent_stage'], 'medication');
+      expect(sink.logs.single, contains('medication'));
+      expect(sink.logs.single, isNot(contains('3f2a9c1e')));
+      // Uyarı bağlamı (Tekrarla sonucu vb.) etkilenmez.
+      tel.onTourFinished(failed: false);
+      expect(sink.keys['sync_attempts'], 0);
+    });
+  });
 }

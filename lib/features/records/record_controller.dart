@@ -443,7 +443,12 @@ class SyncService with WidgetsBindingObserver {
         await NotificationService.instance.cancelMedicationPlan(id);
       }
       if (r.changed) _ref.invalidate(medicationPlansProvider(babyId));
-    } catch (_) {/* bilinçli sessiz — bkz. yukarı */}
+    } catch (e, st) {
+      // Bilinçli sessiz (bkz. yukarı) ama artık İZLİ: Adım 0 — "eşe ilaç
+      // hatırlatması gelmiyor" vakasında plan senkronu hatası görünmüyordu.
+      await SyncAlertTelemetry.instance
+          .onSilentStageError(stage: SyncStage.medication, error: e, stack: st);
+    }
   }
 
   void dispose() {

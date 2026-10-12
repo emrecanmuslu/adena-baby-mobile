@@ -6862,6 +6862,138 @@ class $MedicationPlansTable extends MedicationPlans
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('scheduled'),
+  );
+  static const VerificationMeta _freqMeta = const VerificationMeta('freq');
+  @override
+  late final GeneratedColumn<String> freq = GeneratedColumn<String>(
+    'freq',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('daily'),
+  );
+  static const VerificationMeta _intervalHoursMeta = const VerificationMeta(
+    'intervalHours',
+  );
+  @override
+  late final GeneratedColumn<int> intervalHours = GeneratedColumn<int>(
+    'interval_hours',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _everyNDaysMeta = const VerificationMeta(
+    'everyNDays',
+  );
+  @override
+  late final GeneratedColumn<int> everyNDays = GeneratedColumn<int>(
+    'every_n_days',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _weekdaysJsonMeta = const VerificationMeta(
+    'weekdaysJson',
+  );
+  @override
+  late final GeneratedColumn<String> weekdaysJson = GeneratedColumn<String>(
+    'weekdays_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _startDateMeta = const VerificationMeta(
+    'startDate',
+  );
+  @override
+  late final GeneratedColumn<String> startDate = GeneratedColumn<String>(
+    'start_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _endDateMeta = const VerificationMeta(
+    'endDate',
+  );
+  @override
+  late final GeneratedColumn<String> endDate = GeneratedColumn<String>(
+    'end_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _prnMinIntervalMinMeta = const VerificationMeta(
+    'prnMinIntervalMin',
+  );
+  @override
+  late final GeneratedColumn<int> prnMinIntervalMin = GeneratedColumn<int>(
+    'prn_min_interval_min',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _prnMaxPerDayMeta = const VerificationMeta(
+    'prnMaxPerDay',
+  );
+  @override
+  late final GeneratedColumn<int> prnMaxPerDay = GeneratedColumn<int>(
+    'prn_max_per_day',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pausesJsonMeta = const VerificationMeta(
+    'pausesJson',
+  );
+  @override
+  late final GeneratedColumn<String> pausesJson = GeneratedColumn<String>(
+    'pauses_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _scheduleFromMeta = const VerificationMeta(
+    'scheduleFrom',
+  );
+  @override
+  late final GeneratedColumn<DateTime> scheduleFrom = GeneratedColumn<DateTime>(
+    'schedule_from',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pushErrorMeta = const VerificationMeta(
+    'pushError',
+  );
+  @override
+  late final GeneratedColumn<String> pushError = GeneratedColumn<String>(
+    'push_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     localId,
@@ -6875,6 +7007,18 @@ class $MedicationPlansTable extends MedicationPlans
     isDeleted,
     clientUpdatedAt,
     dirty,
+    kind,
+    freq,
+    intervalHours,
+    everyNDays,
+    weekdaysJson,
+    startDate,
+    endDate,
+    prnMinIntervalMin,
+    prnMaxPerDay,
+    pausesJson,
+    scheduleFrom,
+    pushError,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6961,6 +7105,96 @@ class $MedicationPlansTable extends MedicationPlans
         dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
       );
     }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
+    if (data.containsKey('freq')) {
+      context.handle(
+        _freqMeta,
+        freq.isAcceptableOrUnknown(data['freq']!, _freqMeta),
+      );
+    }
+    if (data.containsKey('interval_hours')) {
+      context.handle(
+        _intervalHoursMeta,
+        intervalHours.isAcceptableOrUnknown(
+          data['interval_hours']!,
+          _intervalHoursMeta,
+        ),
+      );
+    }
+    if (data.containsKey('every_n_days')) {
+      context.handle(
+        _everyNDaysMeta,
+        everyNDays.isAcceptableOrUnknown(
+          data['every_n_days']!,
+          _everyNDaysMeta,
+        ),
+      );
+    }
+    if (data.containsKey('weekdays_json')) {
+      context.handle(
+        _weekdaysJsonMeta,
+        weekdaysJson.isAcceptableOrUnknown(
+          data['weekdays_json']!,
+          _weekdaysJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(
+        _startDateMeta,
+        startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta),
+      );
+    }
+    if (data.containsKey('end_date')) {
+      context.handle(
+        _endDateMeta,
+        endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta),
+      );
+    }
+    if (data.containsKey('prn_min_interval_min')) {
+      context.handle(
+        _prnMinIntervalMinMeta,
+        prnMinIntervalMin.isAcceptableOrUnknown(
+          data['prn_min_interval_min']!,
+          _prnMinIntervalMinMeta,
+        ),
+      );
+    }
+    if (data.containsKey('prn_max_per_day')) {
+      context.handle(
+        _prnMaxPerDayMeta,
+        prnMaxPerDay.isAcceptableOrUnknown(
+          data['prn_max_per_day']!,
+          _prnMaxPerDayMeta,
+        ),
+      );
+    }
+    if (data.containsKey('pauses_json')) {
+      context.handle(
+        _pausesJsonMeta,
+        pausesJson.isAcceptableOrUnknown(data['pauses_json']!, _pausesJsonMeta),
+      );
+    }
+    if (data.containsKey('schedule_from')) {
+      context.handle(
+        _scheduleFromMeta,
+        scheduleFrom.isAcceptableOrUnknown(
+          data['schedule_from']!,
+          _scheduleFromMeta,
+        ),
+      );
+    }
+    if (data.containsKey('push_error')) {
+      context.handle(
+        _pushErrorMeta,
+        pushError.isAcceptableOrUnknown(data['push_error']!, _pushErrorMeta),
+      );
+    }
     return context;
   }
 
@@ -7014,6 +7248,54 @@ class $MedicationPlansTable extends MedicationPlans
         DriftSqlType.bool,
         data['${effectivePrefix}dirty'],
       )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      freq: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}freq'],
+      )!,
+      intervalHours: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}interval_hours'],
+      ),
+      everyNDays: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}every_n_days'],
+      ),
+      weekdaysJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}weekdays_json'],
+      )!,
+      startDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}start_date'],
+      ),
+      endDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}end_date'],
+      ),
+      prnMinIntervalMin: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}prn_min_interval_min'],
+      ),
+      prnMaxPerDay: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}prn_max_per_day'],
+      ),
+      pausesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pauses_json'],
+      )!,
+      scheduleFrom: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}schedule_from'],
+      ),
+      pushError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}push_error'],
+      ),
     );
   }
 
@@ -7038,6 +7320,33 @@ class MedicationPlanRow extends DataClass
   final bool isDeleted;
   final DateTime? clientUpdatedAt;
   final bool dirty;
+
+  /// 'scheduled' | 'prn' (ihtiyaç halinde — saatsiz).
+  final String kind;
+
+  /// 'daily' | 'interval' | 'every_n_days' | 'weekly'.
+  final String freq;
+  final int? intervalHours;
+  final int? everyNDays;
+
+  /// ISO hafta günleri (1=Pzt … 7=Paz), JSON dizi.
+  final String weekdaysJson;
+
+  /// Yerel takvim günü 'YYYY-MM-DD' (saat dilimsiz). Bitiş dahil; null = süresiz.
+  final String? startDate;
+  final String? endDate;
+  final int? prnMinIntervalMin;
+  final int? prnMaxPerDay;
+
+  /// Duraklatma geçmişi: [[from_iso, to_iso|null]] (UTC ISO).
+  final String pausesJson;
+
+  /// Zamanlama (saatler/sıklık) en son ne zaman değişti — öncesi için beklenen
+  /// doz üretilmez (geçmiş ekranı / "Dün nasıl geçti?").
+  final DateTime? scheduleFrom;
+
+  /// Sunucunun reddettiği değişiklik (ör. 'invalid'); null = sorun yok.
+  final String? pushError;
   const MedicationPlanRow({
     required this.localId,
     required this.baby,
@@ -7050,6 +7359,18 @@ class MedicationPlanRow extends DataClass
     required this.isDeleted,
     this.clientUpdatedAt,
     required this.dirty,
+    required this.kind,
+    required this.freq,
+    this.intervalHours,
+    this.everyNDays,
+    required this.weekdaysJson,
+    this.startDate,
+    this.endDate,
+    this.prnMinIntervalMin,
+    this.prnMaxPerDay,
+    required this.pausesJson,
+    this.scheduleFrom,
+    this.pushError,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7071,6 +7392,34 @@ class MedicationPlanRow extends DataClass
       map['client_updated_at'] = Variable<DateTime>(clientUpdatedAt);
     }
     map['dirty'] = Variable<bool>(dirty);
+    map['kind'] = Variable<String>(kind);
+    map['freq'] = Variable<String>(freq);
+    if (!nullToAbsent || intervalHours != null) {
+      map['interval_hours'] = Variable<int>(intervalHours);
+    }
+    if (!nullToAbsent || everyNDays != null) {
+      map['every_n_days'] = Variable<int>(everyNDays);
+    }
+    map['weekdays_json'] = Variable<String>(weekdaysJson);
+    if (!nullToAbsent || startDate != null) {
+      map['start_date'] = Variable<String>(startDate);
+    }
+    if (!nullToAbsent || endDate != null) {
+      map['end_date'] = Variable<String>(endDate);
+    }
+    if (!nullToAbsent || prnMinIntervalMin != null) {
+      map['prn_min_interval_min'] = Variable<int>(prnMinIntervalMin);
+    }
+    if (!nullToAbsent || prnMaxPerDay != null) {
+      map['prn_max_per_day'] = Variable<int>(prnMaxPerDay);
+    }
+    map['pauses_json'] = Variable<String>(pausesJson);
+    if (!nullToAbsent || scheduleFrom != null) {
+      map['schedule_from'] = Variable<DateTime>(scheduleFrom);
+    }
+    if (!nullToAbsent || pushError != null) {
+      map['push_error'] = Variable<String>(pushError);
+    }
     return map;
   }
 
@@ -7091,6 +7440,34 @@ class MedicationPlanRow extends DataClass
           ? const Value.absent()
           : Value(clientUpdatedAt),
       dirty: Value(dirty),
+      kind: Value(kind),
+      freq: Value(freq),
+      intervalHours: intervalHours == null && nullToAbsent
+          ? const Value.absent()
+          : Value(intervalHours),
+      everyNDays: everyNDays == null && nullToAbsent
+          ? const Value.absent()
+          : Value(everyNDays),
+      weekdaysJson: Value(weekdaysJson),
+      startDate: startDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startDate),
+      endDate: endDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endDate),
+      prnMinIntervalMin: prnMinIntervalMin == null && nullToAbsent
+          ? const Value.absent()
+          : Value(prnMinIntervalMin),
+      prnMaxPerDay: prnMaxPerDay == null && nullToAbsent
+          ? const Value.absent()
+          : Value(prnMaxPerDay),
+      pausesJson: Value(pausesJson),
+      scheduleFrom: scheduleFrom == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scheduleFrom),
+      pushError: pushError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pushError),
     );
   }
 
@@ -7111,6 +7488,18 @@ class MedicationPlanRow extends DataClass
       isDeleted: serializer.fromJson<bool>(json['isDeleted']),
       clientUpdatedAt: serializer.fromJson<DateTime?>(json['clientUpdatedAt']),
       dirty: serializer.fromJson<bool>(json['dirty']),
+      kind: serializer.fromJson<String>(json['kind']),
+      freq: serializer.fromJson<String>(json['freq']),
+      intervalHours: serializer.fromJson<int?>(json['intervalHours']),
+      everyNDays: serializer.fromJson<int?>(json['everyNDays']),
+      weekdaysJson: serializer.fromJson<String>(json['weekdaysJson']),
+      startDate: serializer.fromJson<String?>(json['startDate']),
+      endDate: serializer.fromJson<String?>(json['endDate']),
+      prnMinIntervalMin: serializer.fromJson<int?>(json['prnMinIntervalMin']),
+      prnMaxPerDay: serializer.fromJson<int?>(json['prnMaxPerDay']),
+      pausesJson: serializer.fromJson<String>(json['pausesJson']),
+      scheduleFrom: serializer.fromJson<DateTime?>(json['scheduleFrom']),
+      pushError: serializer.fromJson<String?>(json['pushError']),
     );
   }
   @override
@@ -7128,6 +7517,18 @@ class MedicationPlanRow extends DataClass
       'isDeleted': serializer.toJson<bool>(isDeleted),
       'clientUpdatedAt': serializer.toJson<DateTime?>(clientUpdatedAt),
       'dirty': serializer.toJson<bool>(dirty),
+      'kind': serializer.toJson<String>(kind),
+      'freq': serializer.toJson<String>(freq),
+      'intervalHours': serializer.toJson<int?>(intervalHours),
+      'everyNDays': serializer.toJson<int?>(everyNDays),
+      'weekdaysJson': serializer.toJson<String>(weekdaysJson),
+      'startDate': serializer.toJson<String?>(startDate),
+      'endDate': serializer.toJson<String?>(endDate),
+      'prnMinIntervalMin': serializer.toJson<int?>(prnMinIntervalMin),
+      'prnMaxPerDay': serializer.toJson<int?>(prnMaxPerDay),
+      'pausesJson': serializer.toJson<String>(pausesJson),
+      'scheduleFrom': serializer.toJson<DateTime?>(scheduleFrom),
+      'pushError': serializer.toJson<String?>(pushError),
     };
   }
 
@@ -7143,6 +7544,18 @@ class MedicationPlanRow extends DataClass
     bool? isDeleted,
     Value<DateTime?> clientUpdatedAt = const Value.absent(),
     bool? dirty,
+    String? kind,
+    String? freq,
+    Value<int?> intervalHours = const Value.absent(),
+    Value<int?> everyNDays = const Value.absent(),
+    String? weekdaysJson,
+    Value<String?> startDate = const Value.absent(),
+    Value<String?> endDate = const Value.absent(),
+    Value<int?> prnMinIntervalMin = const Value.absent(),
+    Value<int?> prnMaxPerDay = const Value.absent(),
+    String? pausesJson,
+    Value<DateTime?> scheduleFrom = const Value.absent(),
+    Value<String?> pushError = const Value.absent(),
   }) => MedicationPlanRow(
     localId: localId ?? this.localId,
     baby: baby ?? this.baby,
@@ -7157,6 +7570,22 @@ class MedicationPlanRow extends DataClass
         ? clientUpdatedAt.value
         : this.clientUpdatedAt,
     dirty: dirty ?? this.dirty,
+    kind: kind ?? this.kind,
+    freq: freq ?? this.freq,
+    intervalHours: intervalHours.present
+        ? intervalHours.value
+        : this.intervalHours,
+    everyNDays: everyNDays.present ? everyNDays.value : this.everyNDays,
+    weekdaysJson: weekdaysJson ?? this.weekdaysJson,
+    startDate: startDate.present ? startDate.value : this.startDate,
+    endDate: endDate.present ? endDate.value : this.endDate,
+    prnMinIntervalMin: prnMinIntervalMin.present
+        ? prnMinIntervalMin.value
+        : this.prnMinIntervalMin,
+    prnMaxPerDay: prnMaxPerDay.present ? prnMaxPerDay.value : this.prnMaxPerDay,
+    pausesJson: pausesJson ?? this.pausesJson,
+    scheduleFrom: scheduleFrom.present ? scheduleFrom.value : this.scheduleFrom,
+    pushError: pushError.present ? pushError.value : this.pushError,
   );
   MedicationPlanRow copyWithCompanion(MedicationPlansCompanion data) {
     return MedicationPlanRow(
@@ -7173,6 +7602,32 @@ class MedicationPlanRow extends DataClass
           ? data.clientUpdatedAt.value
           : this.clientUpdatedAt,
       dirty: data.dirty.present ? data.dirty.value : this.dirty,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      freq: data.freq.present ? data.freq.value : this.freq,
+      intervalHours: data.intervalHours.present
+          ? data.intervalHours.value
+          : this.intervalHours,
+      everyNDays: data.everyNDays.present
+          ? data.everyNDays.value
+          : this.everyNDays,
+      weekdaysJson: data.weekdaysJson.present
+          ? data.weekdaysJson.value
+          : this.weekdaysJson,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      endDate: data.endDate.present ? data.endDate.value : this.endDate,
+      prnMinIntervalMin: data.prnMinIntervalMin.present
+          ? data.prnMinIntervalMin.value
+          : this.prnMinIntervalMin,
+      prnMaxPerDay: data.prnMaxPerDay.present
+          ? data.prnMaxPerDay.value
+          : this.prnMaxPerDay,
+      pausesJson: data.pausesJson.present
+          ? data.pausesJson.value
+          : this.pausesJson,
+      scheduleFrom: data.scheduleFrom.present
+          ? data.scheduleFrom.value
+          : this.scheduleFrom,
+      pushError: data.pushError.present ? data.pushError.value : this.pushError,
     );
   }
 
@@ -7189,13 +7644,25 @@ class MedicationPlanRow extends DataClass
           ..write('uuid: $uuid, ')
           ..write('isDeleted: $isDeleted, ')
           ..write('clientUpdatedAt: $clientUpdatedAt, ')
-          ..write('dirty: $dirty')
+          ..write('dirty: $dirty, ')
+          ..write('kind: $kind, ')
+          ..write('freq: $freq, ')
+          ..write('intervalHours: $intervalHours, ')
+          ..write('everyNDays: $everyNDays, ')
+          ..write('weekdaysJson: $weekdaysJson, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('prnMinIntervalMin: $prnMinIntervalMin, ')
+          ..write('prnMaxPerDay: $prnMaxPerDay, ')
+          ..write('pausesJson: $pausesJson, ')
+          ..write('scheduleFrom: $scheduleFrom, ')
+          ..write('pushError: $pushError')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     localId,
     baby,
     name,
@@ -7207,7 +7674,19 @@ class MedicationPlanRow extends DataClass
     isDeleted,
     clientUpdatedAt,
     dirty,
-  );
+    kind,
+    freq,
+    intervalHours,
+    everyNDays,
+    weekdaysJson,
+    startDate,
+    endDate,
+    prnMinIntervalMin,
+    prnMaxPerDay,
+    pausesJson,
+    scheduleFrom,
+    pushError,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -7222,7 +7701,19 @@ class MedicationPlanRow extends DataClass
           other.uuid == this.uuid &&
           other.isDeleted == this.isDeleted &&
           other.clientUpdatedAt == this.clientUpdatedAt &&
-          other.dirty == this.dirty);
+          other.dirty == this.dirty &&
+          other.kind == this.kind &&
+          other.freq == this.freq &&
+          other.intervalHours == this.intervalHours &&
+          other.everyNDays == this.everyNDays &&
+          other.weekdaysJson == this.weekdaysJson &&
+          other.startDate == this.startDate &&
+          other.endDate == this.endDate &&
+          other.prnMinIntervalMin == this.prnMinIntervalMin &&
+          other.prnMaxPerDay == this.prnMaxPerDay &&
+          other.pausesJson == this.pausesJson &&
+          other.scheduleFrom == this.scheduleFrom &&
+          other.pushError == this.pushError);
 }
 
 class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
@@ -7237,6 +7728,18 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
   final Value<bool> isDeleted;
   final Value<DateTime?> clientUpdatedAt;
   final Value<bool> dirty;
+  final Value<String> kind;
+  final Value<String> freq;
+  final Value<int?> intervalHours;
+  final Value<int?> everyNDays;
+  final Value<String> weekdaysJson;
+  final Value<String?> startDate;
+  final Value<String?> endDate;
+  final Value<int?> prnMinIntervalMin;
+  final Value<int?> prnMaxPerDay;
+  final Value<String> pausesJson;
+  final Value<DateTime?> scheduleFrom;
+  final Value<String?> pushError;
   const MedicationPlansCompanion({
     this.localId = const Value.absent(),
     this.baby = const Value.absent(),
@@ -7249,6 +7752,18 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     this.isDeleted = const Value.absent(),
     this.clientUpdatedAt = const Value.absent(),
     this.dirty = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.freq = const Value.absent(),
+    this.intervalHours = const Value.absent(),
+    this.everyNDays = const Value.absent(),
+    this.weekdaysJson = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
+    this.prnMinIntervalMin = const Value.absent(),
+    this.prnMaxPerDay = const Value.absent(),
+    this.pausesJson = const Value.absent(),
+    this.scheduleFrom = const Value.absent(),
+    this.pushError = const Value.absent(),
   });
   MedicationPlansCompanion.insert({
     this.localId = const Value.absent(),
@@ -7262,6 +7777,18 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     this.isDeleted = const Value.absent(),
     this.clientUpdatedAt = const Value.absent(),
     this.dirty = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.freq = const Value.absent(),
+    this.intervalHours = const Value.absent(),
+    this.everyNDays = const Value.absent(),
+    this.weekdaysJson = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
+    this.prnMinIntervalMin = const Value.absent(),
+    this.prnMaxPerDay = const Value.absent(),
+    this.pausesJson = const Value.absent(),
+    this.scheduleFrom = const Value.absent(),
+    this.pushError = const Value.absent(),
   }) : baby = Value(baby),
        name = Value(name);
   static Insertable<MedicationPlanRow> custom({
@@ -7276,6 +7803,18 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     Expression<bool>? isDeleted,
     Expression<DateTime>? clientUpdatedAt,
     Expression<bool>? dirty,
+    Expression<String>? kind,
+    Expression<String>? freq,
+    Expression<int>? intervalHours,
+    Expression<int>? everyNDays,
+    Expression<String>? weekdaysJson,
+    Expression<String>? startDate,
+    Expression<String>? endDate,
+    Expression<int>? prnMinIntervalMin,
+    Expression<int>? prnMaxPerDay,
+    Expression<String>? pausesJson,
+    Expression<DateTime>? scheduleFrom,
+    Expression<String>? pushError,
   }) {
     return RawValuesInsertable({
       if (localId != null) 'local_id': localId,
@@ -7289,6 +7828,18 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
       if (isDeleted != null) 'is_deleted': isDeleted,
       if (clientUpdatedAt != null) 'client_updated_at': clientUpdatedAt,
       if (dirty != null) 'dirty': dirty,
+      if (kind != null) 'kind': kind,
+      if (freq != null) 'freq': freq,
+      if (intervalHours != null) 'interval_hours': intervalHours,
+      if (everyNDays != null) 'every_n_days': everyNDays,
+      if (weekdaysJson != null) 'weekdays_json': weekdaysJson,
+      if (startDate != null) 'start_date': startDate,
+      if (endDate != null) 'end_date': endDate,
+      if (prnMinIntervalMin != null) 'prn_min_interval_min': prnMinIntervalMin,
+      if (prnMaxPerDay != null) 'prn_max_per_day': prnMaxPerDay,
+      if (pausesJson != null) 'pauses_json': pausesJson,
+      if (scheduleFrom != null) 'schedule_from': scheduleFrom,
+      if (pushError != null) 'push_error': pushError,
     });
   }
 
@@ -7304,6 +7855,18 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     Value<bool>? isDeleted,
     Value<DateTime?>? clientUpdatedAt,
     Value<bool>? dirty,
+    Value<String>? kind,
+    Value<String>? freq,
+    Value<int?>? intervalHours,
+    Value<int?>? everyNDays,
+    Value<String>? weekdaysJson,
+    Value<String?>? startDate,
+    Value<String?>? endDate,
+    Value<int?>? prnMinIntervalMin,
+    Value<int?>? prnMaxPerDay,
+    Value<String>? pausesJson,
+    Value<DateTime?>? scheduleFrom,
+    Value<String?>? pushError,
   }) {
     return MedicationPlansCompanion(
       localId: localId ?? this.localId,
@@ -7317,6 +7880,18 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
       isDeleted: isDeleted ?? this.isDeleted,
       clientUpdatedAt: clientUpdatedAt ?? this.clientUpdatedAt,
       dirty: dirty ?? this.dirty,
+      kind: kind ?? this.kind,
+      freq: freq ?? this.freq,
+      intervalHours: intervalHours ?? this.intervalHours,
+      everyNDays: everyNDays ?? this.everyNDays,
+      weekdaysJson: weekdaysJson ?? this.weekdaysJson,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      prnMinIntervalMin: prnMinIntervalMin ?? this.prnMinIntervalMin,
+      prnMaxPerDay: prnMaxPerDay ?? this.prnMaxPerDay,
+      pausesJson: pausesJson ?? this.pausesJson,
+      scheduleFrom: scheduleFrom ?? this.scheduleFrom,
+      pushError: pushError ?? this.pushError,
     );
   }
 
@@ -7356,6 +7931,42 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
     if (dirty.present) {
       map['dirty'] = Variable<bool>(dirty.value);
     }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (freq.present) {
+      map['freq'] = Variable<String>(freq.value);
+    }
+    if (intervalHours.present) {
+      map['interval_hours'] = Variable<int>(intervalHours.value);
+    }
+    if (everyNDays.present) {
+      map['every_n_days'] = Variable<int>(everyNDays.value);
+    }
+    if (weekdaysJson.present) {
+      map['weekdays_json'] = Variable<String>(weekdaysJson.value);
+    }
+    if (startDate.present) {
+      map['start_date'] = Variable<String>(startDate.value);
+    }
+    if (endDate.present) {
+      map['end_date'] = Variable<String>(endDate.value);
+    }
+    if (prnMinIntervalMin.present) {
+      map['prn_min_interval_min'] = Variable<int>(prnMinIntervalMin.value);
+    }
+    if (prnMaxPerDay.present) {
+      map['prn_max_per_day'] = Variable<int>(prnMaxPerDay.value);
+    }
+    if (pausesJson.present) {
+      map['pauses_json'] = Variable<String>(pausesJson.value);
+    }
+    if (scheduleFrom.present) {
+      map['schedule_from'] = Variable<DateTime>(scheduleFrom.value);
+    }
+    if (pushError.present) {
+      map['push_error'] = Variable<String>(pushError.value);
+    }
     return map;
   }
 
@@ -7372,7 +7983,19 @@ class MedicationPlansCompanion extends UpdateCompanion<MedicationPlanRow> {
           ..write('uuid: $uuid, ')
           ..write('isDeleted: $isDeleted, ')
           ..write('clientUpdatedAt: $clientUpdatedAt, ')
-          ..write('dirty: $dirty')
+          ..write('dirty: $dirty, ')
+          ..write('kind: $kind, ')
+          ..write('freq: $freq, ')
+          ..write('intervalHours: $intervalHours, ')
+          ..write('everyNDays: $everyNDays, ')
+          ..write('weekdaysJson: $weekdaysJson, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('prnMinIntervalMin: $prnMinIntervalMin, ')
+          ..write('prnMaxPerDay: $prnMaxPerDay, ')
+          ..write('pausesJson: $pausesJson, ')
+          ..write('scheduleFrom: $scheduleFrom, ')
+          ..write('pushError: $pushError')
           ..write(')'))
         .toString();
   }
@@ -10569,6 +11192,18 @@ typedef $$MedicationPlansTableCreateCompanionBuilder =
       Value<bool> isDeleted,
       Value<DateTime?> clientUpdatedAt,
       Value<bool> dirty,
+      Value<String> kind,
+      Value<String> freq,
+      Value<int?> intervalHours,
+      Value<int?> everyNDays,
+      Value<String> weekdaysJson,
+      Value<String?> startDate,
+      Value<String?> endDate,
+      Value<int?> prnMinIntervalMin,
+      Value<int?> prnMaxPerDay,
+      Value<String> pausesJson,
+      Value<DateTime?> scheduleFrom,
+      Value<String?> pushError,
     });
 typedef $$MedicationPlansTableUpdateCompanionBuilder =
     MedicationPlansCompanion Function({
@@ -10583,6 +11218,18 @@ typedef $$MedicationPlansTableUpdateCompanionBuilder =
       Value<bool> isDeleted,
       Value<DateTime?> clientUpdatedAt,
       Value<bool> dirty,
+      Value<String> kind,
+      Value<String> freq,
+      Value<int?> intervalHours,
+      Value<int?> everyNDays,
+      Value<String> weekdaysJson,
+      Value<String?> startDate,
+      Value<String?> endDate,
+      Value<int?> prnMinIntervalMin,
+      Value<int?> prnMaxPerDay,
+      Value<String> pausesJson,
+      Value<DateTime?> scheduleFrom,
+      Value<String?> pushError,
     });
 
 class $$MedicationPlansTableFilterComposer
@@ -10646,6 +11293,66 @@ class $$MedicationPlansTableFilterComposer
 
   ColumnFilters<bool> get dirty => $composableBuilder(
     column: $table.dirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get freq => $composableBuilder(
+    column: $table.freq,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get intervalHours => $composableBuilder(
+    column: $table.intervalHours,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get everyNDays => $composableBuilder(
+    column: $table.everyNDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get weekdaysJson => $composableBuilder(
+    column: $table.weekdaysJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get endDate => $composableBuilder(
+    column: $table.endDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get prnMinIntervalMin => $composableBuilder(
+    column: $table.prnMinIntervalMin,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get prnMaxPerDay => $composableBuilder(
+    column: $table.prnMaxPerDay,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pausesJson => $composableBuilder(
+    column: $table.pausesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get scheduleFrom => $composableBuilder(
+    column: $table.scheduleFrom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pushError => $composableBuilder(
+    column: $table.pushError,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -10713,6 +11420,66 @@ class $$MedicationPlansTableOrderingComposer
     column: $table.dirty,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get freq => $composableBuilder(
+    column: $table.freq,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get intervalHours => $composableBuilder(
+    column: $table.intervalHours,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get everyNDays => $composableBuilder(
+    column: $table.everyNDays,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get weekdaysJson => $composableBuilder(
+    column: $table.weekdaysJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get endDate => $composableBuilder(
+    column: $table.endDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get prnMinIntervalMin => $composableBuilder(
+    column: $table.prnMinIntervalMin,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get prnMaxPerDay => $composableBuilder(
+    column: $table.prnMaxPerDay,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pausesJson => $composableBuilder(
+    column: $table.pausesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get scheduleFrom => $composableBuilder(
+    column: $table.scheduleFrom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pushError => $composableBuilder(
+    column: $table.pushError,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MedicationPlansTableAnnotationComposer
@@ -10758,6 +11525,56 @@ class $$MedicationPlansTableAnnotationComposer
 
   GeneratedColumn<bool> get dirty =>
       $composableBuilder(column: $table.dirty, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get freq =>
+      $composableBuilder(column: $table.freq, builder: (column) => column);
+
+  GeneratedColumn<int> get intervalHours => $composableBuilder(
+    column: $table.intervalHours,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get everyNDays => $composableBuilder(
+    column: $table.everyNDays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get weekdaysJson => $composableBuilder(
+    column: $table.weekdaysJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<String> get endDate =>
+      $composableBuilder(column: $table.endDate, builder: (column) => column);
+
+  GeneratedColumn<int> get prnMinIntervalMin => $composableBuilder(
+    column: $table.prnMinIntervalMin,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get prnMaxPerDay => $composableBuilder(
+    column: $table.prnMaxPerDay,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pausesJson => $composableBuilder(
+    column: $table.pausesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get scheduleFrom => $composableBuilder(
+    column: $table.scheduleFrom,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pushError =>
+      $composableBuilder(column: $table.pushError, builder: (column) => column);
 }
 
 class $$MedicationPlansTableTableManager
@@ -10808,6 +11625,18 @@ class $$MedicationPlansTableTableManager
                 Value<bool> isDeleted = const Value.absent(),
                 Value<DateTime?> clientUpdatedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> freq = const Value.absent(),
+                Value<int?> intervalHours = const Value.absent(),
+                Value<int?> everyNDays = const Value.absent(),
+                Value<String> weekdaysJson = const Value.absent(),
+                Value<String?> startDate = const Value.absent(),
+                Value<String?> endDate = const Value.absent(),
+                Value<int?> prnMinIntervalMin = const Value.absent(),
+                Value<int?> prnMaxPerDay = const Value.absent(),
+                Value<String> pausesJson = const Value.absent(),
+                Value<DateTime?> scheduleFrom = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
               }) => MedicationPlansCompanion(
                 localId: localId,
                 baby: baby,
@@ -10820,6 +11649,18 @@ class $$MedicationPlansTableTableManager
                 isDeleted: isDeleted,
                 clientUpdatedAt: clientUpdatedAt,
                 dirty: dirty,
+                kind: kind,
+                freq: freq,
+                intervalHours: intervalHours,
+                everyNDays: everyNDays,
+                weekdaysJson: weekdaysJson,
+                startDate: startDate,
+                endDate: endDate,
+                prnMinIntervalMin: prnMinIntervalMin,
+                prnMaxPerDay: prnMaxPerDay,
+                pausesJson: pausesJson,
+                scheduleFrom: scheduleFrom,
+                pushError: pushError,
               ),
           createCompanionCallback:
               ({
@@ -10834,6 +11675,18 @@ class $$MedicationPlansTableTableManager
                 Value<bool> isDeleted = const Value.absent(),
                 Value<DateTime?> clientUpdatedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> freq = const Value.absent(),
+                Value<int?> intervalHours = const Value.absent(),
+                Value<int?> everyNDays = const Value.absent(),
+                Value<String> weekdaysJson = const Value.absent(),
+                Value<String?> startDate = const Value.absent(),
+                Value<String?> endDate = const Value.absent(),
+                Value<int?> prnMinIntervalMin = const Value.absent(),
+                Value<int?> prnMaxPerDay = const Value.absent(),
+                Value<String> pausesJson = const Value.absent(),
+                Value<DateTime?> scheduleFrom = const Value.absent(),
+                Value<String?> pushError = const Value.absent(),
               }) => MedicationPlansCompanion.insert(
                 localId: localId,
                 baby: baby,
@@ -10846,6 +11699,18 @@ class $$MedicationPlansTableTableManager
                 isDeleted: isDeleted,
                 clientUpdatedAt: clientUpdatedAt,
                 dirty: dirty,
+                kind: kind,
+                freq: freq,
+                intervalHours: intervalHours,
+                everyNDays: everyNDays,
+                weekdaysJson: weekdaysJson,
+                startDate: startDate,
+                endDate: endDate,
+                prnMinIntervalMin: prnMinIntervalMin,
+                prnMaxPerDay: prnMaxPerDay,
+                pausesJson: pausesJson,
+                scheduleFrom: scheduleFrom,
+                pushError: pushError,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

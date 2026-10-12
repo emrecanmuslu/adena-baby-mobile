@@ -125,10 +125,11 @@ void main() {
       await db.into(db.medicationPlans).insert(MedicationPlansCompanion.insert(
           baby: 'cg', name: 'Eski yerel', createdAt: Value(DateTime(2026, 5, 1)),
           uuid: const Value('u-local'), dirty: const Value(true)));
-      adapter.onPost('/babies/cg/medication-plans/sync', (s) => s.reply(200, {
+      // İlaç v2 (M11): bakıcı değişiklik göndermez → GET.
+      adapter.onGet('/babies/cg/medication-plans/sync', (s) => s.reply(200, {
             'applied': <String>[],
             'plans': <Map<String, dynamic>>[],
-          }), data: Matchers.any);
+          }));
       await health.syncMedicationPlans('cg');
       final rows = await db.select(db.medicationPlans).get();
       expect(rows.map((r) => r.name), ['Eski yerel']);
