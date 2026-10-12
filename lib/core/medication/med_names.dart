@@ -5,6 +5,10 @@
 /// Kural: kırp → boşlukları teke indir → Türkçe/İngilizce i varyantlarını
 /// (İ, I, ı, i) tek 'i'ye katla → küçük harf. "İlaç", "ILAÇ", "ılaç" aynı
 /// anahtar; "IBUPROFEN" ile "ibuprofen" de aynı.
+/// Plan adının en çok uzunluğu — sunucu `MedicationPlan.name` (max_length 120)
+/// ile aynı (V8: daha uzun ad sunucuda kesilip ek çakışmasına yol açıyordu).
+const kMedPlanNameMax = 120;
+
 String medNameKey(String name) {
   final s = name.trim().replaceAll(RegExp(r'\s+'), ' ');
   final b = StringBuffer();

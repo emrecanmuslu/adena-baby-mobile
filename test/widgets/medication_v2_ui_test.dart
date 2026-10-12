@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:adena_baby/core/medication.dart';
+import 'package:adena_baby/core/medication/med_names.dart';
 import 'package:adena_baby/core/i18n.dart';
 import 'package:adena_baby/core/theme.dart';
 import 'package:adena_baby/data/health_repository.dart';
@@ -146,6 +147,15 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('Kaç günde bir?'.toUpperCaseTr()), findsOneWidget);
       expect(t.takeException(), isNull);
+    });
+
+    testWidgets('V8: plan adı en çok 120 karakter (sunucu sınırı)', (t) async {
+      await open(t);
+      await t.enterText(find.byType(TextField).first, 'a' * 130);
+      await t.pump();
+      final tf = t.widget<TextField>(find.byType(TextField).first);
+      expect(tf.controller!.text.length, kMedPlanNameMax);
+      expect(kMedPlanNameMax, 120);
     });
 
     testWidgets('ihtiyaç halinde: aralık ve günlük sınır alanları; saat yok', (t) async {

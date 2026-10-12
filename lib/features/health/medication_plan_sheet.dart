@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show FilteringTextInputFormatter;
+import 'package:flutter/services.dart'
+    show FilteringTextInputFormatter, LengthLimitingTextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ad_widgets.dart';
@@ -541,6 +542,7 @@ class _PlanSheetState extends ConsumerState<_PlanSheet> {
                     controller: _name,
                     hint: tr('örn. D vitamini'),
                     capitalization: TextCapitalization.sentences,
+                    formatters: [LengthLimitingTextInputFormatter(kMedPlanNameMax)],
                   ),
                   if (!_isEdit) ...[
                     const SizedBox(height: 8),
