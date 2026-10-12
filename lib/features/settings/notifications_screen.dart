@@ -215,6 +215,13 @@ class NotificationsScreen extends ConsumerWidget {
           if (isIOS && !(prefs[NotificationPrefs.medicationActivity] ?? true))
             _Note(tr("Kapalıyken: iPhone'da uygulama tamamen kapatılmışsa (kaydırılarak), "
                 'başkasının verdiği dozun hatırlatması iptal edilemez ve yine çalabilir.')),
+          // W3 (ILAC-INCELEME-3): bugün/dün dozları her zaman görünür ve kimlikli
+          // gelir (NSE iptal eder); yalnız eski tarihli işaretler sessiz/özet —
+          // iOS'ta sessiz push uygulama kapalıyken işlenmez.
+          if (isIOS && (prefs[NotificationPrefs.medicationActivity] ?? true))
+            _Note(tr("iPhone'da dünden eski tarihli doz işaretleri bildirim göstermeden gelir; "
+                'uygulama tamamen kapatılmışsa işlenmez (bu dozların hatırlatma saati zaten '
+                "geçmiştir). Aynı anda 3'ten fazla gelirse tek özet bildirim gösterilir.")),
           // Kapalıyken senkron etkisini AÇIKÇA söyle (kullanıcı "veri gelmiyor"
           // sanmasın); açıkken de aynı bilgi sessiz notla durur.
           if (!familyOn)
