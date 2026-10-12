@@ -177,7 +177,10 @@ MedPlanResult planMedNotifications(MedSchedInput input, DateTime now, {required 
   return MedPlanResult(desired, resolved);
 }
 
-/// Defter girdisi.
+/// Defter girdisi. V6 — Dart ve iOS NSE AYNI modeli kullanır: doz olayıyla
+/// iptal edilen bildirimin girdisi defterde KALIR ([canceled] işaretli, App
+/// Group aynasında da); "geri alındı"da NSE id/an/içerikten geri ekler,
+/// yeniden kurma canlılık (bekleyen mi) kontrolüyle doğru kurar.
 class _Entry {
   final int id;
   final int at; // ms
@@ -186,13 +189,20 @@ class _Entry {
   final String baby;
   final String title;
   final String body;
-  const _Entry(this.id, this.at, this.hash, this.plan, this.baby, this.title, this.body);
+  final bool canceled;
+  const _Entry(this.id, this.at, this.hash, this.plan, this.baby, this.title, this.body,
+      {this.canceled = false});
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'at': at, 'h': hash, 'p': plan, 'b': baby, 't': title, 'y': body};
+  _Entry asCanceled() => _Entry(id, at, hash, plan, baby, title, body, canceled: true);
+
+  Map<String, dynamic> toJson() => {
+        'id': id, 'at': at, 'h': hash, 'p': plan, 'b': baby, 't': title, 'y': body,
+        if (canceled) 'c': true,
+      };
   static _Entry fromJson(Map<String, dynamic> j) => _Entry(j['id'] as int, j['at'] as int,
       j['h'] as String? ?? '', j['p'] as String? ?? '', j['b'] as String? ?? '',
-      j['t'] as String? ?? '', j['y'] as String? ?? '');
+      j['t'] as String? ?? '', j['y'] as String? ?? '',
+      canceled: j['c'] == true);
 }
 
 /// Planlayıcı. [instance] üretimde [NotificationService.instance] ile çalışır;
@@ -322,9 +332,14 @@ class MedicationScheduler {
           final hash = '${d.title}|${d.body}|$mode';
           final old = reg[d.key];
           final at = d.fireAt.millisecondsSinceEpoch;
-          final alive = pending == null || (old != null && pending.contains(old.id));
+          final alive = pending == null
+              ? old?.canceled != true
+              : (old != null && pending.contains(old.id));
           if (old != null && old.at == at && old.hash == hash && alive) {
-            next[d.key] = old;
+            // Bekliyor (NSE "geri alındı"da geri eklemiş olabilir) → iptal işareti düşer.
+            next[d.key] = old.canceled
+                ? _Entry(old.id, old.at, old.hash, old.plan, old.baby, old.title, old.body)
+                : old;
             continue;
           }
           final id = old?.id ?? _alloc(p, used);
@@ -350,15 +365,18 @@ class MedicationScheduler {
 
   /// Push/NSE eşleniği: dozun ([planUuid] + [date] + [time]) ana ve K4
   /// bildirimlerini HEMEN iptal eder (ekrandaki dahil) — ağsız, DB'siz.
+  /// V6: girdi defterden SİLİNMEZ, iptal işaretlenir (NSE ile aynı model) —
+  /// ardından gelen "geri alındı"yı yalnız NSE işlese de geri ekleyebilsin.
   Future<void> cancelDose(String planUuid, String date, String time) => _serial(() async {
         final p = await _prefs();
         final reg = await _load(p);
         final base = '$planUuid|$date|$time';
         var changed = false;
         for (final k in ['$base|${MedNotifKind.main}', '$base|${MedNotifKind.missed}']) {
-          final e = reg.remove(k);
+          final e = reg[k];
           if (e != null) {
             await _svc.cancelId(e.id);
+            reg[k] = e.asCanceled();
             changed = true;
           }
         }

@@ -361,4 +361,46 @@ void main() {
       expect(plugin.pending, isNotEmpty);
     });
   });
+
+  test('V6: cancelDose defter girdisini SİLMEZ (iptal işaretler) — NSE "geri alındı"yı defterden geri ekleyebilir',
+      () async {
+    final s = sched();
+    await s.rebuild(input([_p()]));
+    const k = 'p1|2026-10-12|08:00|m';
+    final before = (jsonDecode(mirrored.last) as Map)[k] as Map;
+    await s.cancelDose('p1', '2026-10-12', '08:00'); // Flutter bg işleyicisi "verildi"
+    expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 8)), isFalse);
+    // App Group aynasında anahtar kalır (NSE'nin okuduğu), iptal işaretli.
+    final e = (jsonDecode(mirrored.last) as Map)[k] as Map;
+    expect(e['id'], before['id']);
+    expect(e['at'], before['at']);
+    expect(e['t'], before['t']);
+    expect(e['c'], isTrue);
+    // Yalnız NSE yolu: "geri alındı" → defterdeki içerikle aynı id'ler (ana + K4)
+    // geri eklenir (NotificationService.swift handleMedication, undone dalı).
+    for (final key in [k, 'p1|2026-10-12|08:00|x']) {
+      final x = (jsonDecode(mirrored.last) as Map)[key] as Map;
+      expect(x['c'], isTrue);
+      plugin.pending[x['id'] as int] = (
+          at: DateTime.fromMillisecondsSinceEpoch(x['at'] as int),
+          title: x['t'] as String,
+          body: x['y'] as String,
+          payload: null);
+    }
+    // Sonraki yeniden kurma (DB: doz çözülmemiş) aynı bildirimi korur; çift kurmaz.
+    final n = plugin.pending.length;
+    await s.rebuild(input([_p()]));
+    expect(plugin.pending.length, n);
+    expect(plugin.pending.values.where((v) => v.at == DateTime(2026, 10, 12, 8)).length, 1);
+    final after = (jsonDecode(mirrored.last) as Map)[k] as Map;
+    expect(after['c'], isNot(true));
+  });
+
+  test('V6: iptal işaretli girdi, doz çözülmemişse (geri alındı, Android) yeniden kurulur', () async {
+    final s = sched();
+    await s.rebuild(input([_p()]));
+    await s.cancelDose('p1', '2026-10-12', '08:00');
+    await s.rebuild(input([_p()])); // senkron: kayıt silinmiş → doz açık
+    expect(plugin.pending.values.where((v) => v.at == DateTime(2026, 10, 12, 8)).length, 1);
+  });
 }
