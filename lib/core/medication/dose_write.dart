@@ -1,6 +1,7 @@
 import '../../models/medication_plan.dart';
 import '../../models/record.dart';
 import '../medication.dart';
+import 'med_names.dart';
 
 /// İlaç v2 (A3) — doz kaydı yazımının SAF parçaları: kimlikli kayıt kurucusu,
 /// atlama nedenleri (K10) ve çift doz denetimi (K3).
@@ -94,12 +95,19 @@ class MedDupHit {
   const MedDupHit(this.record, this.sameDose);
 }
 
-bool _mine(MedicationPlan p, Record r) =>
-    r.type == RecordType.medication &&
-    !r.isDeleted &&
-    r.data['skipped'] != true &&
-    r.data['plan_uuid'] == p.uuid &&
-    p.uuid != null;
+/// Bu planın "verildi" kaydı mı? Kimlikli kayıt plan uuid'siyle; W6
+/// (ILAC-INCELEME-3): kimliksiz (eski istemci / v15) kayıt ad anahtarıyla —
+/// hiçbir doza bağlanmasa da (ör. gece yarısından önce erken verildi) çift doz
+/// uyarısına girer.
+bool _mine(MedicationPlan p, Record r) {
+  if (r.type != RecordType.medication || r.isDeleted || r.data['skipped'] == true) return false;
+  final uuid = r.data['plan_uuid'];
+  if (uuid == null) {
+    final name = r.data['name'];
+    return name is String && medNameKey(name) == medNameKey(p.name);
+  }
+  return p.uuid != null && uuid == p.uuid;
+}
 
 /// "Verildi" yazmadan önce çift doz denetimi (K3):
 /// 1. [dose] zaten verilmişse → ilk veren ([sameDose] true);

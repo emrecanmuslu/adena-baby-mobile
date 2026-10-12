@@ -127,6 +127,43 @@ void main() {
       expect(medDuplicateCheck(_p(), null, [s, del], now: now), isNull);
     });
 
+    // ILAC-INCELEME-3 W6: kimliksiz (eski istemci) kayıt hiçbir doza bağlanmasa da
+    // (ör. gece yarısından önce erken verildi) K3 onu ad anahtarıyla görür.
+    group('W6 — kimliksiz kayıt', () {
+      Record legacy(DateTime ts, {String name = 'Demir', bool skipped = false}) => Record(
+          id: 'L$ts$name', baby: 'b1', type: RecordType.medication, ts: ts,
+          data: {'name': name, 'given': !skipped, if (skipped) 'skipped': true});
+
+      test('TMP-D: 00:15 dozu, eski istemci 23:55\'te verdi → doz açık ama K3 uyarır', () {
+        final p = _p(times: const ['00:15']);
+        final l = legacy(DateTime(2026, 10, 11, 23, 55));
+        final at = DateTime(2026, 10, 12, 0, 20);
+        final d = resolveDoses([p], [l],
+                from: DateTime(2026, 10, 12), to: DateTime(2026, 10, 13), now: at)
+            .first;
+        expect(d.isResolved, isFalse, reason: 'ileri yön yasağı (V1) — doz açık kalır');
+        final hit = medDuplicateCheck(p, d, [l], now: at);
+        expect(hit?.record, l);
+        expect(hit?.sameDose, isFalse);
+      });
+
+      test('ad katlaması (büyük/küçük harf, İ/ı, boşluk) eşleşir; başka ad eşleşmez', () {
+        final g = legacy(DateTime(2026, 10, 12, 7, 50), name: '  DEMİR ');
+        expect(medDuplicateCheck(_p(), null, [g], now: now)?.record, g);
+        final other = legacy(DateTime(2026, 10, 12, 7, 50), name: 'D vitamini');
+        expect(medDuplicateCheck(_p(), null, [other], now: now), isNull);
+      });
+
+      test('yarım boşluk dışı ya da atlanmış kimliksiz kayıt sayılmaz', () {
+        expect(medDuplicateCheck(_p(), null, [legacy(DateTime(2026, 10, 12, 1))], now: now),
+            isNull);
+        expect(
+            medDuplicateCheck(_p(), null,
+                [legacy(DateTime(2026, 10, 12, 7, 50), skipped: true)], now: now),
+            isNull);
+      });
+    });
+
     test('PRN: kullanıcı aralığı dolmadıysa uyarı (aralık yoksa yok)', () {
       final prn = _p(kind: MedKind.prn, times: const [], prnMin: 360);
       final g = _given(DateTime(2026, 10, 12, 6), time: null);
