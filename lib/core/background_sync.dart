@@ -252,13 +252,32 @@ Future<void> _refreshFeedState(RecordRepository repo, Baby b) async {
 /// V5: `access_removed` push'undan sonra (arka plan) ilaç bildirimlerini yerel
 /// DB'den — erişimi kalkan bebek planlayıcıda atlanarak — yeniden kurar; ağ yok.
 /// Bayat önbellekle kaçan girdileri planlayıcının yetim temizliği yakalar.
-Future<void> rebuildMedicationFromPush() async {
+/// V24: [revokedBabyId] verilirse önce o bebeğin özel/randevu hatırlatıcıları
+/// (yerel `localReminders` id'leri) iptal edilir — veri temizliği ön planda kalır.
+Future<void> rebuildMedicationFromPush({String? revokedBabyId}) async {
   WidgetsFlutterBinding.ensureInitialized();
   await ensureLocalSessionForBackground(); // K9
   final container = ProviderContainer(overrides: [
     runningInBackgroundProvider.overrideWithValue(true),
   ]);
+  await rebuildMedicationFromPushWith(container, revokedBabyId: revokedBabyId);
+}
+
+/// [rebuildMedicationFromPush] gövdesi — test edilebilir (container dışarıdan);
+/// container'ı her durumda kapatır.
+@visibleForTesting
+Future<void> rebuildMedicationFromPushWith(ProviderContainer container,
+    {String? revokedBabyId}) async {
   try {
+    if (revokedBabyId != null) {
+      try {
+        final ids =
+            await container.read(healthRepositoryProvider).reminderIdsForBaby(revokedBabyId);
+        for (final id in ids) {
+          await NotificationService.instance.cancelId(id);
+        }
+      } catch (_) {}
+    }
     await container.read(authControllerProvider.future);
     if (!container.read(loggedInProvider)) return;
     final acct = container.read(activeAccountIdProvider);

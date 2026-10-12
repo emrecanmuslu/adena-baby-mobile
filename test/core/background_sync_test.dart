@@ -4,10 +4,12 @@ import 'package:dio/dio.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:adena_baby/core/background_sync.dart';
+import 'package:adena_baby/core/notification_service.dart';
 import 'package:adena_baby/core/providers.dart';
 import 'package:adena_baby/data/baby_repository.dart';
 import 'package:adena_baby/data/local/app_database.dart';
@@ -26,6 +28,23 @@ import 'package:adena_baby/models/user.dart';
 /// yerel repo'dan okur, dispose her durumda EN SONDA, damga
 /// 'bitti' | 'hata' | 'zaman aşımı'.
 class MockBabyRepository extends Mock implements BabyRepository {}
+
+class _CancelSpy implements FlutterLocalNotificationsPlugin {
+  final cancelled = <int>[];
+  @override
+  Future<bool?> initialize({
+    required InitializationSettings settings,
+    DidReceiveNotificationResponseCallback? onDidReceiveNotificationResponse,
+    DidReceiveBackgroundNotificationResponseCallback? onDidReceiveBackgroundNotificationResponse,
+  }) async =>
+      true;
+  @override
+  T? resolvePlatformSpecificImplementation<T extends FlutterLocalNotificationsPlatform>() => null;
+  @override
+  Future<void> cancel({required int id, String? tag}) async => cancelled.add(id);
+  @override
+  dynamic noSuchMethod(Invocation i) => throw UnimplementedError('${i.memberName}');
+}
 
 class MockRecordRepository extends Mock implements RecordRepository {}
 
@@ -225,6 +244,30 @@ void main() {
       final c = make();
       await runBackgroundSyncWith(c, timeout: const Duration(seconds: 5));
       expect(rebuilt.single, ['shared']);
+    });
+  });
+
+  group('V24 — bg access_removed', () {
+    test('çıkarılan bebeğin özel/randevu hatırlatıcıları iptal edilir, ilaç yeniden kurulur',
+        () async {
+      final rid = await db.into(db.localReminders).insert(
+          LocalRemindersCompanion.insert(baby: 'shared'));
+      final other = await db.into(db.localReminders).insert(
+          LocalRemindersCompanion.insert(baby: 'solo'));
+      final plugin = _CancelSpy();
+      final prev = NotificationService.instance;
+      NotificationService.instance = NotificationService.withPlugin(plugin);
+      addTearDown(() => NotificationService.instance = prev);
+      final rebuilt = <List<String>>[];
+      bgMedHook = BgMedHook(
+          syncPlans: (_, _) async {},
+          rebuild: (c, list) async => rebuilt.add([for (final b in list) b.id]));
+      final c = make();
+      await rebuildMedicationFromPushWith(c, revokedBabyId: 'shared');
+      expect(plugin.cancelled, contains(rid));
+      expect(plugin.cancelled, isNot(contains(other)));
+      expect(rebuilt, hasLength(1));
+      expect(disposed, isTrue);
     });
   });
 }

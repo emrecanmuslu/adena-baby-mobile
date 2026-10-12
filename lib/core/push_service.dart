@@ -111,7 +111,8 @@ Future<void> handlePushMessage(RemoteMessage message) async {
         }
       } catch (_) {}
       // V5: bu isolate'in defteri bayat olabilir → kalanları yetim temizliği alsın.
-      if (!appInForeground) await rebuildMedicationFromPush();
+      // V24: bg'de özel/randevu hatırlatıcıları da (yerel id'ler) iptal edilir.
+      if (!appInForeground) await rebuildMedicationFromPush(revokedBabyId: babyId);
     }
     // Bildirim gösterme adımına DÜŞER ("bu bebeğe erişimin kaldırıldı").
   } else if (type == 'sync_nudge') {
