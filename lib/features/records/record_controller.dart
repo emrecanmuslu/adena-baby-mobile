@@ -8,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/ad_service.dart';
-import '../../core/notification_service.dart';
 import '../../core/review_service.dart';
 import '../../core/analytics_service.dart';
 import '../../core/providers.dart';
@@ -439,10 +438,10 @@ class SyncService with WidgetsBindingObserver {
     try {
       final r =
           await _ref.read(healthRepositoryProvider).syncMedicationPlans(babyId);
-      for (final id in r.removed) {
-        await NotificationService.instance.cancelMedicationPlan(id);
+      // Bildirimler: provider yenilenince planlayıcı (MedSchedulerSync) kurar/iptal eder.
+      if (r.changed || r.removed.isNotEmpty) {
+        _ref.invalidate(medicationPlansProvider(babyId));
       }
-      if (r.changed) _ref.invalidate(medicationPlansProvider(babyId));
     } catch (e, st) {
       // Bilinçli sessiz (bkz. yukarı) ama artık İZLİ: Adım 0 — "eşe ilaç
       // hatırlatması gelmiyor" vakasında plan senkronu hatası görünmüyordu.

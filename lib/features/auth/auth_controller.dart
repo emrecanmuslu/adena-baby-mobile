@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/medication/med_scheduler.dart';
 import '../../core/notification_service.dart';
 import '../../core/providers.dart';
 import '../../core/push_service.dart';
@@ -293,6 +294,7 @@ class AuthController extends AsyncNotifier<User?> {
       }
     }
     await NotificationService.instance.cancelAll(); // eski hesabın bildirimleri kalmasın
+    await MedicationScheduler.instance.clearRegistry();
     await SlotRegistry.instance.clear(); // slot haritası sıfırlansın (yeni hesap 0'dan)
     // logout ile AYNI temizlik: sonraki kullanıcıya premium/RC kimliği/yerel kapsam
     // sızmasın (deleteAccount eksikti → aynı cihazda yeni free kullanıcıya premium flaşı).
@@ -309,6 +311,7 @@ class AuthController extends AsyncNotifier<User?> {
     // Önceki hesabın zamanlanmış yerel bildirimlerini iptal et → yeni hesaba
     // "sonraki beslenme"/hatırlatıcı bildirimi sızmasın.
     await NotificationService.instance.cancelAll();
+    await MedicationScheduler.instance.clearRegistry();
     await SlotRegistry.instance.clear(); // slot haritası sıfırlansın (yeni hesap 0'dan)
     await _repo.logout();
     await RevenueCatService.instance.logoutUser();

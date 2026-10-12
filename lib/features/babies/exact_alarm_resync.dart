@@ -8,8 +8,9 @@ import 'family_settings.dart';
 /// Bildirimler ayarı) o ana dek inexact kurulmuş planlar yeniden kurulsun:
 /// - beslenme hatırlatıcısı: yerel ayar aynı değerle YENİ örnek olarak yazılır →
 ///   `_BabyNotifSync` (`feedReminderProvider`) yeniden kurar (artık exact);
-/// - ilaç dozları: `medicationPlansProvider` yenilenir → `_MedNotifSync`
-///   `syncMedicationPlans` ile planları iptal edip yeniden kurar.
+/// - ilaç dozları: `medicationPlansProvider` yenilenir → `MedSchedulerSync`
+///   yeniden kurar; kip (exact/inexact) defter karmasında olduğu için tüm
+///   bekleyen ilaç bildirimleri yeni kiple yeniden kurulur.
 /// [babyId] verilmezse listedeki tüm bebekler.
 Future<void> resyncAfterExactAlarmGranted(WidgetRef ref, {String? babyId}) async {
   final ids = babyId != null

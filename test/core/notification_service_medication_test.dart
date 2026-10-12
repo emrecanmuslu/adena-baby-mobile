@@ -3,13 +3,15 @@ import 'dart:async';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart';
 
+import 'package:adena_baby/core/medication/med_scheduler.dart';
 import 'package:adena_baby/core/notification_service.dart';
 import 'package:adena_baby/features/babies/notification_sync.dart';
 import 'package:adena_baby/models/medication_plan.dart';
 
-/// K5 (BULGULAR.md): silinen/duraklatılan ilaç planının bildirimleri bayat
+/// K5 (BULGULAR.md) → İlaç v2: silinen/duraklatılan ilaç planının bildirimleri bayat
 /// provider listesinden yeniden kuruluyordu; iç içe geçen eski/yeni çağrılar
 /// son durumu bozuyordu. Sahte eklenti K1 testindekiyle aynı (kopya; test
 /// dosyaları arasında paylaşım için ortak yardımcı dosya açmak kapsam dışı).
@@ -78,108 +80,107 @@ class _FakePlugin implements FlutterLocalNotificationsPlugin {
 MedicationPlan _plan(int id, {bool active = true, List<String>? times}) =>
     MedicationPlan(
       id: id,
+      uuid: 'u$id',
       name: 'Vitamin D',
       dose: '1 damla',
       times: times ?? const ['09:00', '21:00'],
       active: active,
       createdAt: DateTime(2026, 1, 1),
+      startDate: DateTime(2026, 1, 1),
     );
 
-/// Plan 5'in id'leri: 670000 + 5*10 + idx.
-Set<int> _idsOf(int planId, int doses) =>
-    {for (var i = 0; i < doses; i++) 670000 + (planId % 1000) * 10 + i};
+/// İlaç v2 (A4): K5 senaryoları YENİ planlayıcıya taşındı — eski günlük-tekrar
+/// API'si (`syncMedicationPlans`, id = 670000 + planId*10) tasarım gereği
+/// kaldırıldı (ILAC-TASARIM §3.3: doz başına tek seferlik, defterden tahsisli id).
+/// Senaryolar aynı: silinen / duraklatılan planın bildirimi kalmaz (yarışta da),
+/// yetim öz-onarımı komşu aralıklara dokunmaz, başka bebeğin planı korunur,
+/// kaynak okunamazsa hiçbir şey değişmez.
+const _lo = NotificationService.medIdLo, _hi = NotificationService.medIdHi;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late _FakePlugin plugin;
   late NotificationService svc;
+  late MedicationScheduler sched;
+  final now = DateTime(2026, 1, 10, 8, 0);
+
+  MedSchedLoader loader(List<MedicationPlan> plans, {String baby = 'b1'}) => () async =>
+      MedSchedInput(babies: [MedSchedBaby(id: baby, name: 'Ada', plans: plans, records: const [])]);
+
+  Set<int> medIds() => {for (final id in plugin.ids) if (id >= _lo && id < _hi) id};
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     plugin = _FakePlugin();
     svc = NotificationService.withPlugin(plugin);
+    sched = MedicationScheduler.forTest(svc, now: () => now);
   });
 
-  group('K5 — ilaç planı bildirimleri', () {
+  group('K5 — ilaç planı bildirimleri (v2 planlayıcı)', () {
     test('(a) plan silinince hiçbir bildirimi zamanlı kalmaz', () async {
-      // 1) Plan aktifken kuruldu.
-      await svc.syncMedicationPlans([_plan(5)],
-          enabled: true, activePlanIds: () async => {5});
-      expect(plugin.ids, _idsOf(5, 2));
-
-      // 2) Sheet: DB'den sildi + açık iptal + invalidate. Widget, yenileme
-      //    sırasında ESKİ (planı hâlâ içeren) listeyle yeniden build olur.
-      await svc.cancelMedicationPlan(5);
-      await svc.syncMedicationPlans([_plan(5)],
-          enabled: true, activePlanIds: () async => {}); // DB: plan yok
-      // 3) Yeni liste gelir (plan yok).
-      await svc.syncMedicationPlans([],
-          enabled: true, activePlanIds: () async => {});
-
-      expect(plugin.ids, isEmpty,
+      await sched.rebuild(loader([_plan(5)]));
+      expect(medIds(), isNotEmpty);
+      // Silindi (DB'de yok) — bayat liste kavramı yok: planlayıcı DB'den okur.
+      await sched.rebuild(loader(const []));
+      expect(medIds(), isEmpty,
           reason: 'silinen planın bildirimi bayat listeden geri gelmemeli');
     });
 
-    test('(b) duraklatma: eski (aktif) ve yeni (pasif) çağrılar iç içe bitse de sonuç iptal',
+    test('(b) duraklatma: eski (aktif) ve yeni (pasif) yeniden kurmalar iç içe ateşlense de sonuç iptal',
         () async {
-      await svc.syncMedicationPlans([_plan(5)],
-          enabled: true, activePlanIds: () async => {5});
-      expect(plugin.ids, _idsOf(5, 2));
-
-      // Eski rebuild'in çağrısı (aktif) ile yeni rebuild'in çağrısı (pasif)
-      // beklenmeden art arda ateşlenir — await zincirleri iç içe geçer.
-      final old = svc.syncMedicationPlans([_plan(5)],
-          enabled: true, activePlanIds: () async => {});
-      final fresh = svc.syncMedicationPlans([_plan(5, active: false)],
-          enabled: true, activePlanIds: () async => {});
+      await sched.rebuild(loader([_plan(5)]));
+      expect(medIds(), isNotEmpty);
+      var dbActive = true;
+      Future<MedSchedInput> fromDb() async => MedSchedInput(babies: [
+            MedSchedBaby(id: 'b1', name: 'Ada', plans: [_plan(5, active: dbActive)], records: const [])
+          ]);
+      final old = sched.rebuild(fromDb);
+      dbActive = false; // kullanıcı duraklattı
+      final fresh = sched.rebuild(fromDb);
       await Future.wait([old, fresh]);
-
-      expect(plugin.ids, isEmpty,
-          reason: 'son durum "duraklatıldı" → bildirim kalmamalı');
+      expect(medIds(), isEmpty, reason: 'son durum "duraklatıldı" → bildirim kalmamalı');
     });
 
     test('(b2) duraklatılmış plan tek başına da iptal edilir', () async {
-      await svc.syncMedicationPlans([_plan(5)],
-          enabled: true, activePlanIds: () async => {5});
-      await svc.syncMedicationPlans([_plan(5, active: false)],
-          enabled: true, activePlanIds: () async => {});
-      expect(plugin.ids, isEmpty);
+      await sched.rebuild(loader([_plan(5)]));
+      await sched.rebuild(loader([_plan(5, active: false)]));
+      expect(medIds(), isEmpty);
     });
 
-    test('öz-onarım: hiçbir aktif plana ait olmayan ilaç bildirimi iptal edilir, '
-        'sağlık/slot ve feed id\'lerine dokunulmaz', () async {
-      // Yetim: plan 7 (DB'de yok). Komşu aralıklar: diş 660000+slot, aile 700000.
-      for (final id in _idsOf(7, 3)) {
-        plugin.scheduled[id] = PendingNotificationRequest(id, 'yetim', null, null);
-      }
-      plugin.scheduled[669999] =
-          const PendingNotificationRequest(669999, 'tooth', null, null);
-      plugin.scheduled[700000] =
-          const PendingNotificationRequest(700000, 'family', null, null);
-      plugin.scheduled[800001] =
-          const PendingNotificationRequest(800001, 'feed', null, null);
+    test('öz-onarım: defterde olmayan ilaç bildirimi iptal edilir; eski aralık bir kez '
+        "temizlenir; sağlık/slot/aile/feed id'lerine dokunulmaz", () async {
+      plugin.scheduled[_lo + 777] = PendingNotificationRequest(_lo + 777, 'yetim', null, null);
+      plugin.scheduled[670051] = const PendingNotificationRequest(670051, 'eski günlük', null, null);
+      plugin.scheduled[669999] = const PendingNotificationRequest(669999, 'tooth', null, null);
+      plugin.scheduled[700000] = const PendingNotificationRequest(700000, 'family', null, null);
+      plugin.scheduled[800001] = const PendingNotificationRequest(800001, 'feed', null, null);
 
-      await svc.syncMedicationPlans([_plan(5)],
-          enabled: true, activePlanIds: () async => {5});
+      await sched.rebuild(loader([_plan(5)]));
 
-      expect(plugin.ids, {..._idsOf(5, 2), 669999, 700000, 800001});
+      expect(plugin.ids.contains(_lo + 777), isFalse);
+      expect(plugin.ids.contains(670051), isFalse);
+      expect(plugin.ids.containsAll({669999, 700000, 800001}), isTrue);
+      expect(medIds(), isNotEmpty);
     });
 
-    test('başka bebeğin aktif planı (listede yok) korunur', () async {
-      await svc.syncMedicationPlans([_plan(5)],
-          enabled: true, activePlanIds: () async => {5, 8});
-      await svc.syncMedicationPlans([_plan(8, times: const ['10:00'])],
-          enabled: true, activePlanIds: () async => {5, 8});
-      expect(plugin.ids, {..._idsOf(5, 2), ..._idsOf(8, 1)});
+    test('başka bebeğin aktif planı korunur (tek, global yeniden kurma)', () async {
+      Future<MedSchedInput> both() async => MedSchedInput(babies: [
+            MedSchedBaby(id: 'b1', name: 'Ada', plans: [_plan(5)], records: const []),
+            MedSchedBaby(id: 'b2', name: 'Can', plans: [_plan(8, times: const ['10:00'])],
+                records: const []),
+          ]);
+      await sched.rebuild(both);
+      final titles = {for (final p in plugin.scheduled.values) p.title};
+      expect(titles.any((t) => t!.startsWith('Ada · ')), isTrue);
+      expect(titles.any((t) => t!.startsWith('Can · ')), isTrue);
     });
 
-    test('aktif plan kaynağı okunamazsa yetim temizliği atlanır, listedekiler yine kurulur/iptal edilir',
-        () async {
-      plugin.scheduled[670070] =
-          const PendingNotificationRequest(670070, 'bilinmeyen', null, null);
-      await svc.syncMedicationPlans([_plan(5), _plan(6, active: false)],
-          enabled: true, activePlanIds: () async => throw StateError('db'));
-      expect(plugin.ids, {..._idsOf(5, 2), 670070});
+    test('kaynak okunamazsa hiçbir şey değişmez (yanlış iptal yok)', () async {
+      await sched.rebuild(loader([_plan(5)]));
+      final before = medIds();
+      await sched.rebuild(() async => throw StateError('db'));
+      expect(medIds(), before);
     });
   });
 

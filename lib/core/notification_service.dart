@@ -10,7 +10,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
-import '../models/medication_plan.dart';
 import '../models/quiet_hours.dart';
 import '../models/reminder.dart';
 import 'i18n.dart';
@@ -702,9 +701,6 @@ class NotificationService {
   static const _pregWeekBase = 640000;
   static const _milestoneBase = 650000;
   static const _toothBase = 660000;
-  static const _medicationBase = 670000;
-  static int _medIdFor(int planId, int timeIdx) =>
-      _medicationBase + (planId % 1000) * 10 + timeIdx;
 
   /// Aşı hatırlatıcısı — en yakın (zorunlu, yapılmamış) aşının tarihinde
   /// (09:00) tek seferlik. Her senkronda yeniden hesaplanır; bir aşı işaretlenip
@@ -822,13 +818,12 @@ class NotificationService {
 
   /// O15: bebek silinince / erişim kalkınca o bebeğin TÜM planlı bildirimleri —
   /// beslenme (ana/ön/unuttun), sayaçlar, aşı/atak/büyüme/gebelik haftası,
-  /// periyodik gelişim/diş dürtmeleri ve ilaç planları — iptal edilir.
+  /// periyodik gelişim/diş dürtmeleri — iptal edilir (ilaç bildirimleri:
+  /// `MedicationScheduler.cancelBaby`).
   /// [reminderIds]: bebeğin özel/randevu hatırlatıcıları (`localReminders`
   /// id'leri, I5) — satırlar silinmez ama bildirimleri burada iptal edilir.
   Future<void> cancelBabyScheduled(
-      {required int slot,
-      Iterable<int> medicationPlanIds = const [],
-      Iterable<int> reminderIds = const []}) async {
+      {required int slot, Iterable<int> reminderIds = const []}) async {
     if (!_ready) await init();
     for (final id in reminderIds) {
       await _plugin.cancel(id: id);
@@ -849,108 +844,93 @@ class NotificationService {
     ]) {
       await _plugin.cancel(id: id);
     }
-    for (final planId in medicationPlanIds) {
-      await cancelMedicationPlan(planId);
-    }
   }
 
-  /// İlaç/vitamin planının TÜM zamanlanmış bildirimlerini iptal eder (plan
-  /// silinince/pasife alınınca). Sabit 10 doz/gün üst sınırıyla döner.
-  Future<void> cancelMedicationPlan(int planId) async {
-    if (!_ready) return;
-    for (var i = 0; i < 10; i++) {
-      await _plugin.cancel(id: _medIdFor(planId, i));
-    }
-  }
+  // ── İlaç v2 (ILAC-TASARIM §3): doz başına TEK SEFERLİK bildirimler ──
+  // Zamanlama/kimlik/fark mantığı `MedicationScheduler`'da; burada yalnız
+  // eklenti uçları. Kimlik aralığı [medIdLo, medIdHi) — kayıt defterinden
+  // tahsis edilir (KB-13/M19: plan id'sinden türetilmez). Eski günlük-tekrar
+  // aralığı [legacyMedLo, legacyMedHi) bir kez temizlenir.
+  static const medIdLo = 1100000;
+  static const medIdHi = 1200000;
+  static const legacyMedLo = 670000;
+  static const legacyMedHi = 680000;
 
-  /// Bir bebeğin ilaç planı listesini cihaz bildirimleriyle eşitler (BULGULAR.md K5).
-  ///
-  /// [plans] = bu bebeğin (oturmuş, bayat olmayan) plan listesi; her plan için
-  /// `enabled && p.active` ise kurulur, değilse temizlenir. [activePlanIds] = DB'den
-  /// TAZE okunan, cihazdaki TÜM bebeklerin aktif (silinmemiş) plan id'leri:
-  /// ilaç id aralığındaki (670000-679999) hiçbir aktif plana ait olmayan bekleyen
-  /// bildirim yetim sayılıp iptal edilir (bayat listeden geri kurulmuş ya da
-  /// purge/silme yarışında kalmış bildirimler böylece öz-onarılır). Komşu sağlık
-  /// slot aralıklarına (…-669999) ve 700000+'a dokunulmaz.
-  ///
-  /// Çağrılar [_medChain] ile SERİLEŞTİRİLİR: eski rebuild'in (aktif) çağrısı ile
-  /// yeni rebuild'in (pasif) çağrısı iç içe geçip son durumu bozamaz; sıra bize
-  /// gelince aktif küme yeniden okunduğu için sonuç hep en güncel DB durumudur.
-  Future<void> syncMedicationPlans(
-    List<MedicationPlan> plans, {
-    required bool enabled,
-    required Future<Set<int>> Function() activePlanIds,
-    String babyName = '',
-  }) {
-    final run = _medChain.then(
-        (_) => _syncMedicationPlansNow(plans, enabled, activePlanIds, babyName));
-    _medChain = run.catchError((_) {});
-    return run;
-  }
+  static const medChannelId = 'medication';
+  static String get medChannelName => tr('İlaç hatırlatmaları');
 
-  Future<void> _medChain = Future.value();
-
-  Future<void> _syncMedicationPlansNow(
-    List<MedicationPlan> plans,
-    bool enabled,
-    Future<Set<int>> Function() activePlanIds,
-    String babyName,
-  ) async {
-    if (!_ready) await init();
-    // 1) Öz-onarım: aktif kümesi okunabildiyse yetim ilaç bildirimlerini temizle.
-    Set<int>? keep;
-    try {
-      keep = {for (final id in await activePlanIds()) id % 1000};
-    } catch (_) {
-      keep = null; // kaynak okunamadı → yetim temizliğini atla, listeyi yine işle
-    }
-    if (keep != null) {
-      try {
-        final pending = await _plugin.pendingNotificationRequests();
-        for (final p in pending) {
-          if (p.id < _medicationBase || p.id >= _medicationBase + 10000) continue;
-          final planKey = (p.id - _medicationBase) ~/ 10;
-          if (!keep.contains(planKey)) await _plugin.cancel(id: p.id);
-        }
-      } catch (_) {
-        // Bekleyenler okunamadı → yalnız listedekiler işlenir (aşağıda).
-      }
-    }
-    // 2) Listedeki planlar: her biri için temizle + (aktifse) yeniden kur.
-    for (final p in plans) {
-      await syncMedicationPlan(
-        enabled: enabled && p.active,
-        planId: p.id,
-        name: p.name,
-        times: p.times,
-        babyName: babyName,
+  NotificationDetails get _medDetails => NotificationDetails(
+        android: AndroidNotificationDetails(
+          medChannelId,
+          medChannelName,
+          channelDescription: tr('İlaç ve vitamin dozları'),
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       );
-    }
-  }
 
-  /// İlaç/vitamin planının günlük hatırlatıcılarını eşitler — [times] listesindeki
-  /// her saat için ayrı bir günlük bildirim kurar (en fazla 10 doz/gün). Önce
-  /// tüm slotları temizler; [enabled] false ya da liste boşsa yalnız temizlik yapar.
-  /// Tek başına çağrılırsa SERİLEŞTİRİLMEZ — ağaçtan [syncMedicationPlans] kullan.
-  Future<void> syncMedicationPlan({
-    required bool enabled,
-    required int planId,
-    required String name,
-    required List<String> times,
-    String babyName = '',
+  /// Android'de exact/inexact (kesin alarm izni), iOS'ta exact — ilaç
+  /// bildiriminin kurulum kipi (kayıt defteri karmasına girer: kip değişince
+  /// yeniden kurulur).
+  Future<String> medScheduleMode() async => (await _alarmMode()).name;
+
+  /// Tek seferlik ilaç bildirimi ([when] = yerel an). Aynı [id] öncekinin
+  /// yerine geçer (iptal gerekmez).
+  Future<void> scheduleMedOnce({
+    required int id,
+    required DateTime when,
+    required String title,
+    required String body,
+    String? payload,
   }) async {
     if (!_ready) await init();
-    await cancelMedicationPlan(planId);
-    if (!enabled || times.isEmpty) return;
     await _ensurePermission();
-    final prefix = babyName.isNotEmpty ? '$babyName · ' : '';
-    final capped = times.take(10).toList();
-    for (var i = 0; i < capped.length; i++) {
-      final parts = capped[i].split(':');
-      final h = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 9;
-      final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-      await _scheduleDaily(_medIdFor(planId, i), h, m,
-          '$prefix${trp('İlaç zamanı: {name}', {'name': name})}');
+    await _plugin.zonedSchedule(
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: tz.TZDateTime.from(when, tz.local),
+      notificationDetails: _medDetails,
+      androidScheduleMode: await _alarmMode(),
+      payload: payload,
+    );
+  }
+
+  /// Bildirimi iptal eder (bekleyen ve — Android/iOS'ta — ekranda duran).
+  Future<void> cancelId(int id) async {
+    if (!_ready) await init();
+    await _plugin.cancel(id: id);
+  }
+
+  /// [lo, hi) aralığındaki BEKLEYEN bildirim id'leri; okunamazsa null.
+  Future<Set<int>?> pendingIdsIn(int lo, int hi) async {
+    if (!_ready) await init();
+    try {
+      return {
+        for (final p in await _plugin.pendingNotificationRequests())
+          if (p.id >= lo && p.id < hi) p.id
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// M17: cihaz saat dilimini yeniden okur; değiştiyse `tz.local`'ı günceller
+  /// ve true döner (çağıran günlük/ilaç hatırlatıcılarını yeniden kurar).
+  Future<bool> refreshTimezone() async {
+    try {
+      final dynamic res = await FlutterTimezone.getLocalTimezone();
+      final name = res is String ? res : (res as dynamic).identifier as String;
+      if (name == tz.local.name) return false;
+      tz.setLocalLocation(tz.getLocation(name));
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

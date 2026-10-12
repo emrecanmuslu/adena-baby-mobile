@@ -17,6 +17,7 @@ import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
 import '../babies/family_settings.dart';
+import '../health/med_scheduler_sync.dart';
 import '../records/record_controller.dart';
 import '../settings/notification_prefs_controller.dart';
 import 'baby_controller.dart';
@@ -45,6 +46,8 @@ class FamilyNotificationSync extends ConsumerWidget {
         const _WidgetSync(),
         // iOS Live Activity (süren sayaç — kilit ekranı + Dynamic Island).
         const _LiveActivitySync(),
+        // İlaç v2: doz başına tek seferlik hatırlatmalar (tüm bebekler).
+        const MedSchedulerSync(),
       ],
     );
   }
@@ -252,27 +255,8 @@ class _HealthNotifSync extends ConsumerWidget {
     final pregOn = ref.watch(notifPrefProvider(NotificationPrefs.pregnancyWeek));
     final milestoneOn = ref.watch(notifPrefProvider(NotificationPrefs.milestone));
     final toothOn = ref.watch(notifPrefProvider(NotificationPrefs.tooth));
-    final medicationOn = ref.watch(notifPrefProvider(NotificationPrefs.medication));
-
-    // İlaç/vitamin — her aktif planın kendi günlük saatlerinde. Bebek
-    // durumundan bağımsız hesaplanır (bekleme moduna dönerse de temizlensin
-    // diye enabled'a !isExpecting eklenir, plan listesi zaten yalnız
-    // doğmuş bebekte oluşturulabilir).
-    // Yenileme (invalidate) sırasında `asData` ESKİ listeyi taşır → silinen/
-    // duraklatılan plan bayat listeden geri kuruluyordu (BULGULAR.md K5). Yalnız
-    // oturmuş veriyle çalış; liste bazlı kurulum + DB'den taze aktif kümeyle
-    // yetim temizliği + serileştirme syncMedicationPlans içinde.
-    final medPlans =
-        settledListOrNull(ref.watch(medicationPlansProvider(baby.id)));
-    if (medPlans != null) {
-      NotificationService.instance.syncMedicationPlans(
-        medPlans,
-        enabled: medicationOn && !baby.isExpecting,
-        babyName: baby.name,
-        activePlanIds:
-            ref.read(healthRepositoryProvider).activeMedicationPlanIds,
-      );
-    }
+    // İlaç/vitamin bildirimleri: TÜM bebekler için tek planlayıcı
+    // (MedicationScheduler, ön planda [MedSchedulerSync]) — İlaç v2 A4.
 
     if (baby.isExpecting) {
       // Gebelik haftası — hafta değişince (09:00) tek seferlik.

@@ -135,7 +135,10 @@ void main() {
   });
 
   group('O15 — bebeğin tüm planlı bildirimleri', () {
-    test('cancelBabyScheduled: slot bazlı tüm id aralıkları + ilaç planları', () async {
+    // İlaç v2 (A4): ilaç bildirimleri artık bebek bazında planlayıcı defterinden
+    // iptal edilir (MedicationScheduler.cancelBaby — med_scheduler_test.dart);
+    // eski plan-id aralığı (670000+) planlayıcının tek seferlik göç temizliğinde.
+    test('cancelBabyScheduled: slot bazlı tüm id aralıkları', () async {
       await svc.syncMilestoneCheckReminder(enabled: true, slot: 2);
       await svc.syncToothCheckReminder(enabled: true, slot: 2);
       await svc.syncMilestoneCheckReminder(enabled: true, slot: 3); // başka bebek
@@ -143,13 +146,12 @@ void main() {
       for (final id in [
         610002, 620002, 630002, 640002, // sağlık (slot 2)
         800002, 810002, 820002, 900002, 910002, // beslenme + sayaçlar (slot 2)
-        670050, 670051, // ilaç planı 5 (iki doz)
         610003, // başka bebek aşı
       ]) {
         plugin.scheduled[id] = PendingNotificationRequest(id, null, null, null);
       }
 
-      await svc.cancelBabyScheduled(slot: 2, medicationPlanIds: [5]);
+      await svc.cancelBabyScheduled(slot: 2);
 
       expect(plugin.ids, {650003, 610003},
           reason: 'yalnız diğer bebeğin (slot 3) bildirimleri kalmalı');

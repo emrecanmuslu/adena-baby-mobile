@@ -54,10 +54,15 @@ class NotificationPrefs {
   /// Her ilaç/vitamin planının günlük saatinde hatırlatma.
   static const medication = 'notif_medication';
 
+  /// İlaç v2 (K4): doz işaretlenmediyse plan saatinden 30 dk sonra TEK ek
+  /// hatırlatma (varsayılan AÇIK).
+  static const medicationMissed = 'notif_medication_missed';
+
   /// Bu sınıfın yönettiği tüm anahtarlar (toplu okuma için).
   static const all = [
     timers, community, inAppBanner,
     vaccine, leap, growth, pregnancyWeek, milestone, tooth, medication,
+    medicationMissed,
   ];
 
   Future<bool> enabled(String key) async {

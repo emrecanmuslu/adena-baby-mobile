@@ -7,7 +7,6 @@ import '../../core/api_error.dart';
 import '../../core/adena_icons.dart';
 import '../../core/i18n.dart';
 import '../../core/medication.dart';
-import '../../core/notification_service.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
 import '../babies/exact_alarm_resync.dart';
@@ -352,7 +351,7 @@ class _PlanSheetState extends ConsumerState<_PlanSheet> {
     final p = widget.existing!;
     try {
       await ref.read(healthRepositoryProvider).deleteMedicationPlan(p.id);
-      await NotificationService.instance.cancelMedicationPlan(p.id);
+      // Bildirimler: planlar yenilenince planlayıcı (MedSchedulerSync) iptal eder.
       ref.invalidate(medicationPlansProvider(widget.babyId));
       if (mounted) {
         Navigator.pop(context);

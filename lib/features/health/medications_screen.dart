@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/i18n.dart';
-import '../../core/notification_service.dart';
 import '../../data/sync_gate.dart';
 import '../../core/medication.dart';
 import '../../core/skeleton.dart';
@@ -231,7 +230,6 @@ class _PlanCard extends ConsumerWidget {
                   child: GestureDetector(
                     onTap: () async {
                       await ref.read(healthRepositoryProvider).deleteMedicationPlan(plan.id);
-                      await NotificationService.instance.cancelMedicationPlan(plan.id);
                       ref.invalidate(medicationPlansProvider(babyId));
                     },
                     child: Container(

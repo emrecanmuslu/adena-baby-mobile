@@ -10,9 +10,11 @@ import 'package:uuid/uuid.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/dates.dart';
+import '../../core/exact_alarm_prompt.dart';
 import '../../core/i18n.dart';
 import '../../core/medication.dart';
 import '../../core/medication/dose_write.dart';
+import '../../core/modal_gate.dart';
 import '../../core/theme.dart';
 import '../../data/health_repository.dart';
 import '../../data/home_nudge_prefs.dart';
@@ -21,6 +23,7 @@ import '../../data/sync_gate.dart';
 import '../../models/medication_plan.dart';
 import '../../models/record.dart';
 import '../auth/auth_controller.dart';
+import '../babies/exact_alarm_resync.dart';
 import '../babies/members_screen.dart' show membersProvider;
 import '../records/record_controller.dart';
 import '../records/record_form.dart';
@@ -1642,6 +1645,24 @@ class MedDiscoverCard extends ConsumerWidget {
 /// plan yoksa (ve kapatılmadıysa) keşif kartı; aksi halde gizli. Bölümün
 /// sayfadaki YERİ çağıran tarafından [medicationDayProvider]`.promote`'a göre
 /// seçilir (bkz. home_screen.dart _HomeTab).
+/// M14: ilaç planı bu cihaza SENKRONLA gelse de (planı oluşturan cihaz değil)
+/// kesin alarm açıklaması bir kez gösterilsin. Testler üreticiyi değiştirir.
+@visibleForTesting
+ExactAlarmPrompt Function(WidgetRef ref) medExactPromptFactory = (ref) =>
+    ExactAlarmPrompt(onGranted: () => resyncAfterExactAlarmGranted(ref));
+bool _medExactTried = false;
+@visibleForTesting
+void resetMedExactPromptForTest() => _medExactTried = false;
+
+void _maybePromptExact(BuildContext context, WidgetRef ref) {
+  if (_medExactTried) return;
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    if (_medExactTried || ModalGate.isBlocked || !context.mounted) return;
+    _medExactTried = true; // oturumda bir kez dene (kalıcı bayrak prompt'ta)
+    await medExactPromptFactory(ref).maybeShow(context);
+  });
+}
+
 class MedHomeSection extends ConsumerWidget {
   final String babyId;
   const MedHomeSection({super.key, required this.babyId});
@@ -1652,6 +1673,7 @@ class MedHomeSection extends ConsumerWidget {
     if (day == null) return const SizedBox.shrink();
     void openPlans() => context.push('/medications');
 
+    if (day.rows.isNotEmpty) _maybePromptExact(context, ref);
     if (day.hasActive) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
