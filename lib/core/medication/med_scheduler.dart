@@ -46,12 +46,15 @@ class MedSchedBaby {
   final bool expecting;
   final List<MedicationPlan> plans;
   final List<Record> records; // en az dün + bugün (+ erken işaretlenmiş gelecek dozlar)
+  /// W2: bu bebeğin son BAŞARILI kayıt senkronunun (başlangıç) anı; yoksa null.
+  final DateTime? recordsSyncedAt;
   const MedSchedBaby({
     required this.id,
     required this.name,
     this.expecting = false,
     required this.plans,
     required this.records,
+    this.recordsSyncedAt,
   });
 }
 
@@ -208,15 +211,22 @@ class _Entry {
 /// Planlayıcı. [instance] üretimde [NotificationService.instance] ile çalışır;
 /// testler [MedicationScheduler.forTest] ile sahte servis/saat/platform verir.
 class MedicationScheduler {
-  MedicationScheduler._(this._svc, this._now, this._ios, this._mirror);
+  MedicationScheduler._(
+      this._svc, this._now, this._ios, this._mirror, this._groupRead, this._groupWrite);
 
-  static MedicationScheduler instance = MedicationScheduler._(
-      NotificationService.instance, DateTime.now, Platform.isIOS, _defaultMirror);
+  static MedicationScheduler instance = MedicationScheduler._(NotificationService.instance,
+      DateTime.now, Platform.isIOS, _defaultMirror, WidgetService.readGroupString,
+      WidgetService.writeGroupString);
 
   @visibleForTesting
   static MedicationScheduler forTest(NotificationService svc,
-          {DateTime Function()? now, bool ios = false, Future<void> Function(String)? mirror}) =>
-      MedicationScheduler._(svc, now ?? DateTime.now, ios, mirror ?? (_) async {});
+          {DateTime Function()? now,
+          bool ios = false,
+          Future<void> Function(String)? mirror,
+          Future<String?> Function(String key)? groupRead,
+          Future<void> Function(String key, String? value)? groupWrite}) =>
+      MedicationScheduler._(svc, now ?? DateTime.now, ios, mirror ?? (_) async {},
+          groupRead ?? (_) async => null, groupWrite ?? (_, _) async {});
 
   /// iOS App Group aynası (NSE okur) — `WidgetService` ile aynı kanal; Android'de
   /// no-op. Ön plan ve arka plan isolate'ında aynı.
@@ -226,6 +236,76 @@ class MedicationScheduler {
   final DateTime Function() _now;
   final bool _ios;
   final Future<void> Function(String json) _mirror;
+  /// App Group (iOS NSE ile paylaşılan) metin anahtarları; Android'de null / no-op.
+  final Future<String?> Function(String key) _groupRead;
+  final Future<void> Function(String key, String? value) _groupWrite;
+
+  /// W2 (ILAC-INCELEME-3): NSE'nin "verildi/atlandı" ile iptal ettiği defter
+  /// anahtarları → iptal anı (ms). NSE yazar, "geri alındı"da siler; Dart her işin
+  /// başında okuyup yerel defterde iptal işaretler ve pencere dışına çıkanları
+  /// temizler. Anahtar adı `NotificationService.swift` ile BİREBİR.
+  static const kNseCanceled = 'med_nse_canceled';
+
+  static String _syncKey(String babyId) => 'med_rec_synced_$babyId';
+
+  /// W2: kayıt senkronu bu bebek için BAŞARIYLA bitti; [startedAt] = isteğin
+  /// başladığı an (uçuştaki NSE iptali "senkrondan sonra" sayılmasın diye).
+  static Future<void> markRecordsSynced(String babyId, DateTime startedAt) async {
+    try {
+      final p = await _prefs();
+      await p.setInt(_syncKey(babyId), startedAt.millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  /// W2: [markRecordsSynced] ile yazılan an (başka isolate'ınki dahil, taze okunur).
+  static Future<DateTime?> recordsSyncedAt(String babyId) async {
+    try {
+      final ms = (await _prefs()).getInt(_syncKey(babyId));
+      return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, int>> _readNse() async {
+    try {
+      final raw = await _groupRead(kNseCanceled);
+      if (raw == null || raw.isEmpty) return {};
+      final m = jsonDecode(raw) as Map;
+      return {
+        for (final e in m.entries)
+          if (e.key is String && e.value is num) e.key as String: (e.value as num).toInt()
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// NSE iptallerini yerel deftere işler (iptal işareti). Değiştiyse true.
+  static bool _absorbNse(Map<String, _Entry> reg, Map<String, int> nse) {
+    var changed = false;
+    for (final k in nse.keys) {
+      final e = reg[k];
+      if (e != null && !e.canceled) {
+        reg[k] = e.asCanceled();
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  /// [drop] anahtarlarını App Group'tan siler — TAZE okunan kümeden (bu arada
+  /// NSE'nin eklediği anahtar kaybolmasın).
+  Future<void> _pruneNse(Set<String> drop) async {
+    if (drop.isEmpty) return;
+    try {
+      final fresh = await _readNse();
+      final before = fresh.length;
+      fresh.removeWhere((k, _) => drop.contains(k));
+      if (fresh.length == before) return;
+      await _groupWrite(kNseCanceled, fresh.isEmpty ? null : jsonEncode(fresh));
+    } catch (_) {}
+  }
 
   static const kRegistry = 'med_notif_registry_v2';
   static const kNextId = 'med_notif_next_id';
@@ -312,6 +392,12 @@ class MedicationScheduler {
             now,
             ios: _ios);
         final reg = await _load(p);
+        final nse = await _readNse();
+        _absorbNse(reg, nse);
+        final synced = {
+          for (final b in input.babies) b.id: b.recordsSyncedAt?.millisecondsSinceEpoch
+        };
+        final nseUndone = <String>{};
         final mode = await _svc.medScheduleMode();
         final pending =
             await _svc.pendingIdsIn(NotificationService.medIdLo, NotificationService.medIdHi);
@@ -362,6 +448,18 @@ class MedicationScheduler {
                 : old;
             continue;
           }
+          // W2: NSE "verildi" ile iptal etti, bekleyen değil. Kayıt senkronu bunu
+          // izleyen bir anda doz hâlâ açık demiyorsa (senkron yok / NSE iptalinden
+          // önce) "verildi" henüz yerele gelmemiş say → yeniden KURMA.
+          final nseAt = nse[d.key];
+          if (old != null && nseAt != null && !alive) {
+            final s = synced[d.babyId];
+            if (s == null || s <= nseAt) {
+              next[d.key] = old.canceled ? old : old.asCanceled();
+              continue;
+            }
+            nseUndone.add(d.key); // senkron sonrası hâlâ açık → geri alınmış
+          }
           final id = old?.id ?? _alloc(p, used);
           used.add(id);
           await _svc.scheduleMedOnce(
@@ -381,6 +479,15 @@ class MedicationScheduler {
           }
         }
         await _save(p, next);
+        // W2: artık defterde olmayan / penceresi geçmiş / geri alınmış NSE anahtarları.
+        final nowMs = now.millisecondsSinceEpoch;
+        await _pruneNse({
+          for (final k in nse.keys)
+            if (nseUndone.contains(k) ||
+                next[k] == null ||
+                nowMs - next[k]!.at >= kMedOpenWindow.inMilliseconds)
+              k
+        });
       });
 
   /// Push/NSE eşleniği: dozun ([planUuid] + [date] + [time]) ana ve K4
@@ -390,8 +497,8 @@ class MedicationScheduler {
   Future<void> cancelDose(String planUuid, String date, String time) => _serial(() async {
         final p = await _prefs();
         final reg = await _load(p);
+        var changed = _absorbNse(reg, await _readNse());
         final base = '$planUuid|$date|$time';
-        var changed = false;
         for (final k in ['$base|${MedNotifKind.main}', '$base|${MedNotifKind.missed}']) {
           final e = reg[k];
           if (e != null) {
@@ -413,6 +520,7 @@ class MedicationScheduler {
               kRevoked, {...?p.getStringList(kRevoked), babyId}.toList());
         }
         final reg = await _load(p);
+        final absorbed = _absorbNse(reg, await _readNse());
         final drop = [for (final e in reg.entries) if (e.value.baby == babyId) e.key];
         for (final k in drop) {
           await _svc.cancelId(reg.remove(k)!.id);
@@ -424,7 +532,7 @@ class MedicationScheduler {
           await _svc.cancelId(reg.remove(w)!.id);
           drop.add(w);
         }
-        if (drop.isNotEmpty) await _save(p, reg);
+        if (drop.isNotEmpty || absorbed) await _save(p, reg);
       });
 
   /// Çıkış: defteri temizler (bildirimleri `NotificationService.cancelAll` siler).
@@ -432,6 +540,9 @@ class MedicationScheduler {
         final p = await _prefs();
         await p.remove(kRevoked);
         await _save(p, {});
+        try {
+          await _groupWrite(kNseCanceled, null);
+        } catch (_) {}
       });
 
   /// V5: ön plan bebek listesini sunucudan BAŞARIYLA tazeledi — erişimi gerçekten

@@ -41,6 +41,27 @@ class WidgetService {
     } catch (_) {}
   }
 
+  /// ILAC-INCELEME-3 W2/W8: NSE'nin App Group'a yazdığı metin anahtarını okur
+  /// (`med_nse_canceled`, `med_revoked_babies`). Android'de / hata durumunda null.
+  static Future<String?> readGroupString(String key) async {
+    if (!Platform.isIOS) return null;
+    try {
+      await _ensureInit();
+      return await HomeWidget.getWidgetData<String>(key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// [readGroupString] eşleniği; [value] null → anahtar silinir. Android'de no-op.
+  static Future<void> writeGroupString(String key, String? value) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _ensureInit();
+      await HomeWidget.saveWidgetData<String>(key, value);
+    } catch (_) {}
+  }
+
   /// TÜM bebeklerin sonraki-beslenme verisini + bebek listesini yazar (ön plan,
   /// reaktif). [babies] sırası listeyi belirler; [activeId] seçim yapılmamış
   /// widget'ların göstereceği bebek.

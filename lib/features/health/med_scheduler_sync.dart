@@ -36,6 +36,7 @@ MedSchedLoader medSchedLoader({
           expecting: b.isExpecting,
           plans: plans,
           records: await records.watchSince(b.id, since).first,
+          recordsSyncedAt: await MedicationScheduler.recordsSyncedAt(b.id),
         ));
       }
       final prefs = NotificationPrefs.instance;

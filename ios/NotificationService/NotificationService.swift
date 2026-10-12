@@ -56,6 +56,31 @@ class NotificationService: UNNotificationServiceExtension {
     defaults.set(raw, forKey: "med_notif_registry")
   }
 
+  /// W2 (ILAC-INCELEME-3): `med_nse_canceled` = {defter anahtarı: iptal anı ms}.
+  /// Dart `MedicationScheduler.kNseCanceled` ile aynı anahtar; değer JSON METNİ
+  /// (Dart `HomeWidget.getWidgetData<String>` okur).
+  private let nseCanceledKey = "med_nse_canceled"
+
+  private func loadNseCanceled(_ defaults: UserDefaults) -> [String: NSNumber] {
+    guard let raw = defaults.string(forKey: nseCanceledKey),
+          let data = raw.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return [:] }
+    var out: [String: NSNumber] = [:]
+    for (k, v) in obj { if let n = v as? NSNumber { out[k] = n } }
+    return out
+  }
+
+  private func saveNseCanceled(_ defaults: UserDefaults, _ m: [String: NSNumber]) {
+    if m.isEmpty {
+      defaults.removeObject(forKey: nseCanceledKey)
+      return
+    }
+    guard let data = try? JSONSerialization.data(withJSONObject: m),
+          let raw = String(data: data, encoding: .utf8) else { return }
+    defaults.set(raw, forKey: nseCanceledKey)
+  }
+
   private func medId(_ e: [String: Any]) -> String? {
     if let i = e["id"] as? Int { return String(i) }
     if let n = e["id"] as? NSNumber { return n.stringValue }
@@ -106,13 +131,24 @@ class NotificationService: UNNotificationServiceExtension {
       if ids.isEmpty { return }
       center.removePendingNotificationRequests(withIdentifiers: ids)
       center.removeDeliveredNotifications(withIdentifiers: ids)
-      // Defterde KALIR (V6 — Dart cancelDose ile aynı model: girdi iptal
-      // işaretli kalır): ön plan yeniden kurması "bekleyen değil" görüp kaydın
-      // çözüldüğünü senkronla öğrenir; geri alınırsa NSE içerikten geri ekler.
+      // Defterde KALIR (V6): geri alınırsa NSE içerikten geri ekler.
+      // W2 (ILAC-INCELEME-3): iptal anı `med_nse_canceled`'a yazılır — Dart, kayıt
+      // senkronu bunu doğrulayana dek bu hatırlatmayı yeniden KURMAZ.
+      var canceled = loadNseCanceled(defaults)
+      let nowMs = NSNumber(value: Int64(Date().timeIntervalSince1970 * 1000))
+      for k in keys where reg[k] != nil { canceled[k] = nowMs }
+      saveNseCanceled(defaults, canceled)
       return
     }
 
     if event == "undone" {
+      // W2: geri alındı → Dart'ın "yeniden kurma" engeli kalkar.
+      var canceled = loadNseCanceled(defaults)
+      var removed = false
+      for k in keys {
+        if canceled.removeValue(forKey: k) != nil { removed = true }
+      }
+      if removed { saveNseCanceled(defaults, canceled) }
       let now = Date()
       for k in keys {
         guard let e = reg[k], let id = medId(e),

@@ -115,15 +115,21 @@ void main() {
   late NotificationService svc;
   late DateTime now;
   late List<String> mirrored;
+  late Map<String, String> appGroup; // App Group (NSE ile paylaşılan UserDefaults)
 
   MedicationScheduler sched({bool ios = false}) => MedicationScheduler.forTest(svc,
-      now: () => now, ios: ios, mirror: (j) async => mirrored.add(j));
+      now: () => now,
+      ios: ios,
+      mirror: (j) async => mirrored.add(j),
+      groupRead: (k) async => appGroup[k],
+      groupWrite: (k, v) async => v == null ? appGroup.remove(k) : appGroup[k] = v);
 
   MedSchedLoader input(List<MedicationPlan> plans,
           {List<Record> records = const [], bool enabled = true, bool missedOn = true,
-          bool expecting = false, String name = 'Ada'}) =>
+          bool expecting = false, String name = 'Ada', DateTime? syncedAt}) =>
       () async => MedSchedInput(enabled: enabled, missedOn: missedOn, babies: [
-            MedSchedBaby(id: 'b1', name: name, expecting: expecting, plans: plans, records: records)
+            MedSchedBaby(id: 'b1', name: name, expecting: expecting, plans: plans,
+                records: records, recordsSyncedAt: syncedAt)
           ]);
 
   Iterable<String> titles() => plugin.pending.values.map((v) => v.title ?? '');
@@ -134,6 +140,7 @@ void main() {
     svc = NotificationService.withPlugin(plugin);
     now = DateTime(2026, 10, 12, 7, 0);
     mirrored = [];
+    appGroup = {};
   });
 
   test('günlük plan: 7 gün × saat × (ana + K4) tek seferlik; id\'ler yeni aralıkta; başlık/gövde',
@@ -454,6 +461,81 @@ void main() {
       await s.rebuild(input([_p()], records: [_given('2026-10-12', '08:00')]));
       expect(mir().containsKey(k), isFalse);
       expect(mir().containsKey(kx), isFalse);
+    });
+  });
+
+  // ILAC-INCELEME-3 W2: NSE'nin (force-quit) "verildi" iptali App Group'ta
+  // `med_nse_canceled`'a yazılır; Dart, kayıt senkronu bunu doğrulayana dek
+  // (ya da NSE "geri alındı" diyene dek) o hatırlatmayı yeniden KURMAZ.
+  group('W2 — NSE iptali senkronsuz yeniden kurmada geri gelmez', () {
+    const k = 'p1|2026-10-12|08:00|m';
+    const kx = 'p1|2026-10-12|08:00|x';
+    Map<String, dynamic> mir() => (jsonDecode(mirrored.last) as Map).cast<String, dynamic>();
+    Map<String, dynamic> nse() =>
+        (jsonDecode(appGroup[MedicationScheduler.kNseCanceled] ?? '{}') as Map).cast();
+    bool has0800() => plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 8));
+
+    /// NSE "verildi" (NotificationService.swift): bekleyenleri siler, iptal anını yazar.
+    void nseGiven(DateTime at) {
+      for (final key in [k, kx]) {
+        plugin.pending.remove(mir()[key]['id'] as int);
+      }
+      appGroup[MedicationScheduler.kNseCanceled] =
+          jsonEncode({k: at.millisecondsSinceEpoch, kx: at.millisecondsSinceEpoch});
+    }
+
+    test('force-quit iken verildi → senkronsuz açılış → hatırlatma yeniden KURULMAZ', () async {
+      final s = sched(ios: true);
+      await s.rebuild(input([_p()]));
+      nseGiven(DateTime(2026, 10, 12, 7, 10));
+      now = DateTime(2026, 10, 12, 7, 20);
+      await s.rebuild(input([_p()])); // öne geliş, kayıt yerelde yok, hiç senkron yok
+      expect(has0800(), isFalse);
+      expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 8, 30)), isFalse);
+      expect(mir()[k]['c'], isTrue, reason: 'yerel defterde iptal işaretli');
+    });
+
+    test('son başarılı senkron NSE iptalinden ÖNCE (verildi doğrulanmadı) → kurulmaz', () async {
+      final s = sched(ios: true);
+      await s.rebuild(input([_p()]));
+      nseGiven(DateTime(2026, 10, 12, 7, 10));
+      now = DateTime(2026, 10, 12, 7, 20);
+      await s.rebuild(input([_p()], syncedAt: DateTime(2026, 10, 12, 7, 0)));
+      expect(has0800(), isFalse);
+    });
+
+    test('senkron NSE iptalinden SONRA ve doz açık (geri alındı) → kurulur; anahtar temizlenir',
+        () async {
+      final s = sched(ios: true);
+      await s.rebuild(input([_p()]));
+      nseGiven(DateTime(2026, 10, 12, 7, 10));
+      now = DateTime(2026, 10, 12, 7, 20);
+      await s.rebuild(input([_p()], syncedAt: DateTime(2026, 10, 12, 7, 15)));
+      expect(has0800(), isTrue);
+      expect(nse().containsKey(k), isFalse);
+      expect(nse().containsKey(kx), isFalse);
+    });
+
+    test('senkron "verildi"yi getirdi → çözülmüş, kurulmaz; pencere geçince anahtar temizlenir',
+        () async {
+      final s = sched(ios: true);
+      await s.rebuild(input([_p()]));
+      nseGiven(DateTime(2026, 10, 12, 7, 10));
+      now = DateTime(2026, 10, 12, 7, 20);
+      await s.rebuild(input([_p()],
+          records: [_given('2026-10-12', '08:00')], syncedAt: DateTime(2026, 10, 12, 7, 15)));
+      expect(has0800(), isFalse);
+      now = DateTime(2026, 10, 12, 20, 31);
+      await s.rebuild(input([_p()], records: [_given('2026-10-12', '08:00')]));
+      expect(appGroup.containsKey(MedicationScheduler.kNseCanceled), isFalse);
+    });
+
+    test('cancelDose da NSE iptallerini yerel deftere işler (iptal işareti aynaya gider)', () async {
+      final s = sched(ios: true);
+      await s.rebuild(input([_p()]));
+      nseGiven(DateTime(2026, 10, 12, 7, 10));
+      await s.cancelDose('p1', '2026-10-12', '20:00');
+      expect(mir()[k]['c'], isTrue);
     });
   });
 

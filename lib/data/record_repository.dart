@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/medication/med_scheduler.dart';
 import '../core/providers.dart';
 import '../models/record.dart';
 import 'local/app_database.dart';
@@ -214,6 +215,7 @@ class RecordRepository {
   static const syncBatchSize = 500;
 
   Future<void> sync(String babyId) async {
+    final startedAt = DateTime.now(); // W2: damga = isteğin BAŞLANGICI
     final dirtyRows = await (_db.select(_db.records)
           ..where((r) => r.baby.equals(babyId) & r.dirty.equals(true)))
         .get();
@@ -255,6 +257,9 @@ class RecordRepository {
       final data = resp.data as Map<String, dynamic>;
       cursor = await _applySyncResponse(babyId, data, sentStamp) ?? cursor;
     } while (offset < dirtyRows.length);
+    // W2 (ILAC-INCELEME-3): ilaç planlayıcısı, NSE'nin "verildi" iptalini bu andan
+    // SONRAKİ bir senkron doğrulamadıkça hatırlatmayı yeniden kurmaz.
+    await MedicationScheduler.markRecordsSynced(babyId, startedAt);
   }
 
   /// Bir /sync yanıtını uygular; yeni cursor'ı (varsa) döner.
