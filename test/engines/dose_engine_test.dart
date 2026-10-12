@@ -406,4 +406,48 @@ void main() {
       expect(h.days.first.day, DateTime(2026, 10, 12)); // en yeni üstte
     });
   });
+
+  // ILAC-INCELEME-2 V1: önceki güne ait kayıt bugünün dozunu "verildi" yapmamalı.
+  group('V1 — gün sınırı (önceki günün kaydı bugünün dozunu kapatmaz)', () {
+    test('saat 21:00→09:00 (scheduleFrom bugün): dünkü kimlikli kayıt bugünün 09:00\'ını kapatmaz', () {
+      final p = _p(times: ['09:00'], scheduleFrom: DateTime(2026, 10, 12, 7));
+      final recs = [_dose('2026-10-11', '21:00', ts: DateTime(2026, 10, 11, 21, 2))];
+      final today = todaysMedicationDoses([p], recs, now: DateTime(2026, 10, 12, 7, 30));
+      expect(today.single.status, MedicationDoseStatus.upcoming);
+      expect(today.single.records, isEmpty);
+      final open = todaysMedicationDoses([p], recs, now: DateTime(2026, 10, 12, 10));
+      expect(open.single.status, MedicationDoseStatus.overdue);
+    });
+
+    test('bugün oluşturulan plan: dünkü kimliksiz kayıt bugünün dozunu kapatmaz', () {
+      final p = _p(times: ['09:00'], createdAt: DateTime(2026, 10, 12, 7), start: DateTime(2026, 10, 12));
+      final recs = [_legacy('Demir', DateTime(2026, 10, 11, 21, 2))];
+      final today = todaysMedicationDoses([p], recs, now: DateTime(2026, 10, 12, 7, 30));
+      expect(today.single.status, MedicationDoseStatus.upcoming);
+      expect(today.single.records, isEmpty);
+    });
+
+    test('kimliksiz kayıt: üretilmeyen (oluşturma öncesi) komşu doz kaydı "emer"', () {
+      // Tek günlük kür, plan 19:00'da oluşturuldu → 08:00 üretilmez. 08:05'teki elle girilmiş
+      // kayıt 20:00 dozuna 12 sa'ten az uzakta olsa da ona bağlanmaz: ham
+      // takvimde en yakını (üretilmeyen) 08:00.
+      final p = _p(times: ['08:00', '20:00'], createdAt: DateTime(2026, 10, 11, 19),
+          start: DateTime(2026, 10, 11), end: DateTime(2026, 10, 11));
+      final recs = [_legacy('Demir', DateTime(2026, 10, 11, 8, 5))];
+      final ds = resolveDoses([p], recs,
+          from: DateTime(2026, 10, 11), to: DateTime(2026, 10, 12),
+          now: DateTime(2026, 10, 11, 19, 30));
+      expect(ds.single.time, '20:00');
+      expect(ds.single.records, isEmpty);
+    });
+
+    test('kimlikli yetim yalnız aynı dose_date\'in dozuna bağlanır', () {
+      final p = _p(times: ['09:00'], scheduleFrom: DateTime(2026, 10, 12, 7));
+      final recs = [_dose('2026-10-11', '22:00', ts: DateTime(2026, 10, 11, 22, 1))];
+      final ds = resolveDoses([p], recs,
+          from: DateTime(2026, 10, 11), to: DateTime(2026, 10, 13),
+          now: DateTime(2026, 10, 12, 8));
+      expect(ds.every((d) => d.records.isEmpty), isTrue);
+    });
+  });
 }

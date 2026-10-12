@@ -74,7 +74,11 @@ bool _pausedAt(MedicationPlan p, DateTime t) {
 }
 
 /// Duraklatmayı yok sayarak (ama diğer kurallarla) planlanan dozlar.
-List<PlannedDose> _rawDoses(MedicationPlan p, DateTime from, DateTime to) {
+/// [unfiltered] → başlangıç/bitiş/oluşturma/zamanlama çapası filtreleri de
+/// uygulanmaz (yalnız aralık): kimliksiz kaydın yakınlık komşuları için HAM
+/// takvim (V1 — üretilmeyen doz da kaydı "emer").
+List<PlannedDose> _rawDoses(MedicationPlan p, DateTime from, DateTime to,
+    {bool unfiltered = false}) {
   if (p.isPrn || p.times.isEmpty) return const [];
   final start = _day(p.startDate ?? p.createdAt);
   final end = p.endDate == null ? null : _day(p.endDate!);
@@ -84,6 +88,7 @@ List<PlannedDose> _rawDoses(MedicationPlan p, DateTime from, DateTime to) {
 
   bool keep(DateTime due, DateTime date) {
     if (due.isBefore(from) || !due.isBefore(to)) return false;
+    if (unfiltered) return true;
     if (date.isBefore(start)) return false;
     if (end != null && date.isAfter(end)) return false;
     if (due.isBefore(p.createdAt)) return false;
@@ -107,7 +112,7 @@ List<PlannedDose> _rawDoses(MedicationPlan p, DateTime from, DateTime to) {
   final times = [...p.times]..sort((a, b) => medicationMinutes(a).compareTo(medicationMinutes(b)));
   for (var d = _day(from); d.isBefore(to); d = DateTime(d.year, d.month, d.day + 1)) {
     final on = switch (p.freq) {
-      MedFreq.everyNDays => _daysBetween(start, d) >= 0 &&
+      MedFreq.everyNDays => (unfiltered || _daysBetween(start, d) >= 0) &&
           _daysBetween(start, d) % (p.everyNDays ?? 1).clamp(1, 365) == 0,
       MedFreq.weekly => p.weekdays.contains(d.weekday),
       _ => true,
@@ -217,7 +222,8 @@ List<MedicationDose> resolveDoses(
     byName.putIfAbsent(medNameKey(p.name), () => p);
   }
 
-  final orphans = <({Record r, MedicationPlan p, DateTime at, bool legacy})>[];
+  final orphans =
+      <({Record r, MedicationPlan p, DateTime at, DateTime? date, bool legacy})>[];
   for (final r in records) {
     if (r.type != RecordType.medication || r.isDeleted) continue;
     final id = _identity(r);
@@ -235,16 +241,24 @@ List<MedicationDose> resolveDoses(
           r: r,
           p: p,
           at: DateTime(date.year, date.month, date.day, m ~/ 60, m % 60),
+          date: date,
           legacy: false
         ));
       }
     } else if (r.data['plan_uuid'] == null) {
       final p = byName[medNameKey((r.data['name'] as String?) ?? '')];
-      if (p != null) orphans.add((r: r, p: p, at: r.ts, legacy: true));
+      if (p != null) orphans.add((r: r, p: p, at: r.ts.toLocal(), date: null, legacy: true));
     }
   }
 
   // Yetim/eski kayıtlar: aynı plandaki en yakın doza, yarım boşluk içindeyse.
+  // V1 (ILAC-INCELEME-2) — gün sınırı:
+  // - kimlikli yetim (saati planda artık yok) YALNIZ kendi dose_date'inin
+  //   dozlarına bağlanır;
+  // - kimliksiz kayıtta komşular HAM takvimden (başlangıç/oluşturma/çapa/
+  //   duraklatma filtresiz) hesaplanır: en yakın ham doz üretilmemişse kayıt
+  //   "emilir" (hiçbir doza bağlanmaz). Sonraki günün dozuna İLERİ bağlanmaz;
+  //   gece yarısı sonrası dünün dozuna GERİ bağlanabilir (M4).
   final perPlan = <String, List<PlannedDose>>{};
   for (final d in doses) {
     perPlan.putIfAbsent(medPlanKey(d.plan), () => []).add(d);
@@ -252,12 +266,17 @@ List<MedicationDose> resolveDoses(
   for (final list in perPlan.values) {
     list.sort((a, b) => a.dueAt.compareTo(b.dueAt));
   }
+  final rawPerPlan = <String, List<PlannedDose>>{};
+  List<PlannedDose> rawFor(MedicationPlan p) => rawPerPlan.putIfAbsent(medPlanKey(p),
+      () => _rawDoses(p, pFrom, pTo, unfiltered: true)..sort((a, b) => a.dueAt.compareTo(b.dueAt)));
   for (final o in orphans) {
-    final list = perPlan[medPlanKey(o.p)] ?? const <PlannedDose>[];
+    final list = o.legacy ? rawFor(o.p) : (perPlan[medPlanKey(o.p)] ?? const <PlannedDose>[]);
+    final atDay = _day(o.at);
     PlannedDose? best;
     Duration? bestGap;
     for (var i = 0; i < list.length; i++) {
       final d = list[i];
+      if (o.legacy ? d.doseDate.isAfter(atDay) : d.doseDate != o.date) continue;
       var half = kMedOpenWindow;
       if (i > 0) {
         final g = d.dueAt.difference(list[i - 1].dueAt) ~/ 2;
@@ -274,7 +293,9 @@ List<MedicationDose> resolveDoses(
         bestGap = gap;
       }
     }
-    if (best != null) {
+    // Ham takvimdeki en yakın doz üretilmemişse (çapa/oluşturma öncesi,
+    // duraklatma, kür dışı) kayıt emilir.
+    if (best != null && byKey.containsKey(best.key)) {
       attached.putIfAbsent(best.key, () => []).add((r: o.r, legacy: o.legacy));
     }
   }

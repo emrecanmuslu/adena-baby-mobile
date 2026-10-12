@@ -300,4 +300,16 @@ void main() {
     ]));
     expect(plugin.pending, isEmpty);
   });
+
+  test('V1: saat 21:00→09:00 sonrası dünkü kayıt bugünün 09:00 ana ve +30 dk hatırlatmasını engellemez',
+      () async {
+    now = DateTime(2026, 10, 12, 7, 30);
+    final p = MedicationPlan(
+        id: 1, uuid: 'p1', name: 'Demir', dose: '1 ml', times: const ['09:00'], active: true,
+        createdAt: DateTime(2026, 10, 1), startDate: DateTime(2026, 10, 1),
+        scheduleFrom: DateTime(2026, 10, 12, 7));
+    await sched().rebuild(input([p], records: [_given('2026-10-11', '21:00')]));
+    expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 9)), isTrue);
+    expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 9, 30)), isTrue);
+  });
 }

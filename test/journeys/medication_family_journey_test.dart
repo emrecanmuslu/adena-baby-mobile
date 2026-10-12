@@ -61,11 +61,12 @@ void main() {
   late List<MedicationPlan> plans; // ortak planlar (B'de senkronla inmiş)
   var n = 0;
 
-  MedicationPlan plan({List<String> times = const ['08:00', '20:00'], bool active = true}) =>
+  MedicationPlan plan(
+          {List<String> times = const ['08:00', '20:00'], bool active = true, DateTime? scheduleFrom}) =>
       MedicationPlan(
           id: 1, uuid: 'p1', name: 'Demir', dose: '1 ml', times: times, active: active,
           createdAt: DateTime(2026, 10, 1), startDate: DateTime(2026, 10, 1),
-          scheduleFrom: DateTime(2026, 10, 1));
+          scheduleFrom: scheduleFrom ?? DateTime(2026, 10, 1));
 
   Record mark(String by, DateTime at, String date, String time, {bool skipped = false}) {
     final r = medDoseRecord(
@@ -153,7 +154,8 @@ void main() {
   test('S4: A saati 08:00→09:00 yapar → B yeniden kurar; 08:01 kaydı 09:00 dozunu kapatır (gizli çift yok)', () async {
     now = DateTime(2026, 10, 12, 8, 30);
     server.add(mark('A', DateTime(2026, 10, 12, 8, 1), '2026-10-12', '08:00'));
-    plans = [plan(times: const ['09:00', '21:00'])];
+    // Gerçek düzenleme: saat değişince zamanlama çapası (scheduleFrom) ilerler.
+    plans = [plan(times: const ['09:00', '21:00'], scheduleFrom: DateTime(2026, 10, 12, 8, 20))];
     await bRebuild();
     expect(bHasAt(DateTime(2026, 10, 12, 9)), isFalse, reason: 'bugünkü doz zaten verildi');
     expect(bHasAt(DateTime(2026, 10, 12, 21)), isTrue);
