@@ -403,4 +403,44 @@ void main() {
     await s.rebuild(input([_p()])); // senkron: kayıt silinmiş → doz açık
     expect(plugin.pending.values.where((v) => v.at == DateTime(2026, 10, 12, 8)).length, 1);
   });
+
+  group('V10 — gösterilmiş hatırlatma doz penceresi boyunca defterde', () {
+    test('ara yeniden kurmadan sonra verilen dozun ekrandaki bildirimi kalkar', () async {
+      final s = sched();
+      await s.rebuild(input([_p()]));
+      now = DateTime(2026, 10, 12, 8, 5);
+      plugin.advance(now); // 08:00 gösterildi
+      final shown = plugin.displayed.single;
+      await s.rebuild(input([_p()])); // ör. uygulama ikondan açıldı
+      expect(plugin.displayed, contains(shown), reason: 'M8: çözülmemişken dokunulmaz');
+      now = DateTime(2026, 10, 12, 8, 10);
+      await s.rebuild(input([_p()], records: [_given('2026-10-12', '08:00')]));
+      expect(plugin.displayed, isNot(contains(shown)));
+    });
+
+    test('ara yeniden kurmadan sonra push cancelDose ekrandakini de kaldırır', () async {
+      final s = sched();
+      await s.rebuild(input([_p()]));
+      now = DateTime(2026, 10, 12, 8, 5);
+      plugin.advance(now);
+      final shown = plugin.displayed.single;
+      await s.rebuild(input([_p()]));
+      await s.cancelDose('p1', '2026-10-12', '08:00');
+      expect(plugin.displayed, isNot(contains(shown)));
+      // App Group aynasında da (NSE "verildi"de removeDelivered yapabilsin).
+      expect((jsonDecode(mirrored.last) as Map).containsKey('p1|2026-10-12|08:00|m'), isTrue);
+    });
+
+    test('pencere (12 sa) geçince gösterilmiş girdi defterden düşer', () async {
+      final s = sched();
+      await s.rebuild(input([_p()]));
+      now = DateTime(2026, 10, 12, 8, 5);
+      plugin.advance(now);
+      await s.rebuild(input([_p()]));
+      now = DateTime(2026, 10, 12, 20, 30);
+      plugin.advance(now);
+      await s.rebuild(input([_p()]));
+      expect((jsonDecode(mirrored.last) as Map).containsKey('p1|2026-10-12|08:00|m'), isFalse);
+    });
+  });
 }

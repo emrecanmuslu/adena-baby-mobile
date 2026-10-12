@@ -322,8 +322,16 @@ class MedicationScheduler {
         for (final e in reg.entries) {
           if (plan.desired.containsKey(e.key)) continue;
           final shown = e.value.at <= now.millisecondsSinceEpoch;
-          if (!shown || plan.resolvedKeys.contains(e.key)) {
+          final resolved = plan.resolvedKeys.contains(e.key);
+          if (!shown || resolved) {
             await _svc.cancelId(e.value.id);
+          } else if (now.millisecondsSinceEpoch - e.value.at <
+              kMedOpenWindow.inMilliseconds) {
+            // V10: gösterilmiş ve çözülmemiş — doz penceresi (12 sa) boyunca
+            // defterde KALIR (ekrandakine dokunulmaz, M8); doz sonradan çözülürse
+            // (yerel / push cancelDose / NSE) ekrandaki de kaldırılabilsin.
+            next[e.key] = e.value;
+            continue;
           }
           used.remove(e.value.id);
         }
