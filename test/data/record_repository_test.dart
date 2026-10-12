@@ -319,6 +319,39 @@ void main() {
     });
   });
 
+  // ILAC-INCELEME-3 W10: sunucu başka bebeğe ait id'yi 'rejected: foreign' ile
+  // bildirir → gönderim durur (dirty=false), yerel kopya SİLİNMEZ.
+  group('W10 — rejected (foreign)', () {
+    test('reddedilen kayıt dirty durumundan çıkar, yerelde kalır; diğerleri etkilenmez', () async {
+      await repo.upsertLocal(rec('r1', RecordType.feed, DateTime.utc(2026, 1, 1, 8)));
+      await repo.upsertLocal(rec('r2', RecordType.feed, DateTime.utc(2026, 1, 1, 9)));
+      adapter.onPost('/sync', (server) => server.reply(200, {
+            'applied': [],
+            'conflicts': [],
+            'rejected': [
+              {'id': 'r1', 'reason': 'foreign'}
+            ],
+            'server_changes': [],
+            'next_cursor': '2026-01-02T00:00:00.000Z',
+          }), data: Matchers.any);
+      await repo.sync(babyId);
+      final r1 = await rawRow('r1');
+      expect(r1, isNotNull, reason: 'yerel kopya silinmez');
+      expect(r1!.dirty, isFalse);
+      expect((await rawRow('r2'))!.dirty, isTrue);
+    });
+
+    test('rejected alanı olmayan (eski sunucu) yanıt sorunsuz', () async {
+      await repo.upsertLocal(rec('r1', RecordType.feed, DateTime.utc(2026, 1, 1, 8)));
+      adapter.onPost('/sync', (server) => server.reply(200, {
+            'applied': ['r1'], 'conflicts': [], 'server_changes': [],
+            'next_cursor': '2026-01-02T00:00:00.000Z',
+          }), data: Matchers.any);
+      await repo.sync(babyId);
+      expect((await rawRow('r1'))!.dirty, isFalse);
+    });
+  });
+
   group('sync (delta, son-yazan-kazanır)', () {
     test('dirty satırları /sync\'e gönderir; applied olanları temizler',
         () async {
