@@ -10,7 +10,8 @@ import '../../data/notification_prefs.dart';
 import '../../data/record_repository.dart';
 import '../../models/baby.dart';
 import '../babies/baby_controller.dart';
-import '../babies/notification_sync.dart' show settledListOrNull;
+import '../babies/notification_sync.dart'
+    show refreshTimezoneAndBump, settledListOrNull, timezoneEpochProvider;
 import '../records/record_controller.dart';
 import '../settings/notification_prefs_controller.dart';
 
@@ -74,7 +75,10 @@ class _MedSchedulerSyncState extends ConsumerState<MedSchedulerSync> {
   Future<void> _onResume() async {
     // M17: seyahatte saat dilimi değiştiyse tz.local güncellenir; dozlar zaten
     // cihazın yerel saatinden üretildiği için yeniden kurma doğru saate taşır.
-    await NotificationService.instance.refreshTimezone();
+    // V23: değiştiyse diğer günlük hatırlatıcı senkronları da yeniden kurulur.
+    await refreshTimezoneAndBump(NotificationService.instance.refreshTimezone,
+        () => ref.read(timezoneEpochProvider.notifier).bump());
+    if (!mounted) return;
     _request('resume');
   }
 
