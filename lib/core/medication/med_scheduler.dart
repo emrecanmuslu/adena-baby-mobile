@@ -275,7 +275,7 @@ class MedicationScheduler {
           return;
         }
         final p = await SharedPreferences.getInstance();
-        await _cleanLegacy(p);
+        await _cleanLegacy(p, input);
         final now = _now();
         final plan = planMedNotifications(input, now, ios: _ios);
         final reg = await _load(p);
@@ -361,12 +361,19 @@ class MedicationScheduler {
         await _save(p, {});
       });
 
-  /// Eski günlük-tekrar id'leri (670000–679999) — bir kez, yalnız BEKLEYENLER.
-  Future<void> _cleanLegacy(SharedPreferences p) async {
+  /// Eski günlük-tekrar id'leri (670000–679999) — bir kez. V4: bekleyen listeye
+  /// BAĞLI DEĞİL — yerel planların eski şemadaki id'leri (`670000 +
+  /// (planId % 1000) * 10 + i`, i < 10) doğrudan iptal edilir; liste
+  /// okunabiliyorsa aralıktaki diğer bekleyenler de.
+  Future<void> _cleanLegacy(SharedPreferences p, MedSchedInput input) async {
     if (p.getBool(kLegacyCleaned) == true) return;
-    final ids =
-        await _svc.pendingIdsIn(NotificationService.legacyMedLo, NotificationService.legacyMedHi);
-    if (ids == null) return; // okunamadı → sonraki tur dener
+    final ids = <int>{
+      for (final b in input.babies)
+        for (final plan in b.plans)
+          for (var i = 0; i < 10; i++)
+            NotificationService.legacyMedLo + (plan.id % 1000) * 10 + i,
+      ...?await _svc.pendingIdsIn(NotificationService.legacyMedLo, NotificationService.legacyMedHi),
+    };
     for (final id in ids) {
       await _svc.cancelId(id);
     }

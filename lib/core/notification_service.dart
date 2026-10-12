@@ -19,16 +19,29 @@ import 'i18n_warm.dart';
 /// Üç tür: özel/randevu hatırlatıcıları (günlük veya tek-sefer), beslenme uyarısı
 /// (son beslenme + aralık) ve süren uyku/emzirme sayaçları.
 class NotificationService {
-  NotificationService._() : _plugin = FlutterLocalNotificationsPlugin();
+  NotificationService._()
+      : _plugin = FlutterLocalNotificationsPlugin(),
+        _rawPending = _channelPending;
   /// Tekil örnek. Yalnız testler sahte plugin'li bir örnekle DEĞİŞTİRİR
   /// (`NotificationService.withPlugin`); üretim kodu atama yapmaz.
   static NotificationService instance = NotificationService._();
 
   /// Yalnız test: sahte eklentiyle bağımsız bir örnek (platform kanalı yok).
   @visibleForTesting
-  NotificationService.withPlugin(this._plugin);
+  NotificationService.withPlugin(this._plugin,
+      {Future<List<dynamic>?> Function()? rawPending})
+      : _rawPending = rawPending ?? (() async => null);
 
   final FlutterLocalNotificationsPlugin _plugin;
+
+  /// V4: FLN'nin ham bekleyen listesi (platform kanalı). iOS'ta FLN'nin Dart
+  /// ayrıştırması `NotificationId`'siz TEK bir istek (eski NSE eklemesi) yüzünden
+  /// tüm listeyi TypeError ile düşürür; ham liste girdi girdi okunur.
+  final Future<List<dynamic>?> Function() _rawPending;
+
+  static Future<List<dynamic>?> _channelPending() =>
+      const MethodChannel('dexterous.com/flutter/local_notifications')
+          .invokeListMethod<dynamic>('pendingNotificationRequests');
   bool _ready = false;
   bool _permissionAsked = false;
 
@@ -908,6 +921,8 @@ class NotificationService {
   }
 
   /// [lo, hi) aralığındaki BEKLEYEN bildirim id'leri; okunamazsa null.
+  /// V4: eklentinin ayrıştırması düşerse ham listeye düşülür — id'siz (bozuk)
+  /// girdi atlanır, listenin geri kalanı kullanılır.
   Future<Set<int>?> pendingIdsIn(int lo, int hi) async {
     if (!_ready) await init();
     try {
@@ -915,6 +930,16 @@ class NotificationService {
         for (final p in await _plugin.pendingNotificationRequests())
           if (p.id >= lo && p.id < hi) p.id
       };
+    } catch (_) {}
+    try {
+      final raw = await _rawPending();
+      if (raw == null) return null;
+      final out = <int>{};
+      for (final e in raw) {
+        final id = e is Map ? e['id'] : null;
+        if (id is int && id >= lo && id < hi) out.add(id);
+      }
+      return out;
     } catch (_) {
       return null;
     }

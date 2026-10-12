@@ -117,7 +117,7 @@ class NotificationService: UNNotificationServiceExtension {
         if fire <= now { continue }
         scheduleLocal(center, id: id, fireDate: fire,
                       title: (e["t"] as? String) ?? "", body: (e["y"] as? String) ?? "",
-                      sound: true, category: nil)
+                      sound: true, category: nil, payload: "med:\(k)")
       }
     }
   }
@@ -223,22 +223,24 @@ class NotificationService: UNNotificationServiceExtension {
     let mainBody = defaults.string(forKey: "fr_main_body") ?? ""
 
     if next > now {
+      let s = soundOn && !quietCovers(next, babyId: babyId, defaults: defaults)
       scheduleLocal(
         center, id: mainId, fireDate: next,
         title: prefix + mainTitle, body: mainBody,
-        sound: soundOn && !quietCovers(next, babyId: babyId, defaults: defaults),
-        category: "feed_snooze")
+        sound: s, category: "feed_snooze",
+        payload: feedPayload(sound: s, slot: slot, babyName: name))
     }
     if preMin > 0 {
       let pre = next.addingTimeInterval(Double(-preMin * 60))
       if pre > now {
         let preTitle = defaults.string(forKey: "fr_pre_title_\(babyId)") ?? mainTitle
         let preBody = defaults.string(forKey: "fr_pre_body_\(babyId)") ?? ""
+        let s = soundOn && !quietCovers(pre, babyId: babyId, defaults: defaults)
         scheduleLocal(
           center, id: preId, fireDate: pre,
           title: prefix + preTitle, body: preBody,
-          sound: soundOn && !quietCovers(pre, babyId: babyId, defaults: defaults),
-          category: nil)
+          sound: s, category: nil,
+          payload: feedPayload(sound: s, slot: slot, babyName: name))
       }
     }
     // "Kaydı unuttun mu?" dürtmesi — tahmini beslenme saatinden 30 dk sonra.
@@ -254,23 +256,43 @@ class NotificationService: UNNotificationServiceExtension {
     if forgotOn && forgot > now {
       let forgotTitle = defaults.string(forKey: "fr_forgot_title") ?? "Kaydı unuttun mu?"
       let forgotBody = defaults.string(forKey: "fr_forgot_body") ?? ""
+      let s = soundOn && !quietCovers(forgot, babyId: babyId, defaults: defaults)
       scheduleLocal(
         center, id: forgotId, fireDate: forgot,
         title: prefix + forgotTitle, body: forgotBody,
-        sound: soundOn && !quietCovers(forgot, babyId: babyId, defaults: defaults),
-        category: "feed_snooze")
+        sound: s, category: "feed_snooze",
+        payload: feedPayload(sound: s, slot: slot, babyName: name))
     }
   }
 
+  /// Dart `NotificationService.feedPayload` ile aynı biçim (U+0001 ayraçlı).
+  private func feedPayload(sound: Bool, slot: Int, babyName: String) -> String {
+    return "feed\u{1}\(sound ? 1 : 0)\u{1}\(slot)\u{1}\(babyName)"
+  }
+
+  /// V4 (ILAC-INCELEME-2): userInfo, flutter_local_notifications'ın kendi
+  /// isteklerine koyduğu anahtarlarla doldurulur (`NotificationId`, `payload`,
+  /// `present*`). Aksi hâlde FLN'nin Dart tarafı `pendingNotificationRequests`
+  /// listesinin TAMAMINI (`id` null → TypeError) düşürür ve ön planda/dokunmada
+  /// bu bildirimi kendi bildirimi saymaz.
   private func scheduleLocal(
     _ center: UNUserNotificationCenter, id: String, fireDate: Date,
-    title: String, body: String, sound: Bool, category: String?
+    title: String, body: String, sound: Bool, category: String?, payload: String? = nil
   ) {
     let content = UNMutableNotificationContent()
     content.title = title
     content.body = body
     if sound { content.sound = .default }
     if let cat = category { content.categoryIdentifier = cat }
+    content.userInfo = [
+      "NotificationId": NSNumber(value: Int(id) ?? 0),
+      "payload": payload.map { $0 as Any } ?? NSNull(),
+      "presentAlert": NSNumber(value: true),
+      "presentSound": NSNumber(value: sound),
+      "presentBadge": NSNumber(value: true),
+      "presentBanner": NSNumber(value: true),
+      "presentList": NSNumber(value: true),
+    ]
     let comps = Calendar.current.dateComponents(
       [.year, .month, .day, .hour, .minute, .second], from: fireDate)
     let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)

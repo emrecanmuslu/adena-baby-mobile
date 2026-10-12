@@ -33,9 +33,15 @@ class _FakePlugin implements FlutterLocalNotificationsPlugin {
           T extends FlutterLocalNotificationsPlatform>() =>
       null;
 
+  /// V4: iOS'ta FLN, `NotificationId`'siz (NSE'nin eklediği) bir bekleyen istek
+  /// varken listenin TAMAMINI `Null`→`int` TypeError ile düşürür.
+  bool throwPending = false;
+
   @override
-  Future<List<PendingNotificationRequest>> pendingNotificationRequests() async =>
-      scheduled.values.toList();
+  Future<List<PendingNotificationRequest>> pendingNotificationRequests() async {
+    if (throwPending) throw TypeError();
+    return scheduled.values.toList();
+  }
 
   @override
   Future<void> cancel({required int id, String? tag}) async {
@@ -221,6 +227,36 @@ void main() {
           settledListOrNull(
               AsyncError<List<MedicationPlan>>('x', StackTrace.empty)),
           isNull);
+    });
+  });
+
+  group('V4 — bozuk bekleyen girdi (iOS NSE isteği)', () {
+    test('eklenti listesi düşse de ham listeden okunur; eski günlük id\'ler ve yetim temizlenir',
+        () async {
+      plugin.scheduled[_lo + 777] = PendingNotificationRequest(_lo + 777, 'yetim', null, null);
+      plugin.scheduled[670051] = const PendingNotificationRequest(670051, 'eski günlük', null, null);
+      plugin.scheduled[800001] = const PendingNotificationRequest(800001, 'feed', null, null);
+      plugin.throwPending = true;
+      final svc2 = NotificationService.withPlugin(plugin,
+          rawPending: () async => [
+                {'id': null, 'title': 'NSE beslenme'}, // NotificationId'siz istek
+                for (final id in plugin.scheduled.keys) {'id': id},
+              ]);
+      final s2 = MedicationScheduler.forTest(svc2, now: () => now);
+      expect(await svc2.pendingIdsIn(_lo, _hi), {_lo + 777});
+      await s2.rebuild(loader([_plan(5)]));
+      expect(plugin.ids.contains(670051), isFalse, reason: 'eski günlük tekrar temizlenmeli');
+      expect(plugin.ids.contains(_lo + 777), isFalse, reason: 'yetim temizlenmeli');
+      expect(plugin.ids.contains(800001), isTrue);
+      expect(medIds(), isNotEmpty);
+    });
+
+    test('bekleyen hiç okunamasa da eski id\'ler yerel planlardan doğrudan iptal edilir', () async {
+      plugin.scheduled[670052] = const PendingNotificationRequest(670052, 'eski günlük', null, null);
+      plugin.throwPending = true;
+      final svc2 = NotificationService.withPlugin(plugin, rawPending: () async => throw StateError('x'));
+      await MedicationScheduler.forTest(svc2, now: () => now).rebuild(loader([_plan(5)]));
+      expect(plugin.ids.contains(670052), isFalse);
     });
   });
 }
