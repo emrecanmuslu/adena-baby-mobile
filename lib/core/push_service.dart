@@ -54,7 +54,8 @@ bool feedAnchorPlausible(DateTime lastFeed, {DateTime? now}) =>
   final plan = data['plan_uuid'], date = data['dose_date'], time = data['dose_time'];
   if (plan is! String || date is! String || time is! String) return null;
   if (plan.isEmpty || date.isEmpty || time.isEmpty) return null;
-  return (plan: plan, date: date, time: time);
+  // V16: defter anahtarı kanonik (küçük harf) plan uuid'siyle kurulur.
+  return (plan: plan.toLowerCase(), date: date, time: time);
 }
 
 /// İlaç v2 (M10): üyelikten çıkarılma push'u — bu bebeğin zamanlanmış tüm

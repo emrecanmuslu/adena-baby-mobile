@@ -201,7 +201,8 @@ bool _isSkipped(Record r) => r.data['skipped'] == true;
   final d = r.data['dose_date'];
   if (p is! String || p.isEmpty || d is! String) return null;
   final t = r.data['dose_time'];
-  return (plan: p, date: d, time: t is String ? t : null);
+  // V16: kanonik (küçük harf) — sunucu da kanonik saklar.
+  return (plan: p.toLowerCase(), date: d, time: t is String ? t : null);
 }
 
 /// [plans]'ın [from, to) dozlarını [records] ile çözümler. [records] her türü
@@ -220,7 +221,7 @@ List<MedicationDose> resolveDoses(
   final doses = <PlannedDose>[for (final p in scheduled) ...generateDoses(p, from: pFrom, to: pTo)];
   final byKey = {for (final d in doses) d.key: d};
   final attached = <String, List<({Record r, bool legacy})>>{};
-  final byUuid = {for (final p in scheduled) if (p.uuid != null) p.uuid!: p};
+  final byUuid = {for (final p in scheduled) if (p.uuid != null) p.uuid!.toLowerCase(): p};
   final byName = <String, MedicationPlan>{};
   for (final p in scheduled) {
     byName.putIfAbsent(medNameKey(p.name), () => p);

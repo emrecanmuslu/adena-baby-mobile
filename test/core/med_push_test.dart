@@ -40,4 +40,12 @@ void main() {
     expect(accessRemovedBabyId({'type': 'access_removed'}), isNull);
     expect(accessRemovedBabyId({'type': 'baby_update', 'baby_id': 'b1'}), isNull);
   });
+
+  test('V16: büyük harfli plan_uuid kanonik (küçük harf) iptal hedefine çevrilir', () {
+    expect(
+        medDoseCancelTarget({'type': 'med_dose', 'event': 'given',
+            'plan_uuid': 'ABCDEF01-2345-4678-9ABC-DEF012345678',
+            'dose_date': '2026-10-12', 'dose_time': '08:00'}),
+        (plan: 'abcdef01-2345-4678-9abc-def012345678', date: '2026-10-12', time: '08:00'));
+  });
 }

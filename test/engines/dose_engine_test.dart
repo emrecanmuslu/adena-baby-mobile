@@ -461,4 +461,14 @@ void main() {
     final paused = _p(times: ['09:00'], active: false, pauses: [MedPause(DateTime.utc(2026, 10, 10))]);
     expect(generateDoses(paused, from: DateTime(2026, 10, 12), to: DateTime(2026, 10, 13)), isEmpty);
   });
+
+  test('V16: büyük harfli plan_uuid\'li kimlikli kayıt planın dozuna bağlanır', () {
+    final p = _p(uuid: 'abcdef01-2345-4678-9abc-def012345678', times: ['08:00']);
+    final recs = [
+      _dose('2026-10-12', '08:00',
+          plan: 'ABCDEF01-2345-4678-9ABC-DEF012345678', ts: DateTime(2026, 10, 12, 8, 1)),
+    ];
+    final ds = todaysMedicationDoses([p], recs, now: DateTime(2026, 10, 12, 9));
+    expect(ds.single.status, MedicationDoseStatus.given);
+  });
 }
