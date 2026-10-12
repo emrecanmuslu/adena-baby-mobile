@@ -323,7 +323,19 @@ class MedicationScheduler {
           if (plan.desired.containsKey(e.key)) continue;
           final shown = e.value.at <= now.millisecondsSinceEpoch;
           final resolved = plan.resolvedKeys.contains(e.key);
-          if (!shown || resolved) {
+          final inWindow = now.millisecondsSinceEpoch - e.value.at < kMedOpenWindow.inMilliseconds;
+          if (resolved) {
+            // W1 (ILAC-INCELEME-3): çözülmüş doz (bekleyen + ekrandaki) iptal; girdi
+            // an + 12 sa geçene dek iptal İŞARETLİ kalır — "geri alındı"yı yalnız
+            // NSE işlese de (force-quit) id/an/içerikten geri ekleyebilsin.
+            if (!e.value.canceled || pending == null || pending.contains(e.value.id)) {
+              await _svc.cancelId(e.value.id);
+            }
+            if (inWindow) {
+              next[e.key] = e.value.canceled ? e.value : e.value.asCanceled();
+              continue;
+            }
+          } else if (!shown) {
             await _svc.cancelId(e.value.id);
           } else if (now.millisecondsSinceEpoch - e.value.at <
               kMedOpenWindow.inMilliseconds) {

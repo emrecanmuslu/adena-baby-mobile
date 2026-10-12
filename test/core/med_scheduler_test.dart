@@ -398,6 +398,65 @@ void main() {
     expect(after['c'], isNot(true));
   });
 
+  // ILAC-INCELEME-3 W1: çözülmüş dozun girdisi senkronlu yeniden kurmada da defterde
+  // (iptal işaretli) kalmalı — aksi hâlde yalnız NSE'nin işlediği "geri alındı"
+  // anahtarı bulamaz, açık doz için hatırlatma hiç çalmaz.
+  group('W1 — çözülmüş doz girdisi pencere boyunca defterde', () {
+    const k = 'p1|2026-10-12|08:00|m';
+    const kx = 'p1|2026-10-12|08:00|x';
+    Map<String, dynamic> mir() => (jsonDecode(mirrored.last) as Map).cast<String, dynamic>();
+
+    /// NSE "geri alındı" (NotificationService.swift undone dalı): aynadaki
+    /// id/an/içerikle, zamanı gelmemişse geri ekler.
+    void nseUndone() {
+      for (final key in [k, kx]) {
+        final x = mir()[key] as Map?;
+        expect(x, isNotNull, reason: 'NSE anahtarı aynada bulamazsa geri ekleyemez ($key)');
+        final at = DateTime.fromMillisecondsSinceEpoch(x!['at'] as int);
+        if (!at.isAfter(now)) continue;
+        plugin.pending[x['id'] as int] =
+            (at: at, title: x['t'] as String, body: x['y'] as String, payload: 'med:$key');
+      }
+    }
+
+    test('verildi (cancelDose) → kayıtlı yeniden kurma → yalnız NSE "geri alındı" → hatırlatma geri gelir',
+        () async {
+      final s = sched(ios: true);
+      await s.rebuild(input([_p()]));
+      await s.cancelDose('p1', '2026-10-12', '08:00');
+      await s.rebuild(input([_p()], records: [_given('2026-10-12', '08:00')])); // bg senkronu
+      expect(mir()[k]?['c'], isTrue);
+      expect(mir()[kx]?['c'], isTrue);
+      expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 8)), isFalse);
+      nseUndone(); // uygulama force-quit; yalnız NSE
+      expect(plugin.pending.values.where((v) => v.at == DateTime(2026, 10, 12, 8)).length, 1);
+      expect(plugin.pending.values.where((v) => v.at == DateTime(2026, 10, 12, 8, 30)).length, 1);
+      // Uygulama açılınca senkron: kayıt silinmiş → aynı bildirim korunur, çift kurulmaz.
+      await s.rebuild(input([_p()]));
+      expect(plugin.pending.values.where((v) => v.at == DateTime(2026, 10, 12, 8)).length, 1);
+      expect(mir()[k]?['c'], isNot(true));
+    });
+
+    test('kayıt cancelDose olmadan senkronla gelir (ön plan) → girdi yine iptal işaretli kalır', () async {
+      final s = sched(ios: true);
+      await s.rebuild(input([_p()]));
+      await s.rebuild(input([_p()], records: [_given('2026-10-12', '08:00')]));
+      expect(mir()[k]?['c'], isTrue);
+      expect(plugin.pending.values.any((v) => v.at == DateTime(2026, 10, 12, 8)), isFalse);
+    });
+
+    test('çözülmüş girdi an + 12 sa geçince defterden düşer (sınırsız büyüme yok)', () async {
+      final s = sched(ios: true);
+      await s.rebuild(input([_p()]));
+      await s.rebuild(input([_p()], records: [_given('2026-10-12', '08:00')]));
+      expect(mir().containsKey(k), isTrue);
+      now = DateTime(2026, 10, 12, 20, 31);
+      await s.rebuild(input([_p()], records: [_given('2026-10-12', '08:00')]));
+      expect(mir().containsKey(k), isFalse);
+      expect(mir().containsKey(kx), isFalse);
+    });
+  });
+
   test('V6: iptal işaretli girdi, doz çözülmemişse (geri alındı, Android) yeniden kurulur', () async {
     final s = sched();
     await s.rebuild(input([_p()]));
