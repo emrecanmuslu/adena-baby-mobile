@@ -200,11 +200,17 @@ class SyncStatusBanner extends ConsumerStatefulWidget {
 
 class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
   // isSyncing anlık true/false titreşse de banner hemen flicker'lamaz: yalnız
-  // bu süre KESİNTİSİZ sürerse gösterilir — iyi ağdaki hızlı turlarda kullanıcı
-  // hiç fark etmez, yalnız gerçekten yavaşsa görünür.
-  static const _syncingShowDelay = Duration(milliseconds: 900);
+  // bu süre KESİNTİSİZ sürerse gösterilir — normal turlarda kullanıcı hiç fark
+  // etmez (kayıt zaten yerelde), yalnız gerçekten yavaşsa görünür.
+  static const _syncingShowDelay = Duration(milliseconds: 2500);
+  // Bir kez göründüyse tur hemen bitse bile en az bu kadar kalır — aksi halde
+  // ~gecikme kadar süren turda şerit bir an görünüp kaybolup "flaş" yapıyordu.
+  static const _syncingMinVisible = Duration(milliseconds: 1500);
+  static const _animDuration = Duration(milliseconds: 250);
 
   Timer? _debounce;
+  Timer? _hideTimer;
+  DateTime? _shownAt;
   bool _showSyncing = false;
   // Telemetri: "Senkron sorunu" şeridi gizliden görünüre geçince bir breadcrumb
   // (tekrar build'lerde yeniden yazılmaz).
@@ -219,6 +225,7 @@ class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _hideTimer?.cancel();
     super.dispose();
   }
 
@@ -226,18 +233,56 @@ class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
   /// çağırır — build() sırasında senkron çağrılmaz.
   void _setSyncing(bool syncing) {
     if (syncing) {
+      // Gizlenmeyi beklerken yeni tur başladıysa şerit kesintisiz kalsın.
+      _hideTimer?.cancel();
+      _hideTimer = null;
+      if (_showSyncing) return;
       _debounce ??= Timer(_syncingShowDelay, () {
-        if (mounted) setState(() => _showSyncing = true);
+        _debounce = null;
+        if (!mounted) return;
+        _shownAt = DateTime.now();
+        setState(() => _showSyncing = true);
       });
     } else {
       _debounce?.cancel();
       _debounce = null;
-      if (_showSyncing) setState(() => _showSyncing = false);
+      if (!_showSyncing || _hideTimer != null) return;
+      final shown = _shownAt == null
+          ? _syncingMinVisible
+          : DateTime.now().difference(_shownAt!);
+      final remaining = _syncingMinVisible - shown;
+      if (remaining <= Duration.zero) {
+        setState(() => _showSyncing = false);
+      } else {
+        _hideTimer = Timer(remaining, () {
+          _hideTimer = null;
+          if (mounted) setState(() => _showSyncing = false);
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Şerit açılıp kapanırken altındaki içerik birden zıplamasın: yükseklik
+    // yumuşakça değişir, şeritler arası geçiş solarak olur.
+    final content = _content(context);
+    return AnimatedSize(
+      duration: _animDuration,
+      curve: Curves.easeOut,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: _animDuration,
+        layoutBuilder: (current, previous) => Stack(
+          alignment: Alignment.topCenter,
+          children: [...previous, ?current],
+        ),
+        child: content,
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context) {
     final online = ref.watch(onlineProvider).asData?.value ?? true;
     final status = ref.watch(syncStatusProvider);
     // Durum ya da bağlantı değişince "senkronize ediliyor" göstergesini
@@ -309,7 +354,9 @@ class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
     // Ne çevrimdışı ne hata var — ama tur hâlâ (yavaş ağda) sürüyorsa nötr bir
     // "gönderiliyor" göstergesi ver: aksi halde kaydın az önce yerele yazıldığını
     // ama henüz bulutta olmadığını fark etmezdi.
-    if (!_showSyncing) return const SizedBox.shrink();
+    if (!_showSyncing) {
+      return const SizedBox.shrink(key: ValueKey('sync-banner-none'));
+    }
     return _banner(
       context,
       icon: Icons.sync_rounded,
@@ -329,6 +376,8 @@ class _SyncStatusBannerState extends ConsumerState<SyncStatusBanner> {
     required VoidCallback? onTap,
   }) {
     return Padding(
+      // AnimatedSwitcher şeritleri ayırt etsin (her şeridin ikonu farklı).
+      key: ValueKey(icon),
       padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Material(
         color: Colors.transparent,
