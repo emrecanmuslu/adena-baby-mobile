@@ -208,15 +208,63 @@ class _Entry {
       canceled: j['c'] == true);
 }
 
+/// W7 (ILAC-INCELEME-3): planlayıcının kalıcı anahtar-değer deposu. Üretimde
+/// SharedPreferences (isolate başına ÖNBELLEKLİ — [reload] diskten tazeler);
+/// testte iki isolate ayrı önbellekle simüle edilir.
+abstract class MedKv {
+  Future<void> reload();
+  String? getString(String key);
+  Future<void> setString(String key, String value);
+  int? getInt(String key);
+  Future<void> setInt(String key, int value);
+  List<String>? getStringList(String key);
+  Future<void> setStringList(String key, List<String> value);
+  bool? getBool(String key);
+  Future<void> setBool(String key, bool value);
+  Future<void> remove(String key);
+}
+
+class _PrefsKv implements MedKv {
+  _PrefsKv(this._p);
+  final SharedPreferences _p;
+  @override
+  Future<void> reload() async {
+    try {
+      await _p.reload();
+    } catch (_) {}
+  }
+
+  @override
+  String? getString(String key) => _p.getString(key);
+  @override
+  Future<void> setString(String key, String value) => _p.setString(key, value);
+  @override
+  int? getInt(String key) => _p.getInt(key);
+  @override
+  Future<void> setInt(String key, int value) => _p.setInt(key, value);
+  @override
+  List<String>? getStringList(String key) => _p.getStringList(key);
+  @override
+  Future<void> setStringList(String key, List<String> value) => _p.setStringList(key, value);
+  @override
+  bool? getBool(String key) => _p.getBool(key);
+  @override
+  Future<void> setBool(String key, bool value) => _p.setBool(key, value);
+  @override
+  Future<void> remove(String key) => _p.remove(key);
+}
+
 /// Planlayıcı. [instance] üretimde [NotificationService.instance] ile çalışır;
 /// testler [MedicationScheduler.forTest] ile sahte servis/saat/platform verir.
 class MedicationScheduler {
-  MedicationScheduler._(
-      this._svc, this._now, this._ios, this._mirror, this._groupRead, this._groupWrite);
+  MedicationScheduler._(this._svc, this._now, this._ios, this._mirror, this._groupRead,
+      this._groupWrite, this._kv);
 
   static MedicationScheduler instance = MedicationScheduler._(NotificationService.instance,
       DateTime.now, Platform.isIOS, _defaultMirror, WidgetService.readGroupString,
-      WidgetService.writeGroupString);
+      WidgetService.writeGroupString, _defaultKv);
+
+  static Future<MedKv> _defaultKv() async => _PrefsKv(await _prefs());
 
   @visibleForTesting
   static MedicationScheduler forTest(NotificationService svc,
@@ -224,9 +272,10 @@ class MedicationScheduler {
           bool ios = false,
           Future<void> Function(String)? mirror,
           Future<String?> Function(String key)? groupRead,
-          Future<void> Function(String key, String? value)? groupWrite}) =>
+          Future<void> Function(String key, String? value)? groupWrite,
+          Future<MedKv> Function()? kv}) =>
       MedicationScheduler._(svc, now ?? DateTime.now, ios, mirror ?? (_) async {},
-          groupRead ?? (_) async => null, groupWrite ?? (_, _) async {});
+          groupRead ?? (_) async => null, groupWrite ?? (_, _) async {}, kv ?? _defaultKv);
 
   /// iOS App Group aynası (NSE okur) — `WidgetService` ile aynı kanal; Android'de
   /// no-op. Ön plan ve arka plan isolate'ında aynı.
@@ -239,6 +288,8 @@ class MedicationScheduler {
   /// App Group (iOS NSE ile paylaşılan) metin anahtarları; Android'de null / no-op.
   final Future<String?> Function(String key) _groupRead;
   final Future<void> Function(String key, String? value) _groupWrite;
+  /// Her iş TAZE (reload edilmiş) depoyla başlar (V5).
+  final Future<MedKv> Function() _kv;
 
   /// W2 (ILAC-INCELEME-3): NSE'nin "verildi/atlandı" ile iptal ettiği defter
   /// anahtarları → iptal anı (ms). NSE yazar, "geri alındı"da siler; Dart her işin
@@ -333,7 +384,7 @@ class MedicationScheduler {
     return run;
   }
 
-  Future<Map<String, _Entry>> _load(SharedPreferences p) async {
+  Future<Map<String, _Entry>> _load(MedKv p) async {
     try {
       final raw = p.getString(kRegistry);
       if (raw == null) return {};
@@ -344,7 +395,7 @@ class MedicationScheduler {
     }
   }
 
-  Future<void> _save(SharedPreferences p, Map<String, _Entry> reg) async {
+  Future<void> _save(MedKv p, Map<String, _Entry> reg) async {
     final json = jsonEncode({for (final e in reg.entries) e.key: e.value.toJson()});
     await p.setString(kRegistry, json);
     try {
@@ -352,7 +403,7 @@ class MedicationScheduler {
     } catch (_) {}
   }
 
-  int _alloc(SharedPreferences p, Set<int> used) {
+  int _alloc(MedKv p, Set<int> used) {
     var n = p.getInt(kNextId) ?? NotificationService.medIdLo;
     final span = NotificationService.medIdHi - NotificationService.medIdLo;
     for (var i = 0; i < span; i++) {
@@ -378,7 +429,7 @@ class MedicationScheduler {
           debugPrint('[med-sched] girdi okunamadı ($reason): $e');
           return;
         }
-        final p = await _prefs();
+        final p = await _kv();
         await _cleanLegacy(p, input);
         final now = _now();
         final revoked = (p.getStringList(kRevoked) ?? const <String>[]).toSet();
@@ -433,6 +484,12 @@ class MedicationScheduler {
           }
           used.remove(e.value.id);
         }
+        // W7 (ILAC-INCELEME-3): id ayırmadan ÖNCE taze oku — başka isolate'ın bu
+        // arada kaydettiği id'ler ve sayaç; bekleyen id'ler de kullanılmaz.
+        await p.reload();
+        used
+          ..addAll({for (final e in (await _load(p)).values) e.id})
+          ..addAll(pending ?? const <int>{});
         // İstenenler.
         for (final d in plan.desired.values) {
           final hash = '${d.title}|${d.body}|$mode';
@@ -466,16 +523,32 @@ class MedicationScheduler {
               id: id, when: d.fireAt, title: d.title, body: d.body, payload: 'med:${d.key}');
           next[d.key] = _Entry(id, at, hash, d.planUuid, d.babyId, d.title, d.body);
         }
-        // Yetim: aralıkta bekleyen ama defterde olmayan. V5: bekleyenler kurulumdan
-        // SONRA taze okunur — bu sırada başka isolate'ın kurduğu (yinelenen)
-        // bildirim de yakalanır. Bu turun sonucu otoriterdir.
+        // W7: kaydetmeden önce TAZE defterle birleştir — bu tur sırasında başka
+        // isolate'ın eklediği (bu turun başında defterde olmayan, bu turun da
+        // dokunmadığı) anahtarlar korunur; aynı anahtarda bu turun sonucu geçerli.
+        await p.reload();
+        final fresh = await _load(p);
+        final mine = {for (final e in next.values) e.id};
+        final dupOf = <int>{}; // başka isolate'ın AYNI doz için ayırdığı ikinci id
+        for (final e in fresh.entries) {
+          if (reg.containsKey(e.key) || mine.contains(e.value.id)) continue;
+          if (next.containsKey(e.key)) {
+            dupOf.add(e.value.id);
+          } else {
+            next[e.key] = e.value;
+          }
+        }
+        // Yetim: bekleyen ama hiçbir defterde olmayan. W7: yalnız bu turun BAŞINDA
+        // zaten bekleyen id'ler (ya da aynı dozun ikinci id'si, V5) — tur sırasında
+        // başka isolate'ın kurup henüz kaydetmediği id'lere dokunulmaz.
         final after = pending == null
             ? null
             : await _svc.pendingIdsIn(NotificationService.medIdLo, NotificationService.medIdHi);
         if (after != null) {
           final known = {for (final e in next.values) e.id};
           for (final id in after) {
-            if (!known.contains(id)) await _svc.cancelId(id);
+            if (known.contains(id)) continue;
+            if (pending!.contains(id) || dupOf.contains(id)) await _svc.cancelId(id);
           }
         }
         await _save(p, next);
@@ -495,7 +568,7 @@ class MedicationScheduler {
   /// V6: girdi defterden SİLİNMEZ, iptal işaretlenir (NSE ile aynı model) —
   /// ardından gelen "geri alındı"yı yalnız NSE işlese de geri ekleyebilsin.
   Future<void> cancelDose(String planUuid, String date, String time) => _serial(() async {
-        final p = await _prefs();
+        final p = await _kv();
         final reg = await _load(p);
         var changed = _absorbNse(reg, await _readNse());
         final base = '$planUuid|$date|$time';
@@ -514,7 +587,7 @@ class MedicationScheduler {
   /// [revoke] (V5, `access_removed`): yerel veri henüz temizlenmediği için
   /// sonraki yeniden kurmalar (bg turu) bu bebeği [clearRevoked]'a dek atlar.
   Future<void> cancelBaby(String babyId, {bool revoke = false}) => _serial(() async {
-        final p = await _prefs();
+        final p = await _kv();
         if (revoke) {
           await p.setStringList(
               kRevoked, {...?p.getStringList(kRevoked), babyId}.toList());
@@ -537,7 +610,7 @@ class MedicationScheduler {
 
   /// Çıkış: defteri temizler (bildirimleri `NotificationService.cancelAll` siler).
   Future<void> clearRegistry() => _serial(() async {
-        final p = await _prefs();
+        final p = await _kv();
         await p.remove(kRevoked);
         await _save(p, {});
         try {
@@ -548,7 +621,7 @@ class MedicationScheduler {
   /// V5: ön plan bebek listesini sunucudan BAŞARIYLA tazeledi — erişimi gerçekten
   /// kalkan bebek yerelden temizlendi, kalan (yeniden davet) bebek yine kurulur.
   Future<void> clearRevoked() => _serial(() async {
-        final p = await _prefs();
+        final p = await _kv();
         await p.remove(kRevoked);
       });
 
@@ -556,7 +629,7 @@ class MedicationScheduler {
   /// BAĞLI DEĞİL — yerel planların eski şemadaki id'leri (`670000 +
   /// (planId % 1000) * 10 + i`, i < 10) doğrudan iptal edilir; liste
   /// okunabiliyorsa aralıktaki diğer bekleyenler de.
-  Future<void> _cleanLegacy(SharedPreferences p, MedSchedInput input) async {
+  Future<void> _cleanLegacy(MedKv p, MedSchedInput input) async {
     if (p.getBool(kLegacyCleaned) == true) return;
     final ids = <int>{
       for (final b in input.babies)

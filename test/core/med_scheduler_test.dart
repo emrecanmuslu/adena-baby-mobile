@@ -87,6 +87,49 @@ class _Fake implements FlutterLocalNotificationsPlugin {
   dynamic noSuchMethod(Invocation i) => throw UnimplementedError('${i.memberName}');
 }
 
+/// W7: isolate başına önbellekli depo (SharedPreferences gibi) — ortak "disk",
+/// ayrı önbellek; her erişim olay döngüsüne döner (iki isolate iç içe geçer).
+class _IsoKv implements MedKv {
+  _IsoKv(this.disk);
+  final Map<String, Object> disk;
+  Map<String, Object> _cache = {};
+  Future<void> _tick() => Future<void>.delayed(Duration.zero);
+  @override
+  Future<void> reload() async {
+    await _tick();
+    _cache = Map.of(disk);
+  }
+
+  Future<void> _set(String k, Object v) async {
+    _cache[k] = v;
+    await _tick();
+    disk[k] = v;
+  }
+
+  @override
+  String? getString(String key) => _cache[key] as String?;
+  @override
+  Future<void> setString(String key, String value) => _set(key, value);
+  @override
+  int? getInt(String key) => _cache[key] as int?;
+  @override
+  Future<void> setInt(String key, int value) => _set(key, value);
+  @override
+  List<String>? getStringList(String key) => (_cache[key] as List?)?.cast<String>();
+  @override
+  Future<void> setStringList(String key, List<String> value) => _set(key, value);
+  @override
+  bool? getBool(String key) => _cache[key] as bool?;
+  @override
+  Future<void> setBool(String key, bool value) => _set(key, value);
+  @override
+  Future<void> remove(String key) async {
+    _cache.remove(key);
+    await _tick();
+    disk.remove(key);
+  }
+}
+
 MedicationPlan _p({
   String uuid = 'p1',
   int id = 1,
@@ -551,6 +594,49 @@ void main() {
       nseGiven(DateTime(2026, 10, 12, 7, 10));
       await s.cancelDose('p1', '2026-10-12', '20:00');
       expect(mir()[k]['c'], isTrue);
+    });
+  });
+
+  // ILAC-INCELEME-3 W7: iki isolate (FCM bg + workmanager) aynı anda yeniden
+  // kurunca biri diğerinin bildirimlerini ezmemeli / yetim sayıp silmemeli.
+  group('W7 — eşzamanlı iki isolate', () {
+    final q = _p(uuid: 'q1', id: 2, name: 'D vitamini', times: const ['09:00']);
+
+    Future<void> race(List<MedicationPlan> a, List<MedicationPlan> b) async {
+      final disk = <String, Object>{};
+      final ia = _IsoKv(disk), ib = _IsoKv(disk);
+      final sa = MedicationScheduler.forTest(svc, now: () => now, kv: () async {
+        await ia.reload();
+        return ia;
+      });
+      final sb = MedicationScheduler.forTest(svc, now: () => now, kv: () async {
+        await ib.reload();
+        return ib;
+      });
+      await Future.wait([sa.rebuild(input(a)), sb.rebuild(input(b))]);
+    }
+
+    /// Bekleyen her bildirim tek bir doz anahtarına ait; aynı anahtar iki kez yok.
+    void expectConsistent() {
+      final payloads = [for (final v in plugin.pending.values) v.payload];
+      expect(payloads.toSet().length, payloads.length, reason: 'yinelenen doz bildirimi');
+    }
+
+    bool hasKey(String k) => plugin.pending.values.any((v) => v.payload == 'med:$k');
+
+    test('bayat isolate (Q planını bilmiyor) yeni planın hatırlatmalarını silmez / ezmez', () async {
+      await race([_p()], [_p(), q]);
+      expect(hasKey('q1|2026-10-12|09:00|m'), isTrue);
+      expect(hasKey('q1|2026-10-13|09:00|m'), isTrue);
+      expect(hasKey('p1|2026-10-12|08:00|m'), isTrue);
+      expectConsistent();
+    });
+
+    test('ters sıra: yeni planı bilen önce başlasa da sonuç aynı', () async {
+      await race([_p(), q], [_p()]);
+      expect(hasKey('q1|2026-10-12|09:00|m'), isTrue);
+      expect(hasKey('p1|2026-10-12|08:00|m'), isTrue);
+      expectConsistent();
     });
   });
 
