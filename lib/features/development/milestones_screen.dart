@@ -25,7 +25,8 @@ class MilestonesScreen extends ConsumerStatefulWidget {
 }
 
 class _MilestonesScreenState extends ConsumerState<MilestonesScreen> {
-  final Map<int, GlobalKey> _headerKeys = {};
+  // Açılışta ilk işaretlenmemiş kayda (grubunun ilkiyse ay başlığına) atlanır.
+  final GlobalKey _targetKey = GlobalKey();
   bool _autoScrolled = false;
 
   @override
@@ -90,39 +91,62 @@ class _MilestonesScreenState extends ConsumerState<MilestonesScreen> {
           }
           final months = groups.keys.toList()..sort();
 
-          if (!_autoScrolled && ageMonths != null && months.isNotEmpty) {
-            final target =
-                months.firstWhere((m) => m >= ageMonths, orElse: () => months.last);
-            final key = _headerKeys.putIfAbsent(target, () => GlobalKey());
+          // İlk işaretlenmemiş kayıt (ay sırasıyla). Grubunun ilk kaydıysa ay
+          // başlığı da görünsün diye hedef başlık olur. Hepsi işaretliyse kaydırma
+          // yok. İşaretleme sonrası yeniden yüklemede tekrar atlamaz (_autoScrolled).
+          Milestone? firstOpen;
+          int? firstOpenMonth;
+          for (final month in months) {
+            firstOpen = groups[month]!.where((m) => !m.achieved).firstOrNull;
+            if (firstOpen != null) {
+              firstOpenMonth = month;
+              break;
+            }
+          }
+          final targetIsHeader = firstOpen != null &&
+              identical(groups[firstOpenMonth]!.first, firstOpen);
+
+          if (!_autoScrolled && firstOpen != null) {
             _autoScrolled = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              final ctx = key.currentContext;
-              if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0);
+              final ctx = _targetKey.currentContext;
+              if (ctx != null) {
+                Scrollable.ensureVisible(ctx, alignment: targetIsHeader ? 0 : 0.05);
+              }
             });
           }
 
-          return ListView(
+          // ListView değil: tembel liste ekran dışındaki hedefi henüz kurmadığı
+          // için ensureVisible sessizce çalışmıyordu (ekran hep en baştan
+          // açılıyordu). Katalog birkaç düzine satır — hepsini kurmak sorun değil.
+          return SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
                 16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
-            children: [
-              _ProgressHeader(
-                  items: items,
-                  achieved: achieved,
-                  ageMonths: ageMonths,
-                  baby: baby),
-              for (final month in months) ...[
-                KeyedSubtree(
-                  key: _headerKeys[month],
-                  child: _GroupHeader(month: month, ageMonths: ageMonths),
-                ),
-                for (final m in groups[month]!)
-                  _MilestoneTile(
-                    milestone: m,
-                    onToggle: () => _toggle(context, ref, baby.id, m),
-                    onOpen: () => _showSheet(context, ref, baby.id, m),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ProgressHeader(
+                    items: items,
+                    achieved: achieved,
+                    ageMonths: ageMonths,
+                    baby: baby),
+                for (final month in months) ...[
+                  KeyedSubtree(
+                    key: targetIsHeader && month == firstOpenMonth ? _targetKey : null,
+                    child: _GroupHeader(month: month, ageMonths: ageMonths),
                   ),
+                  for (final m in groups[month]!)
+                    KeyedSubtree(
+                      key: !targetIsHeader && identical(m, firstOpen) ? _targetKey : null,
+                      child: _MilestoneTile(
+                        milestone: m,
+                        onToggle: () => _toggle(context, ref, baby.id, m),
+                        onOpen: () => _showSheet(context, ref, baby.id, m),
+                      ),
+                    ),
+                ],
               ],
-            ],
+            ),
           );
         },
       ),
