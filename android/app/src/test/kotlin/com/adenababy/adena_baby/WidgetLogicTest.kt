@@ -78,4 +78,23 @@ class WidgetLogicTest {
         assertTrue(WidgetLogic.parseBabies("[]")!!.isEmpty())
         assertEquals(listOf(WidgetBabyRef("a", "Ada"), WidgetBabyRef("b", "Bora")), WidgetLogic.parseBabies(babies))
     }
+
+    @Test
+    fun `widget kaldırılınca eşlemesi silinir (G10)`() {
+        val edits = WidgetLogic.deletedBindings(intArrayOf(3, 9))
+        assertEquals(mapOf("widget_baby_3" to null, "widget_baby_9" to null), edits)
+    }
+
+    @Test
+    fun `yedekten geri yüklemede eşlemeler yeni widget id'lerine taşınır (M5)`() {
+        val edits = WidgetLogic.restoredBindings(
+            intArrayOf(3, 4, 5), intArrayOf(7, 3, 8),
+            prefs("widget_baby_3" to "a", "widget_baby_4" to "b")
+        )
+        // 3→7 (a), 4→3 (b; eski 3'ün üstüne yazılır, silinmez), 5 eşlemesizdi → 8'e bir şey yazılmaz.
+        assertEquals(
+            mapOf("widget_baby_4" to null, "widget_baby_5" to null, "widget_baby_7" to "a", "widget_baby_3" to "b"),
+            edits
+        )
+    }
 }

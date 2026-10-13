@@ -82,6 +82,30 @@ object WidgetLogic {
         )
     }
 
+    /** Kaldırılan widget'ların eşlemeleri (anahtar → null = sil). G10. */
+    fun deletedBindings(widgetIds: IntArray): Map<String, String?> =
+        widgetIds.associate { bindingKey(it) to null }
+
+    /**
+     * Yedekten geri yükleme / telefon taşıma: launcher widget'lara YENİ id verir
+     * (`onRestored(old, new)`, dizinler eşleşik). Eşlemeler yeni id'lere taşınır;
+     * yeni kümede olmayan eski anahtarlar silinir (anahtar → null). M5.
+     */
+    fun restoredBindings(
+        oldIds: IntArray,
+        newIds: IntArray,
+        get: (String) -> String?,
+    ): Map<String, String?> {
+        val edits = LinkedHashMap<String, String?>()
+        val newSet = newIds.toSet()
+        for (old in oldIds) if (old !in newSet) edits[bindingKey(old)] = null
+        for (i in 0 until minOf(oldIds.size, newIds.size)) {
+            val baby = get(bindingKey(oldIds[i])) ?: continue
+            edits[bindingKey(newIds[i])] = baby
+        }
+        return edits
+    }
+
     private fun perBaby(id: String, listName: String?, get: (String) -> String?, bound: Boolean) =
         WidgetView.Baby(
             babyId = id,

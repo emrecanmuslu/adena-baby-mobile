@@ -10,7 +10,9 @@ import android.os.Bundle
 import android.text.format.DateFormat
 import android.util.TypedValue
 import android.widget.RemoteViews
+import androidx.core.content.edit
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
+import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
 import java.util.Date
 import java.util.Locale
@@ -51,6 +53,26 @@ class FeedWidgetProvider : HomeWidgetProvider() {
     ) {
         val data = context.getSharedPreferences("HomeWidgetPreferences", Context.MODE_PRIVATE)
         render(context, appWidgetManager, appWidgetId, data)
+    }
+
+    /** Kaldırılan widget'ın bebek eşlemesi silinir (G10). */
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        applyEdits(context, WidgetLogic.deletedBindings(appWidgetIds))
+    }
+
+    /** Yedekten geri yükleme: eşlemeler launcher'ın verdiği yeni id'lere taşınır (M5). */
+    override fun onRestored(context: Context, oldWidgetIds: IntArray, newWidgetIds: IntArray) {
+        super.onRestored(context, oldWidgetIds, newWidgetIds)
+        val prefs = HomeWidgetPlugin.getData(context)
+        applyEdits(context, WidgetLogic.restoredBindings(oldWidgetIds, newWidgetIds) { prefs.getString(it, null) })
+    }
+
+    private fun applyEdits(context: Context, edits: Map<String, String?>) {
+        if (edits.isEmpty()) return
+        HomeWidgetPlugin.getData(context).edit {
+            for ((k, v) in edits) if (v == null) remove(k) else putString(k, v)
+        }
     }
 
     private fun render(
