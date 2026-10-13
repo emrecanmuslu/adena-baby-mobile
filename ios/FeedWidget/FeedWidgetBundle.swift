@@ -19,7 +19,10 @@ struct FeedWidgetBundle: WidgetBundle {
     }
 
     /// "Sonraki beslenme" — iOS 17+: widget başına bebek seçimi (AppIntent);
-    /// iOS 15–16: statik (aktif bebek). İkisi aynı kind → yalnız biri kaydedilir.
+    /// iOS 16.1–16.x: statik (aktif bebek). İkisi aynı kind → yalnız biri kaydedilir.
+    /// Widget uzantısının dağıtım hedefi 16.1: buildLimitedAvailability 16.1 öncesinde
+    /// "may crash" uyarısı veriyordu → iOS 15.x / 16.0'da widget hiç sunulmaz
+    /// (ana uygulama ve NSE 15.0'da kalır).
     ///
     /// WidgetBundleBuilder `if/else` (buildEither) desteklemez; `buildOptional` da
     /// yalnız `buildLimitedAvailability` işaretli içeriği kabul eder (sade Bool ya da

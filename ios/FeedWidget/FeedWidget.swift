@@ -14,8 +14,9 @@ import SwiftUI
 // NSE (push) de bebek-başı anahtarları günceller ve WidgetCenter'ı yeniler.
 //
 // iOS 17+: widget başına bebek seçilebilir (FeedWidgetConfigurable.swift,
-// "Widget'ı Düzenle"); seçim yoksa uygulamadaki aktif bebek. iOS 15–16: bu
+// "Widget'ı Düzenle"); seçim yoksa uygulamadaki aktif bebek. iOS 16.1–16.x: bu
 // dosyadaki statik widget (aktif bebek). İkisi aynı `kind` ("FeedWidget").
+// Widget uzantısının dağıtım hedefi 16.1 — iOS 15.x / 16.0'da widget sunulmaz.
 
 let feedWidgetKind = "FeedWidget"
 private let appGroupId = "group.com.adenababy.adenaBaby"
@@ -354,7 +355,7 @@ var feedWidgetFamilies: [WidgetFamily] {
     return f
 }
 
-// MARK: - iOS 15–16: statik widget (aktif bebek)
+// MARK: - iOS 16.1–16.x: statik widget (aktif bebek)
 
 struct FeedProvider: TimelineProvider {
     func placeholder(in context: Context) -> FeedEntry { placeholderFeedEntry() }
