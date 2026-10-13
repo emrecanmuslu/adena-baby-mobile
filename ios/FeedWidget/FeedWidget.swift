@@ -275,8 +275,7 @@ struct FeedAccessoryView: View {
                 Label(feedText(.noFeed, entry.lang), systemImage: "drop.fill")
             case .ok:
                 if let feed = entry.nextFeed {
-                    Label { Text(whenStr(feed, now: entry.date, lang: entry.lang)) }
-                        icon: { Image(systemName: "drop.fill") }
+                    Label { Text(whenStr(feed, now: entry.date, lang: entry.lang)) } icon: { Image(systemName: "drop.fill") }
                 } else {
                     Label(feedText(.noFeed, entry.lang), systemImage: "drop.fill")
                 }
