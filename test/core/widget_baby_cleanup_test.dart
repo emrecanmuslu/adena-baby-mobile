@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:adena_baby/core/push_service.dart';
 import 'package:adena_baby/core/widget_service.dart';
+import 'package:adena_baby/data/feed_reminder_cache.dart';
+import 'package:adena_baby/models/quiet_hours.dart';
 import 'package:adena_baby/features/babies/baby_controller.dart';
 import 'package:adena_baby/features/babies/notification_sync.dart';
 import 'package:adena_baby/models/baby.dart';
@@ -103,6 +105,49 @@ void main() {
         data: {'type': 'access_removed', 'baby_id': 'b', 'body': ''}));
     expect(listedIds(), ['a']);
     expect(store.containsKey('name_b'), isFalse);
+  });
+
+  // ── A3 / I3: her widget kendi bebeğinin BEBEK-BAŞI anahtarlarını okur; ──
+  // ön plan tüm bebekler için, arka plan (FCM, uygulama kapalı) o bebek için yazar.
+  test('publishAll tüm doğmuş bebeklerin bebek-başı anahtarlarını yazar', () async {
+    await WidgetService.publishAll([
+      WidgetBaby(id: 'a', name: 'Ada', nextFeed: DateTime(2026, 1, 1, 10), lastFeed: DateTime(2026, 1, 1, 7)),
+      WidgetBaby(id: 'b', name: 'Bora', nextFeed: DateTime(2026, 1, 1, 11), lastFeed: DateTime(2026, 1, 1, 8)),
+    ], 'a');
+    for (final id in ['a', 'b']) {
+      expect(store['name_$id'], isNotNull);
+      expect(int.parse(store['next_$id'] as String), greaterThan(0));
+      expect(int.parse(store['last_$id'] as String), greaterThan(0));
+    }
+    expect(listedIds(), ['a', 'b']);
+  });
+
+  test('uygulama kapalıyken iki ayrı bebeğe gelen kayıt her birinin kendi anahtarına yazılır',
+      () async {
+    const snap = FeedReminderSnapshot(
+        slot: 0, enabled: false, intervalMin: 180, baseType: 'all',
+        preMin: 0, sound: false, quiet: QuietHours());
+    await FeedReminderCache().save('a', snap);
+    await FeedReminderCache().save('b', snap);
+    appInForeground = true; // bildirim gösterme dalını atla (widget yazımı koşulsuz)
+    addTearDown(() => appInForeground = false);
+
+    final tsA = DateTime.now().subtract(const Duration(minutes: 30)).toUtc();
+    final tsB = DateTime.now().subtract(const Duration(minutes: 90)).toUtc();
+    for (final (id, ts) in [('a', tsA), ('b', tsB)]) {
+      await handlePushMessage(RemoteMessage(data: {
+        'type': 'family_activity', 'baby_id': id, 'baby_name': id == 'a' ? 'Ada' : 'Bora',
+        'last_feed_ts': ts.toIso8601String(), 'feed_sub': 'formula',
+        'widget_update': 'feed', 'body': '',
+      }));
+    }
+    expect(store['last_a'], '${tsA.millisecondsSinceEpoch}');
+    expect(store['last_b'], '${tsB.millisecondsSinceEpoch}');
+    // Ön planla aynı kural: hatırlatıcı kapalıysa tahmin varsayılan aralığa düşer.
+    final interval = Duration(minutes: snap.toConfig().effectiveForEstimate.intervalMin);
+    expect(store['next_a'], '${tsA.add(interval).millisecondsSinceEpoch}');
+    expect(store['next_b'], '${tsB.add(interval).millisecondsSinceEpoch}');
+    expect(store['name_b'], 'Bora');
   });
 
   group('WidgetSync', () {

@@ -386,6 +386,11 @@
 				en,
 				Base,
 				tr,
+				es,
+				fr,
+				ar,
+				hi,
+				"zh-Hans",
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
 			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
@@ -785,6 +790,11 @@
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FeedWidget/Info.plist;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					AppIntents,
+				);
 				CODE_SIGN_ENTITLEMENTS = FeedWidget/FeedWidget.entitlements;
 				INFOPLIST_KEY_CFBundleDisplayName = FeedWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -827,6 +837,11 @@
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FeedWidget/Info.plist;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					AppIntents,
+				);
 				CODE_SIGN_ENTITLEMENTS = FeedWidget/FeedWidget.entitlements;
 				INFOPLIST_KEY_CFBundleDisplayName = FeedWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -866,6 +881,11 @@
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FeedWidget/Info.plist;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					AppIntents,
+				);
 				CODE_SIGN_ENTITLEMENTS = FeedWidget/FeedWidget.entitlements;
 				INFOPLIST_KEY_CFBundleDisplayName = FeedWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";

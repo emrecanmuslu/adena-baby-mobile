@@ -1,0 +1,9 @@
+/* Widget galerisi ve "Widget'ı Düzenle" metinleri (cihaz dilinde).
+   Widget içindeki metinler uygulama dilini izler: FeedWidget.swift feedTexts. */
+
+"Sonraki Beslenme" = "Próxima alimentación";
+"Aktif bebeğin tahmini sonraki beslenme saatini gösterir." = "Muestra la hora estimada de la próxima alimentación del bebé activo.";
+"Seçtiğin bebeğin sonraki beslenme saatini gösterir." = "Muestra la hora de la próxima alimentación del bebé que elijas.";
+"Bebek seç" = "Elegir bebé";
+"Widget'ın göstereceği bebeği seç." = "Elige qué bebé muestra este widget.";
+"Bebek" = "Bebé";

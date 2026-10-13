@@ -31,6 +31,8 @@ class NotificationService: UNNotificationServiceExtension {
     self.contentHandler = contentHandler
     self.bestAttempt = request.content.mutableCopy() as? UNMutableNotificationContent
     updateWidget(request.content.userInfo)
+    // K4: aileden çıkarılan bebek ana ekran widget'ından hemen çıkar (force-quit'te de).
+    removeBabyFromWidget(request.content.userInfo)
     // İlaç v2 (A6): aile üyesinin doz işareti / üyelikten çıkarılma → ilgili
     // bekleyen ilaç hatırlatmalarını iptal et (ya da geri alındıysa geri ekle).
     handleMedication(request.content.userInfo)
@@ -215,6 +217,47 @@ class NotificationService: UNNotificationServiceExtension {
                       title: (e["t"] as? String) ?? "", body: (e["y"] as? String) ?? "",
                       sound: true, category: nil, payload: "med:\(k)")
       }
+    }
+  }
+
+  /// `access_removed` (+ baby_id): bebek App Group `babies_json`'dan çıkarılır, ad/saat
+  /// anahtarları silinir → o bebeği seçmiş widget "Bebek bulunamadı" der, eski ad/saat
+  /// kalmaz (K4). Aktif bebekse seçimsiz widget'lar listedeki ilk bebeğe (yoksa boş
+  /// duruma) geçer. Dart `WidgetService.removeBaby` ile aynı kural.
+  private func removeBabyFromWidget(_ info: [AnyHashable: Any]) {
+    guard (info["type"] as? String) == "access_removed",
+          let babyId = info["baby_id"] as? String, !babyId.isEmpty,
+          let defaults = UserDefaults(suiteName: appGroupId) else { return }
+
+    if let raw = defaults.string(forKey: "babies_json"),
+       let data = raw.data(using: .utf8),
+       let arr = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] {
+      let kept = arr.filter { ($0["id"] as? String) != babyId }
+      if let out = try? JSONSerialization.data(withJSONObject: kept),
+         let json = String(data: out, encoding: .utf8) {
+        defaults.set(json, forKey: "babies_json")
+      }
+      let active = defaults.string(forKey: "active_id") ?? ""
+      if active == babyId || active.isEmpty {
+        if let first = kept.first, let id = first["id"] as? String {
+          defaults.set(id, forKey: "active_id")
+          defaults.set(first["name"] as? String, forKey: "baby_name")
+          defaults.set(defaults.string(forKey: "next_\(id)") ?? "-1", forKey: "next_feed_ms")
+          defaults.set(defaults.string(forKey: "last_\(id)") ?? "-1", forKey: "last_feed_ms")
+        } else {
+          defaults.set("", forKey: "active_id")
+          defaults.removeObject(forKey: "baby_name")
+          defaults.set("-1", forKey: "next_feed_ms")
+          defaults.set("-1", forKey: "last_feed_ms")
+        }
+      }
+    }
+    for prefix in ["name_", "next_", "last_"] {
+      defaults.removeObject(forKey: prefix + babyId)
+    }
+    defaults.synchronize()
+    if #available(iOS 14.0, *) {
+      WidgetCenter.shared.reloadTimelines(ofKind: "FeedWidget")
     }
   }
 

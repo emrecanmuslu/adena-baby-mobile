@@ -1,0 +1,9 @@
+/* Widget galerisi ve "Widget'ı Düzenle" metinleri (cihaz dilinde).
+   Widget içindeki metinler uygulama dilini izler: FeedWidget.swift feedTexts. */
+
+"Sonraki Beslenme" = "अगली फीडिंग";
+"Aktif bebeğin tahmini sonraki beslenme saatini gösterir." = "सक्रिय शिशु की अगली फीडिंग का अनुमानित समय दिखाता है।";
+"Seçtiğin bebeğin sonraki beslenme saatini gösterir." = "आपके चुने हुए शिशु की अगली फीडिंग का समय दिखाता है।";
+"Bebek seç" = "शिशु चुनें";
+"Widget'ın göstereceği bebeği seç." = "चुनें कि यह विजेट किस शिशु को दिखाए।";
+"Bebek" = "शिशु";
