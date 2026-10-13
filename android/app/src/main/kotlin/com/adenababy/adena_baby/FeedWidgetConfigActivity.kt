@@ -6,17 +6,22 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
+import androidx.core.content.edit
 import es.antonborri.home_widget.HomeWidgetPlugin
-import org.json.JSONArray
 
 /**
- * "Sonraki beslenme" widget'ı yapılandırma ekranı — birden çok bebek varsa
- * hangi bebeğin gösterileceğini seçtirir. Seçim `widget_baby_<widgetId>` olarak
- * home_widget paylaşımlı deposuna yazılır; provider bunu okur. Tek bebek/veri
- * yoksa sormadan tamamlar (aktif bebek fallback'i devreye girer).
+ * "Sonraki beslenme" widget'ı için bebek seçimi. Üç yoldan açılır:
+ * - launcher widget'ı seçiciden eklerken (ilk yapılandırma),
+ * - launcher "widget ayarları" ile yeniden yapılandırırken (`reconfigurable`, K2),
+ * - "Bebek bulunamadı" widget'ına dokununca ([ACTION_RESELECT], K4).
+ *
+ * Seçim `widget_baby_<widgetId>` olarak home_widget paylaşımlı deposuna yazılır;
+ * provider bunu okur. Tek bebekte sormadan bağlar; liste boşsa bilgi verir.
+ * Yeniden seçimde mevcut bebek işaretli gelir.
  */
 class FeedWidgetConfigActivity : Activity() {
     private var widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
@@ -36,40 +41,47 @@ class FeedWidgetConfigActivity : Activity() {
         }
 
         val prefs = HomeWidgetPlugin.getData(this)
-        val en = prefs.getString("locale", null) == "en"
+        val res = FeedWidgetProvider.localized(this, prefs.getString("locale", null))
+        val babies = WidgetLogic.parseBabies(prefs.getString("babies_json", null))
+        val current = prefs.getString(WidgetLogic.bindingKey(widgetId), null)
 
-        val ids = ArrayList<String>()
-        val names = ArrayList<String>()
-        prefs.getString("babies_json", null)?.let { json ->
-            try {
-                val arr = JSONArray(json)
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    ids.add(o.getString("id"))
-                    names.add(o.optString("name", if (en) "Baby" else "Bebek"))
-                }
-            } catch (_: Exception) {
-            }
+        when (val plan = WidgetLogic.configPlan(babies, current)) {
+            is ConfigPlan.Auto -> applyAndFinish(plan.babyId)
+            // G14: uygulama hiç açılmadan / bebek yokken eklenen widget sessizce
+            // seçimsiz kalmasın — önce uygulamayı açıp bebek eklemesi söylenir.
+            ConfigPlan.Empty -> showEmpty(
+                res.getString(R.string.widget_no_babies),
+                res.getString(R.string.widget_ok)
+            )
+            is ConfigPlan.Choose -> showList(
+                res.getString(R.string.widget_choose_baby),
+                babies.orEmpty(),
+                res.getString(R.string.widget_baby_default),
+                plan.checked
+            )
         }
+    }
 
-        // 0 veya 1 bebek → seçim sormaya gerek yok.
-        if (ids.size <= 1) {
-            applyAndFinish(ids.firstOrNull())
-            return
-        }
-
+    private fun showList(
+        titleText: String,
+        babies: List<WidgetBabyRef>,
+        defaultName: String,
+        checked: Int
+    ) {
         val title = TextView(this).apply {
-            text = if (en) "Choose baby" else "Bebeği seç"
+            text = titleText
             textSize = 18f
             setPadding(48, 48, 48, 24)
         }
         val list = ListView(this).apply {
+            choiceMode = ListView.CHOICE_MODE_SINGLE
             adapter = ArrayAdapter(
                 this@FeedWidgetConfigActivity,
-                android.R.layout.simple_list_item_1,
-                names
+                android.R.layout.simple_list_item_single_choice,
+                babies.map { it.name.ifEmpty { defaultName } }
             )
-            setOnItemClickListener { _, _, position, _ -> applyAndFinish(ids[position]) }
+            if (checked >= 0) setItemChecked(checked, true)
+            setOnItemClickListener { _, _, position, _ -> applyAndFinish(babies[position].id) }
         }
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -84,10 +96,30 @@ class FeedWidgetConfigActivity : Activity() {
         })
     }
 
-    private fun applyAndFinish(babyId: String?) {
-        if (babyId != null) {
-            HomeWidgetPlugin.getData(this).edit()
-                .putString("widget_baby_$widgetId", babyId).apply()
+    private fun showEmpty(message: String, ok: String) {
+        setContentView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 48, 48, 24)
+            addView(TextView(this@FeedWidgetConfigActivity).apply {
+                text = message
+                textSize = 16f
+            })
+            addView(Button(this@FeedWidgetConfigActivity).apply {
+                text = ok
+                // RESULT_CANCELED kalır: ilk eklemede widget eklenmez.
+                setOnClickListener { finish() }
+            })
+        })
+    }
+
+    companion object {
+        /** "Bebek bulunamadı" widget'ına dokunma → o widget için yeniden seçim (K4). */
+        const val ACTION_RESELECT = "com.adenababy.adena_baby.action.WIDGET_RESELECT"
+    }
+
+    private fun applyAndFinish(babyId: String) {
+        HomeWidgetPlugin.getData(this).edit {
+            putString(WidgetLogic.bindingKey(widgetId), babyId)
         }
         // Widget'ı hemen çiz: provider'a güncelleme yayını gönder (onUpdate prefs'i okur).
         sendBroadcast(Intent(this, FeedWidgetProvider::class.java).apply {

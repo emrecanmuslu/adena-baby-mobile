@@ -14,6 +14,7 @@ import '../../data/subscription_repository.dart';
 import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 import 'theme_controller.dart';
+import 'widget_pin_item.dart';
 
 /// Ayarlar: profil, paylaşım, hesap işlemleri.
 class SettingsScreen extends ConsumerWidget {
@@ -258,6 +259,8 @@ class SettingsScreen extends ConsumerWidget {
             meta: tr('Hatırlatıcılar · aile · topluluk'),
             onTap: () => context.push('/notifications'),
           ),
+          // Android: widget'ı seçiciye gitmeden ekle (desteklenmiyorsa görünmez).
+          const WidgetPinMenuItem(),
           AdMenuItem(
             icon: 'moon',
             color: AppColors.sleep,

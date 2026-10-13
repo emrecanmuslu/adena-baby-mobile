@@ -62,7 +62,7 @@ class FamilyNotificationSync extends ConsumerWidget {
         // Aşı/atak/büyüme/gebelik haftası/gelişim/diş hatırlatıcıları.
         for (final b in babies) _HealthNotifSync(baby: b, key: ValueKey('health-${b.id}')),
         // Ana ekran widget'ı aktif bebeğin son beslenmesini gösterir.
-        const _WidgetSync(),
+        const WidgetSync(),
         // iOS Live Activity (süren sayaç — kilit ekranı + Dynamic Island).
         const _LiveActivitySync(),
         // İlaç v2: doz başına tek seferlik hatırlatmalar (tüm bebekler).
@@ -74,17 +74,26 @@ class FamilyNotificationSync extends ConsumerWidget {
 
 /// Aktif bebeğin son beslenmesini ana ekran widget'ına yansıtır (uygulama
 /// açıkken reaktif: yeni beslenme kaydı geldikçe widget güncellenir).
-class _WidgetSync extends ConsumerWidget {
-  const _WidgetSync();
+@visibleForTesting
+class WidgetSync extends ConsumerWidget {
+  const WidgetSync({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Çok-bebek: her widget kendi bebeğini gösterebildiği için TÜM (doğmuş)
     // bebeklerin sonraki-beslenme verisini yaz. Sonraki beslenme = hatırlatıcı
     // açıksa onun aralığı, değilse varsayılan (ana sayfa kartıyla aynı mantık).
-    final babies = ref.watch(babyControllerProvider).asData?.value ?? const [];
-    final born = babies.where((b) => !b.isExpecting).toList();
-    if (born.isEmpty) return const SizedBox.shrink();
+    // Liste henüz yüklenmediyse dokunma (açılışta geçici boş liste widget'ları
+    // "Bebek bulunamadı"ya düşürüp anahtarları silmesin).
+    final babiesAsync = ref.watch(babyControllerProvider);
+    if (!babiesAsync.hasValue) return const SizedBox.shrink();
+    final born = babiesAsync.requireValue.where((b) => !b.isExpecting).toList();
+    if (born.isEmpty) {
+      // Çıkış / son bebek silindi / hepsi gebelik: boş liste yaz → bağlı widget'lar
+      // "Bebek bulunamadı", seçimsizler boş durum; eski ad/saat kalmaz (K4, G3).
+      WidgetService.publishAll(const [], '');
+      return const SizedBox.shrink();
+    }
     final widgetBabies = <WidgetBaby>[];
     var allKnown = true;
     for (final b in born) {

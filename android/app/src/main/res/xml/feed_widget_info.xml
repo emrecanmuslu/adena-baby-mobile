@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- API 28+/31+ öznitelikleri eski sürümlerde yok sayılır (tools:targetApi lint içindir).
+     reconfigurable: uzun bas → widget ayarları ile bebeği sonradan değiştirme (K2). -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:targetApi="31"
     android:minWidth="180dp"
     android:minHeight="70dp"
     android:minResizeWidth="180dp"
@@ -12,5 +16,6 @@
     android:previewImage="@drawable/widget_preview"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
+    android:widgetFeatures="reconfigurable"
     android:configure="com.adenababy.adena_baby.FeedWidgetConfigActivity"
     android:description="@string/feed_widget_desc" />

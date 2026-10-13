@@ -72,9 +72,14 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/feed_widget_info" />
         </receiver>
+        <!-- Uygulama içinden widget sabitleme (requestPinAppWidget) başarı geri çağrısı -->
+        <receiver
+            android:name=".WidgetPinReceiver"
+            android:exported="false" />
         <!-- Widget yapılandırma ekranı: birden çok bebekte hangisi gösterilsin -->
         <activity
             android:name=".FeedWidgetConfigActivity"
+            android:excludeFromRecents="true"
             android:exported="true"
             android:theme="@android:style/Theme.Material.Light.Dialog">
             <intent-filter>

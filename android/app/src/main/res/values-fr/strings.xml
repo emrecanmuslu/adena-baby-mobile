@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ana ekran widget metinleri. Widget CİHAZ dilini değil uygulama dilini
+     izler: FeedWidgetProvider prefs'teki `locale` ile bu kaynakları çözer. -->
+<resources>
+    <string name="feed_widget_desc">Affiche l\'heure du prochain repas sur l\'écran d\'accueil</string>
+    <string name="widget_next_feed">Prochain repas</string>
+    <string name="widget_feed_due">Heure du repas</string>
+    <string name="widget_awaiting">En attente du repas</string>
+    <string name="widget_last_feed">Dernier repas %1$s</string>
+    <string name="widget_baby_default">Bébé</string>
+    <string name="widget_baby_missing">Bébé introuvable</string>
+    <string name="widget_tap_reselect">Touchez pour choisir à nouveau</string>
+    <string name="widget_no_babies">Ouvrez d\'abord l\'app et ajoutez un bébé</string>
+    <string name="widget_choose_baby">Choisir le bébé</string>
+    <string name="widget_ok">OK</string>
+    <string name="widget_yesterday">Hier</string>
+    <string name="widget_tomorrow">Demain</string>
+</resources>
