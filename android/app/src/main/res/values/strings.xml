@@ -12,4 +12,5 @@
     <string name="widget_tap_reselect">Dokunup yeniden seç</string>
     <string name="widget_no_babies">Önce uygulamayı açıp bebek ekleyin</string>
     <string name="widget_choose_baby">Bebeği seç</string>
+    <string name="widget_ok">Tamam</string>
 </resources>

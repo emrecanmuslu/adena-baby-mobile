@@ -23,6 +23,18 @@ sealed class WidgetView {
     object NoBabies : WidgetView()
 }
 
+/** Yapılandırma ekranının ne yapacağı. */
+sealed class ConfigPlan {
+    /** Hiç bebek yok → "Önce uygulamayı açıp bebek ekleyin" bilgisi (G14). */
+    object Empty : ConfigPlan()
+
+    /** Tek bebek → sormadan ona bağla. */
+    data class Auto(val babyId: String) : ConfigPlan()
+
+    /** Liste göster; [checked] = mevcut seçimin sırası (yoksa -1). */
+    data class Choose(val checked: Int) : ConfigPlan()
+}
+
 /**
  * Widget'ın hangi bebeği göstereceğini paylaşımlı depodan (home_widget prefs) çözer.
  * Android bağımlılığı yok → JVM birim testleriyle doğrulanır.
@@ -80,6 +92,13 @@ object WidgetLogic {
             lastMs = ms(get("last_feed_ms")),
             bound = false,
         )
+    }
+
+    /** Yapılandırma / yeniden yapılandırma / yeniden seçim ekranının planı. */
+    fun configPlan(babies: List<WidgetBabyRef>?, current: String?): ConfigPlan = when {
+        babies.isNullOrEmpty() -> ConfigPlan.Empty
+        babies.size == 1 -> ConfigPlan.Auto(babies.first().id)
+        else -> ConfigPlan.Choose(babies.indexOfFirst { it.id == current })
     }
 
     /** Kaldırılan widget'ların eşlemeleri (anahtar → null = sil). G10. */

@@ -12,4 +12,5 @@
     <string name="widget_tap_reselect">Toca para volver a elegir</string>
     <string name="widget_no_babies">Primero abre la app y añade un bebé</string>
     <string name="widget_choose_baby">Elige el bebé</string>
+    <string name="widget_ok">Aceptar</string>
 </resources>

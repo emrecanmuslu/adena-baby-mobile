@@ -97,4 +97,16 @@ class WidgetLogicTest {
             edits
         )
     }
+
+    @Test
+    fun `yapılandırma planı - boş liste bilgi, tek bebek otomatik, çoklu bebekte mevcut seçim işaretli`() {
+        assertEquals(ConfigPlan.Empty, WidgetLogic.configPlan(null, null))
+        assertEquals(ConfigPlan.Empty, WidgetLogic.configPlan(emptyList(), "a"))
+        val one = listOf(WidgetBabyRef("a", "Ada"))
+        assertEquals(ConfigPlan.Auto("a"), WidgetLogic.configPlan(one, null))
+        val two = WidgetLogic.parseBabies(babies)
+        assertEquals(ConfigPlan.Choose(checked = 1), WidgetLogic.configPlan(two, "b"))
+        assertEquals(ConfigPlan.Choose(checked = -1), WidgetLogic.configPlan(two, "silinen"))
+        assertEquals(ConfigPlan.Choose(checked = -1), WidgetLogic.configPlan(two, null))
+    }
 }

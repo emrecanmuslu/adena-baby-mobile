@@ -12,4 +12,5 @@
     <string name="widget_tap_reselect">फिर से चुनने के लिए टैप करें</string>
     <string name="widget_no_babies">पहले ऐप खोलकर शिशु जोड़ें</string>
     <string name="widget_choose_baby">शिशु चुनें</string>
+    <string name="widget_ok">ठीक है</string>
 </resources>
