@@ -1,6 +1,7 @@
 package com.adenababy.adena_baby
 
 import org.json.JSONArray
+import org.json.JSONObject
 
 /** `babies_json`'daki bir bebek (yalnız doğmuş bebekler; Dart `publishAll` yazar). */
 data class WidgetBabyRef(val id: String, val name: String)
@@ -22,6 +23,15 @@ sealed class WidgetView {
     /** Hiç (doğmuş) bebek yok ya da oturum kapalı. */
     object NoBabies : WidgetView()
 }
+
+/**
+ * Uygulama içinden yapılan, launcher'ın henüz geri çağırmadığı widget sabitleme
+ * isteği. [maxId] = istek anındaki en büyük widget id'si (yalnız ondan büyük
+ * yeni id'ler bu isteğe ait olabilir).
+ */
+data class PendingPin(val seq: Int, val babyId: String?, val atMs: Long, val maxId: Int)
+
+data class PinReconcile(val bindings: Map<Int, String>, val remaining: List<PendingPin>)
 
 /** Yapılandırma ekranının ne yapacağı. */
 sealed class ConfigPlan {
@@ -99,6 +109,65 @@ object WidgetLogic {
         babies.isNullOrEmpty() -> ConfigPlan.Empty
         babies.size == 1 -> ConfigPlan.Auto(babies.first().id)
         else -> ConfigPlan.Choose(babies.indexOfFirst { it.id == current })
+    }
+
+    const val PENDING_TTL_MS = 24 * 3_600_000L
+
+    fun parsePending(json: String?): List<PendingPin> {
+        if (json == null) return emptyList()
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).map {
+                val o = arr.getJSONObject(it)
+                PendingPin(
+                    seq = o.getInt("seq"),
+                    babyId = if (o.isNull("baby")) null else o.getString("baby"),
+                    atMs = o.getLong("at"),
+                    maxId = o.getInt("max"),
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun pendingJson(list: List<PendingPin>): String = JSONArray().apply {
+        for (p in list) put(JSONObject().apply {
+            put("seq", p.seq)
+            put("baby", p.babyId ?: JSONObject.NULL)
+            put("at", p.atMs)
+            put("max", p.maxId)
+        })
+    }.toString()
+
+    /** Geri çağrı geldi → o istek artık bekleyen değil. */
+    fun withoutPin(pending: List<PendingPin>, seq: Int) = pending.filter { it.seq != seq }
+
+    /**
+     * Pin geri çağrısı GELMEMİŞ olabilir (bazı launcher'lar; K6). Açılışta/öne
+     * gelişte: istek anından sonra eklenmiş (id > maxId) ve henüz bağlanmamış widget'lar
+     * bekleyen isteklerle SIRAYLA eşlenir. Sayılar tutmazsa (iptal edilen istek, araya
+     * seçiciden eklenen widget) yanlış bebeğe bağlamamak için eşleme yapılmaz — o
+     * widget'lar seçimsiz kalır ve aktif bebeği izler (K3). 24 saatten eski istekler düşer.
+     */
+    fun reconcilePins(
+        widgetIds: IntArray,
+        isBound: (Int) -> Boolean,
+        pending: List<PendingPin>,
+        nowMs: Long,
+        ttlMs: Long = PENDING_TTL_MS,
+    ): PinReconcile {
+        val fresh = pending.filter { nowMs - it.atMs in 0..ttlMs }.sortedBy { it.seq }
+        if (fresh.isEmpty()) return PinReconcile(emptyMap(), emptyList())
+        val floor = fresh.minOf { it.maxId }
+        val candidates = widgetIds.filter { it > floor && !isBound(it) }.sorted()
+        if (candidates.size != fresh.size) return PinReconcile(emptyMap(), fresh)
+        val bindings = LinkedHashMap<Int, String>()
+        for ((id, p) in candidates.zip(fresh)) {
+            if (id <= p.maxId) return PinReconcile(emptyMap(), fresh)
+            if (p.babyId != null) bindings[id] = p.babyId
+        }
+        return PinReconcile(bindings, emptyList())
     }
 
     /** Kaldırılan widget'ların eşlemeleri (anahtar → null = sil). G10. */

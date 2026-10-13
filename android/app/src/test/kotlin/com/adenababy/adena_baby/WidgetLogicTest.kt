@@ -109,4 +109,66 @@ class WidgetLogicTest {
         assertEquals(ConfigPlan.Choose(checked = -1), WidgetLogic.configPlan(two, "silinen"))
         assertEquals(ConfigPlan.Choose(checked = -1), WidgetLogic.configPlan(two, null))
     }
+
+    // ── A1 / K6: pin geri çağrısına güvenme — açılışta bekleyen pin eşlemesi ──
+    private val hour = 3_600_000L
+    private val now = 100 * hour
+
+    @Test
+    fun `geri çağrı gelmedi - açılışta yeni eşlenmemiş widget bekleyen pinin bebeğine bağlanır`() {
+        val pending = listOf(PendingPin(seq = 1, babyId = "b", atMs = now - hour, maxId = 4))
+        val r = WidgetLogic.reconcilePins(intArrayOf(2, 4, 5), { it == 2 }, pending, now)
+        assertEquals(mapOf(5 to "b"), r.bindings)
+        assertTrue(r.remaining.isEmpty())
+    }
+
+    @Test
+    fun `iki ardışık pin geri çağrısız - sırayla eşlenir`() {
+        val pending = listOf(
+            PendingPin(seq = 2, babyId = "b", atMs = now - 10, maxId = 5),
+            PendingPin(seq = 1, babyId = "a", atMs = now - 20, maxId = 5),
+        )
+        val r = WidgetLogic.reconcilePins(intArrayOf(5, 7, 6), { false }, pending, now)
+        assertEquals(mapOf(6 to "a", 7 to "b"), r.bindings)
+        assertTrue(r.remaining.isEmpty())
+    }
+
+    @Test
+    fun `eski (istekten önceki) seçimsiz widget eşlenmez`() {
+        val pending = listOf(PendingPin(seq = 1, babyId = "b", atMs = now - 10, maxId = 9))
+        val r = WidgetLogic.reconcilePins(intArrayOf(3, 9), { false }, pending, now)
+        assertTrue(r.bindings.isEmpty())
+        assertEquals(pending, r.remaining) // launcher henüz eklemediyse sonraki açılışa kalır
+    }
+
+    @Test
+    fun `belirsizlikte (bekleyen ile yeni widget sayısı farklı) eşleme yapılmaz`() {
+        val pending = listOf(
+            PendingPin(seq = 1, babyId = "a", atMs = now - 20, maxId = 5),
+            PendingPin(seq = 2, babyId = "b", atMs = now - 10, maxId = 5),
+        )
+        val r = WidgetLogic.reconcilePins(intArrayOf(6), { false }, pending, now)
+        assertTrue(r.bindings.isEmpty())
+        assertEquals(2, r.remaining.size)
+    }
+
+    @Test
+    fun `24 saati geçen bekleyen pin silinir`() {
+        val pending = listOf(PendingPin(seq = 1, babyId = "a", atMs = now - 25 * hour, maxId = 1))
+        val r = WidgetLogic.reconcilePins(intArrayOf(2), { false }, pending, now)
+        assertTrue(r.bindings.isEmpty())
+        assertTrue(r.remaining.isEmpty())
+    }
+
+    @Test
+    fun `geri çağrı gelince bekleyen kayıt sırasıyla düşer ve json gidiş-dönüş`() {
+        val pending = listOf(
+            PendingPin(1, "a", 10L, 3),
+            PendingPin(2, null, 20L, 3),
+        )
+        assertEquals(listOf(PendingPin(2, null, 20L, 3)), WidgetLogic.withoutPin(pending, 1))
+        assertEquals(pending, WidgetLogic.parsePending(WidgetLogic.pendingJson(pending)))
+        assertTrue(WidgetLogic.parsePending("bozuk").isEmpty())
+        assertTrue(WidgetLogic.parsePending(null).isEmpty())
+    }
 }

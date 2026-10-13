@@ -42,11 +42,13 @@ class WidgetPinService {
   }
 
   /// Sistem onay penceresini açar. true = istek launcher'a iletildi (kullanıcı
-  /// henüz onaylamadı; asıl ekleme [pinned] ile gelir).
-  Future<bool> requestPin() async {
+  /// henüz onaylamadı; asıl ekleme [pinned] ile gelir). [babyId] widget'ın
+  /// bağlanacağı bebek (native taraf geri çağrıda ya da açılışta eşler).
+  Future<bool> requestPin({String? babyId}) async {
     if (!_isAndroid) return false;
     try {
-      return await _channel.invokeMethod<bool>('requestPin') ?? false;
+      return await _channel.invokeMethod<bool>('requestPin', {'babyId': babyId}) ??
+          false;
     } catch (_) {
       return false;
     }
