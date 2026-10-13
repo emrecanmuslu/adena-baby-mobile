@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ana ekran widget metinleri. Widget CİHAZ dilini değil uygulama dilini
+     izler: FeedWidgetProvider prefs'teki `locale` ile bu kaynakları çözer. -->
+<resources>
+    <string name="feed_widget_desc">在主屏幕上显示下一次喂养时间</string>
+    <string name="widget_next_feed">下一次喂养</string>
+    <string name="widget_feed_due">该喂养了</string>
+    <string name="widget_awaiting">等待喂养</string>
+    <string name="widget_last_feed">上次喂养 %1$s</string>
+    <string name="widget_baby_default">宝宝</string>
+    <string name="widget_baby_missing">找不到宝宝</string>
+    <string name="widget_tap_reselect">轻触重新选择</string>
+    <string name="widget_no_babies">请先打开应用并添加宝宝</string>
+    <string name="widget_choose_baby">选择宝宝</string>
+</resources>

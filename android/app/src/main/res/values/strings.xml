@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Ana ekran widget metinleri. Widget CİHAZ dilini değil uygulama dilini
+     izler: FeedWidgetProvider prefs'teki `locale` ile bu kaynakları çözer. -->
 <resources>
     <string name="feed_widget_desc">Sonraki beslenme saatini ana ekranda gösterir</string>
+    <string name="widget_next_feed">Sonraki beslenme</string>
+    <string name="widget_feed_due">Beslenme zamanı</string>
+    <string name="widget_awaiting">Beslenme bekleniyor</string>
+    <string name="widget_last_feed">Son besleme %1$s</string>
+    <string name="widget_baby_default">Bebek</string>
+    <string name="widget_baby_missing">Bebek bulunamadı</string>
+    <string name="widget_tap_reselect">Dokunup yeniden seç</string>
+    <string name="widget_no_babies">Önce uygulamayı açıp bebek ekleyin</string>
+    <string name="widget_choose_baby">Bebeği seç</string>
 </resources>

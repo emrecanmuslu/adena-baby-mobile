@@ -58,7 +58,8 @@ class MainActivity : FlutterActivity() {
 
     /** Sistem onay penceresini açar; true = istek launcher'a iletildi (henüz eklenmedi). */
     private fun requestPin(): Boolean {
-        if (!isPinSupported()) return false
+        // Sürüm kontrolü burada da açık olmalı: lint (NewApi) yardımcı fonksiyonu izlemez.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !isPinSupported()) return false
         // Başarı geri çağrısı: sistem EXTRA_APPWIDGET_ID'yi ekler → S+'da MUTABLE şart
         // (intent açık bileşenli, yalnız bizim alıcımıza gider).
         var flags = PendingIntent.FLAG_UPDATE_CURRENT

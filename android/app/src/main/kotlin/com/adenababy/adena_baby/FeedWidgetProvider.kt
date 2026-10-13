@@ -1,8 +1,11 @@
 package com.adenababy.adena_baby
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.os.Bundle
 import android.text.format.DateFormat
 import android.util.TypedValue
@@ -10,6 +13,7 @@ import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetProvider
 import java.util.Date
+import java.util.Locale
 
 /**
  * Ana ekran widget'ı — "Büyük Saat" tasarımı. Ortalanmış, dev SAAT gösterir
@@ -17,10 +21,14 @@ import java.util.Date
  * gerekmez (iOS donma / Android pil derdi olmaz). Üst satır "Bebek · Sonraki
  * beslenme", alt satır "Son besleme HH:MM". İkon yok.
  *
+ * Hangi bebeğin gösterileceğini [WidgetLogic.resolve] çözer (bağlı / seçimsiz /
+ * bebek bulunamadı / hiç bebek yok). Metinler CİHAZ dilinde değil, uygulamanın
+ * yazdığı `locale`'de (res/values-xx) çözülür.
+ *
  * RESPONSIVE: metin boyutları widget'ın O ANKİ boyutuna (getAppWidgetOptions) göre
  * hesaplanır → kare/yatay/dikey her ölçüde alanı doldurur. Yeniden boyutlandırmada
  * [onAppWidgetOptionsChanged] tekrar render eder. Saat biçimi cihazın 12/24 ayarına
- * saygılı. Dokununca uygulamayı açar.
+ * saygılı. Dokununca uygulamayı açar; bebek bulunamadıysa o widget için bebek seçimi.
  */
 class FeedWidgetProvider : HomeWidgetProvider() {
     override fun onUpdate(
@@ -52,62 +60,84 @@ class FeedWidgetProvider : HomeWidgetProvider() {
         widgetData: SharedPreferences
     ) {
         val views = RemoteViews(context.packageName, R.layout.feed_widget)
-        val en = widgetData.getString("locale", null) == "en"
-
-        // Bu widget'a seçilmiş bebek (config aktivitesi yazar); yoksa aktif bebek fallback.
-        val selectedId = widgetData.getString("widget_baby_$widgetId", null)
-        val babyName: String
-        val nextMs: Long
-        val lastMs: Long
-        if (selectedId != null && widgetData.contains("name_$selectedId")) {
-            babyName = widgetData.getString("name_$selectedId", null)
-                ?: if (en) "Baby" else "Bebek"
-            nextMs = widgetData.getString("next_$selectedId", null)?.toLongOrNull() ?: -1L
-            lastMs = widgetData.getString("last_$selectedId", null)?.toLongOrNull() ?: -1L
-        } else {
-            babyName = widgetData.getString("baby_name", null)
-                ?: if (en) "Baby" else "Bebek"
-            nextMs = widgetData.getString("next_feed_ms", null)?.toLongOrNull() ?: -1L
-            lastMs = widgetData.getString("last_feed_ms", null)?.toLongOrNull() ?: -1L
+        val res = localized(context, widgetData.getString("locale", null))
+        val get: (String) -> String? = { key ->
+            try {
+                widgetData.getString(key, null)
+            } catch (_: ClassCastException) {
+                null
+            }
         }
 
-        val due = nextMs in 1 until System.currentTimeMillis()
-        val label = when {
-            nextMs <= 0L -> if (en) "Next feed" else "Sonraki beslenme"
-            due -> if (en) "Feed time" else "Beslenme zamanı"
-            else -> if (en) "Next feed" else "Sonraki beslenme"
+        var reselect = false
+        val value: String
+        when (val v = WidgetLogic.resolve(widgetId, get)) {
+            is WidgetView.Baby -> {
+                val name = v.name ?: res.getString(R.string.widget_baby_default)
+                val label = if (v.nextMs in 1 until System.currentTimeMillis()) {
+                    res.getString(R.string.widget_feed_due)
+                } else {
+                    res.getString(R.string.widget_next_feed)
+                }
+                // Üst satır: "Defne · Sonraki beslenme"
+                views.setTextViewText(R.id.widget_top, "$name · $label")
+                value = if (v.nextMs > 0L) timeStr(res, v.nextMs)
+                else res.getString(R.string.widget_awaiting)
+                views.setTextViewText(
+                    R.id.widget_last,
+                    if (v.lastMs > 0L) {
+                        res.getString(R.string.widget_last_feed, timeStr(res, v.lastMs))
+                    } else ""
+                )
+            }
+            // K4: eski bebeğin adı/saati ASLA gösterilmez; dokununca yeniden seçim.
+            WidgetView.Missing -> {
+                views.setTextViewText(R.id.widget_top, "")
+                value = res.getString(R.string.widget_baby_missing)
+                views.setTextViewText(R.id.widget_last, res.getString(R.string.widget_tap_reselect))
+                reselect = true
+            }
+            WidgetView.NoBabies -> {
+                views.setTextViewText(R.id.widget_top, "")
+                value = res.getString(R.string.widget_no_babies)
+                views.setTextViewText(R.id.widget_last, "")
+            }
         }
-        // Üst satır: "Defne · Sonraki beslenme"
-        views.setTextViewText(R.id.widget_top, "$babyName · $label")
-        views.setTextViewText(
-            R.id.widget_value,
-            if (nextMs > 0L) timeStr(context, nextMs)
-            else if (en) "Awaiting feed" else "Beslenme bekleniyor"
-        )
-        views.setTextViewText(
-            R.id.widget_last,
-            if (lastMs > 0L) {
-                val t = timeStr(context, lastMs)
-                if (en) "Last $t" else "Son besleme $t"
-            } else ""
-        )
+        views.setTextViewText(R.id.widget_value, value)
 
         // RESPONSIVE metin boyutları: widget'ın o anki min boyutundan (dp) hesapla.
-        applyResponsiveSizes(appWidgetManager, widgetId, views)
+        applyResponsiveSizes(appWidgetManager, widgetId, views, value.length)
 
-        // Dokununca uygulamayı aç.
         views.setOnClickPendingIntent(
             R.id.widget_root,
-            HomeWidgetLaunchIntent.getActivity(context, MainActivity::class.java)
+            if (reselect) reselectIntent(context, widgetId)
+            else HomeWidgetLaunchIntent.getActivity(context, MainActivity::class.java)
         )
         appWidgetManager.updateAppWidget(widgetId, views)
     }
 
-    /** Saat metnini, widget'ın o anki boyutuna oranlayarak büyütür (alanı doldurur). */
+    /** Bu widget için bebek seçim ekranı (yapılandırma aktivitesi, yeniden seçim kipi). */
+    private fun reselectIntent(context: Context, widgetId: Int): PendingIntent {
+        val intent = Intent(context, FeedWidgetConfigActivity::class.java).apply {
+            action = FeedWidgetConfigActivity.ACTION_RESELECT
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return PendingIntent.getActivity(
+            context, widgetId, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    /**
+     * Ana metni widget'ın o anki boyutuna oranlayarak büyütür (alanı doldurur).
+     * [glyphs] = ana metnin uzunluğu: saat (~5) dev, uzun durum metni sığacak kadar.
+     */
     private fun applyResponsiveSizes(
         appWidgetManager: AppWidgetManager,
         widgetId: Int,
-        views: RemoteViews
+        views: RemoteViews,
+        glyphs: Int
     ) {
         val opts = appWidgetManager.getAppWidgetOptions(widgetId)
         // Min boyutlar (dp) — en küçük yönelimi baz al → taşma/kırpılma olmaz.
@@ -115,10 +145,10 @@ class FeedWidgetProvider : HomeWidgetProvider() {
             .let { if (it <= 0) 180 else it }
         val h = opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 70)
             .let { if (it <= 0) 70 else it }
-        // Saat: yükseklik ~%42'si; genişlikte "14:30" (~5 glif) sığsın diye w/4.6 ile sınırla.
+        // Saat: yükseklik ~%42'si; genişlikte metin sığsın diye glif başına ~0.58 em.
         val byHeight = h * 0.42f
-        val byWidth = w / 4.6f
-        val timeSp = minOf(byHeight, byWidth).coerceIn(22f, 80f)
+        val byWidth = w / maxOf(4.6f, glyphs * 0.58f)
+        val timeSp = minOf(byHeight, byWidth).coerceIn(14f, 80f)
         val subSp = (timeSp * 0.30f).coerceIn(10.5f, 19f)
         views.setTextViewTextSize(R.id.widget_value, TypedValue.COMPLEX_UNIT_SP, timeSp)
         views.setTextViewTextSize(R.id.widget_top, TypedValue.COMPLEX_UNIT_SP, subSp)
@@ -128,4 +158,14 @@ class FeedWidgetProvider : HomeWidgetProvider() {
     /** epoch ms → cihaz biçiminde saat (TR 24s "14:30", US 12s "2:30 PM"). */
     private fun timeStr(context: Context, ms: Long): String =
         DateFormat.getTimeFormat(context).format(Date(ms))
+
+    companion object {
+        /** Uygulamanın dili (prefs `locale`) için kaynak bağlamı; yoksa cihaz dili. */
+        fun localized(context: Context, lang: String?): Context {
+            if (lang.isNullOrEmpty()) return context
+            val config = Configuration(context.resources.configuration)
+            config.setLocale(Locale.forLanguageTag(lang))
+            return context.createConfigurationContext(config)
+        }
+    }
 }

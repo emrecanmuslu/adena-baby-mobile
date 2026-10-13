@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ana ekran widget metinleri. Widget CİHAZ dilini değil uygulama dilini
+     izler: FeedWidgetProvider prefs'teki `locale` ile bu kaynakları çözer. -->
+<resources>
+    <string name="feed_widget_desc">Muestra la hora de la próxima alimentación en tu pantalla de inicio</string>
+    <string name="widget_next_feed">Próxima alimentación</string>
+    <string name="widget_feed_due">Hora de alimentar</string>
+    <string name="widget_awaiting">Esperando alimentación</string>
+    <string name="widget_last_feed">Última alimentación %1$s</string>
+    <string name="widget_baby_default">Bebé</string>
+    <string name="widget_baby_missing">Bebé no encontrado</string>
+    <string name="widget_tap_reselect">Toca para volver a elegir</string>
+    <string name="widget_no_babies">Primero abre la app y añade un bebé</string>
+    <string name="widget_choose_baby">Elige el bebé</string>
+</resources>

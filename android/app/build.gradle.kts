@@ -23,6 +23,15 @@ android {
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
+    // Widget metinleri cihaz dilinde değil UYGULAMA dilinde çözülür (res/values-xx,
+    // FeedWidgetProvider.localized). AAB dil bölmesi açıkken Play yalnız cihaz
+    // dillerinin kaynaklarını kurar → uygulama dili farklıysa widget Türkçeye düşerdi.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
+
     compileOptions {
         // flutter_local_notifications için gerekli (java.time backport).
         isCoreLibraryDesugaringEnabled = true
@@ -83,4 +92,8 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Widget saf mantığı (WidgetLogic) için JVM birim testleri; org.json android.jar'da
+    // yalnız taslak olduğundan testte gerçek kütüphane gerekir.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20180813")
 }

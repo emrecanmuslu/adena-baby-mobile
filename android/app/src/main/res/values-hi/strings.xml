@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ana ekran widget metinleri. Widget CİHAZ dilini değil uygulama dilini
+     izler: FeedWidgetProvider prefs'teki `locale` ile bu kaynakları çözer. -->
+<resources>
+    <string name="feed_widget_desc">होम स्क्रीन पर अगली फीडिंग का समय दिखाता है</string>
+    <string name="widget_next_feed">अगली फीडिंग</string>
+    <string name="widget_feed_due">फीडिंग का समय</string>
+    <string name="widget_awaiting">फीडिंग की प्रतीक्षा</string>
+    <string name="widget_last_feed">पिछली फीडिंग %1$s</string>
+    <string name="widget_baby_default">शिशु</string>
+    <string name="widget_baby_missing">शिशु नहीं मिला</string>
+    <string name="widget_tap_reselect">फिर से चुनने के लिए टैप करें</string>
+    <string name="widget_no_babies">पहले ऐप खोलकर शिशु जोड़ें</string>
+    <string name="widget_choose_baby">शिशु चुनें</string>
+</resources>

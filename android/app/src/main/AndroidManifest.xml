@@ -79,6 +79,7 @@
         <!-- Widget yapılandırma ekranı: birden çok bebekte hangisi gösterilsin -->
         <activity
             android:name=".FeedWidgetConfigActivity"
+            android:excludeFromRecents="true"
             android:exported="true"
             android:theme="@android:style/Theme.Material.Light.Dialog">
             <intent-filter>

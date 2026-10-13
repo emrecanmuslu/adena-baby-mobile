@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ana ekran widget metinleri. Widget CİHAZ dilini değil uygulama dilini
+     izler: FeedWidgetProvider prefs'teki `locale` ile bu kaynakları çözer. -->
+<resources>
+    <string name="feed_widget_desc">يعرض موعد الرضعة التالية على الشاشة الرئيسية</string>
+    <string name="widget_next_feed">الرضعة التالية</string>
+    <string name="widget_feed_due">حان وقت الرضعة</string>
+    <string name="widget_awaiting">بانتظار الرضعة</string>
+    <string name="widget_last_feed">آخر رضعة %1$s</string>
+    <string name="widget_baby_default">الطفل</string>
+    <string name="widget_baby_missing">لم يتم العثور على الطفل</string>
+    <string name="widget_tap_reselect">اضغط لإعادة الاختيار</string>
+    <string name="widget_no_babies">افتح التطبيق وأضف طفلًا أولًا</string>
+    <string name="widget_choose_baby">اختر الطفل</string>
+</resources>

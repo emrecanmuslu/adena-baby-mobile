@@ -10,7 +10,6 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
 import es.antonborri.home_widget.HomeWidgetPlugin
-import org.json.JSONArray
 
 /**
  * "Sonraki beslenme" widget'ı yapılandırma ekranı — birden çok bebek varsa
@@ -36,21 +35,10 @@ class FeedWidgetConfigActivity : Activity() {
         }
 
         val prefs = HomeWidgetPlugin.getData(this)
-        val en = prefs.getString("locale", null) == "en"
-
-        val ids = ArrayList<String>()
-        val names = ArrayList<String>()
-        prefs.getString("babies_json", null)?.let { json ->
-            try {
-                val arr = JSONArray(json)
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    ids.add(o.getString("id"))
-                    names.add(o.optString("name", if (en) "Baby" else "Bebek"))
-                }
-            } catch (_: Exception) {
-            }
-        }
+        val res = FeedWidgetProvider.localized(this, prefs.getString("locale", null))
+        val babies = WidgetLogic.parseBabies(prefs.getString("babies_json", null)).orEmpty()
+        val ids = babies.map { it.id }
+        val names = babies.map { it.name.ifEmpty { res.getString(R.string.widget_baby_default) } }
 
         // 0 veya 1 bebek → seçim sormaya gerek yok.
         if (ids.size <= 1) {
@@ -59,7 +47,7 @@ class FeedWidgetConfigActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = if (en) "Choose baby" else "Bebeği seç"
+            text = res.getString(R.string.widget_choose_baby)
             textSize = 18f
             setPadding(48, 48, 48, 24)
         }
@@ -82,6 +70,11 @@ class FeedWidgetConfigActivity : Activity() {
                 )
             )
         })
+    }
+
+    companion object {
+        /** "Bebek bulunamadı" widget'ına dokunma → o widget için yeniden seçim (K4). */
+        const val ACTION_RESELECT = "com.adenababy.adena_baby.action.WIDGET_RESELECT"
     }
 
     private fun applyAndFinish(babyId: String?) {

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ana ekran widget metinleri. Widget CİHAZ dilini değil uygulama dilini
+     izler: FeedWidgetProvider prefs'teki `locale` ile bu kaynakları çözer. -->
+<resources>
+    <string name="feed_widget_desc">Shows the next feeding time on your home screen</string>
+    <string name="widget_next_feed">Next feeding</string>
+    <string name="widget_feed_due">Feeding time</string>
+    <string name="widget_awaiting">Awaiting feeding</string>
+    <string name="widget_last_feed">Last feeding %1$s</string>
+    <string name="widget_baby_default">Baby</string>
+    <string name="widget_baby_missing">Baby not found</string>
+    <string name="widget_tap_reselect">Tap to choose again</string>
+    <string name="widget_no_babies">Open the app and add a baby first</string>
+    <string name="widget_choose_baby">Choose baby</string>
+</resources>
