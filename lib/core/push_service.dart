@@ -101,6 +101,9 @@ Future<void> handlePushMessage(RemoteMessage message) async {
   } else if (type == 'access_removed') {
     final babyId = accessRemovedBabyId(data);
     if (babyId != null) {
+      // K4: erişimi kalkan bebek ana ekran widget'ından hemen çıkar (uygulama
+      // kapalıyken de) — eski ad/saat gösterilmez.
+      await WidgetService.removeBaby(babyId);
       try {
         // V5: revoke → yerel veri ön planda temizlenene dek sonraki yeniden
         // kurmalar (bg turu) bu bebeği geri KURMAZ.

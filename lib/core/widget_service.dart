@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:home_widget/home_widget.dart';
 
 import '../models/quiet_hours.dart';
@@ -23,6 +24,35 @@ class WidgetService {
   static const _qualifiedAndroidName = 'com.adenababy.adena_baby.FeedWidgetProvider';
 
   static bool _inited = false;
+
+  @visibleForTesting
+  static void resetForTest() {
+    _inited = false;
+    _lastPublishSig = null;
+  }
+
+  /// Widget'ın bebek başına GÖSTERDİĞİ anahtarlar (ad + saatler). Bebek listeden
+  /// çıkınca silinir → widget eski adı/saati asla gösteremez (K4).
+  static const _displayPrefixes = ['name_', 'next_', 'last_'];
+
+  /// App Group / prefs'teki `babies_json` (yoksa ya da okunamazsa boş).
+  static Future<List<Map<String, dynamic>>> _listed() async {
+    final raw = await HomeWidget.getWidgetData<String>('babies_json');
+    if (raw == null) return [];
+    try {
+      return [
+        for (final m in jsonDecode(raw) as List) Map<String, dynamic>.from(m as Map)
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> _clearBabyKeys(String babyId) async {
+    for (final p in _displayPrefixes) {
+      await HomeWidget.saveWidgetData<String>('$p$babyId', null);
+    }
+  }
 
   static Future<void> _ensureInit() async {
     if (_inited) return;
@@ -81,8 +111,16 @@ class WidgetService {
     _lastPublishSig = sig;
     try {
       await _ensureInit();
+      final previous = await _listed();
       final list = [for (final b in babies) {'id': b.id, 'name': b.name}];
       await HomeWidget.saveWidgetData<String>('babies_json', jsonEncode(list));
+      // Listeden çıkan bebek (silindi, aileden çıkarıldı, gebelik, hesap değişti):
+      // bağlı widget'ı "Bebek bulunamadı" der; eski ad/saat diskte de kalmasın.
+      final current = {for (final b in babies) b.id};
+      for (final m in previous) {
+        final id = m['id'];
+        if (id is String && !current.contains(id)) await _clearBabyKeys(id);
+      }
       for (final b in babies) {
         await HomeWidget.saveWidgetData<String>('name_${b.id}', b.name);
         await HomeWidget.saveWidgetData<String>('next_${b.id}', _ms(b.nextFeed));
@@ -100,6 +138,41 @@ class WidgetService {
       _lastPublishSig = null; // başarısız → sonraki çağrı tekrar denesin
       // Widget eklenmemiş / platform desteklemiyor → yoksay.
     }
+  }
+
+  /// Bebeği widget listesinden HEMEN çıkarır (ör. `access_removed` push'u — uygulama
+  /// kapalıyken de). Bağlı widget'lar "Bebek bulunamadı" gösterir; aktif bebekse
+  /// seçimsiz widget'lar listedeki ilk bebeğe (yoksa boş duruma) geçer.
+  static Future<void> removeBaby(String babyId) async {
+    try {
+      await _ensureInit();
+      final kept = [
+        for (final m in await _listed())
+          if (m['id'] != babyId) m
+      ];
+      await HomeWidget.saveWidgetData<String>('babies_json', jsonEncode(kept));
+      await _clearBabyKeys(babyId);
+      final active = await HomeWidget.getWidgetData<String>('active_id');
+      if (active == babyId || (active ?? '').isEmpty) {
+        if (kept.isNotEmpty) {
+          final id = kept.first['id'] as String;
+          await HomeWidget.saveWidgetData<String>('active_id', id);
+          await HomeWidget.saveWidgetData<String>(
+              'baby_name', kept.first['name'] as String?);
+          await HomeWidget.saveWidgetData<String>('next_feed_ms',
+              await HomeWidget.getWidgetData<String>('next_$id') ?? '-1');
+          await HomeWidget.saveWidgetData<String>('last_feed_ms',
+              await HomeWidget.getWidgetData<String>('last_$id') ?? '-1');
+        } else {
+          await HomeWidget.saveWidgetData<String>('active_id', '');
+          await HomeWidget.saveWidgetData<String>('baby_name', null);
+          await HomeWidget.saveWidgetData<String>('next_feed_ms', '-1');
+          await HomeWidget.saveWidgetData<String>('last_feed_ms', '-1');
+        }
+      }
+      _lastPublishSig = null; // ön plan bir sonraki yayında tam listeyi yeniden yazsın
+      await _refresh();
+    } catch (_) {}
   }
 
   /// Tek bir bebeğin verisini günceller (push arka plan handler — yalnız o bebeği
