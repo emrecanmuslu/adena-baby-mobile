@@ -13,4 +13,6 @@
     <string name="widget_no_babies">Önce uygulamayı açıp bebek ekleyin</string>
     <string name="widget_choose_baby">Bebeği seç</string>
     <string name="widget_ok">Tamam</string>
+    <string name="widget_yesterday">Dün</string>
+    <string name="widget_tomorrow">Yarın</string>
 </resources>

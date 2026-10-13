@@ -13,4 +13,6 @@
     <string name="widget_no_babies">افتح التطبيق وأضف طفلًا أولًا</string>
     <string name="widget_choose_baby">اختر الطفل</string>
     <string name="widget_ok">حسنًا</string>
+    <string name="widget_yesterday">أمس</string>
+    <string name="widget_tomorrow">غدًا</string>
 </resources>

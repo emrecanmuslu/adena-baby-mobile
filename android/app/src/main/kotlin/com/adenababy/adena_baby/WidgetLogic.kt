@@ -2,6 +2,8 @@ package com.adenababy.adena_baby
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Calendar
+import java.util.TimeZone
 
 /** `babies_json`'daki bir bebek (yalnız doğmuş bebekler; Dart `publishAll` yazar). */
 data class WidgetBabyRef(val id: String, val name: String)
@@ -168,6 +170,23 @@ object WidgetLogic {
             if (p.babyId != null) bindings[id] = p.babyId
         }
         return PinReconcile(bindings, emptyList())
+    }
+
+    /**
+     * [ms] ile [nowMs] arasındaki TAKVİM günü farkı ([tz] saat diliminde):
+     * 0 bugün, -1 dün, 1 yarın, -62 iki ay önce. Widget saati bugün değilse önüne
+     * tarih bağlamı koyar (G7: dünkü saat bugünkü gibi görünmesin).
+     */
+    fun dayOffset(ms: Long, nowMs: Long, tz: TimeZone): Int {
+        fun dayNumber(t: Long): Long {
+            val c = Calendar.getInstance(tz).apply { timeInMillis = t }
+            // Yerel tarihin epoch gün sayısı (yaz saati kaymalarından bağımsız).
+            return Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                clear()
+                set(c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH))
+            }.timeInMillis / 86_400_000L
+        }
+        return (dayNumber(ms) - dayNumber(nowMs)).toInt()
     }
 
     /** Kaldırılan widget'ların eşlemeleri (anahtar → null = sil). G10. */

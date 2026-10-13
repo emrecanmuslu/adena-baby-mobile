@@ -13,4 +13,6 @@
     <string name="widget_no_babies">请先打开应用并添加宝宝</string>
     <string name="widget_choose_baby">选择宝宝</string>
     <string name="widget_ok">确定</string>
+    <string name="widget_yesterday">昨天</string>
+    <string name="widget_tomorrow">明天</string>
 </resources>

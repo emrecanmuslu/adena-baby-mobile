@@ -13,4 +13,6 @@
     <string name="widget_no_babies">Open the app and add a baby first</string>
     <string name="widget_choose_baby">Choose baby</string>
     <string name="widget_ok">OK</string>
+    <string name="widget_yesterday">Yesterday</string>
+    <string name="widget_tomorrow">Tomorrow</string>
 </resources>

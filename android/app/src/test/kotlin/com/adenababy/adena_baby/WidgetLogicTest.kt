@@ -171,4 +171,20 @@ class WidgetLogicTest {
         assertTrue(WidgetLogic.parsePending("bozuk").isEmpty())
         assertTrue(WidgetLogic.parsePending(null).isEmpty())
     }
+
+    // ── A7 (G7): saat bugün değilse tarih bağlamı ──
+    @Test
+    fun `takvim günü farkı - bugün dün yarın ve günler önce`() {
+        val tz = java.util.TimeZone.getTimeZone("Europe/Istanbul")
+        fun at(y: Int, m: Int, d: Int, h: Int, min: Int): Long =
+            java.util.Calendar.getInstance(tz).apply {
+                clear(); set(y, m - 1, d, h, min)
+            }.timeInMillis
+        val now = at(2026, 10, 13, 0, 30)
+        assertEquals(0, WidgetLogic.dayOffset(at(2026, 10, 13, 0, 5), now, tz))
+        assertEquals(-1, WidgetLogic.dayOffset(at(2026, 10, 12, 23, 10), now, tz))
+        assertEquals(1, WidgetLogic.dayOffset(at(2026, 10, 14, 2, 0), now, tz))
+        assertEquals(-62, WidgetLogic.dayOffset(at(2026, 8, 12, 15, 13), now, tz))
+        assertEquals(-1, WidgetLogic.dayOffset(at(2025, 12, 31, 22, 0), at(2026, 1, 1, 8, 0), tz))
+    }
 }

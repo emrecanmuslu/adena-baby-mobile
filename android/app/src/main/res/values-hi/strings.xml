@@ -13,4 +13,6 @@
     <string name="widget_no_babies">पहले ऐप खोलकर शिशु जोड़ें</string>
     <string name="widget_choose_baby">शिशु चुनें</string>
     <string name="widget_ok">ठीक है</string>
+    <string name="widget_yesterday">कल</string>
+    <string name="widget_tomorrow">कल</string>
 </resources>

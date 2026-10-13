@@ -14,8 +14,10 @@ import androidx.core.content.edit
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
+import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Ana ekran widget'ı — "Büyük Saat" tasarımı. Ortalanmış, dev SAAT gösterir
@@ -103,12 +105,13 @@ class FeedWidgetProvider : HomeWidgetProvider() {
                 }
                 // Üst satır: "Defne · Sonraki beslenme"
                 views.setTextViewText(R.id.widget_top, "$name · $label")
-                value = if (v.nextMs > 0L) timeStr(res, v.nextMs)
+                val now = System.currentTimeMillis()
+                value = if (v.nextMs > 0L) whenStr(res, v.nextMs, now)
                 else res.getString(R.string.widget_awaiting)
                 views.setTextViewText(
                     R.id.widget_last,
                     if (v.lastMs > 0L) {
-                        res.getString(R.string.widget_last_feed, timeStr(res, v.lastMs))
+                        res.getString(R.string.widget_last_feed, whenStr(res, v.lastMs, now))
                     } else ""
                 )
             }
@@ -175,6 +178,24 @@ class FeedWidgetProvider : HomeWidgetProvider() {
         views.setTextViewTextSize(R.id.widget_value, TypedValue.COMPLEX_UNIT_SP, timeSp)
         views.setTextViewTextSize(R.id.widget_top, TypedValue.COMPLEX_UNIT_SP, subSp)
         views.setTextViewTextSize(R.id.widget_last, TypedValue.COMPLEX_UNIT_SP, subSp)
+    }
+
+    /**
+     * Saat bugünse yalnız saat; değilse önünde tarih bağlamı (G7):
+     * "Dün 23:10", "Yarın 02:00", "12 Ağu 15:13". Canlı sayaç yok.
+     */
+    private fun whenStr(res: Context, ms: Long, nowMs: Long): String {
+        val time = timeStr(res, ms)
+        return when (WidgetLogic.dayOffset(ms, nowMs, TimeZone.getDefault())) {
+            0 -> time
+            -1 -> "${res.getString(R.string.widget_yesterday)} $time"
+            1 -> "${res.getString(R.string.widget_tomorrow)} $time"
+            else -> {
+                val locale = res.resources.configuration.locales[0]
+                val pattern = DateFormat.getBestDateTimePattern(locale, "dMMM")
+                "${SimpleDateFormat(pattern, locale).format(Date(ms))} $time"
+            }
+        }
     }
 
     /** epoch ms → cihaz biçiminde saat (TR 24s "14:30", US 12s "2:30 PM"). */
