@@ -16,6 +16,7 @@ import '../../models/baby.dart';
 import '../../models/feed_reminder.dart';
 import '../../models/quiet_hours.dart';
 import '../../models/record.dart';
+import '../auth/auth_controller.dart';
 import '../babies/family_settings.dart';
 import '../health/med_scheduler_sync.dart';
 import '../records/record_controller.dart';
@@ -85,8 +86,16 @@ class WidgetSync extends ConsumerWidget {
     // açıksa onun aralığı, değilse varsayılan (ana sayfa kartıyla aynı mantık).
     // Liste henüz yüklenmediyse dokunma (açılışta geçici boş liste widget'ları
     // "Bebek bulunamadı"ya düşürüp anahtarları silmesin).
+    //
+    // Oturum henüz çözülmediyse de dokunma: soğuk açılışta auth yüklenirken hesap
+    // kapsamı null → bebek listesi GEÇİCİ olarak boş (AsyncData([])) gelir. iOS
+    // uygulamayı sessiz push / arka plan getirmesiyle de böyle başlatır; o turda
+    // boş liste yazılıp süreç askıya alınınca seçili widget'lar uygulama açılana
+    // dek "Bebek bulunamadı"da kalıyordu. Hesap değişince liste yeniden
+    // yüklenirken (isLoading, önceki değer eldeyken) de yazılmaz.
+    if (ref.watch(authControllerProvider).isLoading) return const SizedBox.shrink();
     final babiesAsync = ref.watch(babyControllerProvider);
-    if (!babiesAsync.hasValue) return const SizedBox.shrink();
+    if (!babiesAsync.hasValue || babiesAsync.isLoading) return const SizedBox.shrink();
     final born = babiesAsync.requireValue.where((b) => !b.isExpecting).toList();
     if (born.isEmpty) {
       // Çıkış / son bebek silindi / hepsi gebelik: boş liste yaz → bağlı widget'lar
