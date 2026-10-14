@@ -3,7 +3,7 @@
 Bu dosya, bu dizinde çalışan Claude Code'a rehberlik eder. Talimatlara uy.
 
 ## 🧠 KALICI HAFIZA (yalnız yerel — git senkronu YOK)
-Kalıcı hafıza, Claude Code'un makineye-özgü yerel yolunda tutulur: `~/.claude/projects/C--Users-Dev-Desktop-baby-app/memory/`. **2026-06-17'de git senkronu iptal edildi** (macOS VM bırakıldı; iki-makine ortaklığına gerek yok). Repodaki eski `claude-memory/` mirror'ı artık güncellenmiyor/stale.
+Kalıcı hafıza, Claude Code'un makineye-özgü yerel yolunda tutulur: `~/.claude/projects/C--Users-User-Desktop-development-baby-app-mobile-app/memory/`. **2026-06-17'de git senkronu iptal edildi** (macOS VM bırakıldı; iki-makine ortaklığına gerek yok). Repodaki eski `claude-memory/` mirror'ı 2026-10-11'de silindi.
 
 - **Oturum başında:** otomatik enjekte edilen `MEMORY.md` indeksini oku; ilgili konularda tek tek dosyaları aç. (`git pull` yapma.)
 - **Yeni/değişen bilgi öğrenince:** yerel memory yolundaki ilgili `.md` dosyasını ekle/güncelle (frontmatter: `name`, `description`, `metadata.type` = user|feedback|project|reference; gövdede `[[name]]` ile bağ ver) + **`MEMORY.md`'ye tek satırlık girdi** ekle. **Git commit/push YAPMA.**
@@ -65,4 +65,4 @@ lib/
 - Build: `android/app/build.gradle.kts` — compileSdk/targetSdk=36, minSdk=Flutter varsayılanı (Android 6.0 hedefi). applicationId `com.adenababy.adena_baby`.
 
 ## Durum
-Proje özeti/mimari için bkz. **`../PROJE_OZET.md`**. Güncel "kaldığımız yer" ve kararlar kalıcı hafızada (`claude-memory/` → bu makinede `~/.claude/.../memory/`).
+Proje özeti/mimari için bkz. **`../PROJE_OZET.md`**. Güncel "kaldığımız yer" ve kararlar kalıcı hafızada (`~/.claude/.../memory/`).

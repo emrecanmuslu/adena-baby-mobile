@@ -10,7 +10,7 @@ name: Test (analyze + flutter test)
 # `../api` yolunda İSTER; yoksa test KIRMIZIDIR. Bu yüzden api repo'su
 # `api/` dizinine checkout edilir. Gerekli secret: API_REPO_TOKEN
 # (emrecanmuslu/adena-baby-api için "Contents: read" izinli fine-grained PAT
-# ya da `repo` kapsamlı classic PAT). Bkz. YAYIN-KONTROL.md §6.
+# ya da `repo` kapsamlı classic PAT).
 on:
   workflow_dispatch:
 
