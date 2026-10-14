@@ -309,9 +309,16 @@ struct FeedAccessoryView: View {
                     Label(entry.babyName, systemImage: "drop.fill")
                         .font(.caption2).fontWeight(.semibold).lineLimit(1)
                     Text(labelText(entry)).font(.caption2).foregroundStyle(.secondary)
+                        .lineLimit(1)
                     if let feed = entry.nextFeed {
+                        // Dikey alan dar (4 satır): öncelik saat satırında. Aksi halde
+                        // minimumScaleFactor dikeyde de küçültüyor, sonraki saat "Son"
+                        // satırından küçük görünüyordu (1.7.2). Ölçek yalnız uzun
+                        // "12 Ağu 15:13" metni genişliğe sığmazsa devreye girsin.
                         Text(whenStr(feed, now: entry.date, lang: entry.lang)).font(.headline)
                             .fontWeight(.bold).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .layoutPriority(1)
                     } else {
                         Text(feedText(.awaiting, entry.lang))
                             .font(.subheadline).fontWeight(.semibold)
