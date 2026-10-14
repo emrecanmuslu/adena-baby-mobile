@@ -12,9 +12,11 @@ import 'package:adena_baby/core/push_service.dart';
 import 'package:adena_baby/core/widget_service.dart';
 import 'package:adena_baby/data/feed_reminder_cache.dart';
 import 'package:adena_baby/models/quiet_hours.dart';
+import 'package:adena_baby/features/auth/auth_controller.dart';
 import 'package:adena_baby/features/babies/baby_controller.dart';
 import 'package:adena_baby/features/babies/notification_sync.dart';
 import 'package:adena_baby/models/baby.dart';
+import 'package:adena_baby/models/user.dart';
 
 /// WIDGET-COKLU-BEBEK A4 (K4): listeden çıkan bebeğin widget anahtarları silinir;
 /// widget "Bebek bulunamadı" gösterir, eski ad/saat ASLA kalmaz.
@@ -151,9 +153,13 @@ void main() {
   });
 
   group('WidgetSync', () {
-    Future<void> pumpSync(WidgetTester t, BabyController Function() ctrl) async {
+    Future<void> pumpSync(WidgetTester t, BabyController Function() ctrl,
+        {AuthController Function()? auth}) async {
       await t.pumpWidget(ProviderScope(
-        overrides: [babyControllerProvider.overrideWith(ctrl)],
+        overrides: [
+          babyControllerProvider.overrideWith(ctrl),
+          authControllerProvider.overrideWith(auth ?? _SignedOut.new),
+        ],
         child: const Directionality(
             textDirection: TextDirection.ltr, child: WidgetSync()),
       ));
@@ -185,7 +191,34 @@ void main() {
       expect(calls.where((c) => c == 'saveWidgetData'), isEmpty);
       expect(listedIds(), ['a']);
     });
+
+    // Regresyon (iOS, 1.7.2): soğuk açılışta (sessiz push / arka plan getirmesi
+    // dahil) oturum çözülmeden hesap kapsamı null → bebek listesi geçici boş.
+    // Boş liste yazılırsa seçili widget'lar "Bebek bulunamadı"da kalıyordu.
+    testWidgets("oturum yüklenirken geçici boş liste widget'a yazılmaz", (t) async {
+      store['babies_json'] = jsonEncode([
+        {'id': 'a', 'name': 'Ada'}
+      ]);
+      store['name_a'] = 'Ada';
+      await t.runAsync(() async {
+        await pumpSync(t, () => _FakeBabies(const []), auth: _LoadingAuth.new);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      expect(calls.where((c) => c == 'saveWidgetData'), isEmpty);
+      expect(listedIds(), ['a']);
+      expect(store['name_a'], 'Ada');
+    });
   });
+}
+
+class _SignedOut extends AuthController {
+  @override
+  Future<User?> build() async => null;
+}
+
+class _LoadingAuth extends AuthController {
+  @override
+  Future<User?> build() => Completer<User?>().future;
 }
 
 class _FakeBabies extends BabyController {
