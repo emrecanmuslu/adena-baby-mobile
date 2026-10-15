@@ -25,6 +25,7 @@ import 'core/providers.dart';
 import 'core/push_service.dart';
 import 'core/restart_widget.dart';
 import 'core/config.dart';
+import 'core/db_owner_gate.dart';
 import 'core/db_watchdog.dart';
 import 'core/revenuecat_service.dart';
 import 'core/sync_alert_telemetry.dart';
@@ -272,6 +273,8 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   String? _lastBannerEventId;
   // Misafir→hesap göç teklifini oturum başına bir kez sor.
   bool _guestMigChecked = false;
+  // DbOwnerGate kaydı (dispose'da yalnız KENDİ kaydımızı kaldırmak için).
+  Object? _dbOwnerHandle;
 
   @override
   void initState() {
@@ -286,6 +289,12 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     final db = ref.read(databaseProvider);
     unawaited(DbWatchdog.instance.check(db, 'startup'));
     DbWatchdog.instance.startPulse(db);
+    // Tek yazar: arka plan girişleri (BGTask / FCM işleyicisi) bu süreçte ön
+    // plan canlıyken kendi sqlite bağlantısını açmaz, turu buraya devreder
+    // (SQLITE_BUSY_SNAPSHOT 517 kökü; bkz. DbOwnerGate).
+    final container = ProviderScope.containerOf(context, listen: false);
+    _dbOwnerHandle = DbOwnerGate.registerForeground(
+        (op, babyId) => runDelegatedSync(container, op, babyId: babyId));
     // Push: ön plan mesaj dinleyicisi (oturum gerektirmez).
     PushService.instance.startForeground();
     // Ön planda aile-etkinlik push'u gelince yerel kayıtları HEMEN çek → ana
@@ -337,6 +346,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
   @override
   void dispose() {
     _pushSub?.cancel(); // O18
+    DbOwnerGate.unregisterForeground(_dbOwnerHandle);
     const MethodChannel('adena/push').setMethodCallHandler(null);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
