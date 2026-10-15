@@ -1,6 +1,12 @@
+import 'dart:async';
+import 'dart:io' show File;
+
 import 'package:drift/drift.dart';
-import 'package:drift_flutter/drift_flutter.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart' show sqlite3;
 import 'package:uuid/uuid.dart';
 
 part 'app_database.g.dart';
@@ -499,6 +505,57 @@ class AppDatabase extends _$AppDatabase {
         'CREATE INDEX IF NOT EXISTS idx_cycle_date ON cycle_entries (date)');
   }
 
+  /// Kilit hatasında transaction'ın en çok kaç kez BAŞTAN deneneceği.
+  static const lockRetryDelays = [
+    Duration(milliseconds: 150),
+    Duration(milliseconds: 500),
+    Duration(milliseconds: 1500),
+  ];
+
+  static final _txZoneKey = Object();
+
+  /// Üst düzey transaction'ları SQLite kilit hatalarında BAŞTAN yeniden dener.
+  ///
+  /// `SQLITE_BUSY_SNAPSHOT` (517): WAL'da bu bağlantının okuma görüntüsü,
+  /// başka bir bağlantı yazdığı için bayatladı. `busy_timeout` bunu ÇÖZMEZ —
+  /// SQLite belgesine göre tek çare transaction'ı yeniden başlatmaktır (taze
+  /// görüntüyle). 261/5/6 (locked/busy) da aynı şekilde geçicidir. Birincil
+  /// önlem tek-yazar kapısıdır (DbOwnerGate); bu, ön plan olmadan açılan arka
+  /// plan bağlantısıyla kalan nadir çakışmalar içindir (2026-10-15 olayı).
+  ///
+  /// İç içe transaction'lar yeniden denenmez (dış transaction tamamını dener).
+  /// Gövde yeniden çalıştığından içindeki Dart yan etkileri idempotent olmalı —
+  /// mevcut gövdeler satırları transaction içinde yeniden okur.
+  @override
+  Future<T> transaction<T>(Future<T> Function() action,
+      {bool requireNew = false}) async {
+    if (Zone.current[_txZoneKey] == true) {
+      return super.transaction(action, requireNew: requireNew);
+    }
+    for (var attempt = 0;; attempt++) {
+      try {
+        return await runZoned(
+            () => super.transaction(action, requireNew: requireNew),
+            zoneValues: {_txZoneKey: true});
+      } catch (e) {
+        if (attempt >= lockRetryDelays.length || !isSqliteLockError(e)) rethrow;
+        debugPrint('[db] kilit hatası, transaction yeniden deneniyor '
+            '(${attempt + 1}/${lockRetryDelays.length}): $e');
+        await Future.delayed(lockRetryDelays[attempt]);
+      }
+    }
+  }
+
+  /// SQLite kilit/meşgul hatası mı (5 BUSY, 6 LOCKED, 261 BUSY_RECOVERY,
+  /// 517 BUSY_SNAPSHOT, 262 LOCKED_SHAREDCACHE …)? drift uzak isolate'ten
+  /// `DriftRemoteException` içinde metin olarak taşıdığı için mesajdan bakılır.
+  static bool isSqliteLockError(Object e) {
+    final s = e.toString();
+    return s.contains('database is locked') ||
+        s.contains('database table is locked') ||
+        RegExp(r'SqliteException\((5|6|261|262|517|773)\)').hasMatch(s);
+  }
+
   /// Ön plan stream sorgularını ZORLA yeniden çalıştırır (drift `notifyUpdates`).
   ///
   /// Drift stream'leri yalnız KENDİ bağlantısındaki yazımları izler. Arka plan
@@ -592,10 +649,34 @@ class AppDatabase extends _$AppDatabase {
   ///
   /// Bedeli: ayrı bağlantıların stream'leri birbirinin yazımını duymaz →
   /// [refreshSyncedStreams] (öne gelişte + sync sonrası) bunu telafi eder.
-  static QueryExecutor _open() => driftDatabase(
-        name: 'adena',
-        native: DriftNativeOptions(setup: (db) => applyPragmas(db.execute)),
-      );
+  ///
+  /// ⚠️ **Prepared statement önbelleği KAPALI** (2026-10-15, iOS "Senkron
+  /// sorunu yalnız kapat-aç ile geçiyor"). drift varsayılanı ifadeleri önbellekte
+  /// tutar; bir yazım `SQLITE_BUSY_SNAPSHOT` (517) ile düşünce o ifade sıfırlanmadan
+  /// önbellekte kalıyor ve bağlantının okuma görüntüsünü ESKİ anda tutuyordu →
+  /// sonraki HER yazım (yeni transaction'lar dahil) yine 517 alıyor, yalnız süreç
+  /// ölünce düzeliyordu. `test/data/db_single_writer_test.dart` bunu gerçek iki
+  /// bağlantıyla üretir: önbellek açıkken yeniden denemeler sonsuza dek düşer,
+  /// kapalıyken ilk yeniden deneme geçer. (Benzer kök: libsql-js#240.) Bedeli
+  /// ihmal edilebilir: her sorguda SQL yeniden derlenir (mikrosaniyeler).
+  /// `driftDatabase()` bu ayarı dışarı açmadığından bağlantı burada, onunla AYNI
+  /// dosya yolu (`<Documents>/adena.sqlite`) ve geçici dizin ayarıyla kurulur.
+  static QueryExecutor _open() => DatabaseConnection.delayed(Future(() async {
+        if (!_sqliteConfigured) {
+          // sqlite3'ün geçici dosyaları için erişilebilir dizin (sandbox; Android
+          // /tmp'ye yazamaz) — drift_flutter'ın yaptığının aynısı.
+          sqlite3.tempDirectory = (await getTemporaryDirectory()).path;
+          _sqliteConfigured = true;
+        }
+        final dir = await getApplicationDocumentsDirectory();
+        return NativeDatabase.createBackgroundConnection(
+          File(p.join(dir.path, 'adena.sqlite')),
+          setup: (db) => applyPragmas(db.execute),
+          cachePreparedStatements: false,
+        );
+      }));
+
+  static bool _sqliteConfigured = false;
 
   /// Açılışta uygulanan PRAGMA'lar. `exec` üzerinden çalışır (sqlite3 tipine
   /// bağlanmadan test edilebilsin diye — bkz. `test/data/db_pragmas_test.dart`).

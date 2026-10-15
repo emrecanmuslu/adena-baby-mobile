@@ -17,6 +17,8 @@ import '../features/auth/auth_controller.dart';
 import '../data/baby_repository.dart';
 import '../features/babies/family_settings.dart';
 import '../features/health/med_scheduler_sync.dart';
+import '../features/records/record_controller.dart' show syncServiceProvider;
+import 'db_owner_gate.dart';
 import 'medication/med_scheduler.dart';
 import '../models/baby.dart';
 import '../models/record.dart';
@@ -60,6 +62,13 @@ const bgOutcomeError = 'hata';
 const bgOutcomeTimeout = 'zaman aşımı';
 /// Refresh reddi → token silindi; ön plan öne gelişte zorunlu çıkışı uygular (O1).
 const bgOutcomeNoSession = 'oturum yok';
+/// Tur aynı süreçteki canlı ön plan isolate'ine devredildi (DbOwnerGate).
+const bgOutcomeDelegated = 'ön plana devredildi';
+
+/// DbOwnerGate iş kodları: periyodik tur (yalnız paylaşımlı bebekler) / push
+/// kaynaklı tek-bebek turu.
+const bgOpPeriodic = 'periodic';
+const bgOpPush = 'push';
 
 /// Uygulama KAPALI/ölü iken bile paylaşımlı bebekleri senkronlar — push düşmese
 /// de yarım saatte bir yerel veri (drift) tazelensin (kullanıcı açınca güncel olsun).
@@ -77,6 +86,16 @@ Future<void> runBackgroundSync() async {
   // zaman/nasıl bitti" bilgisini ancak böyle taşıyabiliyoruz. Tur ortada
   // kalırsa değer 'başladı' olarak kalır → arıza ile turun bağı görünür.
   await DbWatchdog.markBackgroundSync('başladı');
+  // Tek yazar: ön plan isolate'i bu süreçte canlıysa (iOS'ta uygulama arka
+  // planda askıdayken BGTask) işi ona devret — ikinci bir sqlite bağlantısı
+  // AÇMA (SQLITE_BUSY_SNAPSHOT 517 kökü; bkz. DbOwnerGate).
+  final delegated = await DbOwnerGate.delegate(bgOpPeriodic,
+      timeout: (Platform.isIOS ? bgSyncTimeoutIos : bgSyncTimeoutAndroid) -
+          DbOwnerGate.pingTimeout);
+  if (delegated != DelegateResult.noOwner) {
+    await DbWatchdog.markBackgroundSync('$bgOutcomeDelegated (${delegated.name})');
+    return;
+  }
   // K9: yerel oturum bayrakları (misafir, import/premiumSynced kümeleri) bu
   // isolate'te de yüklü olsun — activeAccountId kapsamı ve LocalSession
   // yazımları yüklenmemiş bellekle çalışmasın. Zaman aşımlı (Keychain göçü
@@ -184,18 +203,48 @@ Future<bool> _syncBabies(ProviderContainer container,
       // tekrar. Bg'de purge/salt-okunur işareti YAZILMAZ (ön plan pull'u karar verir).
       if (e.response?.statusCode == 401) sessionLost = true;
     } catch (_) {}
-    // Senkron sonrası (push düşse bile) widget'ı + sonraki-beslenme bildirimini
-    // taze veriyle yeniden kur: başka cihazın eklediği kayda göre HER İKİ
-    // platformda en geç bu turda (≈30 dk) doğru zamana kayar. Sync hata verse
-    // de yereldeki veriyle çalışır (zararsız, idempotent).
+  }
+  await _refreshAfterSync(container, babies, onlyBabyId: onlyBabyId);
+  return sessionLost;
+}
+
+/// Senkron sonrası (push düşse bile) widget'ı + sonraki-beslenme bildirimini
+/// taze veriyle yeniden kur: başka cihazın eklediği kayda göre HER İKİ
+/// platformda en geç bu turda (≈30 dk) doğru zamana kayar. Sync hata verse de
+/// yereldeki veriyle çalışır (zararsız, idempotent). Ardından ilaç bildirimleri.
+Future<void> _refreshAfterSync(ProviderContainer container, List<Baby> babies,
+    {String? onlyBabyId}) async {
+  final repo = container.read(recordRepositoryProvider);
+  for (final b in babies) {
+    if (onlyBabyId != null) {
+      if (b.id != onlyBabyId) continue;
+    } else if (!b.isShared) {
+      continue;
+    }
+    if (b.isExpecting) continue;
     await _refreshFeedState(repo, b);
   }
   // İlaç v2 (M1/M6): senkronla gelen kayıt ve plan değişikliklerine göre ilaç
   // bildirimlerini (TÜM doğmuş bebekler — pencere de kayar) yeniden kur.
   try {
-    await med.rebuild(container, [for (final b in babies) if (!b.isExpecting) b]);
+    await (bgMedHook ?? _defaultBgMed)
+        .rebuild(container, [for (final b in babies) if (!b.isExpecting) b]);
   } catch (_) {}
-  return sessionLost;
+}
+
+/// Ön plan tarafı (DbOwnerGate işleyicisi): arka plan girişinin devrettiği turu
+/// ön planın KENDİ (tek) DB bağlantısıyla yapar. Senkronu [SyncService]
+/// üstlenir (çakışan tur koruması + "Senkron sorunu" durumu dahil); ardından
+/// arka plan turunun yaptığı widget / hatırlatıcı / ilaç tazelemesi.
+Future<void> runDelegatedSync(ProviderContainer container, String op,
+    {String? babyId}) async {
+  final onlyBabyId = op == bgOpPush ? babyId : null;
+  await container.read(syncServiceProvider).syncAll(sharedOnly: onlyBabyId == null);
+  if (!container.read(loggedInProvider)) return;
+  final babies = await container
+      .read(babyRepositoryProvider)
+      .getAll(accountId: container.read(activeAccountIdProvider));
+  await _refreshAfterSync(container, babies, onlyBabyId: onlyBabyId);
 }
 
 /// Bir bebeğin sonraki-beslenme widget'ını + yerel beslenme hatırlatıcısını
@@ -302,6 +351,12 @@ Future<void> rebuildMedicationFromPushWith(ProviderContainer container,
 /// ağacı zaten `requestSyncSoon()` ile aynı işi yapıyor, bkz. main.dart).
 Future<void> refreshBabyFeedStateFromPush(String babyId) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Tek yazar: aynı süreçte canlı ön plan varsa ona devret (bkz. DbOwnerGate).
+  // FCM işleyicisi ön plan isolate'inde çalışıyorsa port kendine gider — yine
+  // tek bağlantı kullanılır.
+  final delegated = await DbOwnerGate.delegate(bgOpPush,
+      babyId: babyId, timeout: bgPushTimeout - DbOwnerGate.pingTimeout);
+  if (delegated != DelegateResult.noOwner) return;
   await ensureLocalSessionForBackground(); // K9
   final container = ProviderContainer(overrides: [
     runningInBackgroundProvider.overrideWithValue(true),

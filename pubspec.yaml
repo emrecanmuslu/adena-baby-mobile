@@ -44,6 +44,7 @@ dependencies:
   drift: ^2.33.0
   drift_flutter: ^0.3.0
   sqlite3_flutter_libs: ^0.6.0+eol
+  sqlite3: ^3.3.2
   path_provider: ^2.1.5
   path: ^1.9.1
   connectivity_plus: ^6.1.0  # 7.x iOS'ta NWPath.isUltraConstrained (Xcode 26) ister; 6.x List API ile uyumlu
