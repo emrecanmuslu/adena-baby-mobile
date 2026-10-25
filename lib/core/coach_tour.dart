@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 
 import 'i18n.dart';
 import 'theme.dart';
@@ -67,14 +68,45 @@ class _CoachOverlay extends StatefulWidget {
   State<_CoachOverlay> createState() => _CoachOverlayState();
 }
 
-class _CoachOverlayState extends State<_CoachOverlay> {
+class _CoachOverlayState extends State<_CoachOverlay>
+    with SingleTickerProviderStateMixin {
   int _i = 0;
   List<RRect> _holes = const [];
+  bool _focused = false; // kaydırma bitti, delikler canlı izlenebilir
+
+  // Delikler her karede yeniden ölçülür: hedef sonradan kayarsa (ölçümden
+  // sonra devam eden kaydırma, içerik yüklenip yerleşimin değişmesi, AppBar
+  // daralması) vurgu eski yerde kalıp yanlış öğeyi gösteriyordu.
+  late final Ticker _ticker = createTicker((_) {
+    if (!_focused || !mounted) return;
+    final next = _measure(_step.targets);
+    if (!_sameHoles(next, _holes)) setState(() => _holes = next);
+  });
+
+  static bool _sameHoles(List<RRect> a, List<RRect> b) {
+    if (a.length != b.length) return false;
+    for (var k = 0; k < a.length; k++) {
+      if ((a[k].left - b[k].left).abs() > 0.5 ||
+          (a[k].top - b[k].top).abs() > 0.5 ||
+          (a[k].width - b[k].width).abs() > 0.5 ||
+          (a[k].height - b[k].height).abs() > 0.5) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   @override
   void initState() {
     super.initState();
+    _ticker.start();
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusStep());
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
   }
 
   CoachStep get _step => widget.steps[_i];
@@ -103,7 +135,10 @@ class _CoachOverlayState extends State<_CoachOverlay> {
       }
     }
     if (!mounted) return;
-    setState(() => _holes = _measure(keys));
+    setState(() {
+      _holes = _measure(keys);
+      _focused = true;
+    });
   }
 
   List<RRect> _measure(List<GlobalKey> keys) {
@@ -132,6 +167,7 @@ class _CoachOverlayState extends State<_CoachOverlay> {
     setState(() {
       _i++;
       _holes = const [];
+      _focused = false;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusStep());
   }
