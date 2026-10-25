@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:adena_baby/core/i18n.dart';
+import 'package:adena_baby/core/modal_gate.dart';
 import 'package:adena_baby/core/theme.dart';
 import 'package:adena_baby/features/babies/baby_controller.dart';
 import 'package:adena_baby/data/subscription_repository.dart';
@@ -123,5 +124,20 @@ void main() {
     expect(find.text('YILLIK'), findsOneWidget);
     expect(find.text('ÖMÜRLÜK'), findsOneWidget);
     expect(find.textContaining('₺'), findsNothing);
+  });
+
+  testWidgets(
+      'açıkken öncelikli modal kapısını tutar, kapanınca bırakır (tur sızıntısı regresyonu)',
+      (tester) async {
+    ModalGate.resetForTest();
+    addTearDown(ModalGate.resetForTest);
+    await pumpScreen(tester, active: baby());
+    expect(ModalGate.isBlocked, isTrue,
+        reason: 'paywall açıkken tur/izin penceresi açılmamalı');
+
+    // Ekran ağaçtan çıkınca (kapanınca) kapı bırakılmalı — push future'ına
+    // güvenilmez (go_router refresh'te completer'ı değiştirir, flutter#128122).
+    await tester.pumpWidget(const SizedBox());
+    expect(ModalGate.isBlocked, isFalse);
   });
 }

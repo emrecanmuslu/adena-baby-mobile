@@ -110,3 +110,100 @@ class _LangPill extends StatelessWidget {
     );
   }
 }
+
+/// Yerel dil adı (kod → ad) — sunucu listesi gelmeden önce de doğru gösterilsin.
+const _nativeNames = {
+  'tr': 'Türkçe',
+  'en': 'English',
+  'zh': '中文',
+  'hi': 'हिन्दी',
+  'es': 'Español',
+  'fr': 'Français',
+  'ar': 'العربية',
+};
+
+/// Şu anki dilin yerel adı (karşılama ekranındaki dil çipi için).
+String currentLanguageName(WidgetRef ref) {
+  final code =
+      ref.watch(localeControllerProvider).asData?.value ?? I18n.instance.locale;
+  return _nativeNames[code] ?? code.toUpperCase();
+}
+
+/// "Dil / Language" alt sayfası içeriği (onboarding karşılama ekranı dil çipi).
+/// Seçince dil kaydedilir ve uygulama yeniden başlar.
+class LanguageSheetList extends ConsumerWidget {
+  const LanguageSheetList({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current =
+        ref.watch(localeControllerProvider).asData?.value ?? I18n.instance.locale;
+    final langs = ref.watch(supportedLocalesProvider).asData?.value ??
+        [
+          for (final e in _nativeNames.entries)
+            SupportedLocale(code: e.key, nativeName: e.value, englishName: e.value),
+        ];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 0, 4, 12),
+          child: Text('Dil / Language',
+              style: TextStyle(
+                  fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.4)),
+        ),
+        for (final l in langs)
+          Semantics(
+            button: true,
+            selected: current == l.code,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () async {
+                if (current == l.code) {
+                  Navigator.pop(context);
+                  return;
+                }
+                await ref.read(localeControllerProvider.notifier).setLocale(l.code);
+                if (context.mounted) RestartWidget.restartApp(context);
+              },
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 52),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: current == l.code
+                      ? (Theme.of(context).brightness == Brightness.dark
+                          ? AppColors.coral.withValues(alpha: 0.16)
+                          : AppColors.feedBg)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(children: [
+                  Text(_flags[l.code] ?? '🌐', style: const TextStyle(fontSize: 22)),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(l.nativeName,
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: current == l.code
+                                ? AppColors.coralDd
+                                : AppColors.ink)),
+                  ),
+                  if (current == l.code)
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: const BoxDecoration(
+                          color: AppColors.coralDark, shape: BoxShape.circle),
+                      child: const Icon(Icons.check_rounded,
+                          size: 16, color: Colors.white),
+                    ),
+                ]),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}

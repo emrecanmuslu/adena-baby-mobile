@@ -5,10 +5,16 @@ import 'package:go_router/go_router.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
+import '../../core/modal_gate.dart';
+import '../../core/notif_soft_ask.dart';
+import '../../core/onboarding_paywall.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
+import '../auth/pending_auth_action.dart';
 import '../babies/baby_controller.dart';
+import '../onboarding/notif_soft_ask_sheet.dart';
+import '../onboarding/onboarding_kit.dart';
 import 'cycle_calendar_screen.dart';
 import 'cycle_pregnancy_bridge.dart';
 import 'cycle_setup_screen.dart';
@@ -29,6 +35,7 @@ class _CycleShellState extends ConsumerState<CycleShell>
     with WidgetsBindingObserver {
   int _index = 0;
   DateTime _day = _todayOnly();
+  bool _softAskChecked = false;
 
   static DateTime _todayOnly() {
     final n = DateTime.now();
@@ -39,12 +46,56 @@ class _CycleShellState extends ConsumerState<CycleShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    NotifSoftAsk.wanted.addListener(_onSoftAskWanted);
+  }
+
+  /// Adet hatırlatıcısı kuruldu ama ön-izin kabul edilmemiş → uygun anda sor.
+  bool _softAskBusy = false;
+
+  Future<void> _onSoftAskWanted() async {
+    if (_softAskBusy || !mounted) return;
+    _softAskBusy = true;
+    try {
+      await _softAskNow();
+    } finally {
+      _softAskBusy = false;
+    }
+  }
+
+  Future<void> _softAskNow() async {
+    await SystemPromptGate.whenClear();
+    if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? false)) return;
+    if (!await NotifSoftAsk.mayAskAgain() || !mounted) return;
+    final ttc = ref.read(cycleSettingsProvider).asData?.value.lifecycleMode ==
+        CycleLifecycleMode.ttc;
+    ModalGate.acquire();
+    try {
+      await showNotifSoftAsk(context,
+          branch: ttc ? OnbBranch.ttc : OnbBranch.cycle, force: true);
+    } finally {
+      ModalGate.release();
+    }
   }
 
   @override
   void dispose() {
+    NotifSoftAsk.wanted.removeListener(_onSoftAskWanted);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Bildirim ön-izni — bebeksiz adet dalında kurulumdan sonraki günden
+  /// itibaren bir kez (kurulumun hemen ardından değil).
+  Future<void> _maybeSoftAsk(bool ttc) async {
+    final at = await OnboardingPaywall.onboardedAt();
+    if (!mounted || (at != null && DateUtils.isSameDay(at, DateTime.now()))) return;
+    ModalGate.acquire();
+    try {
+      await showNotifSoftAsk(context,
+          branch: ttc ? OnbBranch.ttc : OnbBranch.cycle);
+    } finally {
+      ModalGate.release();
+    }
   }
 
   /// Uzun uykudan/arka plandan dönüşte gün değiştiyse "bugün" yeniden hesaplansın.
@@ -91,6 +142,15 @@ class _CycleShellState extends ConsumerState<CycleShell>
             cycleFirst: !hasBaby,
             onDone: () {}, // ayar yazımı akışa düşer (Stream); yenileme gerekmez
           );
+        }
+        // Kurulum bitti, asıl ekrandayız → ertelenen sistem izin penceresi
+        // (adet hatırlatıcıları) artık açılabilir.
+        SystemPromptGate.markAppReady();
+        consumePendingAuthAction(context, ref);
+        if (!_softAskChecked) {
+          _softAskChecked = true;
+          WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _maybeSoftAsk(settings.lifecycleMode == CycleLifecycleMode.ttc));
         }
         return Scaffold(
           body: IndexedStack(

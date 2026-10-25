@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -14,6 +15,8 @@ import '../models/quiet_hours.dart';
 import '../models/reminder.dart';
 import 'i18n.dart';
 import 'i18n_warm.dart';
+import 'modal_gate.dart';
+import 'notif_soft_ask.dart';
 
 /// Yerel bildirim servisi — hatırlatıcıları cihaz bildirimlerine bağlar.
 /// Üç tür: özel/randevu hatırlatıcıları (günlük veya tek-sefer), beslenme uyarısı
@@ -208,15 +211,36 @@ class NotificationService {
   }
 
   /// Bildirim iznini ister (yalnız bir kez sorar). Android 13+ ve iOS.
+  ///
+  /// Planlamayı BEKLETMEZ ve sistem penceresini bağlamsız AÇMAZ: yalnız
+  /// kullanıcı uygulama içi ön-izinde "Bildirimleri aç" dediyse ([NotifSoftAsk])
+  /// ve uygun anda ([SystemPromptGate] — asıl ekran, paywall/tur kapalı) ister.
+  /// Planlanan bildirimler izin verilince görünür olur. Eskiden bebek kurulur
+  /// kurulmaz Premium Karşılama'nın, kayıt sonrası onboarding'in üstüne biniyordu.
   Future<void> _ensurePermission() async {
     if (_permissionAsked) return;
-    _permissionAsked = true;
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    await android?.requestNotificationsPermission();
-    final ios = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
-    await ios?.requestPermissions(alert: true, badge: true, sound: true);
+    unawaited(() async {
+      if (!await NotifSoftAsk.accepted()) {
+        // _permissionAsked SET EDİLMEZ: ön-izin sonradan kabul edilirse aynı
+        // oturumdaki sonraki planlama sistem iznini isteyebilsin.
+        // Ön-izin kabul edilmedi: sistem penceresini bağlamsız açma, ama
+        // bildirim kuran kullanıcıyı sessiz bırakma — asıl ekran uygun anda
+        // ön-izni gösterir (hiç sorulmadıysa / reddedileli 7 gün olduysa).
+        if (!await systemEnabled()) NotifSoftAsk.requestLater();
+        return;
+      }
+      if (_permissionAsked) return;
+      _permissionAsked = true;
+      await SystemPromptGate.whenClear();
+      try {
+        final android = _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        await android?.requestNotificationsPermission();
+        final ios = _plugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+        await ios?.requestPermissions(alert: true, badge: true, sound: true);
+      } catch (_) {}
+    }());
   }
 
   /// Cihaz (sistem) düzeyinde bildirim izni açık mı? Bildirimler ayar sayfası

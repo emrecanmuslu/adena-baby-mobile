@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/coach_tour.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/age.dart';
 import '../../core/analytics_service.dart';
@@ -316,12 +317,14 @@ class _PercentileSection extends StatelessWidget {
 
     if (curves == null) {
       children.add(_Guidance(
+        key: CoachKeys.chart,
         message: birth == null
             ? tr('Persentil eğrisi için doğum tarihi gerekli.\nAyarlar → Bebek bilgileri\'nden ekle.')
             : tr('Persentil için bebeğin cinsiyetini seç.\nAyarlar → Bebek bilgileri.'),
       ));
     } else {
       children.add(_ChartCard(
+        key: CoachKeys.chart,
         measure: measure,
         axisMax: axisMax,
         curves: curves,
@@ -416,6 +419,7 @@ class _ChartCard extends StatelessWidget {
   final bool corrected;
 
   const _ChartCard({
+    super.key,
     required this.measure,
     required this.axisMax,
     required this.curves,
@@ -743,7 +747,7 @@ class _PctPainter extends CustomPainter {
 /// Eksik veri yönlendirmesi (doğum tarihi/cinsiyet yok).
 class _Guidance extends StatelessWidget {
   final String message;
-  const _Guidance({required this.message});
+  const _Guidance({super.key, required this.message});
 
   @override
   Widget build(BuildContext context) {

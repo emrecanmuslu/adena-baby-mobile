@@ -1,4 +1,3 @@
-import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,24 +8,65 @@ import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
-import '../../core/onboarding_paywall.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
-import '../../data/local_session.dart';
 import '../../models/baby.dart';
 import '../../models/cycle.dart';
-import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 import '../babies/premature_section.dart';
 
-/// Bebek kurulumu formu: ad/tarih → oluştur.
-/// [onboarding] true → ilk kurulum (WelcomeChoiceScreen'den gelinir; [initialStatus]
-/// seçilen hedefi taşır, "Doğdu/Bekliyoruz" anahtarı gizlenir); false → ek bebek
-/// (anahtar görünür, kayıt sonrası geri döner).
+/// Yeni bebeği oluşturur, aktif yapar ve (gebelikse) Adet Takvimi'ni eşitler.
+/// Onboarding profil formu ve "Bebek ekle" ekranı ortak kullanır.
+Future<Baby> createBaby(
+  WidgetRef ref, {
+  required String name,
+  required BabyStatus status,
+  required BabyGender gender,
+  required DateTime date,
+  DateTime? lmp,
+  int? gestWeeks,
+  int gestDays = 0,
+}) async {
+  final born = status == BabyStatus.born;
+  final baby = await ref.read(babyControllerProvider.notifier).create(
+        name: name,
+        status: status,
+        gender: gender,
+        birthDate: born ? date : null,
+        dueDate: born ? null : date,
+        gestationalWeeks: born ? gestWeeks : null,
+        gestationalDays: born ? gestDays : 0,
+      );
+  ref.read(activeBabyIdProvider.notifier).set(baby.id);
+  // İleri senkron: Adet Takvimi kuruluysa ve gebelik (bekleme) bebeği
+  // eklendiyse yaşam-döngüsü de gebeliğe geçer — aksi halde bebek tarafı
+  // gebelik gösterirken adet ekranı takip/TTC'de kalırdı (çift durum).
+  // SAT girildiyse çapa da güncellenir (gebelik özeti LMP'den hesaplanır).
+  if (!born) {
+    try {
+      final repo = ref.read(cycleRepositoryProvider);
+      final cs = await repo.getSettings();
+      if (cs.breastfeeding != null &&
+          cs.lifecycleMode != CycleLifecycleMode.pregnant) {
+        await repo.patchSettings({
+          'lifecycle_mode': CycleLifecycleMode.pregnant.name,
+          'predictions_hidden': false,
+          'baby': baby.id,
+          if (lmp != null)
+            'first_period_date': '${lmp.year.toString().padLeft(4, '0')}-'
+                '${lmp.month.toString().padLeft(2, '0')}-'
+                '${lmp.day.toString().padLeft(2, '0')}',
+        });
+      }
+    } catch (_) {}
+  }
+  return baby;
+}
+
+/// "Bebek ekle" formu (ek bebek): durum anahtarı + ad/tarih → oluştur, ana
+/// sayfaya dön. İlk kurulum onboarding'de [BabyProfileScreen] ile yapılır.
 class BabySetupScreen extends ConsumerStatefulWidget {
-  final bool onboarding;
-  final BabyStatus? initialStatus;
-  const BabySetupScreen({super.key, this.onboarding = true, this.initialStatus});
+  const BabySetupScreen({super.key});
 
   @override
   ConsumerState<BabySetupScreen> createState() => _BabySetupScreenState();
@@ -39,7 +79,6 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   @override
   void initState() {
     super.initState();
-    _status = widget.initialStatus ?? BabyStatus.born;
     // Ad yazıldıkça rebuild → PopScope.canPop (_dirty) güncel kalsın.
     _name.addListener(() {
       if (mounted) setState(() {});
@@ -70,7 +109,8 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
       final picked = await showDatePicker(
         context: context,
         initialDate: _lmp ?? now.subtract(const Duration(days: 56)),
-        firstDate: now.subtract(const Duration(days: 300)),
+        // TDT = SAT + 280: daha eski SAT geçmişte bir TDT üretirdi.
+        firstDate: now.subtract(const Duration(days: _gestationDays)),
         lastDate: now,
         helpText: tr('Son adet tarihi (SAT)'),
       );
@@ -82,11 +122,16 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
       }
       return;
     }
+    // Gebelik: tahmini doğum tarihi bugünden ~42 haftaya kadar olabilir. Eskiden
+    // üst sınır "gelecek yılın 1 Ocak'ı"ydı → sonbaharda gebeliğin başındaki
+    // kullanıcı TDT'sini HİÇ seçemiyordu. Seçici bugünden değil makul bir
+    // varsayılandan açılır — bugünde açılınca dokunmadan "Tamam" diyen kullanıcı
+    // "40. hafta / 0 gün kaldı" ile başlıyordu.
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date ?? now,
+      initialDate: _date ?? (isBorn ? now : now.add(const Duration(days: 120))),
       firstDate: isBorn ? DateTime(now.year - 5) : now,
-      lastDate: isBorn ? now : DateTime(now.year + 1),
+      lastDate: isBorn ? now : now.add(const Duration(days: 300)),
       helpText: isBorn ? tr('Doğum tarihi') : tr('Tahmini doğum tarihi'),
     );
     if (picked != null) setState(() => _date = picked);
@@ -111,44 +156,17 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
     }
     setState(() => _saving = true);
     try {
-      final baby = await ref.read(babyControllerProvider.notifier).create(
-            name: name,
-            status: _status,
-            gender: _gender,
-            birthDate: _status == BabyStatus.born ? _date : null,
-            dueDate: _status == BabyStatus.expecting ? _date : null,
-            gestationalWeeks: _status == BabyStatus.born ? _gestWeeks : null,
-            gestationalDays: _status == BabyStatus.born ? _gestDays : 0,
-          );
-      ref.read(activeBabyIdProvider.notifier).set(baby.id);
-      // İleri senkron: Adet Takvimi kuruluysa ve gebelik (bekleme) bebeği
-      // eklendiyse yaşam-döngüsü de gebeliğe geçer — aksi halde bebek tarafı
-      // gebelik gösterirken adet ekranı takip/TTC'de kalırdı (çift durum).
-      // SAT girildiyse çapa da güncellenir (gebelik özeti LMP'den hesaplanır).
-      if (_status == BabyStatus.expecting) {
-        try {
-          final repo = ref.read(cycleRepositoryProvider);
-          final cs = await repo.getSettings();
-          if (cs.breastfeeding != null &&
-              cs.lifecycleMode != CycleLifecycleMode.pregnant) {
-            await repo.patchSettings({
-              'lifecycle_mode': CycleLifecycleMode.pregnant.name,
-              'predictions_hidden': false,
-              'baby': baby.id,
-              if (_useLmp && _lmp != null)
-                'first_period_date': '${_lmp!.year.toString().padLeft(4, '0')}-'
-                    '${_lmp!.month.toString().padLeft(2, '0')}-'
-                    '${_lmp!.day.toString().padLeft(2, '0')}',
-            });
-          }
-        } catch (_) {}
-      }
-      // İlk bebek kurulduysa Premium Karşılama Ekranı'nı sıraya al — ana sayfa
-      // ilk kareyi çizince bir kez açılır (buradan push etmek router
-      // redirect'iyle yarışırdı). Tek-kez garantisi OnboardingPaywall'da.
-      if (widget.onboarding) unawaited(OnboardingPaywall.markPending());
-      // Onboarding'de router redirect ana sayfaya götürür; ek bebekte elle dön.
-      if (!widget.onboarding && mounted) context.go('/home');
+      await createBaby(
+        ref,
+        name: name,
+        status: _status,
+        gender: _gender,
+        date: _date!,
+        lmp: _useLmp ? _lmp : null,
+        gestWeeks: _gestWeeks,
+        gestDays: _gestDays,
+      );
+      if (mounted) context.go('/home');
     } catch (e) {
       _snack(apiErrorText(e));
       if (mounted) setState(() => _saving = false);
@@ -186,18 +204,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(authControllerProvider).asData?.value;
-    final localName = ref.watch(localNameProvider);
-    // Selamlama adı: oturum açıksa hesap adı, değilse yerel ad (ilk kelime).
-    final greetName = user != null
-        ? user.displayName
-        : (localName.isNotEmpty ? localName.split(' ').first : '');
     final isBorn = _status == BabyStatus.born;
-
-    final onboarding = widget.onboarding;
-    // Onboarding'de durum ara ekranda (WelcomeChoiceScreen) seçildi → anahtar
-    // gizlenir; ek bebek eklerken görünür kalır.
-    final showStatusPicker = !onboarding || widget.initialStatus == null;
     // Dolu form BACK ile onaysız atılmasın (yaşam-döngüsü testi gözlemi):
     // veri girildiyse önce onay diyaloğu göster.
     return PopScope(
@@ -209,7 +216,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: onboarding ? null : Text(tr('Bebek ekle')),
+        title: Text(tr('Bebek ekle')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -218,29 +225,18 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                onboarding
-                    ? (isBorn
-                        ? tr('Bebeğini tanıyalım 🍼')
-                        : tr('Bekleme odası 🤰'))
-                    : tr('Yeni bebek'),
+                tr('Yeni bebek'),
                 style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 6),
               Text(
-                onboarding
-                    ? (greetName.isNotEmpty
-                        ? trp('{name}, profili birlikte oluşturalım.',
-                            {'name': greetName})
-                        : tr('Profili birlikte oluşturalım.'))
-                    : tr('Bilgileri gir, ekleyelim.'),
+                tr('Bilgileri gir, ekleyelim.'),
                 style: TextStyle(
                     color: AppColors.muted, fontWeight: FontWeight.w700, fontSize: 13.5),
               ),
               const SizedBox(height: 22),
 
-              // Doğdu mu? seçimi (onboarding'de ara ekranda seçildiği için gizli)
-              if (showStatusPicker)
-                AdField(
+              AdField(
                   label: tr('Bebek doğdu mu?'),
                   child: AdSides(
                     selected: isBorn ? 'born' : 'expecting',
@@ -278,7 +274,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                       '(SAT + 40 hafta). Doktorunun verdiği tarih önceliklidir.'),
                   child: AdTabs(
                     options: {
-                      'due': tr('Doğum tarihi'),
+                      'due': tr('Tahmini doğum tarihi'),
                       'lmp': tr('Son adet (SAT)'),
                     },
                     selected: _useLmp ? 'lmp' : 'due',
@@ -378,7 +374,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                       ),
                     )
                   : AdSaveButton(
-                      label: onboarding ? tr('Başlayalım') : tr('Devam et'),
+                      label: tr('Devam et'),
                       color: AppColors.coral,
                       onTap: _save),
             ],

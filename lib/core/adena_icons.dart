@@ -71,6 +71,16 @@ class AdenaIcons {
     // "Dün nasıl geçti?" özeti (design/Dün Nasıl Geçti.html)
     'sunrise': '<path d="M3 18h18"/><path d="M7 18a5 5 0 0110 0"/><path d="M12 5v3.5M5.3 10.3l1.8 1.8M18.7 10.3l-1.8 1.8M2.5 14.5h2M19.5 14.5h2"/><path d="M9.5 6.5L12 4l2.5 2.5"/>',
     'userHeart': '<circle cx="9" cy="7" r="3.2"/><path d="M3.5 21c0-3.5 2.5-5.8 5.5-5.8s5.5 2.3 5.5 5.8"/><path d="M17.5 3.5a3 3 0 012.7 4.4c-.6 1.3-2.7 2.9-2.7 2.9s-2.1-1.6-2.7-2.9a3 3 0 012.7-4.4z"/>',
+    // Onboarding hedefleri (design/theme/Tasarimlar/OnboardingEkran)
+    'pregnant': '<circle cx="11" cy="4.6" r="2.1"/><path d="M10 8.2c-1.6 1-2.2 3-2.2 5.2V21M12 8.4c3.3.6 5.4 3 5.4 6.1 0 2.8-2.1 4.3-5.2 4.3"/><path d="M10.5 21v-3"/>',
+    'drop': '<path d="M12 3c3.2 4.2 6 7.6 6 11.2a6 6 0 01-12 0C6 10.6 8.8 7.2 12 3z"/>',
+    'ttc': '<path d="M12 20s-7-4.4-7-9.8A4 4 0 0112 7.6a4 4 0 017 2.6C19 15.6 12 20 12 20z"/><path d="M19 2.5v3M17.5 4h3"/>',
+    'globe': '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3z"/>',
+    'lock': '<rect x="5" y="11" width="14" height="9.5" rx="2.5"/><path d="M8 11V8a4 4 0 018 0v3"/>',
+    'info': '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8h.01"/>',
+    'alert': '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/>',
+    'sparkle': '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>',
+    'minus': '<path d="M6 12h12"/>',
   };
 
   static String svg(String name, Color color, double sw) {

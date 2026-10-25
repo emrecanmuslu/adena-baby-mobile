@@ -9,8 +9,7 @@ import 'data/local_session.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/consent_gate_screen.dart';
 import 'features/auth/forgot_password_screen.dart';
-import 'features/auth/login_screen.dart';
-import 'features/auth/register_screen.dart';
+import 'features/auth/auth_screen.dart';
 import 'features/babies/baby_controller.dart';
 import 'features/babies/baby_edit_screen.dart';
 import 'features/babies/born_flow_screen.dart';
@@ -39,7 +38,9 @@ import 'features/development/leaps_screen.dart';
 import 'features/development/milestones_screen.dart';
 import 'features/development/teeth_screen.dart';
 import 'features/memories/memories_screen.dart';
+import 'features/onboarding/baby_profile_screen.dart';
 import 'features/onboarding/baby_setup_screen.dart';
+import 'features/onboarding/cycle_start_screen.dart';
 import 'features/onboarding/premium_welcome_screen.dart';
 import 'features/onboarding/welcome_choice_screen.dart';
 import 'models/baby.dart';
@@ -115,21 +116,38 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
-      GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
-      GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+      // Giriş yap / Hesap oluştur — tek ekran, iki sekme. `?ctx=invite|premium`
+      // üstteki açıklama satırını belirler.
+      GoRoute(
+          path: '/login',
+          builder: (_, s) => AuthScreen(
+              ctx: authContextFrom(s.uri.queryParameters['ctx']))),
+      GoRoute(
+          path: '/register',
+          builder: (_, s) => AuthScreen(
+              register: true,
+              ctx: authContextFrom(s.uri.queryParameters['ctx']))),
       GoRoute(
           path: '/forgot-password',
           builder: (_, _) => const ForgotPasswordScreen()),
       GoRoute(
           path: '/consent-gate', builder: (_, _) => const ConsentGateScreen()),
-      // Onboarding iki adım: (1) hedef seçimi (bebek doğdu / hamile / adet
-      // takvimi / davet-giriş), (2) seçime göre bebek formu.
+      // Onboarding iki adım: (1) hedef seçimi (bebeğim doğdu / hamileyim /
+      // adet takibi / gebe kalmaya çalışıyorum), (2) seçime göre form. Hedef
+      // YOLDA taşınır (extra değil): go_router refresh'te extra'yı kaybeder.
       GoRoute(
           path: '/onboarding', builder: (_, _) => const WelcomeChoiceScreen()),
       GoRoute(
-        path: '/onboarding/baby',
-        builder: (_, state) =>
-            BabySetupScreen(initialStatus: state.extra as BabyStatus?),
+        path: '/onboarding/baby/:status',
+        builder: (_, s) => BabyProfileScreen(
+            status: s.pathParameters['status'] == 'expecting'
+                ? BabyStatus.expecting
+                : BabyStatus.born),
+      ),
+      GoRoute(
+        path: '/onboarding/cycle/:goal',
+        builder: (_, s) =>
+            CycleStartScreen(ttc: s.pathParameters['goal'] == 'ttc'),
       ),
       GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
       // Premium Karşılama Ekranı — bebek kurulumundan sonra ana sayfanın
@@ -140,7 +158,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) => const PremiumWelcomeScreen()),
       GoRoute(
           path: '/baby-add',
-          builder: (_, _) => const BabySetupScreen(onboarding: false)),
+          builder: (_, _) => const BabySetupScreen()),
       GoRoute(
           path: '/settings',
           builder: (_, _) =>
@@ -262,8 +280,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) => const CycleSettingsScreen()),
     ],
     redirect: (context, state) {
-      // İki yol: (a) GERÇEK HESAP → giriş/kayıt → rıza (sunucu) → bebek → ana sayfa;
-      // (b) MİSAFİR ("kayıt olmadan devam et") → yerel rıza → bebek → ana sayfa.
+      // İki yol: (a) HESAPSIZ (varsayılan) → karşılama → rıza → form → ana sayfa;
+      // (b) HESAP → giriş/kayıt → (gerekirse sunucu rızası) → bebek → ana sayfa.
       final auth = ref.read(authControllerProvider);
       final loc = state.matchedLocation;
       // Geliştirici sayfası (yalnız debug) her oturum durumunda erişilebilir —
@@ -290,37 +308,39 @@ final routerProvider = Provider<GoRouter>((ref) {
         return loc == '/' ? null : '/';
       }
 
-      // 1) Gerçek oturum yok.
+      final onOnboarding = loc.startsWith('/onboarding');
+
+      // 1) Gerçek oturum yok — hesap isteğe bağlı, uygulama yerel çalışır.
       if (user == null) {
-        final guest = ref.read(guestModeProvider);
-        // Misafir değil → giriş ekranı (misafir girişi login ekranından yapılır).
-        if (!guest) {
-          return onAuthPage ? null : '/login';
-        }
-        // MİSAFİR akışı:
         // Sonradan hesap açmak/giriş yapmak isterse auth sayfalarına izin ver.
         if (onAuthPage) return null;
-        // a) Yerel rıza (18+/şartlar) — hesapsız, yerelde alınır.
-        if (!ref.read(localConsentProvider)) {
-          return loc == '/consent-gate' ? null : '/consent-gate';
+        final guest = ref.read(guestModeProvider);
+        // Henüz yerel oturum yok (ilk açılış / çıkış sonrası) → karşılama.
+        // Yerel oturum hedef seçilince (rıza + misafir modu) başlar. Zorunlu
+        // çıkışta neden banner'ı giriş ekranında gösterilir.
+        if (!guest) {
+          if (ref.read(sessionEndReasonProvider) != null) return '/login';
+          return onOnboarding ? null : '/onboarding';
         }
-        // b) Bebek (yerel) — yüklenmesini bekle.
+        // a) Yerel rıza (18+/şartlar) — karşılamadaki "Başlamadan önce" sayfası.
+        if (!ref.read(localConsentProvider)) {
+          return onOnboarding ? null : '/onboarding';
+        }
+        // b) Bebek (yerel) — yüklenmesini bekle (onboarding ekranları açık kalır).
         final gBabies = ref.read(babyControllerProvider);
         if (gBabies.isLoading || !gBabies.hasValue) {
-          return (loc == '/' || loc == '/consent-gate') ? null : '/';
+          return (loc == '/' || onOnboarding) ? null : '/';
         }
         if ((gBabies.asData?.value ?? const []).isEmpty) {
-          // Bebeksiz "adet & gebelik takibi" dalı: bebek zorunlu değil → doğrudan
+          // Bebeksiz "adet & gebe kalma" dalı: bebek zorunlu değil → doğrudan
           // Adet Takvimi. Ara ekranları (splash/rıza/onboarding) /cycle'a yönlt.
           if (ref.read(cycleFirstProvider)) {
             return _cycleFirstAllows(loc) ? null : '/cycle';
           }
-          return loc.startsWith('/onboarding') ? null : '/onboarding';
+          return onOnboarding ? null : '/onboarding';
         }
         // c) Her şey tamam → ana sayfa (ara ekranlardan çık).
-        if (loc == '/' ||
-            loc == '/consent-gate' ||
-            loc.startsWith('/onboarding')) {
+        if (loc == '/' || loc == '/consent-gate' || onOnboarding) {
           return '/home';
         }
         return null;
@@ -334,7 +354,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 3) Bebek (yerel) — yüklenmesini bekle.
       final babies = ref.read(babyControllerProvider);
       if (babies.isLoading || !babies.hasValue) {
-        return (loc == '/' || onAuthPage || loc == '/consent-gate') ? null : '/';
+        return (loc == '/' || onAuthPage || loc == '/consent-gate' || onOnboarding)
+            ? null
+            : '/';
       }
       final hasBaby = (babies.asData?.value ?? []).isNotEmpty;
       if (!hasBaby) {
@@ -342,15 +364,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (ref.read(cycleFirstProvider)) {
           return _cycleFirstAllows(loc) ? null : '/cycle';
         }
-        return loc.startsWith('/onboarding') ? null : '/onboarding';
+        return onOnboarding ? null : '/onboarding';
       }
 
       // 4) Her şey tamam → ara ekranlardan (splash/rıza/onboarding/auth) ana
       //    sayfaya.
-      if (loc == '/' ||
-          onAuthPage ||
-          loc == '/consent-gate' ||
-          loc.startsWith('/onboarding')) {
+      if (loc == '/' || onAuthPage || loc == '/consent-gate' || onOnboarding) {
         return '/home';
       }
       return null;

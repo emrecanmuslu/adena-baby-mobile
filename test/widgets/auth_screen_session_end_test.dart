@@ -12,7 +12,7 @@ import 'package:adena_baby/core/token_storage.dart';
 import 'package:adena_baby/data/auth_repository.dart';
 import 'package:adena_baby/data/initial_import.dart';
 import 'package:adena_baby/features/auth/auth_controller.dart';
-import 'package:adena_baby/features/auth/login_screen.dart';
+import 'package:adena_baby/features/auth/auth_screen.dart';
 
 class _MockRepo extends Mock implements AuthRepository {}
 
@@ -48,7 +48,7 @@ void main() {
 
   Widget app(ProviderContainer c) => UncontrolledProviderScope(
         container: c,
-        child: MaterialApp(theme: AppTheme.light, home: const LoginScreen()),
+        child: MaterialApp(theme: AppTheme.light, home: const AuthScreen()),
       );
 
   ProviderContainer container() {

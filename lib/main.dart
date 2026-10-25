@@ -30,6 +30,7 @@ import 'core/db_watchdog.dart';
 import 'core/revenuecat_service.dart';
 import 'core/sync_alert_telemetry.dart';
 import 'core/theme.dart';
+import 'features/onboarding/guest_migration_sheet.dart';
 import 'features/auth/auth_controller.dart';
 import 'data/activity_notif_cache.dart';
 import 'data/notification_prefs.dart';
@@ -412,87 +413,46 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     _guestMigChecked = true; // veri var → bu oturumda bir kez teklif et
     // K7: bebeksiz (yalnız adet takvimi) misafir için metin adet verisine uygun.
     final hasBaby = await GuestMigration.hasBabyData(db, accountId);
-    final offerBody = hasBaby
-        ? tr('Kayıt olmadan eklediğin bebek ve kayıtlar bu cihazda duruyor. '
+    final sum = await GuestMigration.summary(db, accountId);
+    final offerBody = !hasBaby
+        ? tr('Kayıt olmadan tuttuğun adet takvimi kayıtların bu cihazda duruyor. '
             'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.')
-        : tr('Kayıt olmadan tuttuğun adet takvimi kayıtların bu cihazda duruyor. '
-            'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.');
+        : (sum.babyName != null && sum.records > 0)
+            ? trp('Bu telefonda {name} için {n} kayıt var. Hesabına aktarırsan her '
+                'cihazdan erişirsin. Aktarmazsan bu veriler silinir.',
+                {'name': sum.babyName!, 'n': sum.records})
+            : tr('Kayıt olmadan eklediğin bebek ve kayıtlar bu cihazda duruyor. '
+                'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.');
     final deleteBody = hasBaby
         ? tr('Aktarmadığın bebek ve kayıtlar bu cihazdan KALICI olarak '
             'silinecek. Bu işlem geri alınamaz.')
         : tr('Aktarmadığın adet kayıtların bu cihazdan KALICI olarak silinecek. '
             'Bu işlem geri alınamaz.');
     // KRİTİK: kayıt/giriş anında dinleyici tetikleniyor ama go_router aynı anda
-    // yeni hesabı yönlendiriyor (bebek yoksa → /onboarding, varsa → /home). Diyalog
+    // yeni hesabı yönlendiriyor (bebek yoksa → /onboarding, varsa → /home). Sayfa
     // bu geçişten ÖNCE basılırsa kök navigator geçişte onu anında kaldırıyor
     // (kullanıcı hiç göremiyor). Yönlendirme yerleşene kadar bekle, sonra göster.
     await Future.delayed(const Duration(milliseconds: 1200));
-    // Döngü: Aktar → göç; Hayır → KALICI silme onayı (Sil → sil / Vazgeç → tekrar sor).
-    while (true) {
-      final ctx = rootNavigatorKey.currentContext;
-      if (ctx == null || !ctx.mounted) return; // resolved SET ETME → sonraki açılışta yeniden sor
-      final migrate = await showDialog<bool>(
-        context: ctx,
-        barrierDismissible: false,
-        builder: (c) => PopScope(
-          // Kazara geri tuşuyla kapanmasın → Aktar/Hayır'dan biri seçilmeli.
-          canPop: false,
-          child: AlertDialog(
-            title: Text(tr('Kayıtlarını hesabına aktaralım mı?')),
-            content: Text(offerBody),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: Text(tr('Hayır')),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: Text(tr('Aktar')),
-              ),
-            ],
-          ),
-        ),
-      );
-      if (migrate == null) return; // istemsiz kapanma → resolved set etme
-      if (migrate == true) {
-        await LocalSession.setGuestMigrationResolved(true);
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return; // resolved SET ETME → sonraki açılışta yeniden sor
+    // Kapatılamaz sayfa: Aktar → göç; "Aktarma, sil" → KALICI silme onayı
+    // (Sil → sil / Vazgeç → soruya dön). İstemsiz kapanırsa resolved set edilmez.
+    await showGuestMigrationSheet(
+      ctx,
+      body: offerBody,
+      deleteBody: deleteBody,
+      // "Çözüldü" bayrağı iş BİTTİKTEN sonra yazılır: arada uygulama kapanırsa
+      // soru bir sonraki açılışta yeniden sorulur (aktarım tek işlem, silme
+      // tekrarlanabilir → yeniden denemek güvenli).
+      onMigrate: () async {
         await GuestMigration.migrate(ref, accountId);
-        showInAppNotification(
-            title: tr('Aktarıldı'), body: tr('Kayıtların hesabına taşındı.'));
-        return;
-      }
-      // Hayır → ikinci diyalog: KALICI silme onayı (yanlışlıkla veri kaybı olmasın).
-      final ctx2 = rootNavigatorKey.currentContext;
-      if (ctx2 == null || !ctx2.mounted) return;
-      final del = await showDialog<bool>(
-        context: ctx2,
-        barrierDismissible: false,
-        builder: (c) => PopScope(
-          canPop: false,
-          child: AlertDialog(
-            title: Text(tr('Misafir verileri silinsin mi?')),
-            content: Text(deleteBody),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: Text(tr('Vazgeç')),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: AppColors.fever),
-                onPressed: () => Navigator.pop(c, true),
-                child: Text(tr('Sil')),
-              ),
-            ],
-          ),
-        ),
-      );
-      if (del == true) {
         await LocalSession.setGuestMigrationResolved(true);
+      },
+      onDiscard: () async {
         await GuestMigration.discard(ref);
-        return;
-      }
-      // Vazgeç (del == false/null) → döngü başa: göç diyaloğunu tekrar göster.
-    }
+        await LocalSession.setGuestMigrationResolved(true);
+      },
+    );
   }
 
   /// Öne gelince: drift stream'lerini yeniden okut + bebek listesini tazele

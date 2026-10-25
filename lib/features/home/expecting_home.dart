@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
 import '../../core/age.dart';
+import '../../core/coach_tour.dart';
 import '../../core/config.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
@@ -114,6 +115,7 @@ class ExpectingHome extends ConsumerWidget {
 
         _sec(tr('Bu hafta neler oluyor?')),
         Container(
+          key: CoachKeys.week,
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
@@ -192,6 +194,7 @@ class ExpectingHome extends ConsumerWidget {
 
         const SizedBox(height: 22),
         FilledButton(
+          key: CoachKeys.born,
           onPressed: () {
             // Bakıcı status değiştiremez (O20) — profil düzenlemeyle aynı kapı.
             if (!baby.canFullWrite) {
@@ -292,6 +295,8 @@ class _FruitStageState extends State<_FruitStage> {
             }
             return Center(
               child: SizedBox(
+                // Tanıtım turu yalnız görseli (oklarla) vurgular.
+                key: CoachKeys.fetus,
                 width: w,
                 height: h,
                 child: Stack(

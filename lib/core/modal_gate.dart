@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 /// Kendiliğinden açılan modalların (tanıtım turu, karşılama paywall'ı) aynı
@@ -35,4 +37,64 @@ class ModalGate {
   /// YALNIZ testler için: sayacı sıfırla (testler arası sızıntı olmasın).
   @visibleForTesting
   static void resetForTest() => _holds.value = 0;
+}
+
+/// Sistem izin pencerelerinin (bildirim izni) **ne zaman** açılabileceği.
+///
+/// Sorun: izin isteği bildirim planlayan herhangi bir yerden (bebek kurulunca,
+/// kayıt olunca FCM) bağlamsız açılıyordu → onboarding ekranının, Premium
+/// Karşılama'nın ya da tanıtım turunun ÜSTÜNE biniyordu.
+///
+/// Kural: uygulama asıl ekranına ([markAppReady] — ana sayfa / Adet Takvimi)
+/// ulaşmadan ve [ModalGate] tutulurken (paywall, tur) izin penceresi açılmaz;
+/// [whenClear] uygun anı bekler. Arka plan isolate'inde hiç hazır olmaz → orada
+/// asla izin sorulmaz (zaten sorulamaz).
+class SystemPromptGate {
+  SystemPromptGate._();
+
+  static final ValueNotifier<bool> _appReady = ValueNotifier<bool>(false);
+
+  /// Modal kapandıktan sonra sıradaki modalın (ör. tur) kapıyı tutmasına fırsat
+  /// tanıyan kısa bekleme — izin penceresi onun üstüne binmesin.
+  static Duration settle = const Duration(milliseconds: 900);
+
+  /// Asıl ekran (ana sayfa / Adet Takvimi) ilk kez kuruldu.
+  static void markAppReady() => _appReady.value = true;
+
+  /// Çıkış / oturum sonu: kullanıcı yeniden onboarding'e/girişe döner →
+  /// asıl ekrana tekrar gelene dek izin penceresi açılmasın.
+  static void markNotReady() => _appReady.value = false;
+
+  static bool get _clear => _appReady.value && !ModalGate.isBlocked;
+
+  /// Uygulama hazır ve öncelikli modal yokken tamamlanır.
+  static Future<void> whenClear() async {
+    while (true) {
+      if (!_clear) {
+        final changed = Completer<void>();
+        void onChange() {
+          if (_clear && !changed.isCompleted) changed.complete();
+        }
+
+        _appReady.addListener(onChange);
+        ModalGate.listenable.addListener(onChange);
+        try {
+          onChange(); // dinleyici kurulurken durum değişmiş olabilir
+          await changed.future;
+        } finally {
+          _appReady.removeListener(onChange);
+          ModalGate.listenable.removeListener(onChange);
+        }
+      }
+      await Future<void>.delayed(settle);
+      if (_clear) return;
+    }
+  }
+
+  /// YALNIZ testler için.
+  @visibleForTesting
+  static void resetForTest() {
+    _appReady.value = false;
+    settle = const Duration(milliseconds: 900);
+  }
 }

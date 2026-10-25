@@ -67,6 +67,32 @@ class GuestMigration {
     }
   }
 
+  /// Aktarma sorusundaki özet: tek bebek varsa adı + toplam bebek kaydı sayısı.
+  static Future<({String? babyName, int records})> summary(
+      AppDatabase db, String selfAccountId) async {
+    final guestId = LocalSession.userId;
+    if (guestId.isEmpty || guestId == selfAccountId) {
+      return (babyName: null, records: 0);
+    }
+    try {
+      final babies = await db.customSelect(
+        'SELECT name FROM babies WHERE account_id = ? AND is_deleted = 0',
+        variables: [Variable<String>(guestId)],
+      ).get();
+      final recs = await db.customSelect(
+        'SELECT COUNT(*) AS c FROM records r JOIN babies b ON b.id = r.baby '
+        'WHERE b.account_id = ? AND b.is_deleted = 0 AND r.is_deleted = 0',
+        variables: [Variable<String>(guestId)],
+      ).getSingle();
+      return (
+        babyName: babies.length == 1 ? babies.first.read<String>('name') : null,
+        records: recs.read<int>('c'),
+      );
+    } catch (_) {
+      return (babyName: null, records: 0);
+    }
+  }
+
   /// Misafir verisini gerçek hesaba taşır. [ref] = AdenaApp WidgetRef.
   static Future<void> migrate(WidgetRef ref, String newAccountId) async {
     final db = ref.read(databaseProvider);
@@ -99,6 +125,13 @@ class GuestMigration {
   static Future<void> migrateData(
       AppDatabase db, String guestId, String newAccountId) async {
     if (guestId.isEmpty || guestId == newAccountId) return;
+    // Tek işlem: aktarım sırasında uygulama kapanırsa yarım (bebek taşınmış,
+    // adet ayarı taşınmamış) durum kalmasın — ya hepsi ya hiçbiri.
+    await db.transaction(() => _rebind(db, guestId, newAccountId));
+  }
+
+  static Future<void> _rebind(
+      AppDatabase db, String guestId, String newAccountId) async {
     final now = DateTime.now().toUtc();
 
     // Bebekler: kapsamı yeni hesaba taşı + dirty (premium'da buluta yüklensin).

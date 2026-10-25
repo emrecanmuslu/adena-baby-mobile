@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
@@ -13,11 +14,13 @@ import '../../core/analytics_service.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
 import '../../core/legal_links.dart';
+import '../../core/modal_gate.dart';
 import '../../core/revenuecat_service.dart';
 import '../../core/theme.dart';
 import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
 import '../../models/pricing.dart';
+import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 
 /// **Premium Karşılama Ekranı** (onboarding paywall) — bebek kurulumundan hemen
@@ -51,8 +54,17 @@ class _PremiumWelcomeScreenState extends ConsumerState<PremiumWelcomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Ekran açıkken öncelikli modal kapısını tut: tanıtım turu ve sistem izin
+    // penceresi bu ekranın üstüne açılmasın; kapanınca (dispose) bırakılır.
+    ModalGate.acquire();
     _loadOffering();
     unawaited(AnalyticsService.instance.log('onboarding_paywall_shown', const {}));
+  }
+
+  @override
+  void dispose() {
+    ModalGate.release();
+    super.dispose();
   }
 
   Future<void> _loadOffering() async {
@@ -125,6 +137,16 @@ class _PremiumWelcomeScreenState extends ConsumerState<PremiumWelcomeScreen> {
   }
 
   Future<void> _subscribe() async {
+    // Premium hesaba bağlıdır (RevenueCat entitlement + bulut yedek): hesapsız
+    // kullanıcı önce ücretsiz hesap oluşturur; hesap açılınca ana sayfa
+    // Premium sayfasını kendiliğinden açar (bkz. consumePendingAuthAction).
+    if (ref.read(authControllerProvider).asData?.value == null) {
+      ref.read(pendingAuthActionProvider.notifier).set(PendingAuthAction.premium);
+      // Paywall'ı kayıt ekranıyla DEĞİŞTİR: önce pop sonra push denince
+      // asenkron pop yeni açılan kayıt ekranını hemen geri kapatıyordu.
+      context.pushReplacement('/register?ctx=premium');
+      return;
+    }
     final pkg = _packageFor(_plan);
     if (!_rc || pkg == null) {
       setState(() => _error =
@@ -651,6 +673,20 @@ class _PremiumWelcomeScreenState extends ConsumerState<PremiumWelcomeScreen> {
             ),
           ),
         ),
+        // Misafir: satın almadan önce hesap oluşturulacağını önceden söyle.
+        if (ref.watch(authControllerProvider).asData?.value == null) ...[
+          const SizedBox(height: 10),
+          Text(
+            tr('Satın almadan önce ücretsiz bir hesap oluşturacağız — '
+                'verilerin buluta yedeklensin.'),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink),
+          ),
+        ],
         const SizedBox(height: 9),
         Text(
           tr('İstediğin zaman iptal edebilirsin. Ömürlük plan tek seferlik '

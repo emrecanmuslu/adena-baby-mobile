@@ -9,10 +9,12 @@ import '../../core/adena_icons.dart';
 import '../../core/age.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
+import '../../core/coach_tour.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/leaps.dart';
 import '../../core/modal_gate.dart';
+import '../../core/notif_soft_ask.dart';
 import '../../core/onboarding_paywall.dart';
 import '../../core/ring.dart';
 import '../../core/skeleton.dart';
@@ -47,6 +49,9 @@ import '../records/record_controller.dart';
 import '../records/record_form.dart';
 import '../records/record_ui.dart';
 import '../records/timeline_view.dart';
+import '../auth/pending_auth_action.dart';
+import '../onboarding/notif_soft_ask_sheet.dart';
+import '../onboarding/onboarding_kit.dart';
 import '../settings/backup_nag.dart';
 
 /// Ana ekran: aktif bebek başlığı + 3 sekme (Ana Sayfa·Akış·Grafikler) + merkez (+).
@@ -69,36 +74,126 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Bebek kurulumundan sonra bir kez: Premium Karşılama Ekranı.
-    // Kapıyı SENKRON tut: paywall gerekip gerekmediği ancak async prefs
-    // okumasından sonra belli olur, oysa tanıtım turu bu karede açılmak ister.
-    // Kapı tutuluyken tur ertelenir; kararı verince (ya da ekran kapanınca)
-    // bırakılır → ikisi üst üste binmez.
+    // Açılış modalları (bildirim ön-izni → Premium Karşılama) kararı async
+    // prefs okumasından sonra belli olur; o sürede kendiliğinden açılan başka
+    // modallar ("Dün nasıl geçti?" vb.) araya girmesin diye kapıyı SENKRON tut.
     ModalGate.acquire();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeWelcomePaywall());
+    // Asıl ekrana ulaşıldı → ertelenen sistem izin penceresi (yalnız ön-izinde
+    // "Bildirimleri aç" denmişse) artık açılabilir; kapı bırakılana kadar bekler.
+    SystemPromptGate.markAppReady();
+    NotifSoftAsk.wanted.addListener(_onSoftAskWanted);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startupModals());
   }
 
-  /// Sırada bekleyen karşılama paywall'ını (varsa) açar. Premium kullanıcıya
-  /// asla gösterilmez — bayrak sessizce kapatılır. Tek-kez garantisi ve
-  /// tüketim [OnboardingPaywall] tarafında.
-  Future<void> _maybeWelcomePaywall() async {
+  bool _softAskBusy = false;
+
+  /// Bir planlayıcı bildirim gerektirdi (hatırlatıcı, ilaç, sayaç…) ama ön-izin
+  /// kabul edilmemiş → ana sayfa görünür ve başka modal yokken bir kez sor.
+  Future<void> _onSoftAskWanted() async {
+    if (_softAskBusy || !mounted) return;
+    _softAskBusy = true;
     try {
-      if (!mounted) return;
-      if (ref.read(isPremiumProvider)) {
-        unawaited(OnboardingPaywall.markShown());
-        return;
+      await SystemPromptGate.whenClear();
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? false)) return;
+      if (!await NotifSoftAsk.mayAskAgain() || !mounted) return;
+      final baby = ref.read(activeBabyProvider);
+      ModalGate.acquire();
+      try {
+        await showNotifSoftAsk(context,
+            branch: (baby?.isExpecting ?? false) ? OnbBranch.preg : OnbBranch.baby,
+            force: true);
+      } finally {
+        ModalGate.release();
       }
-      if (!await OnboardingPaywall.consume()) return;
+    } finally {
+      _softAskBusy = false;
+    }
+  }
+
+  /// Açılışta sırayla: bildirim ön-izni (uygunsa) → Premium Karşılama (uygunsa).
+  Future<void> _startupModals() async {
+    try {
+      // Aktif bebek bir-iki kare geç çözülebilir (hesap geçişi) — kısa bekle.
+      var baby = ref.read(activeBabyProvider);
+      for (var i = 0; baby == null && i < 20 && mounted; i++) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        baby = mounted ? ref.read(activeBabyProvider) : null;
+      }
+      if (!mounted || baby == null) return;
+      var hasRecord = false;
+      if (!baby.isExpecting) {
+        try {
+          hasRecord =
+              (await ref.read(latestByTypeProvider(baby.id).future)).isNotEmpty;
+        } catch (_) {}
+      }
       if (!mounted) return;
-      // Ekran kapanana kadar bekle — tur ancak ondan sonra açılabilsin.
-      await context.push('/premium-welcome');
+      // Ön-izin: doğmuş bebekte ilk kayıt olduysa (yeni kurulumda kayıt anında
+      // ayrıca sorulur); bekleme modunda kurulumdan sonraki günden itibaren.
+      final at = await OnboardingPaywall.onboardedAt();
+      final nextDay = at == null || !DateUtils.isSameDay(at, DateTime.now());
+      if (!mounted) return;
+      if (baby.isExpecting ? nextDay : hasRecord) {
+        await showNotifSoftAsk(context,
+            branch: baby.isExpecting ? OnbBranch.preg : OnbBranch.baby);
+      }
+      if (mounted) await _maybeWelcomePaywall(hasRecord: hasRecord);
     } finally {
       ModalGate.release();
     }
   }
 
+  /// İlk kayıt (bu oturumda boş → dolu): ön-izin → Premium Karşılama.
+  Future<void> _afterFirstRecord() async {
+    // Yalnız bu cihazda YENİ kurulumdan sonraki ilk kayıt: boş→dolu geçişi
+    // buluttan senkron (yeni cihaza giriş) ya da misafir aktarımıyla da olur;
+    // o durumda kullanıcı bir şey yapmadan soru/paywall açılmasın.
+    final at = await OnboardingPaywall.onboardedAt();
+    if (at == null || DateTime.now().difference(at) > const Duration(days: 2)) {
+      return;
+    }
+    // Kaydın formu kapansın ve "Kaydedildi" bildirimi (~2.8 sn) sayfanın
+    // butonunun üstüne binmesin diye bekle.
+    await Future.delayed(const Duration(milliseconds: 3200));
+    // Kullanıcı bu arada başka sayfaya geçtiyse ya da bir modal (tur, özet,
+    // ikinci kayıt formu) açıksa üstüne binme — sıradaki açılışta sorulur
+    // (ön-izin kaydedilmedi; paywall kayıt olduğu için o açılışta tüketilir).
+    if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? false) ||
+        ModalGate.isBlocked) {
+      return;
+    }
+    ModalGate.acquire();
+    try {
+      await showNotifSoftAsk(context, branch: OnbBranch.baby);
+      if (mounted) await _maybeWelcomePaywall(hasRecord: true);
+    } finally {
+      ModalGate.release();
+    }
+  }
+
+  /// Sırada bekleyen karşılama paywall'ını (varsa ve zamanı geldiyse) açar.
+  /// Premium kullanıcıya asla gösterilmez — bayrak sessizce kapatılır.
+  /// Tek-kez garantisi ve zamanlama [OnboardingPaywall] tarafında.
+  Future<void> _maybeWelcomePaywall({required bool hasRecord}) async {
+    if (ref.read(isPremiumProvider)) {
+      unawaited(OnboardingPaywall.markShown());
+      return;
+    }
+    if (!await OnboardingPaywall.consume(hasRecord: hasRecord)) return;
+    if (!mounted) return;
+    // push future'ı BEKLENMEZ: go_router refreshListenable tetiklenince açık
+    // rotayı yeniden çözüp future'ın completer'ını yenisiyle değiştirir
+    // (flutter#128122) → `await` hiç dönmez, kapı sızardı. Kapıyı ekranın
+    // kendisi ömrü boyunca tutar (PremiumWelcomeScreen initState→dispose);
+    // çağıran yalnız ekran kurulana kadar tutar ki arada başka modal girmesin.
+    unawaited(context.push('/premium-welcome'));
+    await WidgetsBinding.instance.endOfFrame;
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
   @override
   void dispose() {
+    NotifSoftAsk.wanted.removeListener(_onSoftAskWanted);
     _homeScroll.dispose();
     super.dispose();
   }
@@ -124,6 +219,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     if (baby == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
+    }
+
+    // Hesapsızken Premium / davet istendi → hesap açıldı: kaldığı yerden aç.
+    consumePendingAuthAction(context, ref);
+
+    // İlk kayıt anı (bu oturumda boş → dolu): bildirim ön-izni + Premium
+    // Karşılama tam bu anda sorulur (kurulumun hemen ardından değil).
+    if (!baby.isExpecting) {
+      ref.listen(latestByTypeProvider(baby.id), (prev, next) {
+        final wasEmpty = prev?.asData?.value.isEmpty ?? false;
+        final nowHas = next.asData?.value.isNotEmpty ?? false;
+        if (wasEmpty && nowHas) _afterFirstRecord();
+      });
     }
 
     // "Dün nasıl geçti?" popup'ı — dünün kayıtları oturur oturmaz, State
@@ -176,7 +284,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         const SizedBox(width: 10),
         Padding(
           padding: const EdgeInsets.only(right: 14),
-          child: _HeaderAvatar(onTap: () => context.push('/settings')),
+          child: KeyedSubtree(
+              key: CoachKeys.profile,
+              child: _HeaderAvatar(onTap: () => context.push('/settings'))),
         ),
       ],
       // Bebek sekmeleri AppBar'ın parçası — kaydırınca logo satırıyla aynı
@@ -216,6 +326,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _ => TourMount(
             key: const ValueKey('tour_home'),
             tourKey: 'home',
+            finalLabel: tr('İlk kaydı ekle'),
+            onFinal: () => showAddRecordMenu(context, ref, baby.id),
             child: _HomeTab(babyId: baby.id, scrollController: _homeScroll)),
       },
       // V2 · Yüzen ada — kenarlardan kopuk hap; ikon-odaklı, FAB satır içinde.
@@ -248,7 +360,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               children: [
                 _navItem('home', 0, tr('Ana sayfa')),
                 _navItem('timeline', 1, tr('Günlük akış')),
-                _navFab(() => showAddRecordMenu(context, ref, baby.id)),
+                KeyedSubtree(
+                    key: CoachKeys.plus,
+                    child: _navFab(() => showAddRecordMenu(context, ref, baby.id))),
                 _navItem('charts', 2, tr('Grafikler')),
                 _navDiscover(context),
               ],
@@ -645,8 +759,11 @@ class _EditableSec extends StatelessWidget {
   final String title;
   final double top;
   final VoidCallback onEdit;
+
+  /// Tanıtım turunun kalemi vurgulaması için (yalnız Hızlı Giriş).
+  final Key? editKey;
   const _EditableSec(
-      {required this.title, required this.onEdit, this.top = 18});
+      {required this.title, required this.onEdit, this.top = 18, this.editKey});
 
   @override
   Widget build(BuildContext context) {
@@ -662,6 +779,7 @@ class _EditableSec extends StatelessWidget {
                   letterSpacing: 0.7)),
           const Spacer(),
           GestureDetector(
+            key: editKey,
             onTap: onEdit,
             behavior: HitTestBehavior.opaque,
             child: Padding(
@@ -771,10 +889,12 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
           _EditableSec(
             title: tr('Hızlı Giriş'),
             top: 4,
+            editKey: CoachKeys.pencil,
             onEdit: () => showHomeLayoutEditor(context, ref,
                 isQuick: true, current: layout.quick),
           ),
           Row(
+            key: CoachKeys.quick,
             children: [
               for (var i = 0; i < layout.quick.length; i++) ...[
                 if (i > 0) const SizedBox(width: 10),
@@ -787,8 +907,14 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
           // durumlarda aşağıda, Yaklaşan'ın altında kalır. Büyümez, yer
           // değiştirir — ama ekrandayken aşağı inmez (bkz. _medHeldUp).
           if (medPromote) MedHomeSection(babyId: babyId),
-          _PredictSection(babyId: babyId),
-          _LastActivitySection(babyId: babyId, units: units),
+          Column(
+            key: CoachKeys.summary,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _PredictSection(babyId: babyId),
+              _LastActivitySection(babyId: babyId, units: units),
+            ],
+          ),
           _DaySummarySection(babyId: babyId),
           _LeapSection(babyId: babyId),
           _UpcomingSection(babyId: babyId),

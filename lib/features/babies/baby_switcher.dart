@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,8 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
-import '../../data/baby_repository.dart';
 import '../auth/auth_controller.dart';
+import '../onboarding/invite_code_sheet.dart';
 import 'baby_controller.dart';
 
 /// "+" sekmesinden açılan bebek ekleme sheet'i: yeni bebek ekle · davet kodu gir.
@@ -63,7 +62,11 @@ Future<void> showAddBabySheet(BuildContext context, WidgetRef ref) {
                   meta: tr('Davet koduyla katılmak için hesap gerekir'),
                   onTap: () {
                     Navigator.pop(sheetCtx);
-                    context.push('/login');
+                    // Giriş/kayıt sonrası davet sayfası kendiliğinden açılsın.
+                    ref
+                        .read(pendingAuthActionProvider.notifier)
+                        .set(PendingAuthAction.invite);
+                    context.push('/login?ctx=invite');
                   },
                 ),
             ],
@@ -76,62 +79,13 @@ Future<void> showAddBabySheet(BuildContext context, WidgetRef ref) {
 
 /// Başka bir ebeveyn/bakıcının paylaştığı davet kodunu girip katılma.
 Future<void> showAcceptInviteDialog(BuildContext context, WidgetRef ref) async {
-  final controller = TextEditingController();
-  // Diyalog YALNIZ kodu toplar. Katıl/dispose/nav'ı buton İÇİNDE yapmak, diyalog
-  // KAPANIŞ ANİMASYONU (Material reverse ~200ms) sürerken çalışıp şu 3 çökmeyi
-  // (kırmızı flash) tetikliyordu: "TextEditingController used after disposed"
-  // (TextField hâlâ controller'a erişiyor), "Duplicate GlobalKeys
-  // (_OverlayEntryWidgetState)" + '_dependents.isEmpty' (diyalog overlay'i hâlâ
-  // canlıyken onboarding→home route geçişi/teardown çakışması). Çözüm: animasyon
-  // TAMAMEN bitene kadar bekle; sonra dispose + katıl + nav (hepsi temiz).
-  final code = await showDialog<String>(
-    context: context,
-    builder: (dialogCtx) => AlertDialog(
-      title: Text(tr('Davet kodu')),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        textCapitalization: TextCapitalization.characters,
-        decoration: InputDecoration(hintText: tr('ör. A1B2C3D4')),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogCtx),
-          child: Text(tr('Vazgeç')),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            final c = controller.text.trim();
-            if (c.isEmpty) return;
-            Navigator.pop(dialogCtx, c);
-          },
-          child: Text(tr('Katıl')),
-        ),
-      ],
-    ),
-  );
-  // Diyalog kapanış animasyonu + route kaldırımı bitsin (controller artık kullanılmıyor,
-  // overlay temiz). 350ms > Material reverse süresi.
+  // Sayfa kodu toplar VE katılımı dener (hata sayfa içinde); başarıda bebeği
+  // döndürür. Aktif bebek + invalidate sayfa kapanış animasyonu bittikten SONRA:
+  // erken invalidate, kapanan sayfanın overlay'i hâlâ canlıyken onboarding→home
+  // geçişiyle çakışıp "Duplicate GlobalKeys"/'_dependents.isEmpty' hatası veriyordu.
+  final joined = await showInviteCodeSheet(context);
+  if (joined == null) return;
   await Future.delayed(const Duration(milliseconds: 350));
-  controller.dispose();
-  if (code == null || code.isEmpty) return;
-  // Toast GÖSTERME (kök Overlay'e entry ekleyip nav ile çakışıyordu) — home'a geçince
-  // bebeğin görünmesi yeterli geri bildirim. Diyalog tamamen gittiği için setActive +
-  // invalidate artık temiz çalışır; invalidate'in tetiklediği nav ayrı/temiz olur.
-  try {
-    final baby = await ref.read(babyRepositoryProvider).acceptInvitation(code);
-    ref.read(activeBabyIdProvider.notifier).set(baby.id);
-    ref.invalidate(babyControllerProvider);
-  } catch (e) {
-    if (context.mounted) {
-      // Aile dolu (409 family_full) → net mesaj; diğer hatalarda (geçersiz/süresi
-      // dolmuş kod) genel mesaj.
-      final isFull = e is DioException && e.response?.statusCode == 409;
-      showAdError(
-          context,
-          isFull
-              ? tr('Bu aile dolu — en fazla 5 üye olabilir')
-              : tr('Kod geçersiz veya süresi dolmuş'));
-    }
-  }
+  ref.read(activeBabyIdProvider.notifier).set(joined.id);
+  ref.invalidate(babyControllerProvider);
 }
