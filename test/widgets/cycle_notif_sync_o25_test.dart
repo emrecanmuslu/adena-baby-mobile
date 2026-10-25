@@ -103,7 +103,7 @@ void main() {
     }
   }
 
-  testWidgets('yeni adet loglanınca hatırlatıcı yeni tahmine kurulur; kapatınca iptal',
+  testWidgets('yeni âdet loglanınca hatırlatıcı yeni tahmine kurulur; kapatınca iptal',
       (tester) async {
     final today = DateTime.now();
     final anchor = DateTime(today.year, today.month, today.day).subtract(const Duration(days: 10));
@@ -116,7 +116,7 @@ void main() {
     settingsCtrl.add(settings);
     entriesCtrl.add(const []);
     await settle(tester);
-    expect(plugin.ids, contains(600000), reason: '"adetin yaklaşıyor" kuruldu');
+    expect(plugin.ids, contains(600000), reason: '"âdetin yaklaşıyor" kuruldu');
 
     // Hatırlatıcı kapatıldı → iptal (tahmin değişmese de).
     settingsCtrl.add(settings.copyWith(reminders: const {'period': {'on': false}}));

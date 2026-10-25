@@ -49,8 +49,8 @@ void main() {
       expect(r.mode, CycleMode.active, reason: id);
       expect(r.dayInCycle, day, reason: '$id gün');
       expect(r.avgCycleLength, len, reason: '$id medyan döngü');
-      expect(r.avgPeriodDays, periodDays, reason: '$id adet süresi');
-      expect(r.nextPeriod, next, reason: '$id sonraki adet');
+      expect(r.avgPeriodDays, periodDays, reason: '$id âdet süresi');
+      expect(r.nextPeriod, next, reason: '$id sonraki âdet');
       expect(r.daysToNextPeriod, d2n, reason: '$id d2n');
       expect(r.ovulationDay, ov, reason: '$id ovülasyon');
       expect(r.fertileStart, winA, reason: '$id pencere başı');
@@ -59,7 +59,7 @@ void main() {
       expect(r.lowConfidence, low, reason: '$id düşük güven');
       expect(r.irregular, irregular, reason: '$id düzensiz');
       expect(r.suspectedMissedStarts, suspected, reason: '$id unutulan kayıt');
-      expect(longPeriodWarning(e, r), longPeriod, reason: '$id uzun adet');
+      expect(longPeriodWarning(e, r), longPeriod, reason: '$id uzun âdet');
       expect(longAmenorrheaWarning(s, r, today: today), isFalse, reason: id);
     });
   }
@@ -130,18 +130,18 @@ void main() {
         periods([-216, -188, -160, -132, -104, -76, -20]),
         day: 21, len: 28, next: d(8), d2n: 8, ov: d(-6), winA: d(-11), winB: d(-5),
         phase: CyclePhase.luteal, low: true, suspected: [d(-76)]);
-    active('F3 gün 29 → adet bugün bekleniyor', b.copyWith(firstPeriodDate: d(-112)),
+    active('F3 gün 29 → âdet bugün bekleniyor', b.copyWith(firstPeriodDate: d(-112)),
         periods([-112, -84, -28]),
         day: 29, len: 28, next: d(0), d2n: 0, ov: d(-14), winA: d(-19), winB: d(-13),
         phase: CyclePhase.luteal, low: true, suspected: [d(-84)]);
   });
 
-  group('G — uzun adet (C2)', () {
-    active('G1 son adet 11 gün', b.copyWith(firstPeriodDate: d(-95)),
+  group('G — uzun âdet (C2)', () {
+    active('G1 son âdet 11 gün', b.copyWith(firstPeriodDate: d(-95)),
         periods([-95, -67, -39, -11], daysFor: {-11: 11}),
         day: 12, len: 28, next: d(17), d2n: 17, ov: d(3), winA: d(-2), winB: d(4),
         phase: CyclePhase.follicular, low: false, longPeriod: true);
-    active('G2 her adet 10 gün', b.copyWith(firstPeriodDate: d(-104)),
+    active('G2 her âdet 10 gün', b.copyWith(firstPeriodDate: d(-104)),
         periods([-104, -76, -48, -20], days: 10),
         day: 21, len: 28, next: d(8), d2n: 8, ov: d(-6), winA: d(-11), winB: d(-5),
         phase: CyclePhase.luteal, low: false, longPeriod: true, periodDays: 10);
@@ -219,7 +219,7 @@ void main() {
         expect(longAmenorrheaWarning(s, r, today: today), amen);
       });
     }
-    active('K4 kayıp +42, ilk adet T−3',
+    active('K4 kayıp +42, ilk âdet T−3',
         loss.copyWith(
             lastLossDate: d(-42),
             lifecycleMode: CycleLifecycleMode.tracking,

@@ -11,7 +11,7 @@ import 'cycle_screen_harness.dart';
 /// gün ya da ardışık ≥7 gün "yoğun" akış → "Adetin 8 günden uzun sürüyor —
 /// hekimine danışmanı öneririz".
 void main() {
-  const note = 'Adetin 8 günden uzun sürüyor — hekimine danışmanı öneririz';
+  const note = 'Âdetin 8 günden uzun sürüyor — hekimine danışmanı öneririz';
   final today = DateTime(2026, 10, 11);
   DateTime d(int off) => DateTime(2026, 10, 11 + off);
   List<CycleEntry> runs(List<int> starts,
@@ -24,11 +24,11 @@ void main() {
   bool warn(CycleSettings s, List<CycleEntry> e) =>
       longPeriodWarning(e, computeStatus(s, e, today: today));
 
-  test('G1: son adet 11 gün (süren) → uyarı', () {
+  test('G1: son âdet 11 gün (süren) → uyarı', () {
     final s = CycleSettings(firstPeriodDate: d(-95));
     expect(warn(s, runs([-95, -67, -39, -11], lenFor: {-11: 11})), isTrue);
   });
-  test('G2: her adet 10 gün (ortalama > 8) → uyarı', () {
+  test('G2: her âdet 10 gün (ortalama > 8) → uyarı', () {
     final s = CycleSettings(firstPeriodDate: d(-104));
     expect(warn(s, runs([-104, -76, -48, -20], len: 10)), isTrue);
   });
@@ -36,13 +36,13 @@ void main() {
     final s = CycleSettings(firstPeriodDate: d(-104));
     expect(warn(s, runs([-104, -76, -48, -20], len: 7, flow: FlowLevel.heavy)), isTrue);
   });
-  test('normal 5 günlük adet → uyarı yok; 8 gün → yok (sınır)', () {
+  test('normal 5 günlük âdet → uyarı yok; 8 gün → yok (sınır)', () {
     final s = CycleSettings(firstPeriodDate: d(-104));
     expect(warn(s, runs([-104, -76, -48, -20])), isFalse);
     expect(warn(s, runs([-104, -76, -48, -20], len: 8)), isFalse);
   });
 
-  testWidgets('bugün ekranı: 11 günlük adette uyarı notu', (t) async {
+  testWidgets('bugün ekranı: 11 günlük âdette uyarı notu', (t) async {
     await pumpCycleScreen(t, const CycleTodayScreen(),
         settings: CycleSettings(
             firstPeriodDate: dayOffset(-95), breastfeeding: Breastfeeding.none),

@@ -9,7 +9,7 @@ import 'cycle_screen_harness.dart';
 /// ADET-INCELEME C7: "LAM / doğurganlık uyarıları" anahtarı hiçbir uyarıyı
 /// kapatmıyordu (değer okunmuyordu) — sağlık uyarıları kapatılamaz; kaldırıldı.
 void main() {
-  testWidgets('adet ayarlarında LAM uyarı anahtarı yok', (t) async {
+  testWidgets('âdet ayarlarında LAM uyarı anahtarı yok', (t) async {
     await pumpCycleScreen(t, const CycleSettingsScreen(),
         settings: const CycleSettings(breastfeeding: Breastfeeding.exclusive));
     expect(textHas('LAM / doğurganlık uyarıları'), findsNothing);

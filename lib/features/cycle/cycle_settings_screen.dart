@@ -136,9 +136,9 @@ class _BodyState extends ConsumerState<_Body> {
       children: [
         CycEyebrow(tr('Hedefim'),
             info: widget.settings.lifecycleMode == CycleLifecycleMode.postpartum
-                ? tr('Doğum sonrası takip aktif. İlk adetin gelene kadar seçim '
+                ? tr('Doğum sonrası takip aktif. İlk âdetin gelene kadar seçim '
                     'gerekmez, mod otomatik güncellenir.')
-                : tr('Adet takibini gebe kalmaya çalışma (ovülasyon planlama) veya '
+                : tr('Âdet takibini gebe kalmaya çalışma (ovülasyon planlama) veya '
                     'gebelik moduna geçirebilirsin. Tümü aynı verini kullanır.')),
         CycleModeSwitcher(
           settings: widget.settings,
@@ -149,9 +149,9 @@ class _BodyState extends ConsumerState<_Body> {
             info: tr('Hatırlatıcılar cihaz bildirimleri olarak gelir; sessiz saat '
                 'ayarına uyar.')),
         _card([
-          _switchRow(tr('Yaklaşan adet'), tr('3 gün öncesinden bildir'), 'period'),
+          _switchRow(tr('Yaklaşan âdet'), tr('3 gün öncesinden bildir'), 'period'),
           _switchRow(tr('Doğurganlık penceresi'), tr('Pencere başında bildir'), 'fertile'),
-          _switchRow(tr('PMS hatırlatıcısı'), tr('Adetten ~5 gün önce'), 'pms'),
+          _switchRow(tr('PMS hatırlatıcısı'), tr('Âdetten ~5 gün önce'), 'pms'),
           _switchRow(tr('Günlük kayıt'), tr('Her gün 21:00'), 'log', last: true),
         ]),
         // A1: kalıcı uyarı satırı — kapatılamaz.
@@ -194,7 +194,7 @@ class _BodyState extends ConsumerState<_Body> {
         ]),
         CycEyebrow(tr('Tahmin ayarları'),
             info: tr('Tahminler bu değerlere göre yapılır. Yeterli kayıt birikince '
-                'sistem döngü ve adet süresini kendi öğrenir; luteal faz ise '
+                'sistem döngü ve âdet süresini kendi öğrenir; luteal faz ise '
                 'ovülasyon gününü belirler. Emin değilsen varsayılanlarda bırak.')),
         _card([
           Padding(
@@ -210,7 +210,7 @@ class _BodyState extends ConsumerState<_Body> {
                       const SizedBox(width: 5),
                       AdInfoDot(
                           title: tr('Akıllı tahmin'),
-                          body: tr('Açıkken döngü ve adet süresini son kayıtlarından '
+                          body: tr('Açıkken döngü ve âdet süresini son kayıtlarından '
                               '(yakın döngüler) otomatik öğrenir. Kapalıyken aşağıdaki '
                               'sabit değerleri kullanır.')),
                     ]),
@@ -245,7 +245,7 @@ class _BodyState extends ConsumerState<_Body> {
           ),
           Divider(height: 1, color: AppColors.line),
           _lenRow(
-            tr('Adet (kanama) süresi'),
+            tr('Âdet (kanama) süresi'),
             _periodLen,
             2,
             10,
@@ -253,7 +253,7 @@ class _BodyState extends ConsumerState<_Body> {
               setState(() => _periodLen = v);
               _persist();
             },
-            info: tr('Adet kanamasının kaç gün sürdüğü. Tahmini adet aralığını '
+            info: tr('Âdet kanamasının kaç gün sürdüğü. Tahmini âdet aralığını '
                 'belirler. Tipik 4–7 gün.'),
           ),
           Divider(height: 1, color: AppColors.line),
@@ -266,8 +266,8 @@ class _BodyState extends ConsumerState<_Body> {
               setState(() => _lutealLen = v);
               _persist();
             },
-            info: tr('Ovülasyon ile sonraki adet arasındaki süre. Ovülasyon günü '
-                'buna göre hesaplanır (sonraki adet − luteal). Çoğu kişide ~14 gün.'),
+            info: tr('Ovülasyon ile sonraki âdet arasındaki süre. Ovülasyon günü '
+                'buna göre hesaplanır (sonraki âdet − luteal). Çoğu kişide ~14 gün.'),
           ),
         ]),
         CycEyebrow(tr('Emzirme Durumu')),
@@ -304,7 +304,7 @@ class _BodyState extends ConsumerState<_Body> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(tr('Adet takvimini sıfırla'),
+                        Text(tr('Âdet takvimini sıfırla'),
                             style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
@@ -477,8 +477,8 @@ class _BodyState extends ConsumerState<_Body> {
   /// bir daha açılmıyordu ("sıfırlama işe yaramıyor" şikâyetinin sebebi).
   Future<void> _confirmResetAll() async {
     final ok = await _confirm(
-        tr('Adet takvimini sıfırla'),
-        tr('Tüm adet/loşia kayıtların ve adet takvimi kurulumun (hedef, tarihler, '
+        tr('Âdet takvimini sıfırla'),
+        tr('Tüm âdet/loşia kayıtların ve âdet takvimi kurulumun (hedef, tarihler, '
             'hatırlatıcılar) kalıcı olarak silinecek. Bu işlem geri alınamaz.'));
     if (!ok) return;
     try {
@@ -510,7 +510,7 @@ class _BodyState extends ConsumerState<_Body> {
       // Planlı adet bildirimlerini de iptal et (boş yapı → yalnız cancel).
       await NotificationService.instance.syncCycle(reminders: const {});
       if (mounted) {
-        showAdToast(context, tr('Adet takvimi sıfırlandı'));
+        showAdToast(context, tr('Âdet takvimi sıfırlandı'));
         // Ayarlar sayfası kurulumu silinen kabuğun üstünde kalmasın.
         Navigator.of(context).maybePop();
       }

@@ -49,7 +49,7 @@ class _SoftAsk extends StatelessWidget {
           tr('Yeni haftaya girdiğinde kısa bir not gönderelim.'),
         ),
       OnbBranch.cycle || OnbBranch.ttc => (
-          tr('Adetin ve doğurgan pencerenden önce haber verelim mi?'),
+          tr('Âdetin ve doğurgan pencerenden önce haber verelim mi?'),
           '',
         ),
     };

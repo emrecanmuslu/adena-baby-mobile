@@ -127,7 +127,7 @@ class _Today extends ConsumerWidget {
         // A3: "İlk adetimi kaydet" açık beyandır (loşia penceresi hariç).
         await ref.read(cycleRepositoryProvider).saveEntry(entry,
             confirmedFirstPeriod: !inPostpartumLochiaWindow(t, settings));
-        if (context.mounted) showAdToast(context, tr('Adet başlangıcı kaydedildi'));
+        if (context.mounted) showAdToast(context, tr('Âdet başlangıcı kaydedildi'));
       } catch (err) {
         if (context.mounted) showAdError(context, apiErrorText(err));
       }
@@ -260,14 +260,14 @@ class _Today extends ConsumerWidget {
           ? null
           : trp('Beklenen tarih (tahmini): {d}', {'d': fmtDayMonth(np)});
       accent = AppColors.roseD;
-      action = tr('Adeti kaydet');
+      action = tr('Âdeti kaydet');
     } else if (inPeriod) {
       state = 'period';
       big = '${status.dayInCycle}';
-      dialLabel = tr('Adet · gün');
+      dialLabel = tr('Âdet · gün');
       dialSub = d2n == null ? null : trp('Sonraki ~{n} gün', {'n': d2n});
       accent = AppColors.rose;
-      action = tr('Adeti düzenle');
+      action = tr('Âdeti düzenle');
     } else if (isOvu) {
       state = 'ovu';
       dialIcon = const Text('🌸', style: TextStyle(fontSize: 36));
@@ -275,7 +275,7 @@ class _Today extends ConsumerWidget {
       dialLabel = tr('Tahmini yumurtlama');
       dialSub = tr('Doğurgan pencere');
       accent = AppColors.gold;
-      action = tr('Adeti başlat');
+      action = tr('Âdeti başlat');
       ghost = true;
     } else if (inFertile) {
       state = 'fertile';
@@ -291,8 +291,8 @@ class _Today extends ConsumerWidget {
       dialSub = np == null
           ? null
           : status.irregular
-              ? trp('Sonraki adet tahmini: {d}', {'d': _nextRange()})
-              : trp('Sonraki adet (tahmini) · {d}', {'d': fmtDayMonth(np)});
+              ? trp('Sonraki âdet tahmini: {d}', {'d': _nextRange()})
+              : trp('Sonraki âdet (tahmini) · {d}', {'d': fmtDayMonth(np)});
       accent = AppColors.rose;
       action = tr('Erken geldi? Kaydet');
       ghost = true;
@@ -300,7 +300,7 @@ class _Today extends ConsumerWidget {
       state = 'mid';
       big = '${status.dayInCycle}';
       dialLabel = switch (status.phase) {
-        CyclePhase.menstrual => tr('Adet'),
+        CyclePhase.menstrual => tr('Âdet'),
         CyclePhase.follicular => tr('Folliküler'),
         CyclePhase.ovulation => tr('Yumurtlama'),
         CyclePhase.luteal => tr('Luteal'),
@@ -409,7 +409,7 @@ class _Today extends ConsumerWidget {
         'count' when status.irregular => (
             tr('Döngü günü'),
             '${status.dayInCycle} / $total',
-            tr('Sonraki adet tahmini'),
+            tr('Sonraki âdet tahmini'),
             _nextRange()
           ),
         'count' => (
@@ -422,13 +422,13 @@ class _Today extends ConsumerWidget {
         _ when status.irregular => (
             tr('Akış'),
             _todayEntry?.flow != null ? flowLabel(_todayEntry!.flow!) : '—',
-            tr('Sonraki adet tahmini'),
+            tr('Sonraki âdet tahmini'),
             _nextRange()
           ),
         _ => (
             tr('Akış'),
             _todayEntry?.flow != null ? flowLabel(_todayEntry!.flow!) : '—',
-            tr('Sonraki adet (tahmini)'),
+            tr('Sonraki âdet (tahmini)'),
             np == null ? '—' : fmtDayMonth(np)
           ),
       };
@@ -484,7 +484,7 @@ class _Today extends ConsumerWidget {
             cycNote(context,
                 icon: Icons.spa_rounded,
                 body: tr('Doğurganlık penceresindesin — gebelik şansı artıyor. '
-                    'Emziriyorsan ovülasyon ilk adetten önce dönebilir; korunma '
+                    'Emziriyorsan ovülasyon ilk âdetten önce dönebilir; korunma '
                     'gerekiyorsa doktoruna danış.'),
                 infoTitle: tr('LAM'),
                 info: CycleInfo.lam)
@@ -589,7 +589,7 @@ class _Today extends ConsumerWidget {
       cycCard(context,
           tint: true,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('Bu dönemde bir adet kaydını unutmuş olabilir misin?'),
+            Text(tr('Bu dönemde bir âdet kaydını unutmuş olabilir misin?'),
                 style: cycTitleStyle(size: 15)),
             const SizedBox(height: 6),
             Text(
@@ -741,7 +741,7 @@ class _Today extends ConsumerWidget {
                   'ana gebelik ekranını kullan. Hafta ve tahmini doğum tarihi ana '
                   'gebelik ekranındaki bilgiyle aynıdır.')
               : tr('Gebeliğini hafta hafta, bebeğinin gelişimiyle takip etmek için '
-                  'ana gebelik ekranını kullan. Buradaki tarih son adetinden hesaplanır.')),
+                  'ana gebelik ekranını kullan. Buradaki tarih son âdetinden hesaplanır.')),
       const SizedBox(height: 14),
       cycCta(context, tr('Gebelik ekranına git'),
           onTap: () => openPregnancyScreen(context, ref, settings)),
@@ -808,9 +808,9 @@ class _Today extends ConsumerWidget {
           // N1: varsayılan loşia, ama açık "Bu ilk adetim" seçeneği var.
           body: tr('Loşia genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. '
               'Doğumdan sonraki ilk 6 haftada girdiğin kanama loşia sayılır; '
-              'ilk adetin olduğundan eminsen kayıt ekranında "Bu ilk adetim"i '
+              'ilk âdetin olduğundan eminsen kayıt ekranında "Bu ilk âdetim"i '
               'seçebilirsin.'),
-          infoTitle: tr('Loşia ve adet farkı'),
+          infoTitle: tr('Loşia ve âdet farkı'),
           info: CycleInfo.lochiaVsPeriod),
       const SizedBox(height: 12),
       // A4: lohusalıkta acil/aynı gün belirtileri her zaman erişilebilir.
@@ -848,7 +848,7 @@ class _Today extends ConsumerWidget {
         const SizedBox(height: 12),
         // B4 (karar S2): dengeli ayrım + yeniden parlak kırmızı kanamada hekim.
         Text(tr('Kanama kesildikten sonra başlayan ve 4–7 gün süren düzenli bir '
-            'kanama ilk adetin olabilir. Yeniden parlak kırmızı ve yoğunlaşan '
+            'kanama ilk âdetin olabilir. Yeniden parlak kırmızı ve yoğunlaşan '
             'kanamada hekimine başvur.'),
             style: TextStyle(
                 fontSize: 12.5,
@@ -879,7 +879,7 @@ class _Today extends ConsumerWidget {
     if (waiting && bf != null) {
       add(cycNote(context,
           icon: Icons.favorite_rounded,
-          body: tr('Emzirme döneminde adetin geç dönmesi sık görülür.')));
+          body: tr('Emzirme döneminde âdetin geç dönmesi sık görülür.')));
     }
     add(cycNote(context,
         clay: !waiting,
@@ -929,10 +929,10 @@ class _Today extends ConsumerWidget {
         accent: AppColors.rose,
         centerIcon: const Text('🌿', style: TextStyle(fontSize: 32)),
         label: tr('Bekleniyor'),
-        sub: tr('Henüz adet dönmedi'),
+        sub: tr('Henüz âdet dönmedi'),
       )),
       const SizedBox(height: 16),
-      cycCta(context, tr('İlk adetimi kaydet'),
+      cycCta(context, tr('İlk âdetimi kaydet'),
           onTap: () => _quickStartPeriod(context, ref)),
       if (longAmenorrheaWarning(settings, status)) ...[
         const SizedBox(height: 12),
@@ -946,7 +946,7 @@ class _Today extends ConsumerWidget {
       else
         cycNote(context,
             icon: Icons.favorite_rounded,
-            body: tr('Son adetinin ilk gününü kaydettiğinde döngü takibi ve '
+            body: tr('Son âdetinin ilk gününü kaydettiğinde döngü takibi ve '
                 'tahminler burada başlar.')),
     ];
   }

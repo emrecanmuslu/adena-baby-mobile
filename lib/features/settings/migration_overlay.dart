@@ -17,7 +17,7 @@ class MigrationOverlay extends ConsumerWidget {
         'records' => tr('Kayıtlar (uyku, beslenme, bez…)'),
         'memories' => tr('Anılar ve fotoğraflar'),
         'mom' => tr('Anne takibi'),
-        'cycle' => tr('Adet takvimi'),
+        'cycle' => tr('Âdet takvimi'),
         'health' => tr('Sağlık (aşı, gelişim, diş)'),
         'purge' => tr('Bulut yedeği siliniyor'),
         _ => key,

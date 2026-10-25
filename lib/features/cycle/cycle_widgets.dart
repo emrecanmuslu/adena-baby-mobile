@@ -118,14 +118,14 @@ class CycleTexts {
 
   /// Kurulum sonu + Adet ayarları kalıcı satırı (A1).
   static String get notContraceptionMethod => tr(
-      'Adet takvimi tahmine dayalıdır ve bir doğum kontrol yöntemi değildir.');
+      'Âdet takvimi tahmine dayalıdır ve bir doğum kontrol yöntemi değildir.');
 
   /// A2: LAM üç koşulu — öneri DEĞİL, bilgilendirme.
   static String get lamConditions => tr(
       'Emzirme, ancak şu üç koşulun hepsi birlikte sağlanıyorsa gebeliğe karşı '
       'geçici koruma sağlayabilir: doğumdan sonraki ilk 6 ay içindesin; bebeğin '
       'yalnız ya da neredeyse yalnız anne sütüyle besleniyor (gece dahil uzun '
-      'aralar yok); adetin henüz dönmedi. Koşullardan biri bozulursa bu koruma '
+      'aralar yok); âdetin henüz dönmedi. Koşullardan biri bozulursa bu koruma '
       'kalkar. Korunma yöntemi için doktoruna danış.');
 
   /// A2: koşullardan biri bozuldu (6 ay / karışık / adet döndü).
@@ -135,21 +135,21 @@ class CycleTexts {
 
   /// A5 / S4: emzirmeyen lohusa.
   static String get nonBreastfeeding => tr(
-      'Emzirmiyorsan adetin genellikle doğumdan sonraki 6–8 hafta içinde döner; '
-      'ovülasyon daha erken, 3–4. haftada olabilir. İlk adetini görmeden gebe '
+      'Emzirmiyorsan âdetin genellikle doğumdan sonraki 6–8 hafta içinde döner; '
+      'ovülasyon daha erken, 3–4. haftada olabilir. İlk âdetini görmeden gebe '
       'kalabilirsin — korunma gerekiyorsa doktoruna danış.');
 
   /// C2: uzun/yoğun adet.
   static String get longPeriod =>
-      tr('Adetin 8 günden uzun sürüyor — hekimine danışmanı öneririz.');
+      tr('Âdetin 8 günden uzun sürüyor — hekimine danışmanı öneririz.');
 
   /// C1: uzun süre adet görmeme kartı.
   static String get longAmenorrhea =>
-      tr('Uzun süredir adet görmedin — hekimine danışmanı öneririz.');
+      tr('Uzun süredir âdet görmedin — hekimine danışmanı öneririz.');
 
   /// A5: doğum yapmış herkese (emzirme şartı yok).
   static String get ovulationBeforeFirstPeriod => tr(
-      'İlk adetini görmeden de gebe kalabilirsin — ovülasyon adetten önce '
+      'İlk âdetini görmeden de gebe kalabilirsin — ovülasyon âdetten önce '
       'olabilir. Korunma gerekiyorsa doktoruna danış.');
 }
 
@@ -182,16 +182,16 @@ Widget cycNoteLite(BuildContext context,
 // ── M2 — Bilgi rozeti metinleri (AdInfoDot body'leri) ──────────────────────
 class CycleInfo {
   static String get lochiaVsPeriod => tr(
-      'Doğumdan sonraki kanama loşiadır — iyileşme sürecinin parçası, adet '
+      'Doğumdan sonraki kanama loşiadır — iyileşme sürecinin parçası, âdet '
       'değildir. Genellikle 4–6 hafta sürer, 8 haftaya uzayabilir. Kanama '
-      'kesildikten sonra başlayan ve 4–7 gün süren düzenli bir kanama ilk adetin '
+      'kesildikten sonra başlayan ve 4–7 gün süren düzenli bir kanama ilk âdetin '
       'olabilir. Yeniden parlak kırmızı ve yoğunlaşan kanamada hekimine başvur.');
   static String get lam => tr(
-      'Emzirme yumurtlamayı baskılayıp adeti geciktirebilir. LAM (Laktasyonel '
+      'Emzirme yumurtlamayı baskılayıp âdeti geciktirebilir. LAM (Laktasyonel '
       'Amenore Yöntemi) ancak şu üç koşul BİRLİKTE varsa gebeliğe karşı geçici '
       'koruma sağlayabilir: doğumdan sonraki ilk 6 ay; yalnız ya da neredeyse '
-      'yalnız anne sütü (gece dahil uzun aralar yok); adetin dönmemiş olması. '
-      'Biri bozulursa koruma kalkar. Ovülasyon ilk adetten önce olabilir. Korunma '
+      'yalnız anne sütü (gece dahil uzun aralar yok); âdetin dönmemiş olması. '
+      'Biri bozulursa koruma kalkar. Ovülasyon ilk âdetten önce olabilir. Korunma '
       'için doktoruna danış.');
   static String get fertileWindow => tr(
       'Doğurganlık penceresi, gebe kalma olasılığının en yüksek olduğu ~6 günlük '
@@ -199,7 +199,7 @@ class CycleInfo {
       'sonrasında — tahmindir, kesin değildir.');
   static String get flowAmount => tr(
       'Günlük kanama miktarını seç: Yok · Lekelenme · Hafif · Orta · Yoğun. '
-      'Bu, döngü uzunluğunu ve adet süresini hesaplamamızı sağlar.');
+      'Bu, döngü uzunluğunu ve âdet süresini hesaplamamızı sağlar.');
   /// A4/C6: kırmızı bayrak kademeleri (kayıt sayfası + loşia ekranı bilgi).
   static String get redFlags => tr(
       'Beklemeden acil servise başvur ya da 112\'yi ara: saatte bir ya da daha '
@@ -220,7 +220,7 @@ class CycleInfo {
       'doğum sonrası) değişkenlik gösterebilir.');
   static String get dialGuide => tr(
       'Halka, döngünü tek bakışta gösterir:\n'
-      '• Koyu pembe yay = adet günleri\n'
+      '• Koyu pembe yay = âdet günleri\n'
       '• Yeşil bölge = doğurganlık penceresi\n'
       '• Altın nokta = yumurtlama günü\n'
       '• Beyaz halka = bugünün konumu\n'

@@ -32,7 +32,7 @@ const branchAddedKeys = <String>[
   'Bu kayıt yalnız bu cihazda kalacak',
   'Bu kayıt sunucuda yok. Yerel değişiklik silinsin mi?',
   'Sunucuya ulaşılamadı',
-  'Adet ayarları',
+  'Âdet ayarları',
   'Aşı',
   'Diş',
   'Bitiş zamanı başlangıçtan önce olamaz',

@@ -144,7 +144,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
               const SizedBox(height: 20),
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text(tr('Adet Takvimi · Kurulum').toUpperCaseTr(),
+                child: Text(tr('Âdet Takvimi · Kurulum').toUpperCaseTr(),
                     style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w900,
@@ -235,9 +235,9 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
               cycNote(context,
                   clay: true,
                   icon: Icons.favorite_rounded,
-                  body: tr('Doğumdan sonraki kanama (loşia) adet değildir; genellikle '
+                  body: tr('Doğumdan sonraki kanama (loşia) âdet değildir; genellikle '
                       '4–6 hafta sürer, 8 haftaya uzayabilir.'),
-                  infoTitle: tr('Loşia ve adet farkı'),
+                  infoTitle: tr('Loşia ve âdet farkı'),
                   info: CycleInfo.lochiaVsPeriod),
             ]),
           ),
@@ -251,9 +251,9 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
   Widget _step2() {
     final opts = [
       // A2: emzirme korunma gibi sunulmaz ("LAM geçerli olabilir" kaldırıldı).
-      (Breastfeeding.exclusive, '🤱', tr('Sadece anne sütü'), tr('Adet daha geç dönebilir')),
+      (Breastfeeding.exclusive, '🤱', tr('Sadece anne sütü'), tr('Âdet daha geç dönebilir')),
       (Breastfeeding.mixed, '🍼', tr('Karışık beslenme'), tr('Anne sütü + mama')),
-      (Breastfeeding.none, '🥛', tr('Emzirmiyorum'), tr('Adet daha erken dönebilir')),
+      (Breastfeeding.none, '🥛', tr('Emzirmiyorum'), tr('Âdet daha erken dönebilir')),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -293,14 +293,14 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _q(tr('Adetin döndü mü?')),
-        _qsub(tr('İlk adetin döndüyse tarihini seç — döngü takibi buradan başlar.')),
+        _q(tr('Âdetin döndü mü?')),
+        _qsub(tr('İlk âdetin döndüyse tarihini seç — döngü takibi buradan başlar.')),
         Expanded(
           child: Center(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               _optTile(
                 emoji: '🌸',
-                title: tr('Henüz adet görmedim'),
+                title: tr('Henüz âdet görmedim'),
                 sub: tr('Bilgilendirme modu · tahmin yapılmaz'),
                 on: !_periodReturned,
                 onTap: () => setState(() => _periodReturned = false),
@@ -308,7 +308,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
               const SizedBox(height: 11),
               _optTile(
                 emoji: '📅',
-                title: tr('İlk adetim geldi'),
+                title: tr('İlk âdetim geldi'),
                 sub: tr('Tarih gir → döngü takibi başlar'),
                 on: _periodReturned,
                 onTap: () => setState(() => _periodReturned = true),
@@ -322,7 +322,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
                 const SizedBox(height: 12),
                 _dateCard(
                   value: _firstPeriod,
-                  placeholder: tr('İlk adet tarihini seç'),
+                  placeholder: tr('İlk âdet tarihini seç'),
                   sub: tr('dokun → takvimden seç'),
                   onTap: () async {
                     final now = DateTime.now();
@@ -331,7 +331,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
                       initialDate: _firstPeriod ?? now,
                       firstDate: _birth ?? DateTime(now.year - 1),
                       lastDate: now,
-                      helpText: tr('İlk adet tarihi'),
+                      helpText: tr('İlk âdet tarihi'),
                     );
                     if (picked != null) setState(() => _firstPeriod = picked);
                   },
@@ -351,15 +351,15 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _q(tr('Neden buradasın?')),
-        _qsub(tr('Adet takvimini nasıl kullanmak istediğini seç. Daha sonra '
+        _qsub(tr('Âdet takvimini nasıl kullanmak istediğini seç. Daha sonra '
             'Ayarlar > Hedefim\'den değiştirebilirsin.')),
         Expanded(
           child: Center(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               _optTile(
                 emoji: '📅',
-                title: tr('Adet takibi'),
-                sub: tr('Döngünü ve adetini izle'),
+                title: tr('Âdet takibi'),
+                sub: tr('Döngünü ve âdetini izle'),
                 on: _goal == CycleLifecycleMode.tracking,
                 onTap: () =>
                     setState(() => _goal = CycleLifecycleMode.tracking),
@@ -385,16 +385,16 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _q(tr('Son adetin ne zaman başladı?')),
-        _qsub(tr('Son adetinin ilk günü tüm tahminlerin başlangıç noktasıdır. '
-            'Bilmiyorsan "Şimdilik atla" ile geç — ilk adetini girince takip '
+        _q(tr('Son âdetin ne zaman başladı?')),
+        _qsub(tr('Son âdetinin ilk günü tüm tahminlerin başlangıç noktasıdır. '
+            'Bilmiyorsan "Şimdilik atla" ile geç — ilk âdetini girince takip '
             'başlar.')),
         Expanded(
           child: Center(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               _dateCard(
                 value: _firstPeriod,
-                placeholder: tr('Son adet tarihini seç'),
+                placeholder: tr('Son âdet tarihini seç'),
                 sub: tr('dokun → takvimden seç'),
                 onTap: () async {
                   final now = DateTime.now();
@@ -403,7 +403,7 @@ class _CycleSetupViewState extends ConsumerState<CycleSetupView> {
                     initialDate: _firstPeriod ?? now,
                     firstDate: DateTime(now.year - 1),
                     lastDate: now,
-                    helpText: tr('Son adet tarihi'),
+                    helpText: tr('Son âdet tarihi'),
                   );
                   if (picked != null) setState(() => _firstPeriod = picked);
                 },

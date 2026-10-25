@@ -45,10 +45,10 @@ void main() {
       firstPeriodDate: dayOffset(-148), breastfeeding: Breastfeeding.none);
   final irregularEntries = periodEntries([-148, -122, -89, -60, -20]);
 
-  testWidgets('bugün: düzensizde "Sonraki adet tahmini" aralığı', (t) async {
+  testWidgets('bugün: düzensizde "Sonraki âdet tahmini" aralığı', (t) async {
     await pumpCycleScreen(t, const CycleTodayScreen(),
         settings: irregular, entries: irregularEntries);
-    expect(textHas('SONRAKİ ADET TAHMİNİ'), findsOneWidget);
+    expect(textHas('SONRAKİ ÂDET TAHMİNİ'), findsOneWidget);
     expect(textHas('–'), findsWidgets);
   });
 

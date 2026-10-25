@@ -27,8 +27,8 @@ class CycleModeMeta {
 
 CycleModeMeta cycleModeMeta(CycleLifecycleMode m) => switch (m) {
       CycleLifecycleMode.tracking => CycleModeMeta(
-          tr('Adet takibi'),
-          tr('Döngünü ve adetini izle'),
+          tr('Âdet takibi'),
+          tr('Döngünü ve âdetini izle'),
           Icons.calendar_month_rounded,
           AppColors.rose),
       CycleLifecycleMode.ttc => CycleModeMeta(
@@ -43,7 +43,7 @@ CycleModeMeta cycleModeMeta(CycleLifecycleMode m) => switch (m) {
           AppColors.coralDd),
       CycleLifecycleMode.postpartum => CycleModeMeta(
           tr('Doğum sonrası'),
-          tr('Loşia ve ilk adetin dönüşü'),
+          tr('Loşia ve ilk âdetin dönüşü'),
           Icons.child_care_rounded,
           AppColors.coralDd),
       CycleLifecycleMode.loss => CycleModeMeta(
@@ -107,7 +107,7 @@ class CycleModeSwitcher extends ConsumerWidget {
           cycNote(context,
               clay: true,
               icon: Icons.auto_awesome_rounded,
-              body: tr('İlk adetini kaydettiğinde adet takibine otomatik geçilir. '
+              body: tr('İlk âdetini kaydettiğinde âdet takibine otomatik geçilir. '
                   'O zamana kadar burada seçim yapmana gerek yok.')),
         ],
       );

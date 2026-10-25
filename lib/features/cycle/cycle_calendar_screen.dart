@@ -514,7 +514,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(isPeriod ? tr('Adet günü') : tr('Kayıt'),
+              Text(isPeriod ? tr('Âdet günü') : tr('Kayıt'),
                   style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900)),
               if (parts.isNotEmpty)
                 Text(parts.join(' · '),
@@ -559,7 +559,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       runSpacing: 9,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        chip(AppColors.rose, null, tr('Adet')),
+        chip(AppColors.rose, null, tr('Âdet')),
         chip(AppColors.roseBg, AppColors.rose, tr('Tahmini')),
         // C3: tahmin lejantı "tahmini".
         chip(AppColors.sageBg, AppColors.sageD, tr('Doğurganlık (tahmini)')),
@@ -573,14 +573,14 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
   // ── FAQ ──
   Widget _faqSection() {
     final qa = [
-      (tr('Adet nasıl başlatılır/bitirilir?'),
-          tr('Takvimde bir güne dokun, gün panelinden "Adet başlat" ile başlat; '
-              'sonraki günlerde "Adeti burada bitir" ile aralığı işaretle.')),
-      (tr('Adet nasıl düzeltilir/silinir?'),
-          tr('Adet gününe dokun → "Adet günü değil" ile kaldır; ya da kaydı '
+      (tr('Âdet nasıl başlatılır/bitirilir?'),
+          tr('Takvimde bir güne dokun, gün panelinden "Âdet başlat" ile başlat; '
+              'sonraki günlerde "Âdeti burada bitir" ile aralığı işaretle.')),
+      (tr('Âdet nasıl düzeltilir/silinir?'),
+          tr('Âdet gününe dokun → "Âdet günü değil" ile kaldır; ya da kaydı '
               'panelden "Sil" ile tamamen sil.')),
       (tr('Doğurganlık neden görünmüyor?'),
-          tr('Tahminler ilk adetini kaydedince başlar. Doğum sonrası ilk '
+          tr('Tahminler ilk âdetini kaydedince başlar. Doğum sonrası ilk '
               'döngülerde değişken olabilir; 3+ döngü biriktikçe güçlenir.')),
     ];
     return Column(
@@ -787,9 +787,9 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     final rows = <(Widget, String)>[];
     // 1) Hücre dolgusu (renk).
     if (kind == 'period') {
-      rows.add((sw(AppColors.rose), tr('Adet günü')));
+      rows.add((sw(AppColors.rose), tr('Âdet günü')));
     } else if (kind == 'pred') {
-      rows.add((sw(AppColors.roseBg, border: AppColors.rose), tr('Tahmini adet günü')));
+      rows.add((sw(AppColors.roseBg, border: AppColors.rose), tr('Tahmini âdet günü')));
     } else if (kind == 'lochia') {
       rows.add((sw(AppColors.lochiaBg, border: AppColors.lochia),
           tr('Loşia — doğum sonrası kanama')));
@@ -870,15 +870,15 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
     final IconData icon;
     final VoidCallback onTap;
     if (selIsPeriod) {
-      label = tr('Adet günü değil');
+      label = tr('Âdet günü değil');
       icon = Icons.close_rounded;
       onTap = () => _unmarkPeriod(sel, selEntry!);
     } else if (start != null) {
-      label = tr('Adeti burada bitir');
+      label = tr('Âdeti burada bitir');
       icon = Icons.water_drop_outlined;
       onTap = () => _fillPeriod(start, sel, byDay);
     } else {
-      label = tr('Adet başlat');
+      label = tr('Âdet başlat');
       icon = Icons.water_drop_rounded;
       onTap = () => _markPeriodDay(sel, selEntry);
     }
@@ -937,7 +937,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
   Future<void> _markPeriodDayNow(DateTime d, CycleEntry? existing) async {
     try {
       await _savePeriod(d, existing);
-      _afterEdit(tr('Adet başlangıcı kaydedildi'));
+      _afterEdit(tr('Âdet başlangıcı kaydedildi'));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     }
@@ -951,7 +951,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
         await _savePeriod(d, byDay[_key(d)]);
         d = cycleAddDays(d, 1);
       }
-      _afterEdit(tr('Adet günleri işaretlendi'));
+      _afterEdit(tr('Âdet günleri işaretlendi'));
     } catch (e) {
       if (mounted) showAdError(context, apiErrorText(e));
     }
@@ -976,7 +976,7 @@ class _CycleCalendarScreenState extends ConsumerState<CycleCalendarScreen> {
       } else {
         await ref.read(cycleRepositoryProvider).deleteEntry(e.id);
       }
-      _afterEdit(tr('Adet günü kaldırıldı'));
+      _afterEdit(tr('Âdet günü kaldırıldı'));
     } catch (err) {
       if (mounted) showAdError(context, apiErrorText(err));
     }

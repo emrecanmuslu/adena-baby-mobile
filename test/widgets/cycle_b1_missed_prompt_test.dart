@@ -68,7 +68,7 @@ void main() {
   testWidgets('bugün: soru kartı görünür; "Hayır, döngüm uzundu" kalıcı', (t) async {
     await pumpCycleScreen(t, const CycleTodayScreen(),
         settings: settings, entries: entries);
-    expect(textHas('Bu dönemde bir adet kaydını unutmuş olabilir misin?'),
+    expect(textHas('Bu dönemde bir âdet kaydını unutmuş olabilir misin?'),
         findsOneWidget);
     expect(textHas('56 günlük döngü'), findsOneWidget);
     await t.tap(find.text('Hayır, döngüm uzundu'));
@@ -90,7 +90,7 @@ void main() {
     expect(textHas('unutmuş olabilir misin?'), findsNothing);
   });
 
-  testWidgets('bildirim: "adetin yaklaşıyor" medyan (28) tahminine kurulur',
+  testWidgets('bildirim: "âdetin yaklaşıyor" medyan (28) tahminine kurulur',
       (t) async {
     tzdata.initializeTimeZones();
     tz.setLocalLocation(tz.UTC);

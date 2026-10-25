@@ -95,7 +95,7 @@ void main() {
       expect(row.breastfeeding, 'exclusive');
     });
 
-    test('tahmin ayarları (döngü/adet/luteal) yerelde KALICI olur (regresyon)',
+    test('tahmin ayarları (döngü/âdet/luteal) yerelde KALICI olur (regresyon)',
         () async {
       // Daha önce DB kolonu yoktu → değer yazılıp okunduğunda kayboluyordu (28'e
       // dönüyordu). Artık tur-gidiş-dönüş korunmalı.

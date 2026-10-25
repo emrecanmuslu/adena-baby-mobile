@@ -85,7 +85,7 @@ void main() {
   }
 
   group('J1 — doğum sonrası tam yolculuk (P4)', () {
-    test('doğum → loşia → bekleme → ilk adet → otomatik aktif takip', () async {
+    test('doğum → loşia → bekleme → ilk âdet → otomatik aktif takip', () async {
       // born_flow_screen.dart'ın doğumda yazdığı alanlar (T5 ters senkron).
       await repo.patchSettings({
         'breastfeeding': 'exclusive',
@@ -163,7 +163,7 @@ void main() {
   });
 
   group('J1b — backfill koruması (çapa boşken geçmiş kayıt)', () {
-    test('doğum ÖNCESİ/GÜNÜ tarihli adet logu çapayı kurmaz, postpartum bozulmaz',
+    test('doğum ÖNCESİ/GÜNÜ tarihli âdet logu çapayı kurmaz, postpartum bozulmaz',
         () async {
       await repo.patchSettings({
         'breastfeeding': 'exclusive',
@@ -179,7 +179,7 @@ void main() {
 
       final s = await repo.getSettings();
       expect(s.firstPeriodDate, isNull,
-          reason: 'doğumdan önceki/doğum günü kayıt "ilk adet döndü" değildir');
+          reason: 'doğumdan önceki/doğum günü kayıt "ilk âdet döndü" değildir');
       expect(s.lifecycleMode, CycleLifecycleMode.postpartum);
       expect(s.predictionsHidden, isTrue);
       final st = await statusAt(DateTime(2026, 5, 11));
@@ -192,7 +192,7 @@ void main() {
       expect(s2.lifecycleMode, CycleLifecycleMode.tracking);
     });
 
-    test('kayıp GÜNÜ/öncesi tarihli adet logu çapayı kurmaz (kayıp kanaması ≠ adet)',
+    test('kayıp GÜNÜ/öncesi tarihli âdet logu çapayı kurmaz (kayıp kanaması ≠ âdet)',
         () async {
       await repo.patchSettings({
         'breastfeeding': 'none',
@@ -244,7 +244,7 @@ void main() {
 
   group('J2 — kayıp yolculuğu (P3→P5→P1)', () {
     testWidgets(
-        'aktif takip → gebelik → kayıp → iyileşme → dönüş → ilk adet = yeni Gün 1',
+        'aktif takip → gebelik → kayıp → iyileşme → dönüş → ilk âdet = yeni Gün 1',
         (tester) async {
       await withRef(tester, (ref) async {
         // Aktif takip: çapa + 2 döngü gerçek kayıt.
@@ -297,7 +297,7 @@ void main() {
       });
     });
 
-    test('loss modundayken doğrudan adet logu da otomatik takibe döndürür',
+    test('loss modundayken doğrudan âdet logu da otomatik takibe döndürür',
         () async {
       await repo.patchSettings({
         'breastfeeding': 'none',
@@ -317,7 +317,7 @@ void main() {
   });
 
   group('J3 — patchSettings durum makinesi kenarları', () {
-    test('onarım kancası: çapa dolu + gizli takılı kalmış → adet logu düzeltir',
+    test('onarım kancası: çapa dolu + gizli takılı kalmış → âdet logu düzeltir',
         () async {
       // Tutarsız miras durum: çapa dolu ama tahminler gizli, mod postpartum.
       await repo.patchSettings({
@@ -359,7 +359,7 @@ void main() {
       expect(st.nextPeriod, isNull);
     });
 
-    test('çapa zaten doluyken yeni adet logu çapayı/modu değiştirmez',
+    test('çapa zaten doluyken yeni âdet logu çapayı/modu değiştirmez',
         () async {
       await repo.patchSettings(
           {'breastfeeding': 'none', 'first_period_date': '2026-01-05'});

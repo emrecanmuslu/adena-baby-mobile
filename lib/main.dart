@@ -415,7 +415,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     final hasBaby = await GuestMigration.hasBabyData(db, accountId);
     final sum = await GuestMigration.summary(db, accountId);
     final offerBody = !hasBaby
-        ? tr('Kayıt olmadan tuttuğun adet takvimi kayıtların bu cihazda duruyor. '
+        ? tr('Kayıt olmadan tuttuğun âdet takvimi kayıtların bu cihazda duruyor. '
             'Hesabına aktaralım mı? Aktarmazsan bu veriler silinir.')
         : (sum.babyName != null && sum.records > 0)
             ? trp('Bu telefonda {name} için {n} kayıt var. Hesabına aktarırsan her '
@@ -426,7 +426,7 @@ class _AdenaAppState extends ConsumerState<AdenaApp> with WidgetsBindingObserver
     final deleteBody = hasBaby
         ? tr('Aktarmadığın bebek ve kayıtlar bu cihazdan KALICI olarak '
             'silinecek. Bu işlem geri alınamaz.')
-        : tr('Aktarmadığın adet kayıtların bu cihazdan KALICI olarak silinecek. '
+        : tr('Aktarmadığın âdet kayıtların bu cihazdan KALICI olarak silinecek. '
             'Bu işlem geri alınamaz.');
     // KRİTİK: kayıt/giriş anında dinleyici tetikleniyor ama go_router aynı anda
     // yeni hesabı yönlendiriyor (bebek yoksa → /onboarding, varsa → /home). Sayfa

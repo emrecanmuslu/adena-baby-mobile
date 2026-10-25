@@ -71,7 +71,7 @@ void main() {
   });
   tearDown(() => db.close());
 
-  test('adet kaydı: bulk uçuştayken aynı gün yeniden düzenlendi → dirty kalır, yeni not; '
+  test('âdet kaydı: bulk uçuştayken aynı gün yeniden düzenlendi → dirty kalır, yeni not; '
       'sonraki tur yeni notu gönderir', () async {
     late CycleRepository repo;
     final day = DateTime(2026, 5, 1);

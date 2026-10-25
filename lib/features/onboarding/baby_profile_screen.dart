@@ -134,7 +134,7 @@ class _BabyProfileScreenState extends ConsumerState<BabyProfileScreen> {
     } else if (_useLmp) {
       picked = await showOnbDatePicker(
         context,
-        title: tr('Son adet tarihinin ilk günü'),
+        title: tr('Son âdet tarihinin ilk günü'),
         initial: _lmp ?? today.subtract(const Duration(days: 112)),
         // TDT = SAT + 280: daha eski SAT geçmişte bir TDT (negatif geri
         // sayım) üretirdi.
@@ -294,7 +294,7 @@ class _BabyProfileScreenState extends ConsumerState<BabyProfileScreen> {
         _born
             ? tr('Doğum tarihini seç')
             : (_useLmp
-                  ? tr('Son adet tarihini seç')
+                  ? tr('Son âdet tarihini seç')
                   : tr('Tahmini doğum tarihini seç')),
       );
       return;
@@ -492,7 +492,7 @@ class _BabyProfileScreenState extends ConsumerState<BabyProfileScreen> {
       onTap: _pickDate,
     ),
     const SizedBox(height: 14),
-    OnbLabel(tr('Prematüre doğdu mu?')),
+    OnbLabel(tr('Erken mi doğdu? (prematüre)')),
     OnbSegment<bool>(
       accent: a,
       selected: _premature,
@@ -535,13 +535,13 @@ class _BabyProfileScreenState extends ConsumerState<BabyProfileScreen> {
         }),
         options: [
           (false, tr('Tahmini doğum tarihi')),
-          (true, tr('Son adet tarihi (SAT)')),
+          (true, tr('Son âdet tarihi (SAT)')),
         ],
       ),
       const SizedBox(height: 14),
       OnbLabel(
         _useLmp
-            ? tr('Son adet tarihinin ilk günü')
+            ? tr('Son âdet tarihinin ilk günü')
             : tr('Tahmini doğum tarihi'),
       ),
       OnbPickField(

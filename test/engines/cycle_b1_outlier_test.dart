@@ -40,7 +40,7 @@ void main() {
     expect(s.phase, CyclePhase.luteal, reason: 'gün 21 = luteal (eskiden "Doğurganlık")');
   });
 
-  test('F3 gerçek 28 gün, gün 29 → adet bugün bekleniyor (eskiden "Yumurtlama")', () {
+  test('F3 gerçek 28 gün, gün 29 → âdet bugün bekleniyor (eskiden "Yumurtlama")', () {
     final s = run([-112, -84, -28]);
     expect(s.daysToNextPeriod, 0);
     expect(s.phase, isNot(CyclePhase.ovulation));

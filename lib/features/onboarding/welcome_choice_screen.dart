@@ -131,7 +131,7 @@ class _WelcomeChoiceScreenState extends ConsumerState<WelcomeChoiceScreen>
           tr('Beslenme, uyku, gelişim — takibe hemen başla')),
       (OnbBranch.preg, 'pregnant', tr('Hamileyim'),
           tr('Hafta hafta gebelik takibi ve bekleme odası')),
-      (OnbBranch.cycle, 'drop', tr('Adet takibi'), tr('Döngünü ve adetini izle')),
+      (OnbBranch.cycle, 'drop', tr('Âdet takibi'), tr('Döngünü ve âdetini izle')),
       (OnbBranch.ttc, 'ttc', tr('Gebe kalmaya çalışıyorum'),
           tr('Ovülasyon ve doğurgan pencereni takip et')),
     ];

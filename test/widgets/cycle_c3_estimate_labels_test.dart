@@ -66,17 +66,17 @@ void main() {
     expect(textHas('Tahmini doğurgan gün'), findsOneWidget);
   });
 
-  testWidgets('bugün: ovülasyon halkası + sonraki adet "tahmini"', (t) async {
+  testWidgets('bugün: ovülasyon halkası + sonraki âdet "tahmini"', (t) async {
     await pumpCycleScreen(t, const CycleTodayScreen(),
         settings: s(-98), entries: periodEntries([-98, -70, -42, -14]));
     expect(textHas('TAHMİNİ YUMURTLAMA'), findsOneWidget); // halka etiketi büyük harf
   });
 
-  testWidgets('bugün: geri sayımda "Sonraki adet (tahmini)"', (t) async {
+  testWidgets('bugün: geri sayımda "Sonraki âdet (tahmini)"', (t) async {
     // 28 günlük döngü, bugün 24. gün → 4 gün kaldı.
     await pumpCycleScreen(t, const CycleTodayScreen(),
         settings: s(-107), entries: periodEntries([-107, -79, -51, -23]));
-    expect(textHas('Sonraki adet (tahmini)'), findsWidgets);
+    expect(textHas('Sonraki âdet (tahmini)'), findsWidgets);
   });
 
   test('bildirim başlıkları "tahmini"', () async {

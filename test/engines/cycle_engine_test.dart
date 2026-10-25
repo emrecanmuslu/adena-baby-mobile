@@ -21,7 +21,7 @@ List<CycleEntry> _periodRun(String prefix, DateTime start, int days,
 void main() {
   mainO24();
   group('periodStarts', () {
-    test('ardışık adet günlerinden tek başlangıç çıkarır', () {
+    test('ardışık âdet günlerinden tek başlangıç çıkarır', () {
       final entries = _periodRun('a', DateTime(2025, 1, 1), 5);
       final starts = periodStarts(entries);
       expect(starts, [DateTime(2025, 1, 1)]);
@@ -36,7 +36,7 @@ void main() {
       expect(starts, [DateTime(2025, 1, 1), DateTime(2025, 1, 29)]);
     });
 
-    test('spotting/none adet sayılmaz (isPeriod=false)', () {
+    test('spotting/none âdet sayılmaz (isPeriod=false)', () {
       final entries = [
         _period('p', DateTime(2025, 1, 1), FlowLevel.light),
         CycleEntry(id: 's', date: DateTime(2025, 1, 2), flow: FlowLevel.spotting),
@@ -60,7 +60,7 @@ void main() {
   });
 
   group('computeStatus — mod tayini (tahmin yok)', () {
-    test('ilk adet dönmediyse ve doğumdan <=42 gün → lochia modu', () {
+    test('ilk âdet dönmediyse ve doğumdan <=42 gün → lochia modu', () {
       final settings = CycleSettings(birthDate: DateTime(2025, 1, 1));
       final status = computeStatus(settings, const [], today: DateTime(2025, 1, 20));
       expect(status.mode, CycleMode.lochia);
@@ -69,7 +69,7 @@ void main() {
       expect(status.nextPeriod, isNull);
     });
 
-    test('ilk adet dönmedi, doğum lochia penceresinin ötesinde → waiting', () {
+    test('ilk âdet dönmedi, doğum lochia penceresinin ötesinde → waiting', () {
       final settings = CycleSettings(birthDate: DateTime(2025, 1, 1));
       final status = computeStatus(settings, const [], today: DateTime(2025, 3, 1));
       expect(status.mode, CycleMode.waiting);
@@ -77,7 +77,7 @@ void main() {
       expect(status.ovulationDay, isNull);
     });
 
-    test('doğum tarihi yok, ilk adet yok → waiting', () {
+    test('doğum tarihi yok, ilk âdet yok → waiting', () {
       final status = computeStatus(const CycleSettings(), const [],
           today: DateTime(2025, 3, 1));
       expect(status.mode, CycleMode.waiting);
@@ -118,7 +118,7 @@ void main() {
       expect(s.avgCycleLength, 28);
     });
 
-    test('ortalama adet günü = 5', () {
+    test('ortalama âdet günü = 5', () {
       final s = computeStatus(settings, entries, today: DateTime(2025, 3, 5));
       expect(s.avgPeriodDays, 5);
     });
@@ -129,13 +129,13 @@ void main() {
       expect(s.dayInCycle, 8);
     });
 
-    test('sonraki adet = son başlangıç + ortalama uzunluk', () {
+    test('sonraki âdet = son başlangıç + ortalama uzunluk', () {
       final s = computeStatus(settings, entries, today: DateTime(2025, 3, 5));
       expect(s.nextPeriod, DateTime(2025, 3, 26));
       expect(s.daysToNextPeriod, 21);
     });
 
-    test('ovülasyon = sonraki adet - 14 gün; fertile pencere = ovülasyon-5..ovülasyon+1', () {
+    test('ovülasyon = sonraki âdet - 14 gün; fertile pencere = ovülasyon-5..ovülasyon+1', () {
       final s = computeStatus(settings, entries, today: DateTime(2025, 3, 5));
       expect(s.ovulationDay, DateTime(2025, 3, 12));
       expect(s.fertileStart, DateTime(2025, 3, 7));
@@ -170,7 +170,7 @@ void main() {
     // avgLen 28, avgPeriod 5, son başlangıç 29 Ocak.
     // ovülasyon = (29 Oca + 28) - 14 = 26 Şub - 14 = 12 Şub.
 
-    test('adet günlerinde menstrual faz (dayInCycle <= avgPeriod)', () {
+    test('âdet günlerinde menstrual faz (dayInCycle <= avgPeriod)', () {
       final s = computeStatus(settings, entries, today: DateTime(2025, 1, 31));
       // 29 Oca → 31 Oca = dayInCycle 3 (<=5).
       expect(s.phase, CyclePhase.menstrual);
@@ -294,8 +294,8 @@ void main() {
     });
   });
 
-  group('manuel adet (kanama) süresi', () {
-    test('ölçülmüş adet günü yokken periodLength kullanılır', () {
+  group('manuel âdet (kanama) süresi', () {
+    test('ölçülmüş âdet günü yokken periodLength kullanılır', () {
       // firstPeriodDate var ama hiç flow kaydı yok → pdays boş → manuel süre.
       final settings = CycleSettings(
           firstPeriodDate: DateTime(2025, 1, 1), periodLength: 7);
@@ -312,7 +312,7 @@ void main() {
       expect(s.avgPeriodDays, 5);
     });
 
-    test('TAMAMLANMIŞ döngüde ölçülmüş adet günü varsa manuel süre YOK sayılır', () {
+    test('TAMAMLANMIŞ döngüde ölçülmüş âdet günü varsa manuel süre YOK sayılır', () {
       final settings = CycleSettings(
           firstPeriodDate: DateTime(2025, 1, 1), periodLength: 9);
       // Ortalama yalnız TAMAMLANMIŞ döngülerden alınır (devam eden döngü hariç) →
@@ -378,13 +378,13 @@ void main() {
   });
 
   group('CycleEntry.isPeriod', () {
-    test('medium/heavy/light adettir', () {
+    test('medium/heavy/light âdettir', () {
       for (final f in [FlowLevel.light, FlowLevel.medium, FlowLevel.heavy]) {
         expect(CycleEntry(id: 'x', date: DateTime(2025, 1, 1), flow: f).isPeriod,
             isTrue);
       }
     });
-    test('none/spotting/null adet değildir', () {
+    test('none/spotting/null âdet değildir', () {
       expect(CycleEntry(id: 'x', date: DateTime(2025, 1, 1), flow: FlowLevel.none)
           .isPeriod, isFalse);
       expect(
@@ -393,7 +393,7 @@ void main() {
           isFalse);
       expect(CycleEntry(id: 'x', date: DateTime(2025, 1, 1)).isPeriod, isFalse);
     });
-    test('loşia rengi taşıyan gün adet değildir (akış olsa bile)', () {
+    test('loşia rengi taşıyan gün âdet değildir (akış olsa bile)', () {
       // Doğum sonrası loşia günü: akış girilmiş olsa da loşia rengi varsa adet
       // sayılmaz → yanlış döngü başlangıcı üretmez (regresyon).
       expect(
@@ -449,7 +449,7 @@ void main() {
   // Doğum/kayıp sonrası "ilk gerçek adet = yeni Gün 1" sıfırlaması: çapa
   // (firstPeriodDate) yeniden kurulunca eski dönemin kayıtları tahmine karışmaz.
   group('yaşam-döngüsü sıfırlaması (postpartum/düşük → yeni Gün 1)', () {
-    test('çapadan ÖNCEKİ eski adet kayıtları yok sayılır', () {
+    test('çapadan ÖNCEKİ eski âdet kayıtları yok sayılır', () {
       final entries = [
         ..._periodRun('eski1', DateTime(2025, 1, 1), 5),
         ..._periodRun('eski2', DateTime(2025, 1, 29), 4),

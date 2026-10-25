@@ -21,7 +21,7 @@ void main() {
       );
 
   group('lamState', () {
-    test('tam emziren, 3. ay, adet yok → koşullar', () {
+    test('tam emziren, 3. ay, âdet yok → koşullar', () {
       expect(lamState(pp(Breastfeeding.exclusive, 90), today: today),
           LamState.conditions);
     });
@@ -33,7 +33,7 @@ void main() {
       expect(lamState(pp(Breastfeeding.mixed, 40), today: today),
           LamState.notProtective);
     });
-    test('adet döndü → artık korumaz', () {
+    test('âdet döndü → artık korumaz', () {
       expect(
           lamState(pp(Breastfeeding.exclusive, 60, period: DateTime(2026, 10, 1)),
               today: today),
@@ -59,7 +59,7 @@ void main() {
       (t) async {
     await pumpCycleScreen(t, const CycleTodayScreen(),
         settings: waitingPp(Breastfeeding.none, 70));
-    expect(textHas('Emzirmiyorsan adetin genellikle doğumdan sonraki 6–8 hafta'),
+    expect(textHas('Emzirmiyorsan âdetin genellikle doğumdan sonraki 6–8 hafta'),
         findsOneWidget);
     expect(textHas('3–4. haftada'), findsOneWidget);
     expect(textHas('LAM'), findsNothing);
@@ -67,13 +67,13 @@ void main() {
     expect(textHas('tamamen normal'), findsNothing);
   });
 
-  testWidgets('bekleme · tam emziren (3. ay): üç koşul + ilk adetten önce gebelik',
+  testWidgets('bekleme · tam emziren (3. ay): üç koşul + ilk âdetten önce gebelik',
       (t) async {
     await pumpCycleScreen(t, const CycleTodayScreen(),
         settings: waitingPp(Breastfeeding.exclusive, 90));
     expect(textHas('üç koşulun hepsi'), findsOneWidget);
     expect(textHas('ilk 6 ay'), findsWidgets);
-    expect(textHas('İlk adetini görmeden de gebe kalabilirsin'), findsOneWidget);
+    expect(textHas('İlk âdetini görmeden de gebe kalabilirsin'), findsOneWidget);
     expect(textHas('sık görülür'), findsOneWidget);
     expect(textHas('tamamen normal'), findsNothing);
     expect(textHas('%2'), findsNothing);
@@ -106,7 +106,7 @@ void main() {
     await t.pump(const Duration(milliseconds: 50));
     expect(find.text('Emziriyor musun?'), findsOneWidget);
     expect(textHas('LAM geçerli olabilir'), findsNothing);
-    expect(textHas('Adet daha geç dönebilir'), findsOneWidget);
+    expect(textHas('Âdet daha geç dönebilir'), findsOneWidget);
     // Seçim yapmadan Devam → aynı adımda kalınır.
     await t.tap(find.text('Devam'));
     await t.pump(const Duration(milliseconds: 50));

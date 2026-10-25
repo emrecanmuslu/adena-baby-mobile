@@ -27,7 +27,7 @@ void main() {
   });
 
   group('anchorCandidate', () {
-    test('sıfırlama sonrası en eski adet günü', () {
+    test('sıfırlama sonrası en eski âdet günü', () {
       final s = CycleSettings(birthDate: birth);
       // A3 (S1): doğum+0..42 loşia — fikstür 63. güne taşındı.
       final days = [DateTime(2026, 1, 10), DateTime(2026, 4, 6), DateTime(2026, 4, 5)];

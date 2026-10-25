@@ -69,15 +69,15 @@ void main() {
   }
 
   const body = 'Doğumdan sonraki ilk haftalardaki kanama çoğunlukla loşiadır. '
-      'Bunun ilk adetin olduğundan eminsen kaydedebilirsin; adet takvimin bu '
+      'Bunun ilk âdetin olduğundan eminsen kaydedebilirsin; âdet takvimin bu '
       'günden başlar.';
 
-  testWidgets('doğum+35: "Bu ilk adetim" → onay → onaylı adet kaydı', (t) async {
+  testWidgets('doğum+35: "Bu ilk âdetim" → onay → onaylı âdet kaydı', (t) async {
     await open(t);
-    await t.tap(find.text('Bu ilk adetim'));
+    await t.tap(find.text('Bu ilk âdetim'));
     await t.pumpAndSettle();
     expect(textHas(body), findsOneWidget);
-    await t.tap(find.text('İlk adetim olarak kaydet'));
+    await t.tap(find.text('İlk âdetim olarak kaydet'));
     await t.pumpAndSettle();
     expect(saved, hasLength(1));
     expect(saved.single.$2, isTrue);
@@ -86,7 +86,7 @@ void main() {
 
   testWidgets('doğum+35: onay yerine "Loşia olarak kaydet" → onaysız', (t) async {
     await open(t);
-    await t.tap(find.text('Bu ilk adetim'));
+    await t.tap(find.text('Bu ilk âdetim'));
     await t.pumpAndSettle();
     await t.tap(find.text('Loşia olarak kaydet'));
     await t.pumpAndSettle();
@@ -101,13 +101,13 @@ void main() {
           lifecycleMode: CycleLifecycleMode.postpartum,
           predictionsHidden: true,
         ));
-    expect(textHas('kayıt ekranında "Bu ilk adetim"i seçebilirsin'), findsOneWidget);
-    expect(textHas('ilk adet olarak kabul edilmez'), findsNothing);
+    expect(textHas('kayıt ekranında "Bu ilk âdetim"i seçebilirsin'), findsOneWidget);
+    expect(textHas('ilk âdet olarak kabul edilmez'), findsNothing);
   });
 
   testWidgets('doğum+60: seçenek görünmez', (t) async {
     await open(t, birthDaysAgo: 60);
-    expect(find.text('Bu ilk adetim'), findsNothing);
+    expect(find.text('Bu ilk âdetim'), findsNothing);
   });
 
   group('repository (gerçek)', () {

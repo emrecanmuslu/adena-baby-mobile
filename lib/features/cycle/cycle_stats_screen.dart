@@ -68,9 +68,9 @@ class CycleStatsScreen extends ConsumerWidget {
             const SizedBox(height: 14),
             Text(
                 mode == CycleMode.lochia
-                    ? tr('Henüz lohusalık dönemindesin. İlk adetin döndüğünde döngü '
+                    ? tr('Henüz lohusalık dönemindesin. İlk âdetin döndüğünde döngü '
                         'analizi burada oluşur.')
-                    : tr('Döngün henüz oturmadı. İlk adetini kaydettiğinde analiz '
+                    : tr('Döngün henüz oturmadı. İlk âdetini kaydettiğinde analiz '
                         'burada görünecek.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -141,7 +141,7 @@ class _StatsView extends StatelessWidget {
               ),
             ),
           )),
-          CycEyebrow(tr('Adet süresi')),
+          CycEyebrow(tr('Âdet süresi')),
           cycCard(context, soft: true, child: _durationBars(last6)),
         ] else
           Padding(

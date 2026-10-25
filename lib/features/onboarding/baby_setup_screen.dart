@@ -112,7 +112,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
         // TDT = SAT + 280: daha eski SAT geçmişte bir TDT üretirdi.
         firstDate: now.subtract(const Duration(days: _gestationDays)),
         lastDate: now,
-        helpText: tr('Son adet tarihi (SAT)'),
+        helpText: tr('Son âdet tarihi (SAT)'),
       );
       if (picked != null) {
         setState(() {
@@ -151,7 +151,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
     if (_date == null) {
       _snack(_status == BabyStatus.born
           ? tr('Doğum tarihini seç')
-          : (_useLmp ? tr('Son adet tarihini seç') : tr('Tahmini doğum tarihini seç')));
+          : (_useLmp ? tr('Son âdet tarihini seç') : tr('Tahmini doğum tarihini seç')));
       return;
     }
     setState(() => _saving = true);
@@ -270,12 +270,12 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                 AdField(
                   label: tr('Tarihi nasıl gireceksin?'),
                   info: tr('Tahmini doğum tarihini biliyorsan onu seç. Bilmiyorsan '
-                      'son adet tarihini (SAT) seç — doğum tarihini biz hesaplarız '
+                      'son âdet tarihini (SAT) seç — doğum tarihini biz hesaplarız '
                       '(SAT + 40 hafta). Doktorunun verdiği tarih önceliklidir.'),
                   child: AdTabs(
                     options: {
                       'due': tr('Tahmini doğum tarihi'),
-                      'lmp': tr('Son adet (SAT)'),
+                      'lmp': tr('Son âdet (SAT)'),
                     },
                     selected: _useLmp ? 'lmp' : 'due',
                     onSelect: (v) => setState(() {
@@ -289,7 +289,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
               AdField(
                 label: isBorn
                     ? tr('Doğum tarihi')
-                    : (_useLmp ? tr('Son adet tarihi (SAT)') : tr('Tahmini doğum tarihi')),
+                    : (_useLmp ? tr('Son âdet tarihi (SAT)') : tr('Tahmini doğum tarihi')),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

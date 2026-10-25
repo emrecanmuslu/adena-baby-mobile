@@ -83,7 +83,7 @@ class DiscoverScreen extends ConsumerWidget {
               icon: 'heart',
               color: AppColors.roseD,
               bg: AppColors.roseBg,
-              title: tr('Adet Takvimi'),
+              title: tr('Âdet Takvimi'),
               meta: tr('Doğum sonrası döngü & loşia takibi · kişisel'),
               onTap: () => context.push('/cycle'),
             ),

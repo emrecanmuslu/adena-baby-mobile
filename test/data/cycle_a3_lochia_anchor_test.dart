@@ -85,7 +85,7 @@ void main() {
       expect(s.predictionsHidden, isTrue);
     });
 
-    test('doğum+50 onaysız → çapa yok; "ilk adetim" onayıyla → çapa + takip', () async {
+    test('doğum+50 onaysız → çapa yok; "ilk âdetim" onayıyla → çapa + takip', () async {
       await postpartum();
       await flow(pp(50));
       expect((await repo().getSettings()).firstPeriodDate, isNull);

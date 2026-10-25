@@ -185,7 +185,7 @@ void main() {
       expect(r.pushError, isNull);
     });
 
-    test('adet ayarı: GET /cycle/settings uygulanır', () async {
+    test('âdet ayarı: GET /cycle/settings uygulanır', () async {
       await db.into(db.cycleSettingsTable).insert(CycleSettingsTableCompanion.insert(
           id: const Value('u1'), pushError: const Value('HTTP 400'), dirty: const Value(true)));
       adapter.onGet('/cycle/settings', (s) => s.reply(200, {'enabled': false, 'reminders': {}}));

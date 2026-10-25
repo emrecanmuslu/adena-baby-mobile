@@ -49,7 +49,7 @@ void main() {
     await t.pumpAndSettle();
   }
 
-  testWidgets('doğum+50: loşia rengi alanı açık; akış → soru → "İlk adetim"',
+  testWidgets('doğum+50: loşia rengi alanı açık; akış → soru → "İlk âdetim"',
       (t) async {
     await open(t, birthDaysAgo: 50);
     expect(textHas('LOHUSALIK KANAMASI RENGİ'), findsOneWidget);
@@ -57,8 +57,8 @@ void main() {
     await t.pump();
     await t.tap(find.text('Kaydet'));
     await t.pumpAndSettle();
-    expect(textHas('Bu loşia (lohusa kanaması) mı, ilk adetin mi?'), findsOneWidget);
-    await t.tap(find.text('İlk adetim'));
+    expect(textHas('Bu loşia (lohusa kanaması) mı, ilk âdetin mi?'), findsOneWidget);
+    await t.tap(find.text('İlk âdetim'));
     await t.pumpAndSettle();
     expect(calls, [true]);
   });
@@ -80,7 +80,7 @@ void main() {
     await t.pump();
     await t.tap(find.text('Kaydet'));
     await t.pumpAndSettle();
-    expect(textHas('ilk adetin mi?'), findsNothing);
+    expect(textHas('ilk âdetin mi?'), findsNothing);
     expect(calls, [false]);
   });
 

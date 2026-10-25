@@ -111,9 +111,9 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
     final r = await showDialog<String>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text(tr('Bu loşia (lohusa kanaması) mı, ilk adetin mi?')),
+        title: Text(tr('Bu loşia (lohusa kanaması) mı, ilk âdetin mi?')),
         content: Text(tr('Doğumdan sonraki ilk 8 haftada kanama çoğunlukla '
-            'loşiadır. İlk adetin olduğunu düşünüyorsan döngü takibi bu günden '
+            'loşiadır. İlk âdetin olduğunu düşünüyorsan döngü takibi bu günden '
             'başlar.')),
         actions: [
           TextButton(
@@ -121,7 +121,7 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
               child: Text(tr('Loşia'))),
           FilledButton(
               onPressed: () => Navigator.pop(c, 'first'),
-              child: Text(tr('İlk adetim'))),
+              child: Text(tr('İlk âdetim'))),
         ],
       ),
     );
@@ -141,9 +141,9 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
     final r = await showDialog<String>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text(tr('Bu ilk adetim')),
+        title: Text(tr('Bu ilk âdetim')),
         content: Text(tr('Doğumdan sonraki ilk haftalardaki kanama çoğunlukla '
-            'loşiadır. Bunun ilk adetin olduğundan eminsen kaydedebilirsin; adet '
+            'loşiadır. Bunun ilk âdetin olduğundan eminsen kaydedebilirsin; âdet '
             'takvimin bu günden başlar.')),
         actions: [
           TextButton(
@@ -151,7 +151,7 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
               child: Text(tr('Loşia olarak kaydet'))),
           FilledButton(
               onPressed: () => Navigator.pop(c, 'first'),
-              child: Text(tr('İlk adetim olarak kaydet'))),
+              child: Text(tr('İlk âdetim olarak kaydet'))),
         ],
       ),
     );
@@ -358,7 +358,7 @@ class _CycleEntrySheetState extends ConsumerState<_CycleEntrySheet> {
             child: TextButton.icon(
               onPressed: _saving ? null : _confirmEarlyFirstPeriod,
               icon: Icon(Icons.water_drop_outlined, size: 16, color: AppColors.roseD),
-              label: Text(tr('Bu ilk adetim'),
+              label: Text(tr('Bu ilk âdetim'),
                   style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w800,

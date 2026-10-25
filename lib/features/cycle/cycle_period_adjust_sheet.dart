@@ -317,7 +317,7 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
                 icon: Icon(Icons.close_rounded, color: AppColors.muted),
               ),
               Expanded(
-                child: Text(tr('Adet günlerini düzenle'),
+                child: Text(tr('Âdet günlerini düzenle'),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 16.5, fontWeight: FontWeight.w900)),
@@ -335,7 +335,7 @@ class _PeriodAdjustSheetState extends ConsumerState<_PeriodAdjustSheet> {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                    tr('Başlangıç gününe dokun → adet otomatik dolar; işaretliye dokun = kaldır'),
+                    tr('Başlangıç gününe dokun → âdet otomatik dolar; işaretliye dokun = kaldır'),
                     style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,

@@ -269,8 +269,8 @@ class NotificationsScreen extends ConsumerWidget {
             icon: 'heart',
             color: AppColors.rose,
             bg: AppColors.roseBg,
-            title: tr('Adet Takvimi hatırlatıcıları'),
-            meta: tr('Yaklaşan adet · doğurganlık · PMS · günlük kayıt'),
+            title: tr('Âdet Takvimi hatırlatıcıları'),
+            meta: tr('Yaklaşan âdet · doğurganlık · PMS · günlük kayıt'),
             onTap: () => context.push('/cycle/settings'),
           ),
 

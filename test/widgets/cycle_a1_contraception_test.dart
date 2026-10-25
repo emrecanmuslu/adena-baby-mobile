@@ -14,7 +14,7 @@ import 'cycle_screen_harness.dart';
 void main() {
   const noContra = 'Bu bir tahmindir; gebelikten korunma için kullanılamaz.';
   const disclaimer =
-      'Adet takvimi tahmine dayalıdır ve bir doğum kontrol yöntemi değildir.';
+      'Âdet takvimi tahmine dayalıdır ve bir doğum kontrol yöntemi değildir.';
 
   // 28 günlük düzenli döngü; bugün 15. gün = tahmini ovülasyon.
   CycleSettings base(
@@ -65,7 +65,7 @@ void main() {
     expect(textHas(noContra), findsWidgets);
   });
 
-  testWidgets('adet ayarları: kalıcı doğum kontrolü uyarı satırı', (t) async {
+  testWidgets('âdet ayarları: kalıcı doğum kontrolü uyarı satırı', (t) async {
     await pumpCycleScreen(t, const CycleSettingsScreen(), settings: base());
     expect(textHas(disclaimer), findsOneWidget);
   });

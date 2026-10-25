@@ -30,7 +30,7 @@ void main() {
     expect(find.text('12'), findsOneWidget);
     expect(find.text('10'), findsNothing);
     expect(textHas(fmtDayMonthYear(due)), findsOneWidget);
-    expect(textHas('son adetinden hesaplanır'), findsNothing);
+    expect(textHas('son âdetinden hesaplanır'), findsNothing);
   });
 
   testWidgets('bebek yoksa SAT\'tan hesaplanır (eski davranış)', (t) async {
@@ -41,6 +41,6 @@ void main() {
           lifecycleMode: CycleLifecycleMode.pregnant,
         ));
     expect(find.text('10'), findsOneWidget);
-    expect(textHas('son adetinden hesaplanır'), findsOneWidget);
+    expect(textHas('son âdetinden hesaplanır'), findsOneWidget);
   });
 }

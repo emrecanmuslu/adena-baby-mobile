@@ -113,7 +113,7 @@ class _PrematureSectionState extends State<PrematureSection> {
   @override
   Widget build(BuildContext context) {
     return AdField(
-      label: tr('Prematüre doğdu mu?'),
+      label: tr('Erken mi doğdu? (prematüre)'),
       info: tr('Bebeğin 37. gebelik haftasından önce doğduysa prematüredir. '
           'Doğumdaki gebelik haftasını girersen, büyüme ve gelişimi "düzeltilmiş '
           'yaşa" (olması gereken doğum tarihine) göre değerlendiririz. Aşı takvimi '

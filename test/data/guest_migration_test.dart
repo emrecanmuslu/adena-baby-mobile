@@ -52,15 +52,15 @@ void main() {
 
   CycleRepository repo() => CycleRepository(db, api, () => false);
 
-  group('K7 — hasData adet verisini de sayar', () {
-    test('yalnız adet kaydı olan misafir → true', () async {
+  group('K7 — hasData âdet verisini de sayar', () {
+    test('yalnız âdet kaydı olan misafir → true', () async {
       await repo().saveEntry(
           CycleEntry(id: '', date: DateTime(2026, 5, 1), flow: FlowLevel.medium));
       expect(await GuestMigration.hasData(db, newAcct), isTrue);
       expect(await GuestMigration.hasBabyData(db, newAcct), isFalse);
     });
 
-    test('yalnız kurulmuş adet ayarı olan misafir → true', () async {
+    test('yalnız kurulmuş âdet ayarı olan misafir → true', () async {
       await repo().patchSettings({'breastfeeding': 'exclusive'});
       expect(await GuestMigration.hasData(db, newAcct), isTrue);
     });
@@ -71,7 +71,7 @@ void main() {
     });
   });
 
-  group('K7 — migrateData adet kayıtlarını taşır', () {
+  group('K7 — migrateData âdet kayıtlarını taşır', () {
     test('kayıtlar yeni hesap kapsamında görünür ve dirty', () async {
       final e = await repo().saveEntry(
           CycleEntry(id: '', date: DateTime(2026, 5, 1), flow: FlowLevel.medium));
@@ -95,7 +95,7 @@ void main() {
   });
 
   // ───────── K8: misafir göçünde adet ayarı ─────────
-  group('K8 — adet ayarı göçü', () {
+  group('K8 — âdet ayarı göçü', () {
     /// initialImport'un yazdığı "sunucu varsayılanı" satırı (kurulum yok:
     /// breastfeeding boş, çapa yok, mode tracking). Backend get_or_create
     /// ile aynen böyle üretir.

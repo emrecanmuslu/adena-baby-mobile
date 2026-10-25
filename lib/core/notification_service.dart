@@ -1010,7 +1010,7 @@ class NotificationService {
           .subtract(Duration(days: periodLeadDays));
       if (at.isAfter(now)) {
         // C3: tahmine dayalı → "tahmini".
-        await _scheduleOnce(_cycleBase + 0, at, tr('Adetin yaklaşıyor (tahmini) 🌸'));
+        await _scheduleOnce(_cycleBase + 0, at, tr('Âdetin yaklaşıyor (tahmini) 🌸'));
       }
     }
     if (on('fertile') && fertileStart != null) {

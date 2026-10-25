@@ -73,7 +73,7 @@ class _CycleStartScreenState extends ConsumerState<CycleStartScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final picked = await showOnbDatePicker(
       context,
-      title: tr('Son adet tarihi'),
+      title: tr('Son âdet tarihi'),
       initial: _lastPeriod ?? today,
       first: today.subtract(const Duration(days: 365)),
       last: today,
@@ -156,7 +156,7 @@ class _CycleStartScreenState extends ConsumerState<CycleStartScreen> {
                             const SizedBox(height: 10),
                           ],
                           Text(
-                            tr('Son adetin ne zaman başladı?'),
+                            tr('Son âdetin ne zaman başladı?'),
                             style: onbTitleStyle,
                           ),
                           const SizedBox(height: 8),
@@ -217,7 +217,7 @@ class _CycleStartScreenState extends ConsumerState<CycleStartScreen> {
                                           Text(
                                             filled
                                                 ? fmtDayMonthYear(_lastPeriod!)
-                                                : tr('Son adet tarihini seç'),
+                                                : tr('Son âdet tarihini seç'),
                                             style: TextStyle(
                                               fontSize: 18,
                                               fontWeight: FontWeight.w900,

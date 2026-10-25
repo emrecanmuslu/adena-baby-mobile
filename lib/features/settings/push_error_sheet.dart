@@ -57,8 +57,8 @@ class _PushErrorSheetState extends ConsumerState<_PushErrorSheet> {
         PushErrorKind.baby => tr('Bebek'),
         PushErrorKind.memory => tr('Anı'),
         PushErrorKind.mom => tr('Anne takibi'),
-        PushErrorKind.cycleEntry => tr('Adet'),
-        PushErrorKind.cycleSettings => tr('Adet ayarları'),
+        PushErrorKind.cycleEntry => tr('Âdet'),
+        PushErrorKind.cycleSettings => tr('Âdet ayarları'),
         PushErrorKind.health => tr('Gelişim'),
       };
 

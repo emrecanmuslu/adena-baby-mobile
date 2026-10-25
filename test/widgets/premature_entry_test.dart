@@ -56,7 +56,7 @@ void main() {
         (tester) async {
       await tester.pumpWidget(_wrap(const _Host(born: true)));
       expect(find.byType(PrematureSection), findsOneWidget);
-      expect(find.text('PREMATÜRE DOĞDU MU?'), findsOneWidget); // AdField label
+      expect(find.text('ERKEN Mİ DOĞDU? (PREMATÜRE)'), findsOneWidget); // AdField label
       expect(find.text('Hayır'), findsOneWidget);
       expect(find.text('Evet'), findsOneWidget);
     });
@@ -64,7 +64,7 @@ void main() {
     testWidgets('bekleme (expecting) modunda gizli', (tester) async {
       await tester.pumpWidget(_wrap(const _Host(born: false)));
       expect(find.byType(PrematureSection), findsNothing);
-      expect(find.text('PREMATÜRE DOĞDU MU?'), findsNothing);
+      expect(find.text('ERKEN Mİ DOĞDU? (PREMATÜRE)'), findsNothing);
     });
 
     testWidgets('kapalıyken gebelik haftası alanı gizli', (tester) async {

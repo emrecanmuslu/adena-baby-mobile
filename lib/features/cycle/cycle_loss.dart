@@ -94,7 +94,7 @@ Future<void> showCycleLossOrEnd(
               tr('Kayıp — sana destek olalım'), 'loss'),
           const SizedBox(height: 10),
           _choice(ctx, Icons.calendar_month_rounded, AppColors.rose,
-              tr('Adet takibine dön'),
+              tr('Âdet takibine dön'),
               tr('Yeniden döngü takibi'), 'tracking'),
         ]),
       ),
@@ -117,7 +117,7 @@ Future<void> showCycleLossOrEnd(
       } else {
         await returnToTrackingFromLoss(ref);
       }
-      if (context.mounted) showAdToast(context, tr('Adet takibine dönüldü'));
+      if (context.mounted) showAdToast(context, tr('Âdet takibine dönüldü'));
     }
   } catch (e) {
     if (context.mounted) showAdError(context, apiErrorText(e));
@@ -306,7 +306,7 @@ List<Widget> cycleLossToday(
         icon: Icons.schedule_rounded,
         // S12: ~2 hafta bilgisi erken kayıplar için.
         body: tr('Erken kayıplarda ovülasyon genellikle ~2 hafta içinde dönebilir; '
-            'ilk adet çoğunlukla 4–6 hafta sonra gelir.')),
+            'ilk âdet çoğunlukla 4–6 hafta sonra gelir.')),
     const SizedBox(height: 10),
     cycNote(context,
         icon: Icons.science_outlined,
@@ -315,7 +315,7 @@ List<Widget> cycleLossToday(
     const SizedBox(height: 10),
     cycNote(context,
         icon: Icons.favorite_border_rounded,
-        body: tr('İlk adetin gelmeden de gebe kalabilirsin. Fiziksel/duygusal '
+        body: tr('İlk âdetin gelmeden de gebe kalabilirsin. Fiziksel/duygusal '
             'iyileşme için sağlık uzmanına danışabilirsin.')),
     const SizedBox(height: 22),
     cycCta(context, tr('Takibe hazırım — döngüme dön'), onTap: () async {

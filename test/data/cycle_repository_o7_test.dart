@@ -75,7 +75,7 @@ void main() {
           id: '', date: DateTime(2026, 5, day), flow: flow, note: note));
 
   // ───────── MEVCUT API ─────────
-  group('O7 adet — pull (importFromCloud)', () {
+  group('O7 âdet — pull (importFromCloud)', () {
     test('dirty yerel düzenleme korunur (R1)', () async {
       final e = await save(20, note: 'Yerel');
       adapter.onGet('/cycle/settings', (s) => s.reply(200, {}));
@@ -194,7 +194,7 @@ void main() {
     });
   });
 
-  group('O7 adet — push', () {
+  group('O7 âdet — push', () {
     test('DELETE 404 → yerel temizlenir, tekrar denenmez', () async {
       final e = await save(1);
       await localRepo().deleteEntry(e.id);
@@ -221,7 +221,7 @@ void main() {
   });
 
   // ───────── YENİ API ─────────
-  group('O7 adet — bulk failed[] + pushErrors', () {
+  group('O7 âdet — bulk failed[] + pushErrors', () {
     test('failed[] satırı dirty kalır ve pushErrors\'a yazılır; saved temizlenir',
         () async {
       final ok = await save(1);
@@ -261,7 +261,7 @@ void main() {
   });
 
   // ───────── O8 (istemci kısmı): aynı güne eşzamanlı çift kayıt ─────────
-  group('O8 adet — saveEntry serileştirme', () {
+  group('O8 âdet — saveEntry serileştirme', () {
     test('aynı güne eşzamanlı iki saveEntry → TEK satır (aynı id)', () async {
       final repo = localRepo();
       final e1 = CycleEntry(id: '', date: DateTime(2026, 6, 1), flow: FlowLevel.medium);

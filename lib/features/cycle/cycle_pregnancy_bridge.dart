@@ -115,7 +115,7 @@ Future<void> startCyclePregnancy(
           const SizedBox(height: 10),
           if (info != null) ...[
             Text(
-                trp('Son adet verine göre yaklaşık {w} hafta {d} günlük gebe '
+                trp('Son âdet verine göre yaklaşık {w} hafta {d} günlük gebe '
                     'görünüyorsun.', {'w': info.weeks, 'd': info.days}),
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -141,7 +141,7 @@ Future<void> startCyclePregnancy(
               ]),
             ),
             const SizedBox(height: 6),
-            Text(tr('Bu tarih son adetinden hesaplanır; ultrason sonucuna göre '
+            Text(tr('Bu tarih son âdetinden hesaplanır; ultrason sonucuna göre '
                 'ana gebelik ekranından düzeltebilirsin.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(

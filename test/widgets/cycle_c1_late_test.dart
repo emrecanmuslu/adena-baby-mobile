@@ -12,7 +12,7 @@ import 'cycle_screen_harness.dart';
 /// döngüde ≥90 gün, kayıptan +8 hafta, emzirmeyen lohusada doğumdan +12 hafta;
 /// emziren lohusada GÖSTERİLMEZ.
 void main() {
-  const card = 'Uzun süredir adet görmedin — hekimine danışmanı öneririz';
+  const card = 'Uzun süredir âdet görmedin — hekimine danışmanı öneririz';
   final today = DateTime(2026, 10, 11);
   DateTime d(int off) => DateTime(2026, 10, 11 + off);
   List<CycleEntry> runs(List<int> starts) => [
@@ -24,15 +24,15 @@ void main() {
       longAmenorrheaWarning(s, computeStatus(s, e, today: today), today: today);
 
   group('longAmenorrheaWarning', () {
-    test('düzenli döngü, son adetten 95 gün → kart', () {
+    test('düzenli döngü, son âdetten 95 gün → kart', () {
       final s = CycleSettings(firstPeriodDate: d(-151));
       expect(warn(s, runs([-151, -123, -95])), isTrue);
     });
-    test('düzenli döngü, son adetten 60 gün → kart yok', () {
+    test('düzenli döngü, son âdetten 60 gün → kart yok', () {
       final s = CycleSettings(firstPeriodDate: d(-116));
       expect(warn(s, runs([-116, -88, -60])), isFalse);
     });
-    test('kayıptan +8 hafta, adet yok → kart; +3 hafta → yok', () {
+    test('kayıptan +8 hafta, âdet yok → kart; +3 hafta → yok', () {
       expect(
           warn(CycleSettings(
               lastLossDate: d(-57),

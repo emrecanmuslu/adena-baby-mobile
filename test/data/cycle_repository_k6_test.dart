@@ -85,7 +85,7 @@ void main() {
   });
 
   group('D33 — çapa gününün işareti kalkınca çapa taşınır', () {
-    test('deleteEntry(çapa günü) → çapa kalan en eski adet gününe; hayalet başlangıç yok',
+    test('deleteEntry(çapa günü) → çapa kalan en eski âdet gününe; hayalet başlangıç yok',
         () async {
       await repo().patchSettings({'first_period_date': '2026-05-01'});
       final a = await period(5, 1);
@@ -118,7 +118,7 @@ void main() {
       expect((await repo().getSettings()).firstPeriodDate, DateTime(2026, 5, 2));
     });
 
-    test('kalan adet günü yoksa çapa KORUNUR', () async {
+    test('kalan âdet günü yoksa çapa KORUNUR', () async {
       await repo().patchSettings({'first_period_date': '2026-05-01'});
       final a = await period(5, 1);
       await repo().deleteEntry(a.id);
@@ -133,7 +133,7 @@ void main() {
       expect((await repo().getSettings()).firstPeriodDate, DateTime(2026, 5, 1));
     });
 
-    test('kurulum çapası (kayıtsız) sonraki ilk adet kaydıyla OYNAMAZ', () async {
+    test('kurulum çapası (kayıtsız) sonraki ilk âdet kaydıyla OYNAMAZ', () async {
       // Sihirbaz "son adet 1 Mayıs" dedi, kayıt yok; 29 Mayıs adet loglandı.
       await repo().patchSettings({'first_period_date': '2026-05-01'});
       await period(5, 29);

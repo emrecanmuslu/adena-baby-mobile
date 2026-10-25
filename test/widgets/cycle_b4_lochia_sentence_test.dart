@@ -10,12 +10,12 @@ import 'cycle_screen_harness.dart';
 /// ilk adettir" yerine dengeli cümle + yeniden parlak kırmızı kanamada hekim.
 void main() {
   const fresh = 'Kanama kesildikten sonra başlayan ve 4–7 gün süren düzenli bir '
-      'kanama ilk adetin olabilir. Yeniden parlak kırmızı ve yoğunlaşan '
+      'kanama ilk âdetin olabilir. Yeniden parlak kırmızı ve yoğunlaşan '
       'kanamada hekimine başvur.';
 
   test('bilgi metni dengeli cümleyi taşır', () {
     expect(CycleInfo.lochiaVsPeriod, contains(fresh));
-    expect(CycleInfo.lochiaVsPeriod, isNot(contains('muhtemelen ilk adettir')));
+    expect(CycleInfo.lochiaVsPeriod, isNot(contains('muhtemelen ilk âdettir')));
   });
 
   testWidgets('loşia ekranı dengeli cümleyi gösterir', (t) async {
@@ -27,6 +27,6 @@ void main() {
           predictionsHidden: true,
         ));
     expect(textHas(fresh), findsOneWidget);
-    expect(textHas('muhtemelen ilk adettir'), findsNothing);
+    expect(textHas('muhtemelen ilk âdettir'), findsNothing);
   });
 }
