@@ -18,6 +18,54 @@ import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 import '../babies/premature_section.dart';
 
+/// Yeni bebeği oluşturur, aktif yapar ve (gebelikse) Adet Takvimi'ni eşitler.
+/// Onboarding profil formu ve "Bebek ekle" ekranı ortak kullanır.
+Future<Baby> createBaby(
+  WidgetRef ref, {
+  required String name,
+  required BabyStatus status,
+  required BabyGender gender,
+  required DateTime date,
+  DateTime? lmp,
+  int? gestWeeks,
+  int gestDays = 0,
+}) async {
+  final born = status == BabyStatus.born;
+  final baby = await ref.read(babyControllerProvider.notifier).create(
+        name: name,
+        status: status,
+        gender: gender,
+        birthDate: born ? date : null,
+        dueDate: born ? null : date,
+        gestationalWeeks: born ? gestWeeks : null,
+        gestationalDays: born ? gestDays : 0,
+      );
+  ref.read(activeBabyIdProvider.notifier).set(baby.id);
+  // İleri senkron: Adet Takvimi kuruluysa ve gebelik (bekleme) bebeği
+  // eklendiyse yaşam-döngüsü de gebeliğe geçer — aksi halde bebek tarafı
+  // gebelik gösterirken adet ekranı takip/TTC'de kalırdı (çift durum).
+  // SAT girildiyse çapa da güncellenir (gebelik özeti LMP'den hesaplanır).
+  if (!born) {
+    try {
+      final repo = ref.read(cycleRepositoryProvider);
+      final cs = await repo.getSettings();
+      if (cs.breastfeeding != null &&
+          cs.lifecycleMode != CycleLifecycleMode.pregnant) {
+        await repo.patchSettings({
+          'lifecycle_mode': CycleLifecycleMode.pregnant.name,
+          'predictions_hidden': false,
+          'baby': baby.id,
+          if (lmp != null)
+            'first_period_date': '${lmp.year.toString().padLeft(4, '0')}-'
+                '${lmp.month.toString().padLeft(2, '0')}-'
+                '${lmp.day.toString().padLeft(2, '0')}',
+        });
+      }
+    } catch (_) {}
+  }
+  return baby;
+}
+
 /// Bebek kurulumu formu: ad/tarih → oluştur.
 /// [onboarding] true → ilk kurulum (WelcomeChoiceScreen'den gelinir; [initialStatus]
 /// seçilen hedefi taşır, "Doğdu/Bekliyoruz" anahtarı gizlenir); false → ek bebek
@@ -129,38 +177,16 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
       // ana sayfa bayraktan önce okuyup ekranı atlıyor, bayrak sonraki rastgele
       // bir açılışa kalıyordu. Tek-kez garantisi OnboardingPaywall'da.
       if (widget.onboarding) await OnboardingPaywall.markPending();
-      final baby = await ref.read(babyControllerProvider.notifier).create(
-            name: name,
-            status: _status,
-            gender: _gender,
-            birthDate: _status == BabyStatus.born ? _date : null,
-            dueDate: _status == BabyStatus.expecting ? _date : null,
-            gestationalWeeks: _status == BabyStatus.born ? _gestWeeks : null,
-            gestationalDays: _status == BabyStatus.born ? _gestDays : 0,
-          );
-      ref.read(activeBabyIdProvider.notifier).set(baby.id);
-      // İleri senkron: Adet Takvimi kuruluysa ve gebelik (bekleme) bebeği
-      // eklendiyse yaşam-döngüsü de gebeliğe geçer — aksi halde bebek tarafı
-      // gebelik gösterirken adet ekranı takip/TTC'de kalırdı (çift durum).
-      // SAT girildiyse çapa da güncellenir (gebelik özeti LMP'den hesaplanır).
-      if (_status == BabyStatus.expecting) {
-        try {
-          final repo = ref.read(cycleRepositoryProvider);
-          final cs = await repo.getSettings();
-          if (cs.breastfeeding != null &&
-              cs.lifecycleMode != CycleLifecycleMode.pregnant) {
-            await repo.patchSettings({
-              'lifecycle_mode': CycleLifecycleMode.pregnant.name,
-              'predictions_hidden': false,
-              'baby': baby.id,
-              if (_useLmp && _lmp != null)
-                'first_period_date': '${_lmp!.year.toString().padLeft(4, '0')}-'
-                    '${_lmp!.month.toString().padLeft(2, '0')}-'
-                    '${_lmp!.day.toString().padLeft(2, '0')}',
-            });
-          }
-        } catch (_) {}
-      }
+      await createBaby(
+        ref,
+        name: name,
+        status: _status,
+        gender: _gender,
+        date: _date!,
+        lmp: _useLmp ? _lmp : null,
+        gestWeeks: _gestWeeks,
+        gestDays: _gestDays,
+      );
       // Onboarding'de router redirect ana sayfaya götürür; ek bebekte elle dön.
       if (!widget.onboarding && mounted) context.go('/home');
     } catch (e) {

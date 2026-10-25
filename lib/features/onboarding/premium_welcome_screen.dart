@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
@@ -19,6 +20,7 @@ import '../../core/theme.dart';
 import '../../data/subscription_repository.dart';
 import '../../models/baby.dart';
 import '../../models/pricing.dart';
+import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 
 /// **Premium Karşılama Ekranı** (onboarding paywall) — bebek kurulumundan hemen
@@ -135,6 +137,16 @@ class _PremiumWelcomeScreenState extends ConsumerState<PremiumWelcomeScreen> {
   }
 
   Future<void> _subscribe() async {
+    // Premium hesaba bağlıdır (RevenueCat entitlement + bulut yedek): hesapsız
+    // kullanıcı önce ücretsiz hesap oluşturur; hesap açılınca ana sayfa
+    // Premium sayfasını kendiliğinden açar (bkz. pendingPremiumProvider).
+    if (ref.read(authControllerProvider).asData?.value == null) {
+      final router = GoRouter.of(context);
+      ref.read(pendingPremiumProvider.notifier).set(true);
+      Navigator.of(context).maybePop();
+      router.push('/register?ctx=premium');
+      return;
+    }
     final pkg = _packageFor(_plan);
     if (!_rc || pkg == null) {
       setState(() => _error =
@@ -661,6 +673,20 @@ class _PremiumWelcomeScreenState extends ConsumerState<PremiumWelcomeScreen> {
             ),
           ),
         ),
+        // Misafir: satın almadan önce hesap oluşturulacağını önceden söyle.
+        if (ref.watch(authControllerProvider).asData?.value == null) ...[
+          const SizedBox(height: 10),
+          Text(
+            tr('Satın almadan önce ücretsiz bir hesap oluşturacağız — '
+                'verilerin buluta yedeklensin.'),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink),
+          ),
+        ],
         const SizedBox(height: 9),
         Text(
           tr('İstediğin zaman iptal edebilirsin. Ömürlük plan tek seferlik '

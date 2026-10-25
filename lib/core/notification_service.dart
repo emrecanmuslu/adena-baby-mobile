@@ -16,6 +16,7 @@ import '../models/reminder.dart';
 import 'i18n.dart';
 import 'i18n_warm.dart';
 import 'modal_gate.dart';
+import 'notif_soft_ask.dart';
 
 /// Yerel bildirim servisi — hatırlatıcıları cihaz bildirimlerine bağlar.
 /// Üç tür: özel/randevu hatırlatıcıları (günlük veya tek-sefer), beslenme uyarısı
@@ -211,14 +212,17 @@ class NotificationService {
 
   /// Bildirim iznini ister (yalnız bir kez sorar). Android 13+ ve iOS.
   ///
-  /// Planlamayı BEKLETMEZ: izin penceresi uygun ana ertelenir
-  /// ([SystemPromptGate] — asıl ekrana ulaşılmış ve paywall/tur kapalıyken);
-  /// planlanan bildirimler izin verilince görünür olur. Eskiden bebek kurulur
+  /// Planlamayı BEKLETMEZ ve sistem penceresini bağlamsız AÇMAZ: yalnız
+  /// kullanıcı uygulama içi ön-izinde "Bildirimleri aç" dediyse ([NotifSoftAsk])
+  /// ve uygun anda ([SystemPromptGate] — asıl ekran, paywall/tur kapalı) ister.
+  /// Planlanan bildirimler izin verilince görünür olur. Eskiden bebek kurulur
   /// kurulmaz Premium Karşılama'nın, kayıt sonrası onboarding'in üstüne biniyordu.
   Future<void> _ensurePermission() async {
     if (_permissionAsked) return;
     _permissionAsked = true;
-    unawaited(SystemPromptGate.whenClear().then((_) async {
+    unawaited(() async {
+      if (!await NotifSoftAsk.accepted()) return;
+      await SystemPromptGate.whenClear();
       try {
         final android = _plugin.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
@@ -227,7 +231,7 @@ class NotificationService {
             IOSFlutterLocalNotificationsPlugin>();
         await ios?.requestPermissions(alert: true, badge: true, sound: true);
       } catch (_) {}
-    }));
+    }());
   }
 
   /// Cihaz (sistem) düzeyinde bildirim izni açık mı? Bildirimler ayar sayfası

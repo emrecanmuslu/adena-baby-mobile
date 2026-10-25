@@ -115,7 +115,8 @@ Future<void> requireAccount(
       ),
     ),
   );
-  if (go == true && context.mounted) context.push('/login');
+  // Hesapsız kullanıcı çoğunlukla yeni hesap açar → 'Hesap oluştur' sekmesi.
+  if (go == true && context.mounted) context.push('/register');
 }
 
 /// Premium tanıtım sayfası (alt sheet). Döner: kullanıcı "Premium'a Geç" dedi mi.

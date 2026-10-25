@@ -14,6 +14,7 @@ import 'i18n_warm.dart';
 import 'background_sync.dart';
 import 'medication/med_scheduler.dart';
 import 'modal_gate.dart';
+import 'notif_soft_ask.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
 
@@ -370,11 +371,14 @@ class PushService {
       });
     }
     try {
-      // İzin penceresi onboarding/paywall/tur üstüne açılmasın — kayıt olur
-      // olmaz hedef seçimi ekranının üstüne biniyordu. Asıl ekrana ulaşılıp
-      // öncelikli modallar kapanana kadar bekle (token kaydı da onunla ertelenir).
-      await SystemPromptGate.whenClear();
-      await FirebaseMessaging.instance.requestPermission();
+      // Sistem izin penceresi bağlamsız açılmaz: yalnız kullanıcı uygulama içi
+      // ön-izinde "Bildirimleri aç" dediyse ([NotifSoftAsk]) ve uygun anda
+      // (asıl ekran, paywall/tur kapalı). Aksi halde izin istenmeden token
+      // alınır (Android'de izinsiz de çalışır; iOS APNs token'ı izinden bağımsız).
+      if (await NotifSoftAsk.accepted()) {
+        await SystemPromptGate.whenClear();
+        await FirebaseMessaging.instance.requestPermission();
+      }
       // iOS: FCM token ancak APNs token hazır olunca gelir; biraz bekle.
       // (APNs token AppDelegate'te elle Messaging'e iletiliyor — UIScene fix.)
       // Gelmezse de yukarıdaki onTokenRefresh sonradan yakalar.

@@ -6,10 +6,13 @@ import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
 import '../../core/modal_gate.dart';
+import '../../core/onboarding_paywall.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
 import '../babies/baby_controller.dart';
+import '../onboarding/notif_soft_ask_sheet.dart';
+import '../onboarding/onboarding_kit.dart';
 import 'cycle_calendar_screen.dart';
 import 'cycle_pregnancy_bridge.dart';
 import 'cycle_setup_screen.dart';
@@ -30,6 +33,7 @@ class _CycleShellState extends ConsumerState<CycleShell>
     with WidgetsBindingObserver {
   int _index = 0;
   DateTime _day = _todayOnly();
+  bool _softAskChecked = false;
 
   static DateTime _todayOnly() {
     final n = DateTime.now();
@@ -46,6 +50,20 @@ class _CycleShellState extends ConsumerState<CycleShell>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Bildirim ön-izni — bebeksiz adet dalında kurulumdan sonraki günden
+  /// itibaren bir kez (kurulumun hemen ardından değil).
+  Future<void> _maybeSoftAsk(bool ttc) async {
+    final at = await OnboardingPaywall.onboardedAt();
+    if (!mounted || (at != null && DateUtils.isSameDay(at, DateTime.now()))) return;
+    ModalGate.acquire();
+    try {
+      await showNotifSoftAsk(context,
+          branch: ttc ? OnbBranch.ttc : OnbBranch.cycle);
+    } finally {
+      ModalGate.release();
+    }
   }
 
   /// Uzun uykudan/arka plandan dönüşte gün değiştiyse "bugün" yeniden hesaplansın.
@@ -96,6 +114,11 @@ class _CycleShellState extends ConsumerState<CycleShell>
         // Kurulum bitti, asıl ekrandayız → ertelenen sistem izin penceresi
         // (adet hatırlatıcıları) artık açılabilir.
         SystemPromptGate.markAppReady();
+        if (!_softAskChecked) {
+          _softAskChecked = true;
+          WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _maybeSoftAsk(settings.lifecycleMode == CycleLifecycleMode.ttc));
+        }
         return Scaffold(
           body: IndexedStack(
             index: _index,

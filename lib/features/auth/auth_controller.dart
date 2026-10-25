@@ -191,6 +191,14 @@ class AuthController extends AsyncNotifier<User?> {
       // Misafir verisi varsa "aktaralım mı?" sorusu AdenaApp dinleyicisinde sorulur.
       await ref.read(guestModeProvider.notifier).exit();
       LocalSession.setActiveAccount(u.id);
+      // Rıza bu cihazda "Başlamadan önce" sayfasında zaten alındıysa (aynı metin:
+      // 18+ ve Gizlilik/Şartlar) sunucuya da yaz — sosyal girişte rıza kapısı
+      // ikinci kez açılmasın. Hata olursa kapı yine güvenli yedek olarak açılır.
+      if (u.consentRequired && LocalSession.consent) {
+        try {
+          await recordConsent();
+        } catch (_) {}
+      }
       // J3: adet provider'ları state değişiminde (statik kapsam set edilmeden)
       // kurulmuş olabilir → statik güncellenince yeniden kur (syncIfCloud dahil).
       if (ref.mounted) {
@@ -357,3 +365,14 @@ final activeAccountIdProvider = Provider<String?>((ref) {
   }
   return null;
 });
+
+/// Hesapsız kullanıcı Premium almak istedi → hesap açılınca ana sayfa Premium
+/// sayfasını kendiliğinden açar (kullanıcı ikinci kez aramasın).
+class PendingPremium extends Notifier<bool> {
+  @override
+  bool build() => false;
+  void set(bool v) => state = v;
+}
+
+final pendingPremiumProvider =
+    NotifierProvider<PendingPremium, bool>(PendingPremium.new);

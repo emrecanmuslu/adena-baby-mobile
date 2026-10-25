@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ad_widgets.dart';
 import '../../core/i18n.dart';
+import '../../core/onboarding_paywall.dart';
 import '../../core/sync_alert_telemetry.dart';
 import '../../core/theme.dart';
 import '../../data/push_error_repository.dart';
@@ -25,6 +26,15 @@ class _NagDismiss extends Notifier<bool> {
 
 final _nagDismissedProvider =
     NotifierProvider<_NagDismiss, bool>(_NagDismiss.new);
+
+/// Yeni kurulumdan sonraki ilk günlerde uyarı gösterilmez — kullanıcı daha
+/// paywall'ı yeni kapatmışken ana ekranda ikinci bir premium dürtüsü görmesin.
+const _quietAfterOnboarding = Duration(days: 3);
+
+final _nagQuietProvider = FutureProvider<bool>((ref) async {
+  final at = await OnboardingPaywall.onboardedAt();
+  return at != null && DateTime.now().difference(at) < _quietAfterOnboarding;
+});
 
 /// Free kullanıcıya "verin yalnız bu telefonda, Premium ile yedekle" uyarısı.
 /// Local-first veri kaybı güvenlik ağı: cloud yedeği olmayan kullanıcıyı premium'a
@@ -50,6 +60,10 @@ class BackupNagBanner extends ConsumerWidget {
     // Premium süresi dolmuşsa farklı mesaj: veri yerelde güvende + grace.
     final sub = ref.watch(subscriptionProvider).asData?.value;
     final lapsed = sub?.isLapsed ?? false;
+    // Yüklenirken de sessiz (flaş olmasın); premium'u sona erenlere her zaman.
+    if (!lapsed && (ref.watch(_nagQuietProvider).asData?.value ?? true)) {
+      return const SizedBox.shrink();
+    }
     final graceLeft = lapsed ? sub!.graceDaysLeft() : 0;
     final title =
         lapsed ? tr('Premium\'un sona erdi') : tr('Verilerin yalnız bu telefonda');

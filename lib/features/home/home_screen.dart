@@ -47,7 +47,10 @@ import '../records/record_controller.dart';
 import '../records/record_form.dart';
 import '../records/record_ui.dart';
 import '../records/timeline_view.dart';
+import '../onboarding/notif_soft_ask_sheet.dart';
+import '../onboarding/onboarding_kit.dart';
 import '../settings/backup_nag.dart';
+import 'first_steps_card.dart';
 
 /// Ana ekran: aktif bebek başlığı + 3 sekme (Ana Sayfa·Akış·Grafikler) + merkez (+).
 class HomeScreen extends ConsumerStatefulWidget {
@@ -69,42 +72,73 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Bebek kurulumundan sonra bir kez: Premium Karşılama Ekranı.
-    // Kapıyı SENKRON tut: paywall gerekip gerekmediği ancak async prefs
-    // okumasından sonra belli olur, oysa tanıtım turu bu karede açılmak ister.
-    // Kapı tutuluyken tur ertelenir; kararı verince (ya da ekran kapanınca)
-    // bırakılır → ikisi üst üste binmez.
+    // Açılış modalları (bildirim ön-izni → Premium Karşılama) kararı async
+    // prefs okumasından sonra belli olur; o sürede kendiliğinden açılan başka
+    // modallar ("Dün nasıl geçti?" vb.) araya girmesin diye kapıyı SENKRON tut.
     ModalGate.acquire();
-    // Asıl ekrana ulaşıldı → ertelenen sistem izin penceresi (bildirim) artık
-    // açılabilir; yine de yukarıdaki kapı bırakılana kadar bekler.
+    // Asıl ekrana ulaşıldı → ertelenen sistem izin penceresi (yalnız ön-izinde
+    // "Bildirimleri aç" denmişse) artık açılabilir; kapı bırakılana kadar bekler.
     SystemPromptGate.markAppReady();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeWelcomePaywall());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startupModals());
   }
 
-  /// Sırada bekleyen karşılama paywall'ını (varsa) açar. Premium kullanıcıya
-  /// asla gösterilmez — bayrak sessizce kapatılır. Tek-kez garantisi ve
-  /// tüketim [OnboardingPaywall] tarafında.
-  Future<void> _maybeWelcomePaywall() async {
+  /// Açılışta sırayla: bildirim ön-izni (uygunsa) → Premium Karşılama (uygunsa).
+  Future<void> _startupModals() async {
     try {
+      final baby = ref.read(activeBabyProvider);
+      if (!mounted || baby == null) return;
+      final hasRecord = baby.isExpecting
+          ? false
+          : ((await ref.read(latestByTypeProvider(baby.id).future)).isNotEmpty);
       if (!mounted) return;
-      if (ref.read(isPremiumProvider)) {
-        unawaited(OnboardingPaywall.markShown());
-        return;
+      // Ön-izin: doğmuş bebekte ilk kayıt olduysa (yeni kurulumda kayıt anında
+      // ayrıca sorulur); bekleme modunda kurulumdan sonraki günden itibaren.
+      final at = await OnboardingPaywall.onboardedAt();
+      final nextDay = at == null || !DateUtils.isSameDay(at, DateTime.now());
+      if (!mounted) return;
+      if (baby.isExpecting ? nextDay : hasRecord) {
+        await showNotifSoftAsk(context,
+            branch: baby.isExpecting ? OnbBranch.preg : OnbBranch.baby);
       }
-      if (!await OnboardingPaywall.consume()) return;
-      if (!mounted) return;
-      // push future'ı BEKLENMEZ: go_router refreshListenable tetiklenince açık
-      // rotayı yeniden çözüp future'ın completer'ını yenisiyle değiştirir
-      // (flutter#128122) → `await` hiç dönmez, kapı sızar ve tur o oturumda
-      // hiç açılmazdı. Kapıyı ekranın kendisi ömrü boyunca tutar
-      // (PremiumWelcomeScreen initState→dispose); biz yalnız ekran kurulana
-      // kadar tutuyoruz ki arada tur araya girmesin.
-      unawaited(context.push('/premium-welcome'));
-      await WidgetsBinding.instance.endOfFrame;
-      await WidgetsBinding.instance.endOfFrame;
+      if (mounted) await _maybeWelcomePaywall(hasRecord: hasRecord);
     } finally {
       ModalGate.release();
     }
+  }
+
+  /// İlk kayıt (bu oturumda boş → dolu): ön-izin → Premium Karşılama.
+  Future<void> _afterFirstRecord() async {
+    // Kaydın formu kapansın ve "Kaydedildi" bildirimi (~2.8 sn) sayfanın
+    // butonunun üstüne binmesin diye bekle.
+    await Future.delayed(const Duration(milliseconds: 3200));
+    if (!mounted) return;
+    ModalGate.acquire();
+    try {
+      await showNotifSoftAsk(context, branch: OnbBranch.baby);
+      if (mounted) await _maybeWelcomePaywall(hasRecord: true);
+    } finally {
+      ModalGate.release();
+    }
+  }
+
+  /// Sırada bekleyen karşılama paywall'ını (varsa ve zamanı geldiyse) açar.
+  /// Premium kullanıcıya asla gösterilmez — bayrak sessizce kapatılır.
+  /// Tek-kez garantisi ve zamanlama [OnboardingPaywall] tarafında.
+  Future<void> _maybeWelcomePaywall({required bool hasRecord}) async {
+    if (ref.read(isPremiumProvider)) {
+      unawaited(OnboardingPaywall.markShown());
+      return;
+    }
+    if (!await OnboardingPaywall.consume(hasRecord: hasRecord)) return;
+    if (!mounted) return;
+    // push future'ı BEKLENMEZ: go_router refreshListenable tetiklenince açık
+    // rotayı yeniden çözüp future'ın completer'ını yenisiyle değiştirir
+    // (flutter#128122) → `await` hiç dönmez, kapı sızardı. Kapıyı ekranın
+    // kendisi ömrü boyunca tutar (PremiumWelcomeScreen initState→dispose);
+    // çağıran yalnız ekran kurulana kadar tutar ki arada başka modal girmesin.
+    unawaited(context.push('/premium-welcome'));
+    await WidgetsBinding.instance.endOfFrame;
+    await WidgetsBinding.instance.endOfFrame;
   }
 
   @override
@@ -134,6 +168,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     if (baby == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
+    }
+
+    // Hesapsızken Premium istendi → hesap açıldı: Premium sayfasını aç.
+    if (ref.watch(pendingPremiumProvider) &&
+        ref.watch(authControllerProvider).asData?.value != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !ref.read(pendingPremiumProvider)) return;
+        ref.read(pendingPremiumProvider.notifier).set(false);
+        context.push('/premium');
+      });
+    }
+
+    // İlk kayıt anı (bu oturumda boş → dolu): bildirim ön-izni + Premium
+    // Karşılama tam bu anda sorulur (kurulumun hemen ardından değil).
+    if (!baby.isExpecting) {
+      ref.listen(latestByTypeProvider(baby.id), (prev, next) {
+        final wasEmpty = prev?.asData?.value.isEmpty ?? false;
+        final nowHas = next.asData?.value.isNotEmpty ?? false;
+        if (wasEmpty && nowHas) _afterFirstRecord();
+      });
     }
 
     // "Dün nasıl geçti?" popup'ı — dünün kayıtları oturur oturmaz, State
@@ -201,7 +255,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (baby.isExpecting) {
       return Scaffold(
         appBar: appBar,
-        body: TourMount(tourKey: 'expecting', child: ExpectingHome(baby: baby)),
+        // İlk açılış tanıtımı dialog değil, sayfa içi "İlk adımlar" kartı.
+        body: ExpectingHome(baby: baby),
       );
     }
 
@@ -223,10 +278,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             key: const ValueKey('tour_charts'),
             tourKey: 'charts',
             child: ChartsView(babyId: baby.id)),
-        _ => TourMount(
-            key: const ValueKey('tour_home'),
-            tourKey: 'home',
-            child: _HomeTab(babyId: baby.id, scrollController: _homeScroll)),
+        // Ana sekmede tur dialog'u yok — sayfa içi "İlk adımlar" kartı.
+        _ => _HomeTab(babyId: baby.id, scrollController: _homeScroll),
       },
       // V2 · Yüzen ada — kenarlardan kopuk hap; ikon-odaklı, FAB satır içinde.
       bottomNavigationBar: GestureDetector(
@@ -750,6 +803,7 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
     final scrollController = widget.scrollController;
     final ongoing = ref.watch(ongoingSleepProvider(babyId));
     final ongoingBreast = ref.watch(ongoingBreastProvider(babyId));
+    final baby = ref.watch(activeBabyProvider);
     final units = ref.watch(activeUnitsProvider);
     final HomeLayout layout = ref.watch(homeLayoutControllerProvider).asData?.value ??
         ref.watch(cachedHomeLayoutProvider);
@@ -772,6 +826,8 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
         children: [
           // Çevrimdışı / senkron hatası — header'dan taşındı (bkz. SyncStatusBanner).
           const SyncStatusBanner(),
+          // Yeni kurulumdan sonra: "İlk adımlar" (tur dialog'u yerine).
+          if (baby != null) FirstStepsCard(baby: baby),
           // Local-first: free kullanıcıya "verin yalnız bu telefonda" yedek uyarısı.
           const BackupNagBanner(),
           // Paylaşılan bebek + sahip premium bitti: eklenenler yalnız yerelde kalıyor.

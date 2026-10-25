@@ -16,16 +16,34 @@ import '../../models/baby.dart';
 import '../../models/mom_entry.dart';
 import '../babies/baby_actions.dart';
 import '../settings/backup_nag.dart';
+import 'first_steps_card.dart';
 import 'mom_tracking_screen.dart';
 
 /// Bekleme (gebelik) modu ana ekran — design ScrWaiting: meyve boyut sahnesi +
 /// doğuma kalan gün halkası + haftalık gelişim notu + "doğdu" CTA.
-class ExpectingHome extends ConsumerWidget {
+class ExpectingHome extends ConsumerStatefulWidget {
   final Baby baby;
   const ExpectingHome({super.key, required this.baby});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ExpectingHome> createState() => _ExpectingHomeState();
+}
+
+class _ExpectingHomeState extends ConsumerState<ExpectingHome> {
+  // "İlk adımlar · Bu haftayı keşfet" → bu bölüme kaydır.
+  final _weekKey = GlobalKey();
+
+  void _scrollToWeek() {
+    final ctx = _weekKey.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx,
+          duration: const Duration(milliseconds: 450), curve: Curves.easeOutCubic);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final baby = widget.baby;
     final due = baby.dueDate;
     final today = DateTime.now();
     final todayDate = DateTime(today.year, today.month, today.day);
@@ -49,6 +67,8 @@ class ExpectingHome extends ConsumerWidget {
       children: [
         // Çevrimdışı / senkron hatası — header'dan taşındı (bkz. SyncStatusBanner).
         const SyncStatusBanner(),
+        // Yeni kurulumdan sonra: "İlk adımlar" (tur dialog'u yerine).
+        FirstStepsCard(baby: baby, onExploreWeek: _scrollToWeek),
         // Gelişim görseli sahnesi (fetus görseli + boyut karşılaştırması)
         _FruitStage(daysPregnant: daysPregnant, data: pw),
         const SizedBox(height: 18),
@@ -112,7 +132,7 @@ class ExpectingHome extends ConsumerWidget {
           ),
         ),
 
-        _sec(tr('Bu hafta neler oluyor?')),
+        KeyedSubtree(key: _weekKey, child: _sec(tr('Bu hafta neler oluyor?'))),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

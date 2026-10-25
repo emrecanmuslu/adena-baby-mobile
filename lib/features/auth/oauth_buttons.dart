@@ -5,27 +5,45 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/social_auth_service.dart';
+import '../onboarding/onboarding_kit.dart';
 import 'auth_controller.dart';
 
-/// Login/Register ekranlarında ortak sosyal giriş bölümü:
-/// "veya" ayıracı + Google (+ uygunsa Apple) butonları. Hata/iptal akışı
-/// AuthController.socialLogin içinde; hatalar ekranların mevcut snackbar
-/// dinleyicisiyle gösterilir.
+/// Giriş/Hesap oluştur ekranında ortak sosyal giriş bölümü (Gradyan & Cam):
+/// "veya" ayıracı + Google (+ yalnız iOS'ta Apple) butonları. Google marka
+/// kuralı gereği logo her zaman görünür. [beforeSignIn] false dönerse giriş
+/// başlatılmaz (ör. kullanıcı rıza sayfasını kapattı).
 class OAuthSection extends ConsumerWidget {
-  const OAuthSection({super.key});
+  final Future<bool> Function()? beforeSignIn;
+  const OAuthSection({super.key, this.beforeSignIn});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final loading = ref.watch(authControllerProvider).isLoading;
-    void go(String provider) {
+    Future<void> go(String provider) async {
       if (loading) return;
-      ref.read(authControllerProvider.notifier).socialLogin(provider);
+      final ok = await (beforeSignIn?.call() ?? Future.value(true));
+      if (!ok) return;
+      await ref.read(authControllerProvider.notifier).socialLogin(provider);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _OrDivider(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 16, 0, 12),
+          child: Row(children: [
+            Expanded(child: Container(height: 1, color: AppColors.line2)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(tr('veya'),
+                  style: TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13)),
+            ),
+            Expanded(child: Container(height: 1, color: AppColors.line2)),
+          ]),
+        ),
         _OAuthButton(
           label: tr('Google ile devam et'),
           leading: SvgPicture.string(_kGoogleSvg, width: 19, height: 19),
@@ -49,32 +67,7 @@ class OAuthSection extends ConsumerWidget {
   }
 }
 
-/// "veya" ayıracı (design login).
-class _OrDivider extends StatelessWidget {
-  const _OrDivider();
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      child: Row(
-        children: [
-          Expanded(child: Divider(color: AppColors.line, thickness: 1)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(tr('veya'),
-                style: TextStyle(
-                    color: AppColors.muted,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11.5)),
-          ),
-          Expanded(child: Divider(color: AppColors.line, thickness: 1)),
-        ],
-      ),
-    );
-  }
-}
-
-/// OAuth (Google/Apple) butonu (design .ad-oauth) — logo + etiket.
+/// Cam OAuth düğmesi — logo + etiket, 52px.
 class _OAuthButton extends StatelessWidget {
   final String label;
   final Widget leading;
@@ -84,25 +77,30 @@ class _OAuthButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.ink,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          side: BorderSide(color: AppColors.line, width: 1.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            leading,
-            const SizedBox(width: 10),
-            Text(label,
-                style:
-                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-          ],
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: onbFieldFill(context),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: onbFieldBorder(context)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              leading,
+              const SizedBox(width: 10),
+              Text(label,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 15.5)),
+            ],
+          ),
         ),
       ),
     );
