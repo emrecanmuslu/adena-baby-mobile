@@ -171,7 +171,11 @@ class LanguageSheetList extends ConsumerWidget {
                 constraints: const BoxConstraints(minHeight: 52),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
-                  color: current == l.code ? AppColors.feedBg : Colors.transparent,
+                  color: current == l.code
+                      ? (Theme.of(context).brightness == Brightness.dark
+                          ? AppColors.coral.withValues(alpha: 0.16)
+                          : AppColors.feedBg)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(children: [

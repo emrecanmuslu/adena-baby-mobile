@@ -9,6 +9,7 @@ import '../../core/adena_icons.dart';
 import '../../core/age.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
+import '../../core/coach_tour.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/leaps.dart';
@@ -239,7 +240,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         const SizedBox(width: 10),
         Padding(
           padding: const EdgeInsets.only(right: 14),
-          child: _HeaderAvatar(onTap: () => context.push('/settings')),
+          child: KeyedSubtree(
+              key: CoachKeys.profile,
+              child: _HeaderAvatar(onTap: () => context.push('/settings'))),
         ),
       ],
       // Bebek sekmeleri AppBar'ın parçası — kaydırınca logo satırıyla aynı
@@ -279,6 +282,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _ => TourMount(
             key: const ValueKey('tour_home'),
             tourKey: 'home',
+            finalLabel: tr('İlk kaydı ekle'),
+            onFinal: () => showAddRecordMenu(context, ref, baby.id),
             child: _HomeTab(babyId: baby.id, scrollController: _homeScroll)),
       },
       // V2 · Yüzen ada — kenarlardan kopuk hap; ikon-odaklı, FAB satır içinde.
@@ -311,7 +316,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               children: [
                 _navItem('home', 0, tr('Ana sayfa')),
                 _navItem('timeline', 1, tr('Günlük akış')),
-                _navFab(() => showAddRecordMenu(context, ref, baby.id)),
+                KeyedSubtree(
+                    key: CoachKeys.plus,
+                    child: _navFab(() => showAddRecordMenu(context, ref, baby.id))),
                 _navItem('charts', 2, tr('Grafikler')),
                 _navDiscover(context),
               ],
@@ -708,8 +715,11 @@ class _EditableSec extends StatelessWidget {
   final String title;
   final double top;
   final VoidCallback onEdit;
+
+  /// Tanıtım turunun kalemi vurgulaması için (yalnız Hızlı Giriş).
+  final Key? editKey;
   const _EditableSec(
-      {required this.title, required this.onEdit, this.top = 18});
+      {required this.title, required this.onEdit, this.top = 18, this.editKey});
 
   @override
   Widget build(BuildContext context) {
@@ -725,6 +735,7 @@ class _EditableSec extends StatelessWidget {
                   letterSpacing: 0.7)),
           const Spacer(),
           GestureDetector(
+            key: editKey,
             onTap: onEdit,
             behavior: HitTestBehavior.opaque,
             child: Padding(
@@ -834,10 +845,12 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
           _EditableSec(
             title: tr('Hızlı Giriş'),
             top: 4,
+            editKey: CoachKeys.pencil,
             onEdit: () => showHomeLayoutEditor(context, ref,
                 isQuick: true, current: layout.quick),
           ),
           Row(
+            key: CoachKeys.quick,
             children: [
               for (var i = 0; i < layout.quick.length; i++) ...[
                 if (i > 0) const SizedBox(width: 10),
@@ -850,8 +863,14 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
           // durumlarda aşağıda, Yaklaşan'ın altında kalır. Büyümez, yer
           // değiştirir — ama ekrandayken aşağı inmez (bkz. _medHeldUp).
           if (medPromote) MedHomeSection(babyId: babyId),
-          _PredictSection(babyId: babyId),
-          _LastActivitySection(babyId: babyId, units: units),
+          Column(
+            key: CoachKeys.summary,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _PredictSection(babyId: babyId),
+              _LastActivitySection(babyId: babyId, units: units),
+            ],
+          ),
           _DaySummarySection(babyId: babyId),
           _LeapSection(babyId: babyId),
           _UpcomingSection(babyId: babyId),

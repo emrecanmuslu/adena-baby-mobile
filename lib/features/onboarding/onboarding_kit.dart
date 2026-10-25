@@ -306,11 +306,12 @@ class OnbSegment<T> extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: options[i].$1 == selected
-                        ? (dark
-                            ? Colors.white.withValues(alpha: 0.14)
-                            : Colors.white.withValues(alpha: 0.96))
+                        ? (dark ? accent.soft : Colors.white.withValues(alpha: 0.96))
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
+                    border: dark && options[i].$1 == selected
+                        ? Border.all(color: accent.c.withValues(alpha: 0.55))
+                        : null,
                     boxShadow:
                         options[i].$1 == selected ? AppColors.softShadow : null,
                   ),
@@ -709,7 +710,9 @@ class _OnbCalendarState extends State<_OnbCalendar> {
                               fontWeight: picked ? FontWeight.w900 : FontWeight.w700,
                               color: picked
                                   ? a.t
-                                  : (on ? AppColors.ink : AppColors.muted2))),
+                                  : (on
+                                      ? AppColors.ink
+                                      : AppColors.muted2.withValues(alpha: 0.6)))),
                     ),
                   ),
                 );

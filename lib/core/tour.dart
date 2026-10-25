@@ -4,18 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/tour_cache.dart';
-import 'ad_widgets.dart';
+import 'coach_tour.dart';
 import 'i18n.dart';
 import 'modal_gate.dart';
-import 'theme.dart';
-
-/// Tek tanıtım kartı (emoji + başlık + kısa açıklama).
-class TourStep {
-  final String emoji;
-  final String title;
-  final String body;
-  const TourStep(this.emoji, this.title, this.body);
-}
 
 /// Ekran turlarının "görüldü" kümesi (kalıcı). null/loading iken tur açılmaz.
 class TourController extends AsyncNotifier<Set<String>> {
@@ -42,72 +33,73 @@ final tourControllerProvider =
     AsyncNotifierProvider<TourController, Set<String>>(TourController.new);
 
 /// Ekran anahtarı → kart listesi. tr() ile çağrı anında yerelleştirilir.
-List<TourStep>? tourFor(String key) => switch (key) {
+List<CoachStep>? tourFor(String key) => switch (key) {
+      // Spotlight turu (design/Adena Baby App/Tasarimlar/Tanıtım Turu).
       'home' => [
-          TourStep('🏠', tr('Ana Sayfa'),
-              tr('Bebeğinin günü bir bakışta: son aktiviteler, sıradaki beslenme '
-                  'tahmini ve günlük özet hep burada.')),
-          TourStep('➕', tr('Hızlı kayıt'),
-              tr('Ortadaki + düğmesiyle beslenme, uyku, bez ve diğer kayıtları '
-                  'saniyeler içinde ekle.')),
-          TourStep('🎨', tr('Sana göre'),
-              tr('Hangi kartların ve hızlı girişlerin görüneceğini ayarlardan '
-                  'kişiselleştirebilirsin.')),
+          CoachStep(tr('Tek dokunuşla kaydet'),
+              tr('Beslenme, bez ya da uyku: karta dokun, saati ayarla, kaydet.'),
+              [CoachKeys.quick]),
+          CoachStep(tr('Tüm kayıtlar burada'),
+              tr('Ölçüm, ateş, ilaç, anı… Ortadaki + ile her türü ekleyebilirsin.'),
+              [CoachKeys.plus]),
+          CoachStep(tr('Gününü bir bakışta gör'),
+              tr('Son aktiviteler ve sıradaki beslenme tahmini burada güncellenir.'),
+              [CoachKeys.summary]),
+          CoachStep(tr('İstediğin gibi düzenle'),
+              tr('Kartların yerini kalemle değiştir; ayarlar ve aile paylaşımı profilinde.'),
+              [CoachKeys.pencil, CoachKeys.profile]),
         ],
       'timeline' => [
-          TourStep('📋', tr('Günlük Akış'),
+          CoachStep(tr('Günlük Akış'),
               tr('Tüm kayıtlar zaman sırasıyla burada listelenir. Güne göre '
                   'gruplanır; geçmişi kolayca tararsın.')),
-          TourStep('👆', tr('Düzenle & sil'),
+          CoachStep(tr('Düzenle & sil'),
               tr('Bir kayda dokununca kimin, ne zaman eklediğini görür; '
                   'düzenleyebilir ya da silebilirsin.')),
         ],
       'charts' => [
-          TourStep('📈', tr('Büyüme Grafikleri'),
-              tr('Bebeğinin kilo, boy ve baş çevresini zaman içinde izle. '
-                  'Ölçüm ekledikçe noktalar eğriye yerleşir.')),
-          TourStep('📊', tr('Persentil ne demek?'),
-              tr('Persentil, bebeğini aynı yaş ve cinsiyetteki 100 bebekle '
-                  'kıyaslar. Örneğin %50, tam ortada demektir: 100 bebekten '
-                  '~50\'si daha küçük, ~50\'si daha büyük olur.')),
-          TourStep('🌍', tr('Eğriler nereden geliyor?'),
-              tr('Renkli bantlar Dünya Sağlık Örgütü\'nün (WHO) sağlıklı büyüme '
-                  'standartlarıdır. %15–%85 arası çok geniş bir "normal" aralıktır; '
-                  'tek bir nokta değil, bebeğin kendi eğrisini takip etmesi önemlidir.')),
-          TourStep('💛', tr('Endişelenmeli miyim?'),
+          CoachStep(tr('Persentil ne demek?'),
+              tr('Renkli bantlar WHO büyüme standartlarıdır; tek nokta değil, '
+                  'bebeğin kendi eğrisi önemlidir.'),
+              [CoachKeys.chart]),
+          CoachStep(tr('Endişelenmeli miyim?'),
               tr('Yüksek ya da düşük persentil tek başına sorun değildir; her bebek '
                   'farklı büyür. Ani sıçrama/düşüşte doktoruna danış. Bu ekran '
-                  'rehberdir, tıbbi tanı değildir.')),
+                  'rehberdir, tıbbi tanı değildir.'),
+              [CoachKeys.chart]),
         ],
       'expecting' => [
-          TourStep('🤰', tr('Bekleme Odası'),
-              tr('Doğuma kalan süreyi, bebeğinin bu haftaki boyutunu ve gelişimini '
-                  'takip et.')),
-          TourStep('📅', tr('Hafta hafta'),
-              tr('Her hafta "neler oluyor?" notuyla bebeğinin gelişimini öğren. '
-                  'Bebeğin doğunca tek dokunuşla takip moduna geçersin.')),
+          CoachStep(tr('Hafta hafta bebeğin'),
+              tr('Görselin üstündeki oklarla günler arasında gez; boyut ve gelişim değişir.'),
+              [CoachKeys.fetus]),
+          CoachStep(tr('Bu hafta neler oluyor?'),
+              tr('Her hafta yeni bir gelişim notu seni bekliyor.'),
+              [CoachKeys.week]),
+          CoachStep(tr('Doğum günü geldiğinde'),
+              tr('Bebeğin doğunca buraya dokun; takip moduna tek adımda geçersin.'),
+              [CoachKeys.born]),
         ],
       'milestones' => [
-          TourStep('🎯', tr('Gelişim'),
+          CoachStep(tr('Gelişim'),
               tr('Yaşa göre beklenen gelişim basamakları. Bebeğin başardıkça '
                   'işaretle; ilerlemeyi gör.')),
-          TourStep('💡', tr('Rehberdir, yarış değil'),
+          CoachStep(tr('Rehberdir, yarış değil'),
               tr('Bir basamağa dokununca ne anlama geldiğini ve nasıl '
                   'destekleyebileceğini görürsün. Her bebek kendi temposunda gelişir.')),
         ],
       'community' => [
-          TourStep('💬', tr('Topluluk'),
+          CoachStep(tr('Topluluk'),
               tr('Diğer ebeveynlere soru sor, deneyim paylaş. Sorular anonim '
                   'sorulabilir; saygılı ol.')),
-          TourStep('⚠️', tr('Tıbbi tavsiye değil'),
+          CoachStep(tr('Tıbbi tavsiye değil'),
               tr('Topluluk paylaşımları kişisel deneyimdir, tıbbi tavsiye yerine '
                   'geçmez. Sağlık kaygılarında doktoruna danış.')),
         ],
       'vaccines' => [
-          TourStep('💉', tr('Aşı Takvimi'),
+          CoachStep(tr('Aşı Takvimi'),
               tr('Sağlık Bakanlığı çocukluk dönemi aşı şemasına göre, bebeğinin '
                   'doğum tarihinden otomatik oluşturulur.')),
-          TourStep('✅', tr('Yapıldıkça işaretle'),
+          CoachStep(tr('Yapıldıkça işaretle'),
               tr('Olan aşıları tarihiyle işaretle; yaklaşanları kaçırmamak için '
                   'hatırlatıcı kurabilirsin. Kesin program için doktoruna danış.')),
         ],
@@ -119,7 +111,16 @@ List<TourStep>? tourFor(String key) => switch (key) {
 class TourMount extends ConsumerStatefulWidget {
   final String tourKey;
   final Widget child;
-  const TourMount({super.key, required this.tourKey, required this.child});
+
+  /// Son adımın ana butonu (varsayılan "Bitti") ve ona basılınca yapılacak iş.
+  final String? finalLabel;
+  final VoidCallback? onFinal;
+  const TourMount(
+      {super.key,
+      required this.tourKey,
+      required this.child,
+      this.finalLabel,
+      this.onFinal});
 
   @override
   ConsumerState<TourMount> createState() => _TourMountState();
@@ -171,7 +172,8 @@ class _TourMountState extends ConsumerState<TourMount> {
           if (mounted) setState(() => _showing = false);
           return;
         }
-        await _showTour(context, ref, widget.tourKey, steps);
+        await _showTour(context, ref, widget.tourKey, steps,
+            finalLabel: widget.finalLabel, onFinal: widget.onFinal);
         if (mounted) _showing = false;
       });
     }
@@ -179,162 +181,18 @@ class _TourMountState extends ConsumerState<TourMount> {
   }
 }
 
-Future<void> _showTour(BuildContext context, WidgetRef ref, String key,
-    List<TourStep> steps) async {
+Future<void> _showTour(
+    BuildContext context, WidgetRef ref, String key, List<CoachStep> steps,
+    {String? finalLabel, VoidCallback? onFinal}) async {
   // Tur açıkken kapıyı tut: ertelenen sistem izin penceresi (bildirim) turun
   // üstüne açılmasın, tur kapanınca sırası gelsin.
   ModalGate.acquire();
   try {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.58),
-      builder: (_) => _TourDialog(steps: steps),
-    );
-    // Her kapanış yolunda (Bitti / Geç / dışarı dokunma) görüldü işaretle.
+    await showCoachTour(context,
+        steps: steps, finalLabel: finalLabel, onFinal: onFinal);
+    // Her kapanış yolunda (Bitti / Geç / geri tuşu) görüldü işaretle.
     await ref.read(tourControllerProvider.notifier).markSeen(key);
   } finally {
     ModalGate.release();
-  }
-}
-
-class _TourDialog extends StatefulWidget {
-  final List<TourStep> steps;
-  const _TourDialog({required this.steps});
-
-  @override
-  State<_TourDialog> createState() => _TourDialogState();
-}
-
-class _TourDialogState extends State<_TourDialog> {
-  final _pc = PageController();
-  int _i = 0;
-
-  @override
-  void dispose() {
-    _pc.dispose();
-    super.dispose();
-  }
-
-  void _next() {
-    if (_i >= widget.steps.length - 1) {
-      Navigator.of(context).pop();
-      return;
-    }
-    _pc.nextPage(
-        duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final last = _i == widget.steps.length - 1;
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 380),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: AppColors.softShadow,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Üst: "Tanıtım" + Geç
-            Row(
-              children: [
-                Text(tr('Tanıtım'),
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.6,
-                        color: AppColors.muted2)),
-                const Spacer(),
-                if (widget.steps.length > 1)
-                  Text('${_i + 1}/${widget.steps.length}',
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.muted2)),
-                const SizedBox(width: 10),
-                InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    child: Text(tr('Geç'),
-                        style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.coralDark)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 226,
-              child: PageView.builder(
-                controller: _pc,
-                onPageChanged: (v) => setState(() => _i = v),
-                itemCount: widget.steps.length,
-                itemBuilder: (_, idx) {
-                  final s = widget.steps[idx];
-                  return SingleChildScrollView(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const SizedBox(height: 8),
-                        Text(s.emoji, style: const TextStyle(fontSize: 46)),
-                        const SizedBox(height: 14),
-                        Text(s.title,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                fontSize: 18.5, fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 9),
-                        Text(s.body,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                                height: 1.5,
-                                color: AppColors.muted)),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Nokta göstergesi
-            if (widget.steps.length > 1)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var d = 0; d < widget.steps.length; d++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: d == _i ? 18 : 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: d == _i ? AppColors.coral : AppColors.line2,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                ],
-              ),
-            const SizedBox(height: 14),
-            AdSaveButton(
-              label: last ? tr('Anladım 👍') : tr('Devam'),
-              color: AppColors.coral,
-              onTap: _next,
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

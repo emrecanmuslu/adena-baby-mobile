@@ -63,12 +63,12 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('Tanıtım'), findsNothing,
+    expect(find.text('1/4'), findsNothing,
         reason: 'öncelikli modal açıkken tur ertelenmeli');
 
     holderVisible.value = false; // "paywall kapandı" → dispose'ta release
     await tester.pumpAndSettle();
-    expect(find.text('Tanıtım'), findsOneWidget);
+    expect(find.text('1/4'), findsOneWidget);
     expect(ModalGate.isBlocked, isTrue, reason: 'tur açıkken kapıyı tutar');
   });
 }
