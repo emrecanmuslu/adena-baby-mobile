@@ -50,7 +50,6 @@ import '../records/timeline_view.dart';
 import '../onboarding/notif_soft_ask_sheet.dart';
 import '../onboarding/onboarding_kit.dart';
 import '../settings/backup_nag.dart';
-import 'first_steps_card.dart';
 
 /// Ana ekran: aktif bebek başlığı + 3 sekme (Ana Sayfa·Akış·Grafikler) + merkez (+).
 class HomeScreen extends ConsumerStatefulWidget {
@@ -255,8 +254,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (baby.isExpecting) {
       return Scaffold(
         appBar: appBar,
-        // İlk açılış tanıtımı dialog değil, sayfa içi "İlk adımlar" kartı.
-        body: ExpectingHome(baby: baby),
+        body: TourMount(tourKey: 'expecting', child: ExpectingHome(baby: baby)),
       );
     }
 
@@ -278,8 +276,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             key: const ValueKey('tour_charts'),
             tourKey: 'charts',
             child: ChartsView(babyId: baby.id)),
-        // Ana sekmede tur dialog'u yok — sayfa içi "İlk adımlar" kartı.
-        _ => _HomeTab(babyId: baby.id, scrollController: _homeScroll),
+        _ => TourMount(
+            key: const ValueKey('tour_home'),
+            tourKey: 'home',
+            child: _HomeTab(babyId: baby.id, scrollController: _homeScroll)),
       },
       // V2 · Yüzen ada — kenarlardan kopuk hap; ikon-odaklı, FAB satır içinde.
       bottomNavigationBar: GestureDetector(
@@ -803,7 +803,6 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
     final scrollController = widget.scrollController;
     final ongoing = ref.watch(ongoingSleepProvider(babyId));
     final ongoingBreast = ref.watch(ongoingBreastProvider(babyId));
-    final baby = ref.watch(activeBabyProvider);
     final units = ref.watch(activeUnitsProvider);
     final HomeLayout layout = ref.watch(homeLayoutControllerProvider).asData?.value ??
         ref.watch(cachedHomeLayoutProvider);
@@ -826,8 +825,6 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
         children: [
           // Çevrimdışı / senkron hatası — header'dan taşındı (bkz. SyncStatusBanner).
           const SyncStatusBanner(),
-          // Yeni kurulumdan sonra: "İlk adımlar" (tur dialog'u yerine).
-          if (baby != null) FirstStepsCard(baby: baby),
           // Local-first: free kullanıcıya "verin yalnız bu telefonda" yedek uyarısı.
           const BackupNagBanner(),
           // Paylaşılan bebek + sahip premium bitti: eklenenler yalnız yerelde kalıyor.
