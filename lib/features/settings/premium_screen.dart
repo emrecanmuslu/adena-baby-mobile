@@ -454,7 +454,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
     if (ref.read(authControllerProvider).asData?.value != null) return true;
     showAdToast(context, tr('Premium için önce giriş yap / hesap oluştur'));
     // Hesap açılınca ana sayfa Premium sayfasını yeniden açar.
-    ref.read(pendingPremiumProvider.notifier).set(true);
+    ref.read(pendingAuthActionProvider.notifier).set(PendingAuthAction.premium);
     context.push('/register?ctx=premium');
     return false;
   }

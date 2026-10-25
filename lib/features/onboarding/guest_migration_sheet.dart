@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../core/ad_widgets.dart';
 import '../../core/adena_icons.dart';
+import '../../core/api_error.dart';
 import '../../core/i18n.dart';
+import '../../core/in_app_notification.dart';
+import '../../core/modal_gate.dart';
 import '../../core/theme.dart';
 import 'onboarding_kit.dart';
 
@@ -16,13 +20,19 @@ Future<bool> showGuestMigrationSheet(
   required Future<void> Function() onMigrate,
   required Future<void> Function() onDiscard,
 }) async {
-  final done = await showOnbSheet<bool>(
-    context,
-    dismissible: false,
-    builder: (_) => _MigrationFlow(
-        body: body, deleteBody: deleteBody, onMigrate: onMigrate, onDiscard: onDiscard),
-  );
-  return done == true;
+  // Açıkken öncelikli modal kapısını tut: tur / izin penceresi üstüne binmesin.
+  ModalGate.acquire();
+  try {
+    final done = await showOnbSheet<bool>(
+      context,
+      dismissible: false,
+      builder: (_) => _MigrationFlow(
+          body: body, deleteBody: deleteBody, onMigrate: onMigrate, onDiscard: onDiscard),
+    );
+    return done == true;
+  } finally {
+    ModalGate.release();
+  }
 }
 
 enum _Step { ask, confirmDelete, progress, done }
@@ -47,16 +57,37 @@ class _MigrationFlowState extends State<_MigrationFlow> {
   _Step _step = _Step.ask;
   bool _deleting = false;
 
+  // Hata olursa sayfa kapatılamaz olduğundan kullanıcı kilitlenmesin: soruya
+  // dön + mesaj göster (bayrak iş bitmeden yazılmadığı için tekrar denenebilir).
   Future<void> _migrate() async {
     setState(() => _step = _Step.progress);
-    await widget.onMigrate();
-    if (mounted) setState(() => _step = _Step.done);
+    try {
+      await widget.onMigrate();
+      if (mounted) {
+        setState(() => _step = _Step.done);
+      } else {
+        // Hesaba bebek gelince router ana sayfaya geçer ve alttaki sayfa
+        // değiştiği için bu alt sayfa kapanır → onayı bildirimle ver.
+        showInAppNotification(
+            title: tr('Aktarıldı'), body: tr('Kayıtların hesabına taşındı.'));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _step = _Step.ask);
+      showAdError(context, apiErrorText(e));
+    }
   }
 
   Future<void> _discard() async {
     setState(() => _deleting = true);
-    await widget.onDiscard();
-    if (mounted) Navigator.pop(context, true);
+    try {
+      await widget.onDiscard();
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
+      showAdError(context, apiErrorText(e));
+    }
   }
 
   @override
@@ -167,7 +198,7 @@ class _MigrationFlowState extends State<_MigrationFlow> {
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
-                  child: const AdenaIcon('check',
+                  child: AdenaIcon('check',
                       size: 34, color: OnbAccent.sage, sw: 2.6),
                 ),
               ),

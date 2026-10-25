@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -375,9 +376,13 @@ class PushService {
       // ön-izinde "Bildirimleri aç" dediyse ([NotifSoftAsk]) ve uygun anda
       // (asıl ekran, paywall/tur kapalı). Aksi halde izin istenmeden token
       // alınır (Android'de izinsiz de çalışır; iOS APNs token'ı izinden bağımsız).
+      // İzin isteği token kaydını BEKLETMEZ: kapı hiç açılmazsa (onboarding,
+      // rıza kapısı) tek-uçuş future'ı takılıp token oturum boyunca hiç
+      // kaydedilmezdi. Token izinden bağımsız alınır (iOS APNs kaydı da öyle).
       if (await NotifSoftAsk.accepted()) {
-        await SystemPromptGate.whenClear();
-        await FirebaseMessaging.instance.requestPermission();
+        unawaited(SystemPromptGate.whenClear().then(
+            (_) => FirebaseMessaging.instance.requestPermission().then((_) {},
+                onError: (_) {})));
       }
       // iOS: FCM token ancak APNs token hazır olunca gelir; biraz bekle.
       // (APNs token AppDelegate'te elle Messaging'e iletiliyor — UIScene fix.)

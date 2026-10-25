@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/medication/med_scheduler.dart';
+import '../../core/modal_gate.dart';
 import '../../core/notification_service.dart';
 import '../../core/providers.dart';
 import '../../core/push_service.dart';
@@ -129,6 +130,7 @@ class AuthController extends AsyncNotifier<User?> {
   /// aile push'u bu cihaza gelmesin diye FCM token'ı silinir.
   Future<void> sessionExpired(SessionEndReason reason) async {
     _epoch++; // uçuştaki auth yanıtları artık geçersiz (O34)
+    SystemPromptGate.markNotReady(); // yeniden asıl ekrana gelene dek izin sorma
     await ref.read(tokenStorageProvider).clear();
     await SessionEndCache.write(reason);
     try {
@@ -191,10 +193,12 @@ class AuthController extends AsyncNotifier<User?> {
       // Misafir verisi varsa "aktaralım mı?" sorusu AdenaApp dinleyicisinde sorulur.
       await ref.read(guestModeProvider.notifier).exit();
       LocalSession.setActiveAccount(u.id);
-      // Rıza bu cihazda "Başlamadan önce" sayfasında zaten alındıysa (aynı metin:
-      // 18+ ve Gizlilik/Şartlar) sunucuya da yaz — sosyal girişte rıza kapısı
-      // ikinci kez açılmasın. Hata olursa kapı yine güvenli yedek olarak açılır.
-      if (u.consentRequired && LocalSession.consent) {
+      // Rıza YALNIZ bu giriş işleminden hemen önce, bu oturumda "Başlamadan
+      // önce" sayfasında verildiyse sunucuya yazılır (sosyal hesap oluşturmada
+      // kapı ikinci kez açılmasın). Cihazdaki eski yerel rıza kullanılmaz: başka
+      // kişi/eski politika sürümü adına onay vermiş olurduk → kapı açılır.
+      final freshConsent = ConsentTicket.take();
+      if (u.consentRequired && freshConsent) {
         try {
           await recordConsent();
         } catch (_) {}
@@ -314,6 +318,7 @@ class AuthController extends AsyncNotifier<User?> {
 
   Future<void> logout() async {
     _epoch++; // O34: uçuştaki /auth/me, updateName vb. yanıtları artık geçersiz
+    SystemPromptGate.markNotReady(); // yeniden asıl ekrana gelene dek izin sorma
     // Token HÂLÂ geçerliyken bu cihazın FCM kaydını sil (çıkıştan önce).
     await PushService.instance.unregister(ref.read(apiClientProvider));
     // Önceki hesabın zamanlanmış yerel bildirimlerini iptal et → yeni hesaba
@@ -366,13 +371,33 @@ final activeAccountIdProvider = Provider<String?>((ref) {
   return null;
 });
 
-/// Hesapsız kullanıcı Premium almak istedi → hesap açılınca ana sayfa Premium
-/// sayfasını kendiliğinden açar (kullanıcı ikinci kez aramasın).
-class PendingPremium extends Notifier<bool> {
+/// Hesapsızken başlatılıp hesap gerektiren eylem — giriş/kayıt tamamlanınca
+/// asıl ekran (ana sayfa / Adet Takvimi / karşılama) kendiliğinden açar;
+/// kullanıcı hesap açmadan geri dönerse temizlenir (bkz. consumePendingAuthAction).
+enum PendingAuthAction { none, premium, invite }
+
+class PendingAuthActionController extends Notifier<PendingAuthAction> {
   @override
-  bool build() => false;
-  void set(bool v) => state = v;
+  PendingAuthAction build() => PendingAuthAction.none;
+  void set(PendingAuthAction v) => state = v;
 }
 
-final pendingPremiumProvider =
-    NotifierProvider<PendingPremium, bool>(PendingPremium.new);
+final pendingAuthActionProvider =
+    NotifierProvider<PendingAuthActionController, PendingAuthAction>(
+        PendingAuthActionController.new);
+
+/// "Başlamadan önce" sayfasında AZ ÖNCE verilen rıza — yalnız hemen ardından
+/// gelen giriş/kayıt işleminde bir kez kullanılır (bkz. _postLogin). Bellekte
+/// tutulur ve 10 dk sonra geçersizleşir; uygulama yeniden açılınca sıfırdır.
+class ConsentTicket {
+  ConsentTicket._();
+  static DateTime? _at;
+
+  static void issue() => _at = DateTime.now();
+
+  static bool take() {
+    final at = _at;
+    _at = null;
+    return at != null && DateTime.now().difference(at) < const Duration(minutes: 10);
+  }
+}

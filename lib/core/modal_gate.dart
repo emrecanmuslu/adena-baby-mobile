@@ -61,6 +61,10 @@ class SystemPromptGate {
   /// Asıl ekran (ana sayfa / Adet Takvimi) ilk kez kuruldu.
   static void markAppReady() => _appReady.value = true;
 
+  /// Çıkış / oturum sonu: kullanıcı yeniden onboarding'e/girişe döner →
+  /// asıl ekrana tekrar gelene dek izin penceresi açılmasın.
+  static void markNotReady() => _appReady.value = false;
+
   static bool get _clear => _appReady.value && !ModalGate.isBlocked;
 
   /// Uygulama hazır ve öncelikli modal yokken tamamlanır.

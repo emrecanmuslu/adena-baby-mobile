@@ -10,21 +10,11 @@ import '../../core/language_quick_pick.dart';
 import '../../core/theme.dart';
 import '../../data/local_session.dart';
 import '../auth/auth_controller.dart';
+import '../auth/pending_auth_action.dart';
 import '../babies/baby_switcher.dart';
 import 'consent_sheet.dart';
 import 'onboarding_draft.dart';
 import 'onboarding_kit.dart';
-
-/// "Davet kodum var" hesapsız seçildi → giriş/kayıt sonrası karşılama ekranı
-/// davet sayfasını kendiliğinden açsın (kullanıcı ikinci kez aramasın).
-class PendingInvite extends Notifier<bool> {
-  @override
-  bool build() => false;
-  void set(bool v) => state = v;
-}
-
-final pendingInviteProvider =
-    NotifierProvider<PendingInvite, bool>(PendingInvite.new);
 
 /// İlk ekran — karşılama + hedef seçimi (tasarım [1]). Hesap isteğe bağlı:
 /// hedef seçmek uygulamayı hesapsız (yerel) başlatır; giriş/kayıt ikincil yol.
@@ -120,7 +110,7 @@ class _WelcomeChoiceScreenState extends ConsumerState<WelcomeChoiceScreen>
       showAcceptInviteDialog(context, ref);
     } else {
       // Davet kabulü oturum ister → önce giriş/kayıt; sonra burada otomatik açılır.
-      ref.read(pendingInviteProvider.notifier).set(true);
+      ref.read(pendingAuthActionProvider.notifier).set(PendingAuthAction.invite);
       context.push('/register?ctx=invite');
     }
   }
@@ -134,13 +124,7 @@ class _WelcomeChoiceScreenState extends ConsumerState<WelcomeChoiceScreen>
         : (localName.isNotEmpty ? localName.split(' ').first : '');
 
     // Hesapsızken "Davet kodum var" seçilip giriş yapıldıysa sayfayı aç.
-    if (user != null && ref.watch(pendingInviteProvider)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !ref.read(pendingInviteProvider)) return;
-        ref.read(pendingInviteProvider.notifier).set(false);
-        showAcceptInviteDialog(context, ref);
-      });
-    }
+    consumePendingAuthAction(context, ref);
 
     final goals = [
       (OnbBranch.baby, 'feed', tr('Bebeğim doğdu'),

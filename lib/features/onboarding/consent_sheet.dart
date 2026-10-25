@@ -41,6 +41,9 @@ Future<void> recordLocalConsent(WidgetRef ref, {required bool analytics}) async 
   await ref.read(localAnalyticsConsentProvider.notifier).set(analytics);
   if (ref.read(authControllerProvider).asData?.value != null) {
     await ref.read(authControllerProvider.notifier).recordConsent();
+  } else {
+    // Oturum yok: hemen ardından gelecek giriş/kayıt bu onayı sunucuya yazabilsin.
+    ConsentTicket.issue();
   }
 }
 

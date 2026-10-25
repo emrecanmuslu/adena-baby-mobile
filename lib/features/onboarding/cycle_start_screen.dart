@@ -146,7 +146,7 @@ class _CycleStartScreenState extends ConsumerState<CycleStartScreen> {
                           if (widget.ttc) ...[
                             Text(
                               tr('Gebe kalma takibi').toUpperCaseTr(),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.8,

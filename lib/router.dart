@@ -158,7 +158,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, _) => const PremiumWelcomeScreen()),
       GoRoute(
           path: '/baby-add',
-          builder: (_, _) => const BabySetupScreen(onboarding: false)),
+          builder: (_, _) => const BabySetupScreen()),
       GoRoute(
           path: '/settings',
           builder: (_, _) =>

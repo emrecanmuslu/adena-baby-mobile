@@ -29,24 +29,29 @@ class OnbAccent {
 
   const OnbAccent._(this.c, this.t, this.soft, this.grad, this.shadow);
 
+  /// Renkler [AppColors]'tan (tema duyarlı); gradyanlar onaylı karşılama
+  /// ekranının plaka gradyanları.
   static OnbAccent of(BuildContext context, OnbBranch b) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     return switch (b) {
-      OnbBranch.baby => dark
-          ? const OnbAccent._(AppColors.coral, AppColors.coral,
-              Color(0x29FF8A7A), [AppColors.coral, AppColors.coralDark], Color(0x47E2553F))
-          : const OnbAccent._(AppColors.coralDark, AppColors.coralDd,
-              Color(0xFFFFE7E1), [AppColors.coral, AppColors.coralDark], Color(0x47E2553F)),
-      OnbBranch.preg => dark
-          ? const OnbAccent._(Color(0xFFE3B255), Color(0xFFE3B255),
-              Color(0x29E3B255), [Color(0xFFE3B255), Color(0xFFCC8A3C)], Color(0x47CC8A3C))
-          : const OnbAccent._(Color(0xFFD69A33), Color(0xFFCC8A3C),
-              Color(0xFFFAF0D8), [Color(0xFFE3B255), Color(0xFFCC8A3C)], Color(0x47CC8A3C)),
-      OnbBranch.cycle || OnbBranch.ttc => dark
-          ? const OnbAccent._(Color(0xFFD9799A), Color(0xFFD9799A),
-              Color(0x29D9799A), [Color(0xFFD9799A), Color(0xFFB0466B)], Color(0x42B0466B))
-          : const OnbAccent._(Color(0xFFC2576E), Color(0xFFA33D58),
-              Color(0xFFF8E4EC), [Color(0xFFD9799A), Color(0xFFB0466B)], Color(0x42B0466B)),
+      OnbBranch.baby => OnbAccent._(
+          dark ? AppColors.coral : AppColors.coralDark,
+          dark ? AppColors.coral : AppColors.coralDd,
+          AppColors.feedBg,
+          const [AppColors.coral, AppColors.coralDark],
+          const Color(0x47E2553F)),
+      OnbBranch.preg => OnbAccent._(
+          AppColors.gold,
+          dark ? AppColors.gold : const Color(0xFFCC8A3C),
+          AppColors.goldBg,
+          const [Color(0xFFE3B255), Color(0xFFCC8A3C)],
+          const Color(0x47CC8A3C)),
+      OnbBranch.cycle || OnbBranch.ttc => OnbAccent._(
+          AppColors.rose,
+          AppColors.roseD,
+          AppColors.roseBg,
+          const [Color(0xFFD9799A), Color(0xFFB0466B)],
+          const Color(0x42B0466B)),
     };
   }
 
@@ -54,11 +59,11 @@ class OnbAccent {
   static OnbAccent coral(BuildContext context) => of(context, OnbBranch.baby);
 
   /// Gebe kalma alt-aksanı (adaçayı) — yalnız hedef plakası ve etiket.
-  static const sage = Color(0xFF6F9E81);
+  static Color get sage => AppColors.sage;
 
-  /// Hedef kartı ikon plakası gradyanı (gebe kalma: gül → adaçayı).
+/// Hedef kartı ikon plakası gradyanı (gebe kalma: gül → adaçayı).
   static List<Color> plate(BuildContext context, OnbBranch b) =>
-      b == OnbBranch.ttc ? const [Color(0xFFD9799A), sage] : of(context, b).grad;
+      b == OnbBranch.ttc ? [const Color(0xFFD9799A), sage] : of(context, b).grad;
 }
 
 bool _dark(BuildContext context) => Theme.of(context).brightness == Brightness.dark;

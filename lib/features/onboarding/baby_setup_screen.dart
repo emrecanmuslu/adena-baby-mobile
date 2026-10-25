@@ -8,13 +8,10 @@ import '../../core/adena_icons.dart';
 import '../../core/api_error.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
-import '../../core/onboarding_paywall.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
-import '../../data/local_session.dart';
 import '../../models/baby.dart';
 import '../../models/cycle.dart';
-import '../auth/auth_controller.dart';
 import '../babies/baby_controller.dart';
 import '../babies/premature_section.dart';
 
@@ -66,14 +63,10 @@ Future<Baby> createBaby(
   return baby;
 }
 
-/// Bebek kurulumu formu: ad/tarih → oluştur.
-/// [onboarding] true → ilk kurulum (WelcomeChoiceScreen'den gelinir; [initialStatus]
-/// seçilen hedefi taşır, "Doğdu/Bekliyoruz" anahtarı gizlenir); false → ek bebek
-/// (anahtar görünür, kayıt sonrası geri döner).
+/// "Bebek ekle" formu (ek bebek): durum anahtarı + ad/tarih → oluştur, ana
+/// sayfaya dön. İlk kurulum onboarding'de [BabyProfileScreen] ile yapılır.
 class BabySetupScreen extends ConsumerStatefulWidget {
-  final bool onboarding;
-  final BabyStatus? initialStatus;
-  const BabySetupScreen({super.key, this.onboarding = true, this.initialStatus});
+  const BabySetupScreen({super.key});
 
   @override
   ConsumerState<BabySetupScreen> createState() => _BabySetupScreenState();
@@ -82,17 +75,10 @@ class BabySetupScreen extends ConsumerStatefulWidget {
 class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   final _name = TextEditingController();
   BabyStatus _status = BabyStatus.born;
-  // Hedef ara ekranda seçildi mi — İLK kurulumda sabitlenir. go_router
-  // refreshListenable tetiklenince rotayı yeniden çözer ve `extra`yı
-  // (initialStatus) kaybeder → widget null ile yeniden kurulur; buna bakan
-  // anahtar formun ortasında aniden belirip düzeni kaydırıyordu.
-  late final bool _statusChosen;
 
   @override
   void initState() {
     super.initState();
-    _statusChosen = widget.initialStatus != null;
-    _status = widget.initialStatus ?? BabyStatus.born;
     // Ad yazıldıkça rebuild → PopScope.canPop (_dirty) güncel kalsın.
     _name.addListener(() {
       if (mounted) setState(() {});
@@ -123,7 +109,8 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
       final picked = await showDatePicker(
         context: context,
         initialDate: _lmp ?? now.subtract(const Duration(days: 56)),
-        firstDate: now.subtract(const Duration(days: 300)),
+        // TDT = SAT + 280: daha eski SAT geçmişte bir TDT üretirdi.
+        firstDate: now.subtract(const Duration(days: _gestationDays)),
         lastDate: now,
         helpText: tr('Son adet tarihi (SAT)'),
       );
@@ -169,14 +156,6 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
     }
     setState(() => _saving = true);
     try {
-      // İlk bebek kuruluyorsa Premium Karşılama Ekranı'nı sıraya al — ana sayfa
-      // ilk kareyi çizince bir kez açılır (buradan push etmek router
-      // redirect'iyle yarışırdı). Bayrak bebek OLUŞTURULMADAN yazılır (await):
-      // create() bebek listesini günceller → redirect ana sayfaya geçer →
-      // ana sayfa bayrağı tüketir. Önceden unawaited + create sonrasıydı →
-      // ana sayfa bayraktan önce okuyup ekranı atlıyor, bayrak sonraki rastgele
-      // bir açılışa kalıyordu. Tek-kez garantisi OnboardingPaywall'da.
-      if (widget.onboarding) await OnboardingPaywall.markPending();
       await createBaby(
         ref,
         name: name,
@@ -187,8 +166,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
         gestWeeks: _gestWeeks,
         gestDays: _gestDays,
       );
-      // Onboarding'de router redirect ana sayfaya götürür; ek bebekte elle dön.
-      if (!widget.onboarding && mounted) context.go('/home');
+      if (mounted) context.go('/home');
     } catch (e) {
       _snack(apiErrorText(e));
       if (mounted) setState(() => _saving = false);
@@ -226,18 +204,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(authControllerProvider).asData?.value;
-    final localName = ref.watch(localNameProvider);
-    // Selamlama adı: oturum açıksa hesap adı, değilse yerel ad (ilk kelime).
-    final greetName = user != null
-        ? user.displayName
-        : (localName.isNotEmpty ? localName.split(' ').first : '');
     final isBorn = _status == BabyStatus.born;
-
-    final onboarding = widget.onboarding;
-    // Onboarding'de durum ara ekranda (WelcomeChoiceScreen) seçildi → anahtar
-    // gizlenir; ek bebek eklerken görünür kalır.
-    final showStatusPicker = !onboarding || !_statusChosen;
     // Dolu form BACK ile onaysız atılmasın (yaşam-döngüsü testi gözlemi):
     // veri girildiyse önce onay diyaloğu göster.
     return PopScope(
@@ -249,7 +216,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: onboarding ? null : Text(tr('Bebek ekle')),
+        title: Text(tr('Bebek ekle')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -258,29 +225,18 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                onboarding
-                    ? (isBorn
-                        ? tr('Bebeğini tanıyalım 🍼')
-                        : tr('Bekleme odası 🤰'))
-                    : tr('Yeni bebek'),
+                tr('Yeni bebek'),
                 style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 6),
               Text(
-                onboarding
-                    ? (greetName.isNotEmpty
-                        ? trp('{name}, profili birlikte oluşturalım.',
-                            {'name': greetName})
-                        : tr('Profili birlikte oluşturalım.'))
-                    : tr('Bilgileri gir, ekleyelim.'),
+                tr('Bilgileri gir, ekleyelim.'),
                 style: TextStyle(
                     color: AppColors.muted, fontWeight: FontWeight.w700, fontSize: 13.5),
               ),
               const SizedBox(height: 22),
 
-              // Doğdu mu? seçimi (onboarding'de ara ekranda seçildiği için gizli)
-              if (showStatusPicker)
-                AdField(
+              AdField(
                   label: tr('Bebek doğdu mu?'),
                   child: AdSides(
                     selected: isBorn ? 'born' : 'expecting',
@@ -418,7 +374,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                       ),
                     )
                   : AdSaveButton(
-                      label: onboarding ? tr('Başlayalım') : tr('Devam et'),
+                      label: tr('Devam et'),
                       color: AppColors.coral,
                       onTap: _save),
             ],

@@ -10,6 +10,7 @@ import '../../core/onboarding_paywall.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
+import '../auth/pending_auth_action.dart';
 import '../babies/baby_controller.dart';
 import '../onboarding/notif_soft_ask_sheet.dart';
 import '../onboarding/onboarding_kit.dart';
@@ -114,6 +115,7 @@ class _CycleShellState extends ConsumerState<CycleShell>
         // Kurulum bitti, asıl ekrandayız → ertelenen sistem izin penceresi
         // (adet hatırlatıcıları) artık açılabilir.
         SystemPromptGate.markAppReady();
+        consumePendingAuthAction(context, ref);
         if (!_softAskChecked) {
           _softAskChecked = true;
           WidgetsBinding.instance.addPostFrameCallback(

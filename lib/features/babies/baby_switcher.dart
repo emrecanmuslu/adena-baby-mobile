@@ -62,6 +62,10 @@ Future<void> showAddBabySheet(BuildContext context, WidgetRef ref) {
                   meta: tr('Davet koduyla katılmak için hesap gerekir'),
                   onTap: () {
                     Navigator.pop(sheetCtx);
+                    // Giriş/kayıt sonrası davet sayfası kendiliğinden açılsın.
+                    ref
+                        .read(pendingAuthActionProvider.notifier)
+                        .set(PendingAuthAction.invite);
                     context.push('/login?ctx=invite');
                   },
                 ),

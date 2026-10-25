@@ -139,12 +139,12 @@ class _PremiumWelcomeScreenState extends ConsumerState<PremiumWelcomeScreen> {
   Future<void> _subscribe() async {
     // Premium hesaba bağlıdır (RevenueCat entitlement + bulut yedek): hesapsız
     // kullanıcı önce ücretsiz hesap oluşturur; hesap açılınca ana sayfa
-    // Premium sayfasını kendiliğinden açar (bkz. pendingPremiumProvider).
+    // Premium sayfasını kendiliğinden açar (bkz. consumePendingAuthAction).
     if (ref.read(authControllerProvider).asData?.value == null) {
-      final router = GoRouter.of(context);
-      ref.read(pendingPremiumProvider.notifier).set(true);
-      Navigator.of(context).maybePop();
-      router.push('/register?ctx=premium');
+      ref.read(pendingAuthActionProvider.notifier).set(PendingAuthAction.premium);
+      // Paywall'ı kayıt ekranıyla DEĞİŞTİR: önce pop sonra push denince
+      // asenkron pop yeni açılan kayıt ekranını hemen geri kapatıyordu.
+      context.pushReplacement('/register?ctx=premium');
       return;
     }
     final pkg = _packageFor(_plan);

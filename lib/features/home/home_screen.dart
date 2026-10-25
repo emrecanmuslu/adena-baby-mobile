@@ -47,6 +47,7 @@ import '../records/record_controller.dart';
 import '../records/record_form.dart';
 import '../records/record_ui.dart';
 import '../records/timeline_view.dart';
+import '../auth/pending_auth_action.dart';
 import '../onboarding/notif_soft_ask_sheet.dart';
 import '../onboarding/onboarding_kit.dart';
 import '../settings/backup_nag.dart';
@@ -110,7 +111,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Kaydın formu kapansın ve "Kaydedildi" bildirimi (~2.8 sn) sayfanın
     // butonunun üstüne binmesin diye bekle.
     await Future.delayed(const Duration(milliseconds: 3200));
-    if (!mounted) return;
+    // Kullanıcı bu arada başka sayfaya geçtiyse ya da bir modal (tur, özet,
+    // ikinci kayıt formu) açıksa üstüne binme — sıradaki açılışta sorulur
+    // (ön-izin kaydedilmedi; paywall kayıt olduğu için o açılışta tüketilir).
+    if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? false) ||
+        ModalGate.isBlocked) {
+      return;
+    }
     ModalGate.acquire();
     try {
       await showNotifSoftAsk(context, branch: OnbBranch.baby);
@@ -169,15 +176,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.coral)));
     }
 
-    // Hesapsızken Premium istendi → hesap açıldı: Premium sayfasını aç.
-    if (ref.watch(pendingPremiumProvider) &&
-        ref.watch(authControllerProvider).asData?.value != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !ref.read(pendingPremiumProvider)) return;
-        ref.read(pendingPremiumProvider.notifier).set(false);
-        context.push('/premium');
-      });
-    }
+    // Hesapsızken Premium / davet istendi → hesap açıldı: kaldığı yerden aç.
+    consumePendingAuthAction(context, ref);
 
     // İlk kayıt anı (bu oturumda boş → dolu): bildirim ön-izni + Premium
     // Karşılama tam bu anda sorulur (kurulumun hemen ardından değil).

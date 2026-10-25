@@ -136,7 +136,9 @@ class _BabyProfileScreenState extends ConsumerState<BabyProfileScreen> {
         context,
         title: tr('Son adet tarihinin ilk günü'),
         initial: _lmp ?? today.subtract(const Duration(days: 112)),
-        first: today.subtract(const Duration(days: 300)),
+        // TDT = SAT + 280: daha eski SAT geçmişte bir TDT (negatif geri
+        // sayım) üretirdi.
+        first: today.subtract(const Duration(days: _gestationDays)),
         last: today,
         accent: _accent,
       );
