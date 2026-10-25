@@ -44,4 +44,12 @@ void main() {
     SharedPreferences.setMockInitialValues({'onboarding_draft_v1': 'bozuk'});
     expect(await OnboardingDraft.read(), isNull);
   });
+
+  test('silindikten sonra geç kalan kayıt taslağı geri yaratmaz', () async {
+    await OnboardingDraft.start('/onboarding/baby/born');
+    final late = OnboardingDraft.saveFields('/onboarding/baby/born', {'name': 'Eski'});
+    await OnboardingDraft.clear(); // kurulum bitti
+    await late;
+    expect(await OnboardingDraft.read(), isNull);
+  });
 }

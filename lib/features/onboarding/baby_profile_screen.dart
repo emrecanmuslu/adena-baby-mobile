@@ -303,9 +303,12 @@ class _BabyProfileScreenState extends ConsumerState<BabyProfileScreen> {
     // Bebek oluşunca router bu ekranı kaldırır — repo'yu önceden al.
     final repo = ref.read(babyRepositoryProvider);
     final photo = _photo;
+    final hadOnboarded = await OnboardingPaywall.onboardedAt() != null;
     try {
       // Premium Karşılama'yı sıraya al (ilk kayıttan sonra / ertesi gün açılır)
       // — bebek OLUŞTURULMADAN yazılır: create() redirect'i tetikler.
+      // Taslak da önce silinir: başarıda ekran router ile hemen kalkar.
+      // Oluşturma başarısız olursa üçü de geri alınır (catch).
       await OnboardingPaywall.markPending();
       await OnboardingPaywall.markOnboarded();
       await OnboardingDraft.clear();
@@ -327,9 +330,12 @@ class _BabyProfileScreenState extends ConsumerState<BabyProfileScreen> {
         }
       }
     } catch (e) {
+      await OnboardingPaywall.rollbackSetup(hadOnboarded: hadOnboarded);
       if (mounted) {
+        // _saving düşünce setState override'ı taslağı yeniden yazar.
+        await OnboardingDraft.start(_route);
         setState(() => _saving = false);
-        showAdError(context, apiErrorText(e));
+        if (mounted) showAdError(context, apiErrorText(e));
       }
     }
   }

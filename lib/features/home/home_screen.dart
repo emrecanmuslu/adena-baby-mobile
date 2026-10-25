@@ -14,6 +14,7 @@ import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/leaps.dart';
 import '../../core/modal_gate.dart';
+import '../../core/notif_soft_ask.dart';
 import '../../core/onboarding_paywall.dart';
 import '../../core/ring.dart';
 import '../../core/skeleton.dart';
@@ -80,17 +81,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Asıl ekrana ulaşıldı → ertelenen sistem izin penceresi (yalnız ön-izinde
     // "Bildirimleri aç" denmişse) artık açılabilir; kapı bırakılana kadar bekler.
     SystemPromptGate.markAppReady();
+    NotifSoftAsk.wanted.addListener(_onSoftAskWanted);
     WidgetsBinding.instance.addPostFrameCallback((_) => _startupModals());
+  }
+
+  bool _softAskBusy = false;
+
+  /// Bir planlayıcı bildirim gerektirdi (hatırlatıcı, ilaç, sayaç…) ama ön-izin
+  /// kabul edilmemiş → ana sayfa görünür ve başka modal yokken bir kez sor.
+  Future<void> _onSoftAskWanted() async {
+    if (_softAskBusy || !mounted) return;
+    _softAskBusy = true;
+    try {
+      await SystemPromptGate.whenClear();
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? false)) return;
+      if (!await NotifSoftAsk.mayAskAgain() || !mounted) return;
+      final baby = ref.read(activeBabyProvider);
+      ModalGate.acquire();
+      try {
+        await showNotifSoftAsk(context,
+            branch: (baby?.isExpecting ?? false) ? OnbBranch.preg : OnbBranch.baby,
+            force: true);
+      } finally {
+        ModalGate.release();
+      }
+    } finally {
+      _softAskBusy = false;
+    }
   }
 
   /// Açılışta sırayla: bildirim ön-izni (uygunsa) → Premium Karşılama (uygunsa).
   Future<void> _startupModals() async {
     try {
-      final baby = ref.read(activeBabyProvider);
+      // Aktif bebek bir-iki kare geç çözülebilir (hesap geçişi) — kısa bekle.
+      var baby = ref.read(activeBabyProvider);
+      for (var i = 0; baby == null && i < 20 && mounted; i++) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        baby = mounted ? ref.read(activeBabyProvider) : null;
+      }
       if (!mounted || baby == null) return;
-      final hasRecord = baby.isExpecting
-          ? false
-          : ((await ref.read(latestByTypeProvider(baby.id).future)).isNotEmpty);
+      var hasRecord = false;
+      if (!baby.isExpecting) {
+        try {
+          hasRecord =
+              (await ref.read(latestByTypeProvider(baby.id).future)).isNotEmpty;
+        } catch (_) {}
+      }
       if (!mounted) return;
       // Ön-izin: doğmuş bebekte ilk kayıt olduysa (yeni kurulumda kayıt anında
       // ayrıca sorulur); bekleme modunda kurulumdan sonraki günden itibaren.
@@ -109,6 +145,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// İlk kayıt (bu oturumda boş → dolu): ön-izin → Premium Karşılama.
   Future<void> _afterFirstRecord() async {
+    // Yalnız bu cihazda YENİ kurulumdan sonraki ilk kayıt: boş→dolu geçişi
+    // buluttan senkron (yeni cihaza giriş) ya da misafir aktarımıyla da olur;
+    // o durumda kullanıcı bir şey yapmadan soru/paywall açılmasın.
+    final at = await OnboardingPaywall.onboardedAt();
+    if (at == null || DateTime.now().difference(at) > const Duration(days: 2)) {
+      return;
+    }
     // Kaydın formu kapansın ve "Kaydedildi" bildirimi (~2.8 sn) sayfanın
     // butonunun üstüne binmesin diye bekle.
     await Future.delayed(const Duration(milliseconds: 3200));
@@ -150,6 +193,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    NotifSoftAsk.wanted.removeListener(_onSoftAskWanted);
     _homeScroll.dispose();
     super.dispose();
   }

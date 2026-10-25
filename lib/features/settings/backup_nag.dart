@@ -31,7 +31,9 @@ final _nagDismissedProvider =
 /// paywall'ı yeni kapatmışken ana ekranda ikinci bir premium dürtüsü görmesin.
 const _quietAfterOnboarding = Duration(days: 3);
 
-final _nagQuietProvider = FutureProvider<bool>((ref) async {
+// autoDispose: banner her yeniden kurulduğunda taze hesaplanır (süreç günlerce
+// açık kalsa da 3 günlük sessiz pencere biter; yeni kurulum da yakalanır).
+final _nagQuietProvider = FutureProvider.autoDispose<bool>((ref) async {
   final at = await OnboardingPaywall.onboardedAt();
   return at != null && DateTime.now().difference(at) < _quietAfterOnboarding;
 });

@@ -88,6 +88,17 @@ class OnboardingPaywall {
     } catch (_) {}
   }
 
+  /// Kurulum başarısız olduysa (bebek oluşturulamadı) yazılan bayrakları geri
+  /// al. [hadOnboarded]: deneme öncesi kurulum anı zaten var mıydı.
+  static Future<void> rollbackSetup({required bool hadOnboarded}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kPending);
+      await prefs.remove(_kPendingAt);
+      if (!hadOnboarded) await prefs.remove(_kOnboardedAt);
+    } catch (_) {}
+  }
+
   /// Kurulum anı (yoksa null — bu özellikten önce kurulmuş eski kullanıcı).
   static Future<DateTime?> onboardedAt() async {
     try {

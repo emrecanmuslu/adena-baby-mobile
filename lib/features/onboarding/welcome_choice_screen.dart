@@ -124,7 +124,7 @@ class _WelcomeChoiceScreenState extends ConsumerState<WelcomeChoiceScreen>
         : (localName.isNotEmpty ? localName.split(' ').first : '');
 
     // Hesapsızken "Davet kodum var" seçilip giriş yapıldıysa sayfayı aç.
-    consumePendingAuthAction(context, ref);
+    consumePendingAuthAction(context, ref, only: {PendingAuthAction.invite});
 
     final goals = [
       (OnbBranch.baby, 'feed', tr('Bebeğim doğdu'),

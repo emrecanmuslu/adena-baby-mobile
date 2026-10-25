@@ -6,6 +6,7 @@ import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
 import '../../core/modal_gate.dart';
+import '../../core/notif_soft_ask.dart';
 import '../../core/onboarding_paywall.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
@@ -45,10 +46,40 @@ class _CycleShellState extends ConsumerState<CycleShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    NotifSoftAsk.wanted.addListener(_onSoftAskWanted);
+  }
+
+  /// Adet hatırlatıcısı kuruldu ama ön-izin kabul edilmemiş → uygun anda sor.
+  bool _softAskBusy = false;
+
+  Future<void> _onSoftAskWanted() async {
+    if (_softAskBusy || !mounted) return;
+    _softAskBusy = true;
+    try {
+      await _softAskNow();
+    } finally {
+      _softAskBusy = false;
+    }
+  }
+
+  Future<void> _softAskNow() async {
+    await SystemPromptGate.whenClear();
+    if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? false)) return;
+    if (!await NotifSoftAsk.mayAskAgain() || !mounted) return;
+    final ttc = ref.read(cycleSettingsProvider).asData?.value.lifecycleMode ==
+        CycleLifecycleMode.ttc;
+    ModalGate.acquire();
+    try {
+      await showNotifSoftAsk(context,
+          branch: ttc ? OnbBranch.ttc : OnbBranch.cycle, force: true);
+    } finally {
+      ModalGate.release();
+    }
   }
 
   @override
   void dispose() {
+    NotifSoftAsk.wanted.removeListener(_onSoftAskWanted);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

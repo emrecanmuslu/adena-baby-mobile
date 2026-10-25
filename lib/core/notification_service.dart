@@ -219,9 +219,18 @@ class NotificationService {
   /// kurulmaz Premium Karşılama'nın, kayıt sonrası onboarding'in üstüne biniyordu.
   Future<void> _ensurePermission() async {
     if (_permissionAsked) return;
-    _permissionAsked = true;
     unawaited(() async {
-      if (!await NotifSoftAsk.accepted()) return;
+      if (!await NotifSoftAsk.accepted()) {
+        // _permissionAsked SET EDİLMEZ: ön-izin sonradan kabul edilirse aynı
+        // oturumdaki sonraki planlama sistem iznini isteyebilsin.
+        // Ön-izin kabul edilmedi: sistem penceresini bağlamsız açma, ama
+        // bildirim kuran kullanıcıyı sessiz bırakma — asıl ekran uygun anda
+        // ön-izni gösterir (hiç sorulmadıysa / reddedileli 7 gün olduysa).
+        if (!await systemEnabled()) NotifSoftAsk.requestLater();
+        return;
+      }
+      if (_permissionAsked) return;
+      _permissionAsked = true;
       await SystemPromptGate.whenClear();
       try {
         final android = _plugin.resolvePlatformSpecificImplementation<

@@ -13,6 +13,11 @@ class OnboardingDraft {
 
   static const _k = 'onboarding_draft_v1';
 
+  /// clear/start her çağrıda artar: araya giren (önceden başlamış) asenkron
+  /// saveFields yazımı, kurulum bitip taslak silindikten SONRA onu geri
+  /// yaratmasın (eski bebeğin bilgileriyle dolu form sonraki kurulumda çıkardı).
+  static int _gen = 0;
+
   /// Taslak — yoksa null.
   static Future<({String route, Map<String, dynamic> fields})?> read() async {
     try {
@@ -31,16 +36,22 @@ class OnboardingDraft {
   }
 
   /// Hedef seçildi → taslağı başlat (alanlar boş).
-  static Future<void> start(String route) => _write(route, const {});
+  static Future<void> start(String route) {
+    _gen++;
+    return _write(route, const {});
+  }
 
   /// Form alanlarını güncelle (rota korunur; farklı rotadaysa yazılmaz).
   static Future<void> saveFields(String route, Map<String, dynamic> fields) async {
+    final gen = _gen;
     final cur = await read();
-    if (cur != null && cur.route != route) return;
+    // Taslak yoksa (silinmiş) ya da başka dala aitse ya da arada silindiyse yazma.
+    if (cur == null || cur.route != route || gen != _gen) return;
     await _write(route, fields);
   }
 
   static Future<void> clear() async {
+    _gen++;
     try {
       await (await SharedPreferences.getInstance()).remove(_k);
     } catch (_) {}

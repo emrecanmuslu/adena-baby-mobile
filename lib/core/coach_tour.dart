@@ -126,6 +126,9 @@ class _CoachOverlayState extends State<_CoachOverlay>
 
   /// Hedef ekran dışındaysa sayfayı kaydır (300ms), sonra delikleri ölç.
   Future<void> _focusStep() async {
+    // Kaydırma sürerken İleri'ye basılırsa eski adımın delikleri yeni adıma
+    // yazılmasın: bekleme sonrası adım değiştiyse bu çağrı geçersiz.
+    final stepAtStart = _i;
     final keys = _step.targets;
     final first = keys.isEmpty ? null : keys.first.currentContext;
     if (first != null && first.mounted) {
@@ -146,7 +149,7 @@ class _CoachOverlayState extends State<_CoachOverlay>
         }
       }
     }
-    if (!mounted) return;
+    if (!mounted || _i != stepAtStart) return;
     setState(() {
       _holes = _measure(keys);
       _focused = true;

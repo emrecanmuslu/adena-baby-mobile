@@ -7,9 +7,14 @@ import 'auth_controller.dart';
 
 /// Hesap açılınca bekleyen eylemi (Premium / davet kodu) bir kez çalıştırır.
 /// Asıl ekranların build'inde çağrılır; oturum yoksa bir şey yapmaz.
-void consumePendingAuthAction(BuildContext context, WidgetRef ref) {
+/// [only] verilirse yalnız o eylemler işlenir — ör. karşılama ekranı Premium'u
+/// işlemez: bebeksiz hesapta /premium router tarafından geri çevrilir ve
+/// istek kaybolurdu; Premium, aktarım sonrası ana sayfada açılır.
+void consumePendingAuthAction(BuildContext context, WidgetRef ref,
+    {Set<PendingAuthAction>? only}) {
   final action = ref.watch(pendingAuthActionProvider);
   if (action == PendingAuthAction.none) return;
+  if (only != null && !only.contains(action)) return;
   if (ref.watch(authControllerProvider).asData?.value == null) return;
   WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!context.mounted || ref.read(pendingAuthActionProvider) != action) return;
