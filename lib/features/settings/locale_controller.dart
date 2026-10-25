@@ -74,6 +74,20 @@ class LocaleController extends AsyncNotifier<String> {
     // sonrası build() bu cache'ten doğru dili okur (çevrimdışı olsa bile).
     await LocaleCache().write(locale);
     await _activate(locale);
+    // Bu dilin sözlüğü cihazda yoksa (ilk kurulumda dil çipi) indirilmesini
+    // bekle: çağıran hemen yeniden başlatır ve sözlük sonradan gelince açık
+    // ekran yeniden çizilmez → metinler Türkçe kalırdı. Ağ yoksa sınırlı bekle.
+    if (locale != 'tr') {
+      final repo = ref.read(i18nRepositoryProvider);
+      final (_, cached) = await repo.readCache(locale);
+      if (cached.isEmpty) {
+        try {
+          final fresh =
+              await repo.sync(locale).timeout(const Duration(seconds: 6));
+          if (I18n.instance.locale == locale) I18n.instance.apply(locale, fresh);
+        } catch (_) {}
+      }
+    }
     try {
       await ref.read(authRepositoryProvider).updateSettings({'language': locale});
     } catch (_) {
