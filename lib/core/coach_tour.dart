@@ -77,11 +77,24 @@ class _CoachOverlayState extends State<_CoachOverlay>
   // Delikler her karede yeniden ölçülür: hedef sonradan kayarsa (ölçümden
   // sonra devam eden kaydırma, içerik yüklenip yerleşimin değişmesi, AppBar
   // daralması) vurgu eski yerde kalıp yanlış öğeyi gösteriyordu.
+  // Hareket durunca (~0.5 sn sabit kalınca) durur — sürekli kare istemez.
+  int _stableFrames = 0;
   late final Ticker _ticker = createTicker((_) {
     if (!_focused || !mounted) return;
     final next = _measure(_step.targets);
-    if (!_sameHoles(next, _holes)) setState(() => _holes = next);
+    if (!_sameHoles(next, _holes)) {
+      _stableFrames = 0;
+      setState(() => _holes = next);
+    } else if (++_stableFrames > 30) {
+      _ticker.stop();
+    }
   });
+
+  /// Delikleri bir süre canlı izle (kaydırma/yerleşim oturana dek).
+  void _track() {
+    _stableFrames = 0;
+    if (!_ticker.isActive) _ticker.start();
+  }
 
   static bool _sameHoles(List<RRect> a, List<RRect> b) {
     if (a.length != b.length) return false;
@@ -99,7 +112,6 @@ class _CoachOverlayState extends State<_CoachOverlay>
   @override
   void initState() {
     super.initState();
-    _ticker.start();
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusStep());
   }
 
@@ -139,6 +151,7 @@ class _CoachOverlayState extends State<_CoachOverlay>
       _holes = _measure(keys);
       _focused = true;
     });
+    _track();
   }
 
   List<RRect> _measure(List<GlobalKey> keys) {
