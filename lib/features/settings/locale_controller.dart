@@ -51,7 +51,10 @@ class LocaleController extends AsyncNotifier<String> {
   }
 
   /// Cache'i hemen uygula (anında), sonra sunucudan tazele. Reporter'ı bağla.
-  Future<void> _activate(String locale) async {
+  /// [waitIfUncached]: bu dilin cache'i yoksa sözlüğü (sınırlı süre) bekle —
+  /// dil seçiminde çağıran hemen yeniden başlatır; sözlük sonradan gelince açık
+  /// ekran yeniden çizilmez → ilk kurulumda metinler Türkçe kalırdı.
+  Future<void> _activate(String locale, {bool waitIfUncached = false}) async {
     final repo = ref.read(i18nRepositoryProvider);
     I18n.instance.reporter ??= (sources) => repo.report(sources);
     if (locale == 'tr') {
@@ -63,9 +66,14 @@ class LocaleController extends AsyncNotifier<String> {
     // D14: sunucu senkronu ARKA PLANDA — setLocale/auth emit'i 15 sn ağı
     // beklemesin (spinner yok, kullanıcı tekrar basıyordu). Taze sözlük
     // gelince uygulanır; cache zaten anında uygulandı.
-    unawaited(repo.sync(locale).then((fresh) {
+    final sync = repo.sync(locale).then((fresh) {
       if (I18n.instance.locale == locale) I18n.instance.apply(locale, fresh);
-    }).catchError((_) {}));
+    }).catchError((_) {});
+    if (waitIfUncached && cached.isEmpty) {
+      await sync.timeout(const Duration(seconds: 6), onTimeout: () {});
+    } else {
+      unawaited(sync);
+    }
   }
 
   Future<void> setLocale(String locale) async {
@@ -73,21 +81,7 @@ class LocaleController extends AsyncNotifier<String> {
     // Önce kalıcıya yaz — çağıran genelde uygulamayı yeniden başlatır; restart
     // sonrası build() bu cache'ten doğru dili okur (çevrimdışı olsa bile).
     await LocaleCache().write(locale);
-    await _activate(locale);
-    // Bu dilin sözlüğü cihazda yoksa (ilk kurulumda dil çipi) indirilmesini
-    // bekle: çağıran hemen yeniden başlatır ve sözlük sonradan gelince açık
-    // ekran yeniden çizilmez → metinler Türkçe kalırdı. Ağ yoksa sınırlı bekle.
-    if (locale != 'tr') {
-      final repo = ref.read(i18nRepositoryProvider);
-      final (_, cached) = await repo.readCache(locale);
-      if (cached.isEmpty) {
-        try {
-          final fresh =
-              await repo.sync(locale).timeout(const Duration(seconds: 6));
-          if (I18n.instance.locale == locale) I18n.instance.apply(locale, fresh);
-        } catch (_) {}
-      }
-    }
+    await _activate(locale, waitIfUncached: true);
     try {
       await ref.read(authRepositoryProvider).updateSettings({'language': locale});
     } catch (_) {
