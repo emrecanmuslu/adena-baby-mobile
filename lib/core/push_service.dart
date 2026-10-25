@@ -13,6 +13,7 @@ import 'api_client.dart';
 import 'i18n_warm.dart';
 import 'background_sync.dart';
 import 'medication/med_scheduler.dart';
+import 'modal_gate.dart';
 import 'notification_service.dart';
 import 'widget_service.dart';
 
@@ -369,6 +370,10 @@ class PushService {
       });
     }
     try {
+      // İzin penceresi onboarding/paywall/tur üstüne açılmasın — kayıt olur
+      // olmaz hedef seçimi ekranının üstüne biniyordu. Asıl ekrana ulaşılıp
+      // öncelikli modallar kapanana kadar bekle (token kaydı da onunla ertelenir).
+      await SystemPromptGate.whenClear();
       await FirebaseMessaging.instance.requestPermission();
       // iOS: FCM token ancak APNs token hazır olunca gelir; biraz bekle.
       // (APNs token AppDelegate'te elle Messaging'e iletiliyor — UIScene fix.)

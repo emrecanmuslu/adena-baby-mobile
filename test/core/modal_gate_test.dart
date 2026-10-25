@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:adena_baby/core/modal_gate.dart';
@@ -44,5 +46,55 @@ void main() {
     ModalGate.acquire();
     ModalGate.release();
     expect(calls, 2);
+  });
+
+  group('SystemPromptGate', () {
+    setUp(() {
+      SystemPromptGate.resetForTest();
+      SystemPromptGate.settle = Duration.zero;
+    });
+    tearDown(SystemPromptGate.resetForTest);
+
+    test('asıl ekrana ulaşılmadan izin penceresi açılmaz', () async {
+      var done = false;
+      unawaited(SystemPromptGate.whenClear().then((_) => done = true));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(done, isFalse, reason: 'onboarding sırasında sorulmamalı');
+
+      SystemPromptGate.markAppReady();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(done, isTrue);
+    });
+
+    test('paywall/tur kapıyı tutarken bekler, bırakınca açılır', () async {
+      SystemPromptGate.markAppReady();
+      ModalGate.acquire(); // ör. Premium Karşılama açık
+      var done = false;
+      unawaited(SystemPromptGate.whenClear().then((_) => done = true));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(done, isFalse, reason: 'paywall üstüne binmemeli');
+
+      ModalGate.release();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(done, isTrue);
+    });
+
+    test('kapı bırakılıp yerleşme süresinde yeniden tutulursa (tur) beklemeye devam eder',
+        () async {
+      SystemPromptGate.settle = const Duration(milliseconds: 30);
+      SystemPromptGate.markAppReady();
+      ModalGate.acquire(); // paywall
+      var done = false;
+      unawaited(SystemPromptGate.whenClear().then((_) => done = true));
+
+      ModalGate.release(); // paywall kapandı…
+      ModalGate.acquire(); // …hemen ardından tur açıldı
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(done, isFalse, reason: 'turun üstüne binmemeli');
+
+      ModalGate.release(); // tur kapandı
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(done, isTrue);
+    });
   });
 }

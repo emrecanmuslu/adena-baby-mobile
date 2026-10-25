@@ -1,4 +1,3 @@
-import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,10 +34,16 @@ class BabySetupScreen extends ConsumerStatefulWidget {
 class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
   final _name = TextEditingController();
   BabyStatus _status = BabyStatus.born;
+  // Hedef ara ekranda seçildi mi — İLK kurulumda sabitlenir. go_router
+  // refreshListenable tetiklenince rotayı yeniden çözer ve `extra`yı
+  // (initialStatus) kaybeder → widget null ile yeniden kurulur; buna bakan
+  // anahtar formun ortasında aniden belirip düzeni kaydırıyordu.
+  late final bool _statusChosen;
 
   @override
   void initState() {
     super.initState();
+    _statusChosen = widget.initialStatus != null;
     _status = widget.initialStatus ?? BabyStatus.born;
     // Ad yazıldıkça rebuild → PopScope.canPop (_dirty) güncel kalsın.
     _name.addListener(() {
@@ -82,11 +87,16 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
       }
       return;
     }
+    // Gebelik: tahmini doğum tarihi bugünden ~42 haftaya kadar olabilir. Eskiden
+    // üst sınır "gelecek yılın 1 Ocak'ı"ydı → sonbaharda gebeliğin başındaki
+    // kullanıcı TDT'sini HİÇ seçemiyordu. Seçici bugünden değil makul bir
+    // varsayılandan açılır — bugünde açılınca dokunmadan "Tamam" diyen kullanıcı
+    // "40. hafta / 0 gün kaldı" ile başlıyordu.
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date ?? now,
+      initialDate: _date ?? (isBorn ? now : now.add(const Duration(days: 120))),
       firstDate: isBorn ? DateTime(now.year - 5) : now,
-      lastDate: isBorn ? now : DateTime(now.year + 1),
+      lastDate: isBorn ? now : now.add(const Duration(days: 300)),
       helpText: isBorn ? tr('Doğum tarihi') : tr('Tahmini doğum tarihi'),
     );
     if (picked != null) setState(() => _date = picked);
@@ -111,6 +121,14 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
     }
     setState(() => _saving = true);
     try {
+      // İlk bebek kuruluyorsa Premium Karşılama Ekranı'nı sıraya al — ana sayfa
+      // ilk kareyi çizince bir kez açılır (buradan push etmek router
+      // redirect'iyle yarışırdı). Bayrak bebek OLUŞTURULMADAN yazılır (await):
+      // create() bebek listesini günceller → redirect ana sayfaya geçer →
+      // ana sayfa bayrağı tüketir. Önceden unawaited + create sonrasıydı →
+      // ana sayfa bayraktan önce okuyup ekranı atlıyor, bayrak sonraki rastgele
+      // bir açılışa kalıyordu. Tek-kez garantisi OnboardingPaywall'da.
+      if (widget.onboarding) await OnboardingPaywall.markPending();
       final baby = await ref.read(babyControllerProvider.notifier).create(
             name: name,
             status: _status,
@@ -143,10 +161,6 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
           }
         } catch (_) {}
       }
-      // İlk bebek kurulduysa Premium Karşılama Ekranı'nı sıraya al — ana sayfa
-      // ilk kareyi çizince bir kez açılır (buradan push etmek router
-      // redirect'iyle yarışırdı). Tek-kez garantisi OnboardingPaywall'da.
-      if (widget.onboarding) unawaited(OnboardingPaywall.markPending());
       // Onboarding'de router redirect ana sayfaya götürür; ek bebekte elle dön.
       if (!widget.onboarding && mounted) context.go('/home');
     } catch (e) {
@@ -197,7 +211,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
     final onboarding = widget.onboarding;
     // Onboarding'de durum ara ekranda (WelcomeChoiceScreen) seçildi → anahtar
     // gizlenir; ek bebek eklerken görünür kalır.
-    final showStatusPicker = !onboarding || widget.initialStatus == null;
+    final showStatusPicker = !onboarding || !_statusChosen;
     // Dolu form BACK ile onaysız atılmasın (yaşam-döngüsü testi gözlemi):
     // veri girildiyse önce onay diyaloğu göster.
     return PopScope(
@@ -278,7 +292,7 @@ class _BabySetupScreenState extends ConsumerState<BabySetupScreen> {
                       '(SAT + 40 hafta). Doktorunun verdiği tarih önceliklidir.'),
                   child: AdTabs(
                     options: {
-                      'due': tr('Doğum tarihi'),
+                      'due': tr('Tahmini doğum tarihi'),
                       'lmp': tr('Son adet (SAT)'),
                     },
                     selected: _useLmp ? 'lmp' : 'due',

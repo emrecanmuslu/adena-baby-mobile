@@ -75,6 +75,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Kapı tutuluyken tur ertelenir; kararı verince (ya da ekran kapanınca)
     // bırakılır → ikisi üst üste binmez.
     ModalGate.acquire();
+    // Asıl ekrana ulaşıldı → ertelenen sistem izin penceresi (bildirim) artık
+    // açılabilir; yine de yukarıdaki kapı bırakılana kadar bekler.
+    SystemPromptGate.markAppReady();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeWelcomePaywall());
   }
 
@@ -90,8 +93,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       if (!await OnboardingPaywall.consume()) return;
       if (!mounted) return;
-      // Ekran kapanana kadar bekle — tur ancak ondan sonra açılabilsin.
-      await context.push('/premium-welcome');
+      // push future'ı BEKLENMEZ: go_router refreshListenable tetiklenince açık
+      // rotayı yeniden çözüp future'ın completer'ını yenisiyle değiştirir
+      // (flutter#128122) → `await` hiç dönmez, kapı sızar ve tur o oturumda
+      // hiç açılmazdı. Kapıyı ekranın kendisi ömrü boyunca tutar
+      // (PremiumWelcomeScreen initState→dispose); biz yalnız ekran kurulana
+      // kadar tutuyoruz ki arada tur araya girmesin.
+      unawaited(context.push('/premium-welcome'));
+      await WidgetsBinding.instance.endOfFrame;
+      await WidgetsBinding.instance.endOfFrame;
     } finally {
       ModalGate.release();
     }

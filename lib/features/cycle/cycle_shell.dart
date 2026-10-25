@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api_error.dart';
 import '../../core/brand.dart';
 import '../../core/i18n.dart';
+import '../../core/modal_gate.dart';
 import '../../core/theme.dart';
 import '../../data/cycle_repository.dart';
 import '../../models/cycle.dart';
@@ -92,6 +93,9 @@ class _CycleShellState extends ConsumerState<CycleShell>
             onDone: () {}, // ayar yazımı akışa düşer (Stream); yenileme gerekmez
           );
         }
+        // Kurulum bitti, asıl ekrandayız → ertelenen sistem izin penceresi
+        // (adet hatırlatıcıları) artık açılabilir.
+        SystemPromptGate.markAppReady();
         return Scaffold(
           body: IndexedStack(
             index: _index,

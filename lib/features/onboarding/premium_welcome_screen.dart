@@ -13,6 +13,7 @@ import '../../core/analytics_service.dart';
 import '../../core/api_error.dart';
 import '../../core/i18n.dart';
 import '../../core/legal_links.dart';
+import '../../core/modal_gate.dart';
 import '../../core/revenuecat_service.dart';
 import '../../core/theme.dart';
 import '../../data/subscription_repository.dart';
@@ -51,8 +52,17 @@ class _PremiumWelcomeScreenState extends ConsumerState<PremiumWelcomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Ekran açıkken öncelikli modal kapısını tut: tanıtım turu ve sistem izin
+    // penceresi bu ekranın üstüne açılmasın; kapanınca (dispose) bırakılır.
+    ModalGate.acquire();
     _loadOffering();
     unawaited(AnalyticsService.instance.log('onboarding_paywall_shown', const {}));
+  }
+
+  @override
+  void dispose() {
+    ModalGate.release();
+    super.dispose();
   }
 
   Future<void> _loadOffering() async {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -140,7 +142,13 @@ class _TourMountState extends ConsumerState<TourMount> {
   }
 
   void _onGateChanged() {
-    if (mounted && !ModalGate.isBlocked) setState(() {});
+    if (!mounted || ModalGate.isBlocked) return;
+    // Kapı çoğu zaman bir ekranın dispose'unda bırakılır (Premium Karşılama
+    // kapanınca) — o an widget ağacı kilitli, setState etkisiz kalır ve tur o
+    // oturumda hiç açılmazdı. Yeniden çizimi bir sonraki mikro-göreve ertele.
+    scheduleMicrotask(() {
+      if (mounted && !ModalGate.isBlocked) setState(() {});
+    });
   }
 
   @override
@@ -173,14 +181,21 @@ class _TourMountState extends ConsumerState<TourMount> {
 
 Future<void> _showTour(BuildContext context, WidgetRef ref, String key,
     List<TourStep> steps) async {
-  await showDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    barrierColor: Colors.black.withValues(alpha: 0.58),
-    builder: (_) => _TourDialog(steps: steps),
-  );
-  // Her kapanış yolunda (Bitti / Geç / dışarı dokunma) görüldü işaretle.
-  await ref.read(tourControllerProvider.notifier).markSeen(key);
+  // Tur açıkken kapıyı tut: ertelenen sistem izin penceresi (bildirim) turun
+  // üstüne açılmasın, tur kapanınca sırası gelsin.
+  ModalGate.acquire();
+  try {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.58),
+      builder: (_) => _TourDialog(steps: steps),
+    );
+    // Her kapanış yolunda (Bitti / Geç / dışarı dokunma) görüldü işaretle.
+    await ref.read(tourControllerProvider.notifier).markSeen(key);
+  } finally {
+    ModalGate.release();
+  }
 }
 
 class _TourDialog extends StatefulWidget {
